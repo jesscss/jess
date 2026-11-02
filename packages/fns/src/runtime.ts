@@ -19,6 +19,9 @@ export type RuntimeRecipe = { readonly export: string } | string | readonly [Fn,
 
 /** What a compiled stylesheet's module hands {@link createRuntime}. */
 export interface RuntimeSpec {
+  /** Each exposed variable's name by its JavaScript key: `brandColor` is `brand-color`. */
+  readonly keys: Readonly<Record<string, string>>;
+
   /** The compile-time CSS of each export a derived value reads. */
   readonly defaults: Readonly<Record<string, string>>;
 
@@ -26,7 +29,7 @@ export interface RuntimeSpec {
   readonly derived: Readonly<Record<string, RuntimeRecipe>>;
 }
 
-/** Export values by name (`brand`, not `--brand`), as CSS. */
+/** Values by JavaScript key: the variable's name with dash-case turned to camelCase (`brandColor` for `@brand-color`), as CSS. */
 export type ExportValues = Readonly<Record<string, string>>;
 
 /** An element whose inline style takes custom properties. */
@@ -52,7 +55,15 @@ const CTX = { modes: DEFAULT_MODES, stringify: emitValue };
 declare const document: { readonly documentElement: StyleTarget };
 
 export function createRuntime(spec: RuntimeSpec): Runtime {
-  const vars = (values: ExportValues): Record<string, string> => {
+  const vars = (given: ExportValues): Record<string, string> => {
+    const values: Record<string, string> = {};
+    for (const [key, value] of Object.entries(given)) {
+      const name = Object.hasOwn(spec.keys, key) ? spec.keys[key] : undefined;
+      if (name === undefined) {
+        throw new TypeError(`The stylesheet exposes no variable with the key ${key}.`);
+      }
+      values[name] = value;
+    }
     const out: Record<string, string> = {};
     for (const name of Object.keys(values)) {
       out[`--${name}`] = values[name]!;

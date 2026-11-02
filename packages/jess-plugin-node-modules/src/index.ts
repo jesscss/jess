@@ -144,47 +144,6 @@ export class NodeModulesPlugin extends AbstractPlugin {
 
     return resolved;
   }
-
-  /**
-   * Load an npm package module.
-   *
-   * @param packageName - The npm package name (e.g., "less-plugin-clean-css")
-   * @returns The loaded module, or null if not found
-   */
-  async loadPackage(packageName: string): Promise<Record<string, any> | null> {
-    const resolvedPath = this.resolvePackage(packageName);
-    if (!resolvedPath) {
-      return null;
-    }
-
-    try {
-      // Load the module using require
-
-      const module: unknown = this._require(resolvedPath);
-      return isRecord(module) ? module : null;
-    } catch {
-      // If loading fails, return null
-      return null;
-    }
-  }
-
-  /**
-   * Try to resolve a package name with multiple possible names.
-   * Useful for plugins that want to try different variations
-   * (e.g., "clean-css" and "less-plugin-clean-css").
-   *
-   * @param packageNames - Array of package names to try in order
-   * @returns The first successfully resolved package, or null if none found
-   */
-  async tryResolvePackages(packageNames: string[]): Promise<{ name: string; module: Record<string, any> } | null> {
-    for (const name of packageNames) {
-      const module = await this.loadPackage(name);
-      if (module !== null) {
-        return { name, module };
-      }
-    }
-    return null;
-  }
 }
 
 function isBareModuleSpecifier(candidate: string): boolean {
@@ -193,10 +152,6 @@ function isBareModuleSpecifier(candidate: string): boolean {
     && !candidate.startsWith('../')
     && !candidate.startsWith('/')
     && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate);
-}
-
-function isRecord(value: unknown): value is Record<string, any> {
-  return value !== null && typeof value === 'object';
 }
 
 const nodeModulesPlugin = ((opts?: NodeModulesPluginOptions) =>

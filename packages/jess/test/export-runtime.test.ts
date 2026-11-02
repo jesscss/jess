@@ -37,9 +37,9 @@ describe('the export runtime', () => {
     ['@less.fade(@brand, 50%)', '#123456'],
     ['@less.spin(@brand, 30)', '#123']
   ])('writes what a compile writes: %s with %s', async (expression, value) => {
-    const exported = await compile(`@use "#less";\n@export @brand: #c00;\n.a { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    const vars = createRuntime({ defaults: exported.runtime!.defaults, derived }).vars({ brand: value });
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ brand: value });
     const [property] = Object.keys(derived);
     const recompiled = await compile(`@use "#less";\n@brand: ${value};\n.a { v: ${expression}; }`);
     expect(vars['--brand']).toBe(value);
@@ -47,19 +47,27 @@ describe('the export runtime', () => {
   });
 
   it('computes only what reads a given export', async () => {
-    const exported = await compile('@use "#less";\n@export @a: #c00;\n@export @b: #00c;\n.x { v: @less.lightness(@a); w: @less.lightness(@b); }');
+    const exported = await compile('@use "#less";\n@expose a, b;\n@a: #c00;\n@b: #00c;\n.x { v: @less.lightness(@a); w: @less.lightness(@b); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    expect(createRuntime({ defaults: exported.runtime!.defaults, derived }).vars({ b: '#fff' })).toEqual({ '--b': '#fff', '--b-lightness': '100%' });
+    expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ b: '#fff' })).toEqual({ '--b': '#fff', '--b-lightness': '100%' });
+  });
+
+  it('takes each value by its JavaScript key, the name with dash-case turned to camelCase', async () => {
+    const exported = await compile('@use "#less";\n@expose brand-color;\n@brand-color: #c00;\n.a { v: @less.lightness(@brand-color); }');
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived });
+    expect(runtime.vars({ brandColor: '#000' })).toEqual({ '--brand-color': '#000', '--brand-color-lightness': '0%' });
+    expect(() => runtime.vars({ 'brand-color': '#000' })).toThrow('no variable with the key brand-color');
   });
 
   it('rejects a value given as a function', () => {
-    const runtime = createRuntime({ defaults: { brand: '#c00' }, derived: { '--brand-lightness': [less.lightness, [{ export: 'brand' }]] } });
+    const runtime = createRuntime({ keys: { brand: 'brand' }, defaults: { brand: '#c00' }, derived: { '--brand-lightness': [less.lightness, [{ export: 'brand' }]] } });
     expect(() => runtime.vars({ brand: 'hsl(10, 50%, 50%)' })).toThrow('"hsl(10, 50%, 50%)" is a function');
   });
 
   it('sets the properties on the target it is given', async () => {
     const set: Record<string, string> = {};
-    createRuntime({ defaults: { brand: '#c00' }, derived: { '--brand-lightness': [less.lightness, [{ export: 'brand' }]] } })
+    createRuntime({ keys: { brand: 'brand' }, defaults: { brand: '#c00' }, derived: { '--brand-lightness': [less.lightness, [{ export: 'brand' }]] } })
       .set({ brand: '#000' }, {
         style: {
           setProperty: (name, value) => {

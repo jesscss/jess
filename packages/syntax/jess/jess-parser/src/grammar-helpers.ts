@@ -615,7 +615,8 @@ function jessFunctionOpenName(child: unknown): string {
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isVarDeclaration(child) && !isMixinDefinition(child) && !isMixinCall(child) && !isApply(child) && !isReference(child) && !isRuleset(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isJessDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isUnknownAtRuleBlock(child)) {
+    /* The guards gate on distinct types; the statements a body holds most are tried first. */
+    if (!isJessDeclaration(child) && !isRuleset(child) && !isVarDeclaration(child) && !isMixinCall(child) && !isMixinDefinition(child) && !isApply(child) && !isReference(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isUnknownAtRuleBlock(child)) {
       throw new TypeError('Jess grammar produced a non-statement child.');
     }
     statements.push(child);
@@ -625,15 +626,20 @@ function requireStatements(children: readonly unknown[]): Statement[] {
 
 /*
  * Block bodies whose grammar admits array-producing arms (`$extend`) and a bare
- * `;` arm: flatten mixin-call arrays, drop other arrays and stray tokens.
+ * `;` arm: flatten mixin-call arrays, drop other arrays and stray tokens, in one
+ * pass over `children[open .. -1)`.
  */
 function collectBlockStatements(children: readonly unknown[], open: number): Statement[] {
-  return requireStatements(children.slice(
-    open,
-    -1
-  )
-    .flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child])
-    .filter(child => !isToken(child)));
+  const out: unknown[] = [];
+  for (let at = open; at < children.length - 1; at++) {
+    const child = children[at];
+    if (isMixinCallArray(child)) {
+      out.push(...child);
+    } else if (!Array.isArray(child) && !isToken(child)) {
+      out.push(child);
+    }
+  }
+  return requireStatements(out);
 }
 
 /*
@@ -641,11 +647,16 @@ function collectBlockStatements(children: readonly unknown[], open: number): Sta
  * token arms other than mixin-call expansion: flatten mixin-call arrays only.
  */
 function collectBodyStatements(children: readonly unknown[], open: number): Statement[] {
-  return requireStatements(children.slice(
-    open,
-    -1
-  )
-    .flatMap(child => isMixinCallArray(child) ? child : [child]));
+  const out: unknown[] = [];
+  for (let at = open; at < children.length - 1; at++) {
+    const child = children[at];
+    if (isMixinCallArray(child)) {
+      out.push(...child);
+    } else {
+      out.push(child);
+    }
+  }
+  return requireStatements(out);
 }
 
 function requireStatementList(value: unknown): Statement[] {

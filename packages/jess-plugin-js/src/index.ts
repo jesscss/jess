@@ -17,9 +17,11 @@ import {
   encodeEngineValue,
   engineCode,
   engineFailure,
+  engineOwnCode,
   hostFacts,
   denoRunArgs,
   encodeHostConfigs,
+  readRootsBelowUnreadableFolders,
   type HostConfigs,
   readRootsOf,
   readSetFor,
@@ -171,6 +173,14 @@ const resolveBundledDenoPath = (): string | undefined => {
     return undefined;
   }
 };
+
+/** Why a Deno worker that exited before it was ready did so (see `startWorker`). */
+const startupExitError = (said: string, code: number | null, signal: NodeJS.Signals | null, denoCommand: string): Error =>
+  new Error(said !== ''
+    ? `Deno worker exited during startup.\n${said}`
+    : signal !== null || code === null
+      ? `Deno worker was stopped during startup${signal === null ? '' : ` by ${signal}`}.`
+      : `${RUNTIME_MISSING_MESSAGE}\nDeno worker exited during startup without a word: "${denoCommand}" may not be Deno.`);
 
 const BOOT_TIMEOUT_MS = 8000;
 const IDLE_SHUTDOWN_MS = 5_000;
@@ -325,6 +335,9 @@ export class JsPlugin extends AbstractPlugin {
   private static liveInstances = new Set<JsPlugin>();
   name = 'js';
   supportedExtensions = Array.from(SCRIPT_EXTENSIONS);
+
+  /** `importPlugin` never loads a script outside the engine: it moves the render there. */
+  readonly sandboxesScripts = true;
   private runtimeState: RuntimeState = { status: 'idle' };
   private worker: ChildProcessWithoutNullStreams | undefined;
 
@@ -432,19 +445,16 @@ export class JsPlugin extends AbstractPlugin {
         env: sanitizeSpawnEnv(process.env)
       }).status === 0;
 
+    /*
+     * An explicit `denoCommand`, and else the pinned binary, are used without
+     * running them first: `deno --version` blocks this thread for ~40 ms, inside
+     * the first render now that the engine starts ahead of it. A binary that
+     * cannot run fails the spawn, which reports the same guidance.
+     */
     const explicit = this.opts.denoCommand;
     if (explicit !== undefined) {
-      if (!runs(explicit)) {
-        throw new Error(RUNTIME_MISSING_MESSAGE);
-      }
       return (this.denoCommand = explicit);
     }
-
-    /*
-     * The pinned binary is used without running it first: `deno --version`
-     * blocks this thread for ~40 ms. A binary that cannot run fails the
-     * spawn, which reports the same guidance.
-     */
     const bundled = resolveBundledDenoPath();
     if (bundled !== undefined) {
       return (this.denoCommand = bundled);
@@ -575,12 +585,16 @@ export class JsPlugin extends AbstractPlugin {
         reject(new Error(`${RUNTIME_MISSING_MESSAGE}\n${err.message}`));
       });
 
-      // A worker that dies before it is ready fails startup at once, with its stderr.
-      child.once('close', () => {
+      /*
+       * A worker that dies before it is ready fails startup at once, with its
+       * stderr. One stopped by a signal (killed, out of memory) says so. One that
+       * exits on its own without a word is most likely not Deno at all (a
+       * \`denoCommand\` naming another program), so it gets the same guidance as
+       * a missing binary.
+       */
+      child.once('close', (code: number | null, signal: NodeJS.Signals | null) => {
         clearTimeout(timer);
-        reject(new Error(stderrText.trim()
-          ? `Deno worker exited during startup.\n${stderrText.trim()}`
-          : 'Deno worker exited during startup.'));
+        reject(startupExitError(stderrText.trim(), code, signal, denoCommand));
       });
     });
   }
@@ -932,6 +946,7 @@ export class JsPlugin extends AbstractPlugin {
     const { code, release } = await this.useReadSet(request);
     let result: RpcResult;
     try {
+      const configs = request.configs && { ...request.configs, above: await this.configsAboveReadRoots(request) };
       result = await this.callWorker({
         type: 'render',
         compiler: request.compiler,
@@ -939,7 +954,7 @@ export class JsPlugin extends AbstractPlugin {
         method: request.method,
         args: encodeEngineValue(request.args, 'render arguments'),
         host: hostFacts(code),
-        configs: encodeHostConfigs(request.configs)
+        configs: encodeHostConfigs(configs)
       });
     } finally {
       release();
@@ -951,6 +966,26 @@ export class JsPlugin extends AbstractPlugin {
       throw engineFailure(result);
     }
     return result.value;
+  }
+
+  /**
+   * The host's config search above each read root, keyed by the folder above
+   * it, which the sandbox cannot read: every folder inside a root shares that
+   * part of its settings, so it is resolved once per render and sent as data.
+   */
+  private async configsAboveReadRoots(request: EngineRenderRequest): Promise<Record<string, unknown>> {
+    const search = request.configsAbove;
+    if (search === undefined) {
+      return {};
+    }
+    const above: Record<string, unknown> = {};
+    for (const root of await readRootsBelowUnreadableFolders(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot)) {
+      const chain = search(root);
+      if (chain !== undefined) {
+        above[path.dirname(root)] = chain;
+      }
+    }
+    return above;
   }
 
   /**
@@ -1025,6 +1060,17 @@ export class JsPlugin extends AbstractPlugin {
     const prewarm = new AbortController();
     this.prewarmAbort = prewarm;
     const warm = async () => {
+      /*
+       * Deno starts now, on the read set its code closure can only add to (the
+       * read roots, the compiler's and this plugin's own packages): the closure,
+       * computed next, is what held a cold start back. When the closure adds a
+       * folder, `useReadSet` switches the process before any render reaches it.
+       */
+      const early = await readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, engineOwnCode(request.compiler.module, import.meta.url));
+      if (!prewarm.signal.aborted && this.readSetTurn === undefined && this.runtimeState.status === 'idle') {
+        this.nextReadSet = early;
+        this.ensureRuntime().catch(() => undefined);
+      }
       const { code, release } = await this.useReadSet(request, prewarm.signal);
       try {
         if (prewarm.signal.aborted) {
@@ -1083,6 +1129,9 @@ export type EngineRenderRequest = EngineRequestBase & {
 
   /** The `styles.config` settings the host resolved, sent as data. */
   configs?: HostConfigs;
+
+  /** The host's config search above a read root (none for a package root); run here, never sent. */
+  configsAbove?: (root: string) => unknown;
 };
 
 /**

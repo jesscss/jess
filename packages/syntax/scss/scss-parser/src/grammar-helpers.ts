@@ -16,7 +16,7 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStaticQuoted, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
@@ -1228,24 +1228,35 @@ export function isVarDeclaration(value: unknown): value is VariableDeclaration {
  * `Declaration` in declaration-capable bodies.
  */
 export function isStatementChild(child: unknown, allowDeclarations: boolean): child is Statement {
-  return isComment(child)
-    || isStyleImport(child)
-    || isModuleImport(child)
-    || isAtRuleBlock(child)
-    || isAtRuleStatement(child)
-    || isVarDeclaration(child)
-    || isMixinDefinition(child)
-    || isMixinCall(child)
-    || isFor(child)
-    || isIf(child)
-    || isWhile(child)
-    || isRuleset(child)
-    || isUnknownAtRuleBlock(child)
+  /* Each statement guard gates on one distinct `type`, so dispatch on it once. */
+  if (typeof child !== 'object' || child === null || !('type' in child)) {
+    return false;
+  }
+  switch (child.type) {
+    case 'Comment':
+    case 'StyleImport':
+    case 'ModuleImport':
+    case 'AtRuleBlock':
+    case 'AtRuleStatement':
+    case 'MixinDefinition':
+    case 'MixinCall':
+    case 'For':
+    case 'If':
+    case 'While':
+    case 'Ruleset':
+    case 'UnknownAtRuleBlock':
 
     /* `$content()` — a statement-position Reference; core's `Statement` already
      * admits one, and this is the only production that puts one here. */
-    || isReference(child)
-    || (allowDeclarations && isScssDeclaration(child));
+    case 'Reference':
+      return true;
+    case 'VariableDeclaration':
+      return isVarDeclaration(child);
+    case 'Declaration':
+      return allowDeclarations && isScssDeclaration(child);
+    default:
+      return false;
+  }
 }
 
 export function statements(children: readonly unknown[], allowDeclarations = false): Statement[] {

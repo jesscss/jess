@@ -150,6 +150,7 @@ import type {
   ValueNode,
   ValueSlot,
   VariableDeclaration,
+  VariableExpose,
   VariableLookup,
   Lookup,
   Url
@@ -205,7 +206,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, READS_EXPORT, rejectNestedExport, rootExports, runtimeData, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, declareExpose, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -254,7 +255,7 @@ import { collectInstructionAtoms, documentExtendClass, documentWalkFacts, heldAn
 import { leadsWithElement } from './extend/conflict.js';
 import { isPseudoElementName, isUserActionToken, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
-import type { ModuleConfigRejection } from '../plugin.js';
+import { type ModuleConfigRejection, rerouteForPlacedPlugins } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { writtenListValue, writtenResult } from './empty-list.js';
@@ -1664,10 +1665,7 @@ function activateBodyDependencies(
           return run(index + 1);
         });
       }
-      if (statement.type !== 'Plugin') {
-        continue;
-      }
-      if (!load) {
+      if (statement.type !== 'Plugin' || !load) {
         continue;
       }
       const targetString = statement.target.type === 'Url' ? statement.target.value : statement.target;
@@ -2623,10 +2621,7 @@ function publishImportedDocumentFacts(
       publishImportedVariableDeclaration(frame, child, importedFactRank(site, index));
       continue;
     }
-    if (child.type !== 'Ruleset') {
-      continue;
-    }
-    if (prepublish && !claimPrepublishedImportFact(e, child)) {
+    if (child.type !== 'Ruleset' || (prepublish && !claimPrepublishedImportFact(e, child))) {
       continue;
     }
     const rank = importedFactRank(site, index);
@@ -3698,14 +3693,16 @@ function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall 
   return { ...value };
 }
 
-function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: Lane): void {
+function activateVariableDeclaration(node: VariableDeclaration | VariableExpose, frame: Frame, e: Lane): void {
   /*
-   * [A4] A document's top level is a frame with no parent; a ruleset, at-rule,
-   * mixin, detached-ruleset or loop body always has one. ponytail: an
-   * `@import`ed document folds into a child frame, so an `@export` in it raises
-   * too; `@compose` keeps it a module.
+   * [A20] An `@expose` binds each name to what a read beside it resolves to. A
+   * document's top level is a frame with no parent: the rendered root, which a
+   * top-level `@import` splices into, or a `@compose`d module's own. A ruleset,
+   * at-rule, mixin, detached-ruleset or loop body always has one.
    */
-  rejectNestedExport(node, frame.parent !== null, e);
+  if (node.type === 'VariableExpose') {
+    return declareExpose(node, frame.parent !== null, frame, name => resolveVarRef(frame, name, 'scoped', e, READS_EXPORT), e);
+  }
   if (
     !('scope' in node.write)
     && callValueHasLookup(node.value, readsScoped, node.name)
@@ -4456,11 +4453,11 @@ interface EvalSession {
   nestedPropertyOwners: Map<Declaration, Declaration> | undefined;
 
   /**
-   * [A4] The `var()` call each exported root binding reads as in a CSS value
-   * ({@link exportChecked}). Undefined for a document with no export, so a
-   * lookup there pays one undefined check.
+   * [A4] The `var()` call each exported binding reads as in a CSS value
+   * ({@link exportChecked}). Its `runtime` is undefined until an `@expose`
+   * activates, so a lookup in a document with none pays one check.
    */
-  exports: ExportState<Frame> | undefined;
+  exports: ExportState<Frame>;
 }
 
 /**
@@ -8285,14 +8282,14 @@ function resolveAuthoredMixinValue(
  */
 function evalArgument(source: ValueSlot, frame: Frame | null, e: Lane, argument: ArgumentMode, project = true): MaybePromise<ValueGroup> {
   const outerChecks = e.checks, outerFound = bindingArgument(e, source), outerRead = exportArgumentStart(e.s.exports);
-  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined, read: boolean;
+  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined, read: ExportArgument | undefined;
   try {
     value = evalTypedSlot(source, frame, e, project, argument);
   } finally {
     found = boundArgument(e, outerChecks, outerFound);
     read = exportArgumentEnd(e.s.exports, outerRead);
   }
-  return keepArgument(e.s, found, read ? exportArgumentBound(e.s.exports, value, source, frame) : value);
+  return keepArgument(e.s, found, exportArgumentBound(e.s.exports, read, value, source, frame));
 }
 
 /**
@@ -9096,7 +9093,7 @@ function dispatchCall(
   };
 
   /* [A4] A computed call reading an export is recorded for the runtime. */
-  return e.s.exports === undefined || argument !== ARG_INPUT
+  return e.s.exports.runtime === undefined || argument !== ARG_INPUT
     ? combineAll(callArguments(node, alpha, frame, ae, argument), dispatch)
     : exportCall(e, node, selected, () => callArguments(node, alpha, frame, ae, argument), args => combineAll(args, dispatch));
 }
@@ -9271,7 +9268,7 @@ function writtenBlockBody(
         break;
       }
       default:
-        rejectRulesetArgument(block, `a ${rule.type}`, e);
+        rejectRulesetArgument(block, argumentStatementKind(rule, e), e);
     }
   }
   if (replay !== undefined) {
@@ -12248,13 +12245,9 @@ function markTriviaRunForRange(e: Emit, start: number, end: number): void {
     return;
   }
   const table = commentTableOf(trivia);
-  for (let i = 0; i < table.runs.length; i++) {
-    if (table.runStart[i]! <= start && table.runEnd[i]! >= end
-      && table.commentAt[i + 1]! - table.commentAt[i]! === 1) {
+  for (let i = 0; i < table.runs.length && table.runStart[i]! <= start; i++) {
+    if (table.runEnd[i]! >= end && table.commentAt[i + 1]! - table.commentAt[i]! === 1) {
       e.emittedBlockTrivia.addIndex(table, i);
-      return;
-    }
-    if (table.runStart[i]! > start) {
       return;
     }
   }
@@ -12707,7 +12700,7 @@ function evaluateLeafStatement(
 
 /** Publish a definition/variable independently of the selected writer. */
 function evaluateSilentStatement(
-  node: MixinDefinition | VariableDeclaration,
+  node: MixinDefinition | VariableDeclaration | VariableExpose,
   frame: Frame,
   e: Emit
 ): void {
@@ -13855,7 +13848,13 @@ function planImportedFacts(
         }
       }
       const collect = async (): Promise<void> => {
-        await visit(
+        /*
+         * A plain import placed on the document's top-level chain (no at-rule,
+         * reference import or module above it) is evaluated for certain, and so
+         * is a `@plugin` at its top level: one the sandbox runs moves the render
+         * there now (rerouteForPlacedPlugins).
+         */
+        await rerouteForPlacedPlugins(e.s.context?.opts.scriptSandbox !== undefined && !isCompose && !reference && !hidden && importScope === '' ? loaded.document!.rules : null, e.s.context).then(() => visit(
           loaded.document!.rules,
           childFrame,
           reference ? null : importCssPlan,
@@ -13873,7 +13872,7 @@ function planImportedFacts(
 
           /* An imported sheet's root is its importer's scope; a composed module is its own. */
           isCompose ? childFrame : importScope
-        );
+        ));
       };
       const key = isCompose || loaded.key === undefined || expanding.has(loaded.key) ? undefined : loaded.key;
       if (key !== undefined) {
@@ -13889,8 +13888,9 @@ function planImportedFacts(
     };
     for (let at = 0; at < statements.length; at++) {
       const st = statements[at]!;
-      if (st.type === 'VariableDeclaration') {
-        activateVariableDeclaration(st, scope, e);
+      if (st.type === 'VariableDeclaration' || (st.type === 'VariableExpose' && atRules.length === 0 && publishFrame !== null && !hidden)) {
+        /* [A20] A top-level sheet's `@expose` binds where its facts publish, before any output reads it; a `(reference)` sheet's does nothing. */
+        activateVariableDeclaration(st, st.type === 'VariableDeclaration' ? scope : publishFrame ?? scope, e);
       } else if (st.type === 'AtRuleStatement' && cssPlan !== null) {
         const target = cssImportTarget(st);
         if (target !== null) {
@@ -14065,7 +14065,7 @@ function createRenderSession(
       argumentSyntax: undefined,
       invalidArguments: new Map(),
       nestedPropertyOwners: undefined,
-      exports: rootExports(root)
+      exports: exportState()
     },
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: policy === undefined ? { ...(options?.modes ?? DEFAULT_MODES), compress } : modesOf(policy, compress),
@@ -14145,9 +14145,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     pendingPlannedModuleImports: undefined,
     preparedImportsOwnedByCaller: false
   });
-  const rootFrame = makeRootFrame(root, rootFns, e);
-  rootFrame.sourceOwner = e.s.context?.currentSourceOwner?.() ?? null;
-  rootFrame.importContext = '';
+  const rootFrame = makeRenderRootFrame(root, rootFns, e);
   const plannerRootFrame = makeRootFrame(root, rootFns, e);
   const prepare = activateBodyDependencies(root.rules, rootFrame, e, false);
   const plan = (): MaybePromise<PreparedImports> => {
@@ -14175,6 +14173,14 @@ function makeRootFrame(root: Stylesheet, rootFns: Map<string, Fn> | null, e: Emi
   return frame;
 }
 
+/** The rendered root frame: {@link makeRootFrame}, owned by the context's current source, in the root import context. */
+function makeRenderRootFrame(root: Stylesheet, rootFns: Map<string, Fn> | null, e: Emit): Frame {
+  const frame = makeRootFrame(root, rootFns, e);
+  frame.sourceOwner = e.s.context?.currentSourceOwner?.() ?? null;
+  frame.importContext = '';
+  return frame;
+}
+
 export function serialize(root: Stylesheet, options?: SerializeOptions): SerializeReturn {
   const pluginHost = options?.pluginHost;
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
@@ -14193,9 +14199,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     pendingPlannedModuleImports: preparedModulePlan?.size,
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined
   });
-  const rootFrame = makeRootFrame(root, rootFns, e);
-  rootFrame.sourceOwner = e.s.context?.currentSourceOwner?.() ?? null;
-  rootFrame.importContext = '';
+  const rootFrame = makeRenderRootFrame(root, rootFns, e);
+  forEachExpose(root.rules, node => activateVariableDeclaration(node, rootFrame, e)); // [A20] bound before any read, written before or after it
   const continueRender = (planned: ImportPlannerInput): SerializeReturn => {
     const plannedRoot = planned.root;
 
@@ -14515,6 +14520,7 @@ function emitDocumentStatements(
         }
         markSilentStatementBlockCommentTrivia(child, e);
         break;
+      case 'VariableExpose':
       case 'VariableDeclaration':
         activateVariableDeclaration(child, frame, e);
         markSilentStatementBlockCommentTrivia(child, e);
@@ -17076,6 +17082,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           break;
         }
         case 'MixinDefinition':
+        case 'VariableExpose':
         case 'VariableDeclaration':
           evaluateSilentStatement(node, frame, e);
           break;
@@ -17132,6 +17139,7 @@ function walkReferenceAncestorBody(
           markSilentStatementBlockCommentTrivia(node, e);
           emitted = undefined;
           break;
+        case 'VariableExpose':
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);
           markSilentStatementBlockCommentTrivia(node, e);
@@ -17807,10 +17815,8 @@ function assertWrittenDeclaration(node: Declaration, frame: Frame, e: Lane): voi
  * data is a real value and SCSS nested-property blocks are flattened
  * elsewhere, so only value-block resolution is rejected here. */
 function assertDeclarationValueIsNotRuleset(node: Declaration, frame: Frame | null, e: Lane): void {
-  if (!isValueSlotArray(node.value) && (node.value.type === 'Collection' || node.value.type === 'NestedPropertyBlock')) {
-    return;
-  }
-  if (!resolveValueBlock(node.value, frame, e)) {
+  if ((!isValueSlotArray(node.value) && (node.value.type === 'Collection' || node.value.type === 'NestedPropertyBlock'))
+    || !probedAsValueOf(node, frame, e, resolveValueBlock)) {
     return;
   }
   throw ERR.rulesetOnProperty({
@@ -22262,6 +22268,7 @@ function emitAtRuleBody(
         publishSelectedMixinDefinition(frame, node);
         markSilentStatementBlockCommentTrivia(node, e);
         return undefined;
+      case 'VariableExpose':
       case 'VariableDeclaration':
         activateVariableDeclaration(node, frame, e);
         markSilentStatementBlockCommentTrivia(node, e);
@@ -22815,6 +22822,7 @@ function emitBubbleBody(
           publishSelectedMixinDefinition(frame, node);
           markSilentStatementBlockCommentTrivia(node, e);
           break;
+        case 'VariableExpose':
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);
           markSilentStatementBlockCommentTrivia(node, e);

@@ -134,6 +134,21 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 | | jess, dialect plugins loaded on demand | 593.0 | 66.9 | 506.1 | 297.7 |
 | | lessc 4.9.1 | 206.1 | 23.6 | 149.7 | 107.6 |
 
+## 8. Per-construct marginals — what they can and cannot decide
+
+A per-construct marginal parses N copies of one small construct (`.r { color: red; }`, `.a .b > .c { }`, …) and takes `(I(N2) − I(N1)) / (N2 − N1)` instructions retired. Under `--jitless` it is stable and attributable. Under the JIT it measures inlining and tier-up decisions as much as the code under review. On one pair of identical builds, reviewing jesscss/jess#542, these swung it:
+
+- **Source string shape.** A source built in-process with `String.prototype.repeat` is a cons string; a source read from a file is flat. CSS `.r { }` read +26% as a cons string and −1.8% read from a file. The same switch moved another harness from +22% to −6%.
+- **Call-site structure.** Less `.r { w: 1px + 2px; }` read +0.5% when all sizes ran through one shared parse closure and +6.3% with a separate call site per size.
+- **Size window.** SCSS `.r { }` read +3.4% for N 200 → 1200 and −35% for N 1200 → 2200.
+- **Construct boundaries.** N rules with one declaration each and one rule holding N declarations are different constructs, and they move independently.
+
+How to use it:
+
+1. **Read sources from files.** A verdict never uses a repeated cons string (a `cons.mjs`-style in-process `.repeat`). Results from such a harness are not valid for a verdict.
+2. **The verdict is whole files under both engines, every construct under `--jitless`, and the CI gates** (`check:grammar-speed`, `check:grammar-artifacts`).
+3. **A per-construct JIT marginal within ±5% of `dev` is not a verdict either way.** Report it with its A/A spread and use it to find where to look. A larger per-construct JIT change has to be reproduced from flat file sources, and in a second size window, before it counts.
+
 ## Fixtures (the standard inputs)
 
 - `packages/jess/benchmark/benchmark.less` (104KB) + `benchmark.css` (expected) — the main perf fixture. EXEMPT from byte-identity gates.
