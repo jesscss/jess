@@ -575,12 +575,17 @@ export class JsPlugin extends AbstractPlugin {
         reject(new Error(`${RUNTIME_MISSING_MESSAGE}\n${err.message}`));
       });
 
-      // A worker that dies before it is ready fails startup at once, with its stderr.
+      /*
+       * A worker that dies before it is ready fails startup at once, with its
+       * stderr. One that exits without a word is most likely not Deno at all
+       * (a \`denoCommand\` naming another program), so it gets the same guidance
+       * as a missing binary.
+       */
       child.once('close', () => {
         clearTimeout(timer);
         reject(new Error(stderrText.trim()
           ? `Deno worker exited during startup.\n${stderrText.trim()}`
-          : 'Deno worker exited during startup.'));
+          : `${RUNTIME_MISSING_MESSAGE}\nDeno worker exited during startup without a word: "${denoCommand}" may not be Deno.`));
       });
     });
   }

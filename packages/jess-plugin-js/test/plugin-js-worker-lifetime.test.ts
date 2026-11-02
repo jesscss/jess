@@ -163,6 +163,16 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     expect(Date.now() - started).toBeLessThan(3000);
   });
 
+  it('gives the install guidance when the command exits during startup without a word', async () => {
+    const modulePath = writeModule('export const x = 1;');
+    const root = path.dirname(modulePath);
+    const denoCommand = path.join(root, 'not-deno');
+    fs.writeFileSync(denoCommand, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const plugin = jsPlugin({ jsReadRoot: root, denoCommand }) as JsPlugin;
+    plugins.push(plugin);
+    await expect(sandboxed(plugin).import(modulePath)).rejects.toThrow(/Deno runtime is required[\s\S]*exited during startup without a word/);
+  });
+
   it('runs a render after an engine started ahead of time is let go while it starts', async () => {
     const modulePath = writeModule('export const x = 1;');
     const root = path.dirname(modulePath);
