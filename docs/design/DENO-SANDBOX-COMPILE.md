@@ -50,18 +50,20 @@ that render again in Deno. The compiler remembers that entry path, so later
 renders of it go to Deno directly. The CLI uses the same compiler, so it
 behaves the same way and switches to Deno only when the compile needs it.
 
-A `@plugin` is a boundary as soon as the document holding it is parsed,
-before evaluation: when it is a top-level statement, its target is a plain
-string, and the plugin that loads its extension sandboxes every script
-(`PluginInterface.sandboxesScripts`, as plugin-js does),
-`rerouteForPlannedPlugins` (core, called by `Context.getTree`) moves the
-render then, and the rest of the import graph is never parsed in Node only to
-be thrown away. It loads nothing; a `@plugin` whose path does not resolve, or
-a compile with scripts disabled, is left to evaluation, which reports it. The
-move does not depend on evaluation reaching the `@plugin`, so a render whose
-top-level `@plugin` sits behind a guard evaluation skips runs in Deno too,
-with the same CSS. A `@plugin` nested in a rule or a mixin body still moves
-the render when evaluation reaches it.
+A `@plugin` evaluation is certain to reach moves the render earlier, when
+import planning places its document, and the rest of the import graph is
+never parsed in Node only to be thrown away. That is a `@plugin` at the top
+level of the entry, or of a sheet reached through plain imports on the
+document's top-level chain (no at-rule, `(reference)` import or `@compose`
+above it), whose target is a plain string, and whose loader runs every
+script in the sandbox (`PluginInterface.sandboxesScripts`, as plugin-js
+does): `rerouteForPlacedPlugins` (core) checks each sheet the planner places.
+It loads nothing; a `@plugin` that does not load, or a compile with scripts
+disabled, is left to evaluation, which reports it. A `@plugin` that is only
+conditionally evaluated (inside a mixin, a guarded rule, an at-rule or a
+detached ruleset, or in a sheet imported there) moves the render only if
+evaluation reaches it, as before: moving early must never change where a
+compile that does not reach a script runs.
 
 The stop must not be swallowed. The `@plugin` load path reports load failures
 as diagnostics and keeps evaluating (P45), so the proxy signals the reroute

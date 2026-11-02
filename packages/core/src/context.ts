@@ -1,5 +1,4 @@
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
-import { rerouteForPlannedPlugins } from './plugin-reroute.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, ScriptSandboxRoute, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
 import type { TriviaMap } from './types/index.js';
@@ -1380,7 +1379,6 @@ export class Context {
         this.document = document;
       }
       this.rememberDocumentContext(document, resolvedPath, source, plugin, this.policyFor(settings, parseResult.dialectDefaults));
-      await this.withDocument(document, () => rerouteForPlannedPlugins(document, this));
 
       this.parsedSourceTrees.set(parsedSourceKey, document);
       if (type === undefined) {
@@ -1739,9 +1737,21 @@ export class Context {
     return plugin && plugin.supportedExtensions?.includes(ext) && plugin.importPlugin ? plugin : undefined;
   }
 
-  /** The plugin that loads the executable Plugin module `importPath` names, or undefined when it does not resolve. */
-  pluginModuleLoader(importPath: string): Promise<PluginInterface | undefined> {
-    return this._getPluginPath(importPath).then(({ ext }) => this.pluginModuleLoaderFor(ext), () => undefined);
+  /** Where an executable Plugin module comes from, and the plugin that loads it, as {@link getPluginModule} finds them. */
+  private async pluginModuleTarget(importPath: string) {
+    refuseRemoteModule(this.importTarget(importPath));
+    const resolved = await this._getPluginPath(importPath);
+    refuseRemoteModule(resolved.resolvedPath);
+    return { ...resolved, plugin: await this.pluginModuleLoaderFor(resolved.ext) };
+  }
+
+  /**
+   * Whether the executable Plugin module `importPath` names loads, as
+   * {@link getPluginModule} would load it, through a plugin that runs every
+   * script in the sandbox (`sandboxesScripts`); false when it does not load.
+   */
+  sandboxesPluginScript(importPath: string): Promise<boolean> {
+    return this.pluginModuleTarget(importPath).then(({ plugin }) => plugin?.sandboxesScripts === true, () => false);
   }
 
   /**
@@ -1750,10 +1760,7 @@ export class Context {
    * interprets the returned module; Context does not know a dialect ABI.
    */
   async getPluginModule(importPath: string, options: string | null = null) {
-    refuseRemoteModule(this.importTarget(importPath));
-    const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPluginPath(importPath);
-    refuseRemoteModule(resolvedPath);
-    const plugin = await this.pluginModuleLoaderFor(ext);
+    const { resolvedPath, triedPaths, friendlyPath, ext, plugin } = await this.pluginModuleTarget(importPath);
     if (!plugin?.importPlugin) {
       if (SCRIPT_MODULE_EXTENSIONS.has(ext)) {
         throw new Error(SCRIPT_RUNTIME_MISSING_MESSAGE);
