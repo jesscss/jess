@@ -361,6 +361,7 @@ class JessPrinter {
       case 'Ruleset': return `${indent}${this.ruleset(node, indent)}\n`;
       case 'Declaration': return `${indent}${this.declaration(node)};\n`;
       case 'VariableDeclaration': return `${indent}${this.variableDeclaration(node, indent)};\n`;
+      case 'VariableExpose': return gap('VariableExpose', 'the `.jess` grammar does not parse `@-expose` yet (ledger A20)');
       case 'MixinDefinition': return `${indent}${this.mixinDefinition(node, indent)}\n`;
       case 'MixinCall': return `${indent}${this.mixinCall(node, indent)};\n`;
       case 'AtRuleBlock': return `${indent}${this.atRuleBlock(node, indent)}\n`;
@@ -510,11 +511,9 @@ class JessPrinter {
 
     // `assignHead`: `$n:` / `$n?:` / `$n:=` / `$n::=`, `$^` for the scoped store.
     const w = node.write;
-    const head = w.mode === 'export'
-      ? gap('VariableDeclaration', '`@-export $name:` — the `.jess` grammar does not parse a variable export yet (ledger A4)')
-      : !('scope' in w)
-          ? `$${node.name}:`
-          : `$${w.scope === 'scoped' ? '^' : ''}${node.name}${w.mode === 'if-absent' ? '?:' : w.mode === 'reassign' ? ' :=' : ' ::='}`;
+    const head = !('scope' in w)
+      ? `$${node.name}:`
+      : `$${w.scope === 'scoped' ? '^' : ''}${node.name}${w.mode === 'if-absent' ? '?:' : w.mode === 'reassign' ? ' :=' : ' ::='}`;
     const value = node.value;
     if (!isSlotArray(value) && value.type === 'MixinCall') {
       return gap('VariableDeclaration', 'bound to a mixin call: no `.jess` value spelling for a call\'s output');

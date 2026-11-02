@@ -332,6 +332,47 @@ export class LessAmbiguousNotError extends SyntaxError {
 }
 
 /**
+ * `@expose @name: value;` (ledger A20): `@expose` names variables and does not
+ * declare one. The declaration is kept, so the rest of the document still
+ * evaluates (P45).
+ */
+export class LessExposeDeclarationError extends SyntaxError {
+  readonly code = 'parse/expose-declaration' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = '`@expose` lists the names of variables declared on their own, without their `@`.';
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number, name: string) {
+    super('`@expose` names variables; it does not declare one.');
+    this.name = 'LessExposeDeclarationError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.fix = `Declare the variable, then expose it by name: @${name}: …; @expose ${name};`;
+  }
+}
+
+/**
+ * An `@expose` that is not a comma-separated list of variable names (ledger
+ * A20), such as `@expose brand gap;` or `@expose;`: parsed whole, never written
+ * as CSS, and reported (P45).
+ */
+export class LessMalformedExposeError extends SyntaxError {
+  readonly code = 'parse/malformed-expose' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = '`@expose` is followed by one or more variable names without their `@`, separated by commas, and ends at a semicolon.';
+  readonly fix = 'Write the names it exposes, for example: @expose brand, gap;';
+
+  constructor(offset: number, endOffset: number) {
+    super('`@expose` takes a comma-separated list of variable names.');
+    this.name = 'LessMalformedExposeError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}
+
+/**
  * A Less condition keyword in another case than lowercase (`AND`, `Not`): a
  * mixin guard, `if()` and `boolean()` read lowercase `and`, `or` and `not`
  * (owner 2026-10-13: "B: CSS any case, Less lowercase"). Located at the
@@ -384,7 +425,8 @@ export class LessSelectorCaptureArgumentError extends SyntaxError {
  * carries on past (ledger P45).
  */
 export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError | LessConditionKeywordCaseError
-  | LessSelectorCaptureArgumentError | LessLeadingSeparatorValueError | LessImportantMixinReferenceError;
+  | LessSelectorCaptureArgumentError | LessLeadingSeparatorValueError | LessImportantMixinReferenceError
+  | LessExposeDeclarationError | LessMalformedExposeError;
 
 /**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no
