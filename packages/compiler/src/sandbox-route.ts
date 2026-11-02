@@ -3,7 +3,7 @@
  * this process, or, once it reaches a stylesheet script, whole in the
  * `@jesscss/plugin-js` Deno engine.
  */
-import type { ErrorDiagnostic, PluginInterface, ScriptSandboxRoute, WarningDiagnostic } from '@jesscss/core';
+import type { ErrorDiagnostic, ExportRuntimeData, PluginInterface, ScriptSandboxRoute, WarningDiagnostic } from '@jesscss/core';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +31,9 @@ export type RenderResult = {
 
   /** The `sourceMappingURL` written into the CSS annotation, when one is written. */
   sourceMapURL?: string;
+
+  /** What the browser runtime module is generated from, when the stylesheet exports a variable (ledger A4). */
+  runtime?: ExportRuntimeData;
 };
 
 export type SafeRenderResult = {

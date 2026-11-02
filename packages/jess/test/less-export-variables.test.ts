@@ -12,6 +12,10 @@ async function render(source: string, compress = false): Promise<string> {
   return String(await compiler.renderString(source, { filePath: 'entry.less', extension: '.less', suppressWarnings: true }));
 }
 
+async function runtime(source: string): Promise<unknown> {
+  return (await new Compiler({}).renderToResult({ filePath: 'entry.less', source, language: 'less' })).runtime;
+}
+
 describe('Less @export variables (A4)', () => {
   it.each([
     ['@export @brand: #c00;\n.btn { color: @brand; }', 'color: var(--brand, #c00);'],
@@ -56,12 +60,55 @@ describe('Less @export variables (A4)', () => {
     ['a guard', '@export @theme: dark;\n.a when (@theme = dark) { b: c; }'],
     ['a string', '@export @icon: star;\n.a { content: "@{icon}"; }'],
     ['a url', '@export @icon: star;\n.a { background: url("@{icon}.svg"); }'],
-    ['a mixin argument', '@export @brand: #c00;\n.tint(@c) { color: @c; }\n.btn { .tint(@brand); }'],
+    ['a guard on a mixin argument', '@export @brand: #c00;\n.tint(@c) when (iscolor(@c)) { color: @c; }\n.btn { .tint(@brand); }'],
+    ['a guard, computed', '@use "#less";\n@export @brand: #c00;\n.a when (@less.lightness(@brand) > 10%) { b: c; }'],
     ['text spliced around it', '@export @n: 2;\n.a { width: @{n}px; }'],
-    ['the input of a computed function', '@use "#less";\n@export @list: a, b, c;\n.a { v: @less.length(@list); }'],
-    ['the input of a computed function, through an alias', '@use "#less";\n@export @w: 8px;\n@a: @w 2;\n.a { v: @less.length(@a); }']
+    ['a larger argument of a computed function', '@use "#less";\n@export @w: 8px;\n@a: @w 2;\n.a { v: @less.length(@a); }'],
+    ['a larger mixin argument a computed function reads', '@use "#less";\n@export @w: 8px;\n.m(@a) { v: @less.length(@a); }\n.a { .m(@w 2); }']
   ])('rejects a read in %s', async (_where, source) => {
     await expect(render(source)).rejects.toMatchObject({ code: 'eval/export-not-a-value' });
+  });
+
+  it.each([
+    ['a mixin argument', '@export @brand: #c00;\n.tint(@c) { color: @c; }\n.btn { .tint(@brand); }', 'color: var(--brand, #c00);'],
+    ['a mixin argument in a list', '@export @w: 8px;\n.m(@a) { margin: @a; }\n.a { .m(@w 2px); }', 'margin: var(--w, 8px) 2px;'],
+    ['a mixin default', '@export @brand: #c00;\n.tint(@c: @brand) { color: @c; }\n.btn { .tint(); }', 'color: var(--brand, #c00);'],
+    ['a computed function', '@use "#less";\n@export @brand: #c00;\n.a { v: @less.lightness(@brand); }', 'v: var(--brand-lightness, 40%);'],
+    ['a computed function of a list', '@use "#less";\n@export @list: a, b, c;\n.a { v: @less.length(@list); }', 'v: var(--list-length, 3);'],
+    ['a computed function of a mixin argument', '@use "#less";\n@export @brand: #c00;\n.tint(@c) { color: @less.lightness(@c); }\n.btn { .tint(@brand); }', 'color: var(--brand-lightness, 40%);'],
+    ['nested computed functions', '@use "#less";\n@export @brand: #c00;\n.a { v: @less.luma(@less.multiply(@brand, #888)); }', 'v: var(--brand-luma, 3.2512099914%);'],
+    ['a computed function in calc()', '@use "#less";\n@export @brand: #c00;\n.a { v: calc(@less.lightness(@brand) * 2); }', 'v: calc(var(--brand-lightness, 40%) * 2);']
+  ])('follows the export through %s', async (_what, source, expected) => {
+    await expect(render(source)).resolves.toContain(expected);
+  });
+
+  it('writes the compile-time value a computed function has without the export', async () => {
+    await expect(render('@use "#less";\n.a { v: @less.luma(@less.multiply(#c00, #888)); }')).resolves.toContain('v: 3.2512099914%;');
+  });
+
+  it('names one generated property per computation', async () => {
+    const css = await render('@use "#less";\n@export @brand: #c00;\n@l: @less.lightness(@brand);\n.a { v: @l; w: @less.lightness(@brand); x: @less.lightness(@less.multiply(@brand, #888)); }');
+    expect(css).toContain('v: var(--brand-lightness, 40%);');
+    expect(css).toContain('w: var(--brand-lightness, 40%);');
+    expect(css).toContain('x: var(--brand-lightness-2, ');
+  });
+
+  it('returns what the runtime is generated from', async () => {
+    await expect(runtime('@use "#less";\n@export @brand: #c00;\n@export @gap: 8px;\n.a { color: @brand; v: @less.lightness(@less.multiply(@brand, #888)); }')).resolves.toEqual({
+      exports: ['brand', 'gap'],
+      defaults: { brand: '#c00' },
+      derived: {
+        // eslint-disable-next-line @typescript-eslint/naming-convention -- a custom property name
+        '--brand-lightness': {
+          fn: { module: '#less', name: 'lightness' },
+          args: [{ fn: { module: '#less', name: 'multiply' }, args: [{ export: 'brand' }, '#888'] }]
+        }
+      }
+    });
+  });
+
+  it('returns no runtime for a document that exports nothing', async () => {
+    await expect(runtime('.a { color: red; }')).resolves.toBeUndefined();
   });
 
   it('writes any other @export as the at-rule it is', async () => {

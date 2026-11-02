@@ -7,6 +7,7 @@ import {
   Context,
   type ContextOptions,
   type ErrorDiagnostic,
+  type ExportRuntimeData,
   type WarningDiagnostic,
   JessError,
   toDiagnostic,
@@ -159,6 +160,9 @@ export interface RenderedStylesheet {
    * `disableSourcemapAnnotation` writes nothing; it is returned either way.
    */
   sourceMapURL?: string;
+
+  /** What the browser runtime module is generated from, when the stylesheet exports a variable (ledger A4). */
+  runtime?: ExportRuntimeData;
 }
 
 /**
@@ -1236,8 +1240,9 @@ export class Compiler {
         css = plugin.postProcessCss(css, context);
       }
     }
+    const runtime = result.runtime === undefined ? {} : { runtime: result.runtime };
     if (!trackPositions || result.positions === undefined) {
-      return { css };
+      return { css, ...runtime };
     }
 
     /*
@@ -1246,7 +1251,7 @@ export class Compiler {
      * also built pre-postprocess). Regenerate through postprocessors if needed.
      */
     const option: SourceMapConfig = typeof sourceMapOption === 'object' ? sourceMapOption : {};
-    return assembleSourceMap(css, result.positions, option, files?.filePath, files?.resolvedOutputFilePath);
+    return { ...assembleSourceMap(css, result.positions, option, files?.filePath, files?.resolvedOutputFilePath), ...runtime };
   }
 
   /** @internal AST document preparation; no legacy evaluator tree is exposed. */
@@ -1497,7 +1502,7 @@ export class Compiler {
 
     try {
       const input = { filePath, source, language, extension };
-      const { css, map, sourceMapURL } = await this.renderStylesheet(
+      const { css, map, sourceMapURL, runtime } = await this.renderStylesheet(
         await this.prepareStylesheet(context, resolved, input, profile),
         context,
         profile,
@@ -1519,7 +1524,8 @@ export class Compiler {
         warnings: [...context.warnings],
         loadedUrls: [],
         ...(map === undefined ? {} : { map }),
-        ...(sourceMapURL === undefined ? {} : { sourceMapURL })
+        ...(sourceMapURL === undefined ? {} : { sourceMapURL }),
+        ...(runtime === undefined ? {} : { runtime })
       };
     } catch (err: unknown) {
       const errors: ErrorDiagnostic[] = [...context.errors];
