@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../src/index.js';
 
@@ -67,7 +70,14 @@ describe('Less @export variables (A4)', () => {
     ['a larger mixin argument a computed function reads', '@use "#less";\n@export @w: 8px;\n.m(@a) { v: @less.length(@a); }\n.a { .m(@w 2); }'],
     ['a guard on a computed mixin argument', '@use "#less";\n@export @brand: #c00;\n.m(@l) when (@l > 10%) { v: yes; }\n.a { .m(@less.lightness(@brand)); }'],
     ['a selector from a computed mixin argument', '@use "#less";\n@export @brand: #c00;\n.m(@l) { .x-@{l} { v: 1; } }\n.a { .m(@less.lightness(@brand)); }'],
-    ['a string from a computed mixin argument', '@use "#less";\n@export @brand: #c00;\n.m(@l) { content: "@{l}"; }\n.a { .m(@less.lightness(@brand)); }']
+    ['a string from a computed mixin argument', '@use "#less";\n@export @brand: #c00;\n.m(@l) { content: "@{l}"; }\n.a { .m(@less.lightness(@brand)); }'],
+    ['a selector from a rest parameter', '@export @size: lg;\n.m(@rest...) { .x-@{rest} { v: 1; } }\n.a { .m(@size); }'],
+    ['a string from a rest parameter', '@export @icon: star;\n.m(@rest...) { content: "@{rest}"; }\n.a { .m(@icon); }'],
+    ['a selector from @arguments', '@export @size: lg;\n.m(@a) { .x-@{arguments} { v: 1; } }\n.a { .m(@size); }'],
+    ['a guard on a rest parameter', '@export @w: 8px;\n.m(@rest...) when (@rest > 10%) { v: yes; }\n.a { .m(@w); }'],
+    ['a guard on @arguments', '@export @w: 8px;\n.m(@a) when (@arguments > 10%) { v: yes; }\n.a { .m(@w); }'],
+    ['a type guard on a rest parameter', '@export @brand: #c00;\n.m(@rest...) when (iscolor(@rest)) { v: yes; }\n.a { .m(@brand); }'],
+    ['a computed function of a rest parameter among others', '@use "#less";\n@export @brand: #c00;\n.m(@rest...) { v: @less.length(@rest); }\n.a { .m(@brand; 2); }']
   ])('rejects a read in %s', async (_where, source) => {
     await expect(render(source)).rejects.toMatchObject({ code: 'eval/export-not-a-value' });
   });
@@ -81,9 +91,42 @@ describe('Less @export variables (A4)', () => {
     ['a computed function of a mixin argument', '@use "#less";\n@export @brand: #c00;\n.tint(@c) { color: @less.lightness(@c); }\n.btn { .tint(@brand); }', 'color: var(--brand-lightness, 40%);'],
     ['nested computed functions', '@use "#less";\n@export @brand: #c00;\n.a { v: @less.luma(@less.multiply(@brand, #888)); }', 'v: var(--brand-luma, 3.2512099914%);'],
     ['a computed mixin argument a computed function reads', '@use "#less";\n@export @brand: #c00;\n.m(@c) { v: @less.lightness(@c); }\n.a { .m(@less.darken(@brand, 10%)); }', 'v: var(--brand-lightness, 30%);'],
+    ['a direct mixin argument', '@export @brand: #c00;\n.m(@c) { color: @c; }\n.a { .m(@brand); }', 'color: var(--brand, #c00);'],
+    ['a rest parameter', '@export @w: 8px;\n.m(@rest...) { margin: @rest; }\n.a { .m(@w); }', 'margin: var(--w, 8px);'],
+    ['@arguments', '@export @w: 8px;\n.m(@a) { margin: @arguments; }\n.a { .m(@w); }', 'margin: var(--w, 8px);'],
+    ['a computed function of a rest parameter', '@use "#less";\n@export @brand: #c00;\n.m(@rest...) { v: @less.lightness(@rest); }\n.a { .m(@brand); }', 'v: var(--brand-lightness, 40%);'],
     ['a computed function in calc()', '@use "#less";\n@export @brand: #c00;\n.a { v: calc(@less.lightness(@brand) * 2); }', 'v: calc(var(--brand-lightness, 40%) * 2);']
   ])('follows the export through %s', async (_what, source, expected) => {
     await expect(render(source)).resolves.toContain(expected);
+  });
+
+  describe('through a function that reads a file', () => {
+    /** A 17×9 PNG header beside the entry: enough for `image-width()`. */
+    async function renderBesideImage(source: string): Promise<string> {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-export-image-'));
+      const png = Buffer.alloc(24);
+      Buffer.from('89504e470d0a1a0a', 'hex').copy(png, 0);
+      png.write('IHDR', 12, 'ascii');
+      png.writeUInt32BE(17, 16);
+      png.writeUInt32BE(9, 20);
+      fs.writeFileSync(path.join(dir, 'a.png'), png);
+      try {
+        return String(await new Compiler({}).renderString(source, { filePath: path.join(dir, 'entry.less'), extension: '.less', suppressWarnings: true }));
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+
+    /* The runtime cannot read files; these functions carry no marker yet (jesscss/jess#554). */
+    it.fails('rejects an export it reads', async () => {
+      await expect(renderBesideImage('@use "#less";\n@export @img: "a.png";\n.a { v: @less.unit(@less.image-width(@img)); }'))
+        .rejects.toMatchObject({ code: 'eval/export-not-a-value' });
+    });
+
+    it('follows an export beside it', async () => {
+      await expect(renderBesideImage('@use "#less";\n@export @w: 8px;\n.a { v: @less.max(@w, @less.image-width("a.png")); }'))
+        .resolves.toContain('v: var(--w-max, 17px);');
+    });
   });
 
   it('writes the compile-time value a computed function has without the export', async () => {

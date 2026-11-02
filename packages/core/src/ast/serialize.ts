@@ -9103,9 +9103,9 @@ function dispatchCall(
 
 /** A call's arguments, typed: each slot, or a colour call's channels with its alpha ({@link colorAlphaSlash}); a loop, so no closure per call. */
 function callArguments(node: FunctionCall, alpha: Operation | null, frame: Frame | null, e: Lane, argument: ArgumentMode): Array<MaybePromise<ValueGroup>> {
-  const args = alpha === null ? new Array<MaybePromise<ValueGroup>>(node.args.length) : [colorChannels(node.args[0]!.value, alpha, frame, e, argument)];
-  for (let i = 0; alpha === null && i < args.length; i++) {
-    args[i] = evalTypedSlot(node.args[i]!.value, frame, e, true, argument);
+  const args: Array<MaybePromise<ValueGroup>> = alpha === null ? [] : [colorChannels(node.args[0]!.value, alpha, frame, e, argument)];
+  for (let i = 0; alpha === null && i < node.args.length; i++) {
+    args.push(evalTypedSlot(node.args[i]!.value, frame, e, true, argument));
   }
   return args;
 }

@@ -1,4 +1,4 @@
-import { combineAll, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { combineAll, isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -68,24 +68,31 @@ interface ExportSource<F> {
  */
 type ExportRef<F> =
   | { readonly name: string; readonly call: FunctionCall; readonly source?: undefined }
-  | { readonly name?: undefined; readonly call?: undefined; readonly source: ExportSource<F> };
+  | { readonly name?: undefined; readonly call?: undefined; readonly source: ExportSource<F> | undefined };
+
+/** A rest parameter or `@arguments` holding a mixin argument that reads an export among others: a read a `var()` cannot replace. */
+const IN_ARGUMENTS: ExportRef<never> = { name: undefined, call: undefined, source: undefined };
+
+/**
+ * What a variable read's value resolves to, as an export: its own ref, or for a
+ * rest parameter or `@arguments` (a list of bound arguments) the ref of its one
+ * argument, or {@link IN_ARGUMENTS} when one of several reads an export.
+ */
+function refOf<F>(x: ExportState<F>, value: CallValue): ExportRef<F> | undefined {
+  const ref = x.refs.get(value);
+  if (ref !== undefined || !isValueSlotArray(value)) {
+    return ref;
+  }
+  if (value.length === 1) {
+    return x.refs.get(value[0]!);
+  }
+  return value.some(slot => x.refs.has(slot)) ? IN_ARGUMENTS : undefined;
+}
 
 /** An export a computed call's argument reads, with the value it read. */
 interface ExportInput {
   readonly recipe: ExportRecipe;
   readonly value: object;
-}
-
-/** A computed call's {@link ExportState.inputs} before any is read; never pushed to. */
-const NO_INPUTS: ExportInput[] = [];
-
-/** Record `input` for the computed call being evaluated. */
-function collectInput(x: ExportState<unknown>, input: ExportInput): void {
-  if (x.inputs === NO_INPUTS) {
-    x.inputs = [input];
-  } else {
-    x.inputs?.push(input);
-  }
 }
 
 /** One render's exports ({@link rootExports}). */
@@ -95,8 +102,7 @@ export interface ExportState<F> {
 
   /**
    * The exports read as the arguments of the computed call being evaluated,
-   * each with the value it read: {@link NO_INPUTS} until the first, undefined
-   * outside a computed call.
+   * each with the value it read; undefined outside a computed call.
    */
   inputs: Array<ExportInput> | undefined;
 
@@ -158,7 +164,7 @@ export function exportChecked<F, H extends { value: CallValue; frame: F; evaluat
   reader: object | undefined
 ): H | { value: FunctionCall; frame: F; evaluated: null } | undefined {
   const x = e.s.exports;
-  const ref = hit === undefined || reader === READS_EXPORT ? undefined : x?.refs.get(hit.value);
+  const ref = hit === undefined || reader === READS_EXPORT || x === undefined ? undefined : refOf(x, hit.value);
   if (ref === undefined || x === undefined || hit === undefined) {
     return hit;
   }
@@ -180,12 +186,16 @@ export function exportChecked<F, H extends { value: CallValue; frame: F; evaluat
  * plugin's, cannot be run by the runtime, so an export is an error there.
  */
 export function exportInput<F, H extends { value: CallValue }>(hit: H | undefined, name: string, reader: object, e: ExportLane<F>): H | ExportSource<F> | undefined {
-  const ref = hit === undefined ? undefined : e.s.exports?.refs.get(hit.value);
+  const x = e.s.exports;
+  const ref = hit === undefined || x === undefined ? undefined : refOf(x, hit.value);
   if (ref === undefined) {
     return hit;
   }
-  if (e.s.exports?.inputs === undefined) {
+  if (x?.inputs === undefined) {
     exportNotWritten(reader, `@${name}`, name, e, 'as the input of a function the runtime cannot run');
+  }
+  if (ref === IN_ARGUMENTS) {
+    exportNotWritten(reader, `@${name}`, name, e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
   }
   return ref.source ?? hit;
 }
@@ -193,15 +203,14 @@ export function exportInput<F, H extends { value: CallValue }>(hit: H | undefine
 /** The value a computed function's input read evaluated to, recorded when the read was an export's root binding ({@link exportInput}). */
 export function exportInputRead<V extends ValueGroup>(e: ExportLane<unknown>, hit: { value: CallValue }, value: MaybePromise<V>): MaybePromise<V> {
   const x = e.s.exports;
-  const name = x?.inputs === undefined ? undefined : x.refs.get(hit.value)?.name;
-  return name === undefined
+  const inputs = x?.inputs;
+  const name = inputs === undefined ? undefined : x?.refs.get(hit.value)?.name;
+  return name === undefined || x === undefined || inputs === undefined
     ? value
     : mapMaybe(value, (read) => {
-        if (x !== undefined) {
-          collectInput(x, { recipe: { export: name }, value: read });
-          if (!x.runtime.defaults.has(name)) {
-            x.runtime.defaults.set(name, emitValue(read));
-          }
+        inputs.push({ recipe: { export: name }, value: read });
+        if (!x.runtime.defaults.has(name)) {
+          x.runtime.defaults.set(name, emitValue(read));
         }
         return read;
       });
@@ -266,34 +275,38 @@ export function exportCall<F>(
     return dispatch(args());
   }
   const outer = x.inputs;
+  const inputs: NonNullable<ExportState<F>['inputs']> = [];
+  const checks = e.checks;
   let typed: Array<MaybePromise<ValueGroup>>;
-  let inputs: NonNullable<ExportState<F>['inputs']>;
-  x.inputs = NO_INPUTS;
+  x.inputs = inputs;
   try {
     typed = args();
   } finally {
-    inputs = x.inputs ?? NO_INPUTS;
     x.inputs = outer;
   }
-  if (inputs.length === 0) {
+  if (inputs.length === 0 && !typed.some(isThenable)) {
     return dispatch(typed);
   }
-  if (outer === undefined && e.checks === 'argument') {
-    x.argument = true;
-  }
-  return combineAll(typed, vals => mapMaybe(dispatch(vals), (computed) => {
-    const result: ValueGroup = typeof computed === 'string' ? makeKeyword(computed) : computed;
-    const recipe = callRecipe(node, fn, vals, inputs, e);
-    if (outer !== undefined) {
-      collectInput(x, { recipe, value: result });
-      return result;
-    }
-    if (typeof e.checks !== 'object' && e.checks !== 'argument') {
-      exportNotWritten(node, `${node.name}()`, recipeExport(recipe), e,
-        'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
-    }
-    return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe)), result], ','), e.modes);
-  }));
+
+  /* An argument still pending reports its exports when it settles. */
+  return combineAll(typed, vals => inputs.length === 0
+    ? dispatch(vals)
+    : mapMaybe(dispatch(vals), (computed) => {
+        if (outer === undefined && checks === 'argument') {
+          x.argument = true;
+        }
+        const result: ValueGroup = typeof computed === 'string' ? makeKeyword(computed) : computed;
+        const recipe = callRecipe(node, fn, vals, inputs, e);
+        if (outer !== undefined) {
+          outer.push({ recipe, value: result });
+          return result;
+        }
+        if (typeof checks !== 'object' && checks !== 'argument') {
+          exportNotWritten(node, `${node.name}()`, recipeExport(recipe), e,
+            'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
+        }
+        return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe)), result], ','), e.modes);
+      }));
 }
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */
