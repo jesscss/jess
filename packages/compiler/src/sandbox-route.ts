@@ -222,6 +222,12 @@ const isRenderResultLike = (value: unknown): value is {
   && isDiagnosticList(Reflect.get(value, 'errors'))
   && isDiagnosticList(Reflect.get(value, 'warnings'));
 
+/**
+ * Whether this realm is the script sandbox's engine (`@jesscss/plugin-js` sets
+ * the key there). A render there runs where it is, with no route out.
+ */
+export const inScriptSandbox = (): boolean => Reflect.get(globalThis, Symbol.for('@jesscss/plugin-js/engine')) === true;
+
 /** Whether a render in this process has started an engine ahead of time (one does, at most). */
 let prewarmed = false;
 

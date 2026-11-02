@@ -5,11 +5,11 @@
   "contractDigest": "2a8e87e264d088d05e2b455fba2cd9e24063c1b177dfc6e7cfa3472bf4c8e5f4",
   "implementations": {
     "owner": "e8fbe3f1a53792442a84382c901e8fdd390b16e6f62f878ce1e64191315dce71",
-    "compiler-convert": "167377a5d3d4df615eb7520df687b6368a3251ec28b4a5efaf85d9e262314a0c",
+    "compiler-convert": "bdd2b5af3aadef67b3933c82d61c25339ab1bf71614e058318b172791ffe222a",
     "less-equivalence": "6c5c019ef98d3fa9ac9d517642978433c59d1d32d19f17473537b47027484689",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "Re-reviewed compiler-convert for the hard-link follow-up: claimTargets and the engine-result check now also refuse a hard-linked .jess path (nlink > 1). The projection still comes only from context.pluginOf(document)?.jessFunctions?.() and passes unchanged to emitJess; no projection is built in the consumer and the owner is not imported; the alternatives' anchor lines are unchanged."
+  "rationale": "Re-reviewed compiler-convert after the Deno sandbox cold-start change: compiler/src/index.ts (the script-plugin proxy declares sandboxesScripts, routing skips inside the engine, the prewarm looks where the compiler loads the script plugin), compiler/src/sandbox-route.ts (inScriptSandbox) and core/src/plugin.ts (the sandboxesScripts field and rerouteForPlacedPlugins) only route renders into the sandbox. convert-to-jess.ts is unchanged: the projection still comes only from context.pluginOf(document)?.jessFunctions?.() and passes unchanged to emitJess, no projection is built in the consumer, the owner is not imported, and the alternatives' anchor lines are unchanged."
 }
