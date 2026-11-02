@@ -104,6 +104,12 @@ export const readRootsOf = (entryDir: string, jsReadRoot: string): Promise<strin
  * matches paths as written; then each code directory not already under one.
  */
 export const readSetFor = async (entryDir: string, jsReadRoot: string, code: readonly string[]): Promise<string[]> => {
+  const all = await readRootSpellings(entryDir, jsReadRoot);
+  return [...all, ...code.filter(dir => !all.some(root => isInside(dir, root)))];
+};
+
+/** Each read root in its real spelling and in every written spelling the render uses for it (see {@link readSetFor}). */
+const readRootSpellings = async (entryDir: string, jsReadRoot: string): Promise<string[]> => {
   const roots = await readRootsOf(entryDir, jsReadRoot);
   const spellings = new Set(roots);
   for (const written of [path.resolve(entryDir), path.resolve(jsReadRoot)]) {
@@ -122,8 +128,20 @@ export const readSetFor = async (entryDir: string, jsReadRoot: string, code: rea
       }
     });
   }
-  const all = [...spellings];
-  return [...all, ...code.filter(dir => !all.some(root => isInside(dir, root)))];
+  return [...spellings];
+};
+
+/**
+ * The read roots, in each of their spellings, whose parent folder the sandbox
+ * cannot read: where a config search from inside a root leaves the read set,
+ * so the host runs that part of it (`HostConfigs.above`).
+ */
+export const readRootsBelowUnreadableFolders = async (entryDir: string, jsReadRoot: string): Promise<string[]> => {
+  const spellings = await readRootSpellings(entryDir, jsReadRoot);
+  return spellings.filter((root) => {
+    const parent = path.dirname(root);
+    return parent !== root && !spellings.some(other => isInside(parent, other));
+  });
 };
 
 /** The nearest directory at or above `file`'s realpath that holds a `package.json`. */
@@ -289,13 +307,20 @@ export const encodeEngineValue = (value: unknown, where: string): unknown => {
 /** The `styles.config` settings the host resolved for a render (the compiler's `HostConfigs`). */
 export type HostConfigs = {
   folders: Record<string, unknown>;
-  searches: Array<{ from: string; to: string; files: string[] }>;
+  above: Record<string, unknown>;
+};
+
+/** The config files a resolved chain merges, or its folder: what a chain that cannot cross is named by. */
+const configFilesOf = (chain: unknown, dir: string): string => {
+  const files: unknown = typeof chain === 'object' && chain !== null ? Reflect.get(chain, 'configFilePaths') : undefined;
+  return Array.isArray(files) && files.length > 0 ? files.join(', ') : dir;
 };
 
 /**
- * Encodes the host's resolved settings for the engine. A folder whose settings
- * cannot cross (a plugin that records no factory) is left out: the engine
- * loads that folder's configs itself, as it does an import's.
+ * Encodes the host's resolved settings for the engine. Settings that cannot
+ * cross (a plugin that records no factory) are sent as the config files they
+ * come from, so a file that needs them fails, naming them, instead of
+ * rendering without them.
  */
 export const encodeHostConfigs = (configs: HostConfigs | undefined): HostConfigs | undefined => {
   if (configs === undefined) {
@@ -309,9 +334,21 @@ export const encodeHostConfigs = (configs: HostConfigs | undefined): HostConfigs
       if (!(err instanceof EngineOptionError)) {
         throw err;
       }
+      folders[dir] = { unsendable: configFilesOf(folder, dir) };
     }
   }
-  return { folders, searches: configs.searches };
+  const above: Record<string, unknown> = {};
+  for (const [dir, chain] of Object.entries(configs.above)) {
+    try {
+      above[dir] = encodeEngineValue(chain, `the styles.config settings above ${dir}`);
+    } catch (err) {
+      if (!(err instanceof EngineOptionError)) {
+        throw err;
+      }
+      above[dir] = { unsendable: configFilesOf(chain, dir) };
+    }
+  }
+  return { folders, above };
 };
 
 /** The environment variables a render reads (`process.env`), sent as data: the sandbox reads no env. */

@@ -63,7 +63,10 @@ disabled, is left to evaluation, which reports it. A `@plugin` that is only
 conditionally evaluated (inside a mixin, a guarded rule, an at-rule or a
 detached ruleset, or in a sheet imported there) moves the render only if
 evaluation reaches it, as before: moving early must never change where a
-compile that does not reach a script runs.
+compile that does not reach a script runs. A sheet whose earlier statement
+fails (`@import "./missing.less"; @plugin "./p.js";`) still moves when its
+`@plugin` is placed, and the engine then reports the same error: one extra
+engine start, with identical output.
 
 The stop must not be swallowed. The `@plugin` load path reports load failures
 as diagnostics and keeps evaluating (P45), so the proxy signals the reroute
@@ -152,13 +155,26 @@ Nothing crosses as a live object.
   its read root. So the host sends the settings it resolved for the entry's
   folder with the render, and the engine uses them for every file in that
   folder; it never reads a config file for them.
-- **A config only the engine would need fails loudly.** For a file in another
-  folder (an import only the render finds), the engine loads that folder's
-  configs itself. If that search would leave the read root before its
-  package root, and the host's own searches show a config there, or the host
-  never searched there, the render fails with `config/outside-read-root`,
-  naming the config. It never renders without it. Setting `jsReadRoot` to a
-  folder that contains the config makes it readable.
+- **The configs above the read root cross as data too.** Every config above a
+  read root is an ancestor of every folder inside it, so the host runs that
+  part of the search once per render, from the folder just above each read
+  root (in each spelling the render uses), and sends what it merges to. For a
+  file in another folder (an import only the render finds), the engine loads
+  the configs it may read itself and, when its search leaves the readable
+  folders before a package root, merges them over that chain: the settings
+  the file has in Node, with no read root widened. The engine decodes such a
+  chain only when a file first needs it (`prepareConfigsFor`, awaited by
+  `Context.getTree` before the file is parsed through `prepareSource`):
+  decoding loads and runs a recorded plugin factory, so a chain no file needs
+  is never loaded and cannot fail the render.
+- **What still fails loudly.** Settings a file needs that cannot cross into
+  the sandbox (a config holding an object that records no factory, such as a
+  class-based plugin made without `recordPluginModule`), or that cannot be
+  loaded there (a recorded factory in a file the sandbox cannot read), fail
+  that file with `config/outside-read-root`, naming the config files of the
+  chain. So would a search that left the readable folders above no read root,
+  though none should: every other readable folder is an installed package,
+  whose `package.json` ends the search.
 
 Each plugin factory records its module identity on the instances it makes
 (§8.4). A plugin instance without one cannot cross, and a sandboxed render that
@@ -180,6 +196,16 @@ deno run --no-prompt \
 
 with `DENO_CACHE_DB_MODE=memory` in the engine's environment.
 
+- **Only Jess's settings cross from a config.** A `styles.config` is code, and
+  whatever else it holds is not the stylesheet's to read: the host sends only
+  the settings Jess defines (`knownSettings`, `packages/config/src/known-settings.ts`).
+  Each typed section (`compile`, `input`, `output`, `lint`, `language.less`,
+  `language.scss`, and `language.css` / `language.jess`, which read the
+  per-file settings core resolves) has a key list there, checked against its
+  type, so the build fails when the two drift. Every other key is left out,
+  stray top-level ones included, and so is any other `language.<dialect>`
+  block. Plugin instances cross with the arguments they were made with
+  (§4); `globalVars` and `modifyVars` cross as the settings they are.
 - **No** `--allow-write`, `--allow-run`, `--allow-ffi`, `--allow-sys` or
   `--allow-env`. The CSS returns as data and the host writes the output file.
 - **Remote module imports follow the net rule.** Deno 2.9.6 allows an

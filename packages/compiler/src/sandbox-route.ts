@@ -7,7 +7,7 @@ import type { ErrorDiagnostic, JessSpellingGap, PluginInterface, ScriptSandboxRo
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { HostConfigs } from './config.js';
+import type { ConfigWithMeta, HostConfigs } from './config.js';
 import { colorsByDefault } from './diagnostics.js';
 import type { ConfigOptions } from './index.js';
 
@@ -78,6 +78,9 @@ export type EnginePlugin = PluginInterface & {
 
     /** The `styles.config` settings the host resolved, sent as data (see `hostConfigsFor`). */
     configs?: HostConfigs;
+
+    /** The host's config search above a read root, for `configs.above` (see `configsAboveReadRoot`). */
+    configsAbove?: (root: string) => ConfigWithMeta | undefined;
   }): Promise<unknown>;
 
   /** Starts the engine before a render needs it; `releaseEngine` ends it unused. */
@@ -369,7 +372,12 @@ export const engineReadRoots = async (source: EngineSource, request: EngineReque
 /** Runs one render in the engine. */
 export const runInEngine = async (
   source: EngineSource,
-  request: EngineRequest & { method: EngineMethod; args: readonly unknown[]; configs?: HostConfigs }
+  request: EngineRequest & {
+    method: EngineMethod;
+    args: readonly unknown[];
+    configs?: HostConfigs;
+    configsAbove?: (root: string) => ConfigWithMeta | undefined;
+  }
 ): Promise<unknown> => (await engineFor(source)).renderInEngine(engineRequest(request));
 
 /**

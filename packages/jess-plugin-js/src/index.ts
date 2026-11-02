@@ -21,6 +21,7 @@ import {
   hostFacts,
   denoRunArgs,
   encodeHostConfigs,
+  readRootsBelowUnreadableFolders,
   type HostConfigs,
   readRootsOf,
   readSetFor,
@@ -172,6 +173,14 @@ const resolveBundledDenoPath = (): string | undefined => {
     return undefined;
   }
 };
+
+/** Why a Deno worker that exited before it was ready did so (see `startWorker`). */
+const startupExitError = (said: string, code: number | null, signal: NodeJS.Signals | null, denoCommand: string): Error =>
+  new Error(said !== ''
+    ? `Deno worker exited during startup.\n${said}`
+    : signal !== null || code === null
+      ? `Deno worker was stopped during startup${signal === null ? '' : ` by ${signal}`}.`
+      : `${RUNTIME_MISSING_MESSAGE}\nDeno worker exited during startup without a word: "${denoCommand}" may not be Deno.`);
 
 const BOOT_TIMEOUT_MS = 8000;
 const IDLE_SHUTDOWN_MS = 5_000;
@@ -576,12 +585,16 @@ export class JsPlugin extends AbstractPlugin {
         reject(new Error(`${RUNTIME_MISSING_MESSAGE}\n${err.message}`));
       });
 
-      // A worker that dies before it is ready fails startup at once, with its stderr.
-      child.once('close', () => {
+      /*
+       * A worker that dies before it is ready fails startup at once, with its
+       * stderr. One stopped by a signal (killed, out of memory) says so. One that
+       * exits on its own without a word is most likely not Deno at all (a
+       * \`denoCommand\` naming another program), so it gets the same guidance as
+       * a missing binary.
+       */
+      child.once('close', (code: number | null, signal: NodeJS.Signals | null) => {
         clearTimeout(timer);
-        reject(new Error(stderrText.trim()
-          ? `Deno worker exited during startup.\n${stderrText.trim()}`
-          : 'Deno worker exited during startup.'));
+        reject(startupExitError(stderrText.trim(), code, signal, denoCommand));
       });
     });
   }
@@ -933,6 +946,7 @@ export class JsPlugin extends AbstractPlugin {
     const { code, release } = await this.useReadSet(request);
     let result: RpcResult;
     try {
+      const configs = request.configs && { ...request.configs, above: await this.configsAboveReadRoots(request) };
       result = await this.callWorker({
         type: 'render',
         compiler: request.compiler,
@@ -940,7 +954,7 @@ export class JsPlugin extends AbstractPlugin {
         method: request.method,
         args: encodeEngineValue(request.args, 'render arguments'),
         host: hostFacts(code),
-        configs: encodeHostConfigs(request.configs)
+        configs: encodeHostConfigs(configs)
       });
     } finally {
       release();
@@ -952,6 +966,26 @@ export class JsPlugin extends AbstractPlugin {
       throw engineFailure(result);
     }
     return result.value;
+  }
+
+  /**
+   * The host's config search above each read root, keyed by the folder above
+   * it, which the sandbox cannot read: every folder inside a root shares that
+   * part of its settings, so it is resolved once per render and sent as data.
+   */
+  private async configsAboveReadRoots(request: EngineRenderRequest): Promise<Record<string, unknown>> {
+    const search = request.configsAbove;
+    if (search === undefined) {
+      return {};
+    }
+    const above: Record<string, unknown> = {};
+    for (const root of await readRootsBelowUnreadableFolders(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot)) {
+      const chain = search(root);
+      if (chain !== undefined) {
+        above[path.dirname(root)] = chain;
+      }
+    }
+    return above;
   }
 
   /**
@@ -1095,6 +1129,9 @@ export type EngineRenderRequest = EngineRequestBase & {
 
   /** The `styles.config` settings the host resolved, sent as data. */
   configs?: HostConfigs;
+
+  /** The host's config search above a read root (none for a package root); run here, never sent. */
+  configsAbove?: (root: string) => unknown;
 };
 
 /**

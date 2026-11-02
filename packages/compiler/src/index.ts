@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { getConfigWithMeta, hostConfigsFor, type ConfigWithMeta } from './config.js';
+import { configsAboveReadRoot, getConfigWithMeta, hostConfigsFor, prepareConfigsFor, type ConfigWithMeta } from './config.js';
 import {
   Context,
   ImportTargets,
@@ -491,6 +491,14 @@ const resolveJsReadRoot = (
   return entryRoot ?? configRoot ?? process.cwd();
 };
 
+/**
+ * Whether a source file's settings load its `styles.config` files. A config is
+ * code, so none is loaded for a file in an installed package: compiling a
+ * project never runs a dependency's config.
+ */
+const loadsConfig = (sourcePath: string): boolean =>
+  path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules');
+
 const getConsumerResolutionBaseDir = (
   filePath: string | undefined,
   configFilePath: string | undefined
@@ -575,7 +583,7 @@ export class Compiler {
        */
       const folder: ConfigWithMeta = sourcePath === filePath
         ? entryFolder
-        : path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules')
+        : loadsConfig(sourcePath)
           ? getConfigWithMeta(path.dirname(sourcePath))
           : { config: {} };
       const params = { language: sourceLanguage, input: sourcePath };
@@ -1027,6 +1035,11 @@ export class Compiler {
     if (route !== undefined) {
       contextOptions.scriptSandbox = route;
     }
+
+    /* In the sandbox, the config chain a file's settings need is decoded before it is parsed. */
+    if (inScriptSandbox()) {
+      contextOptions.prepareSource = file => (loadsConfig(file) ? prepareConfigsFor(path.dirname(file)) : undefined);
+    }
     const usesDeprecatedDisablePluginRule = Boolean(contextOptions.disablePluginRule);
     contextOptions.disableScriptModules = Boolean(contextOptions.disableScriptModules
       || contextOptions.disablePluginRule);
@@ -1376,8 +1389,13 @@ export class Compiler {
           method,
           args: call.engineArgs,
 
-          /* The sandbox may not read the configs above its read root; the host sends what it resolved. */
-          configs: hostConfigsFor(entryDir, [entryDir, request.jsReadRoot])
+          /*
+           * The sandbox may not read the configs above its read root: the host
+           * sends what it resolved for the entry, and resolves the chain above
+           * each read root when the script plugin knows the roots.
+           */
+          configs: hostConfigsFor(entryDir),
+          configsAbove: configsAboveReadRoot
         });
       }
     });
