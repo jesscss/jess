@@ -95,6 +95,8 @@ describe('a conversion the engine returns', () => {
     const existing = result([{ source: path.join(proj, 'e.less'), jess: '' }]);
     expect(() => fromEngine.conversion(existing, [proj], false)).toThrow(/without `overwrite`/);
     expect(fromEngine.conversion(existing, [proj], true).files.map(file => file.jessPath)).toEqual([path.join(proj, 'e.jess')]);
+    fs.linkSync(path.join(proj, 'e.jess'), path.join(proj, 'e-store.jess'));
+    expect(() => fromEngine.conversion(existing, [proj], true)).toThrow(/hard-linked/);
     expect(fromEngine.conversion(result([{ source: path.join(proj, 'e.less'), gaps: [] }]), [proj], false).files).toHaveLength(1);
     fs.rmSync(base, { recursive: true, force: true });
   });

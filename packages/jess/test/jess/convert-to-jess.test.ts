@@ -261,6 +261,16 @@ describe('Compiler.convertToJess', () => {
       expect((await convert(true))['b.less']).toContain('is a symlink');
     });
 
+    /* Under pnpm a `node_modules/.pnpm` file is a hard link into the global store: writing it would change every project's copy. */
+    it('is a gap, even with `overwrite`, when it is hard-linked', async () => {
+      setUp('@import "b.less";\n.a{w:1}\n', (at) => {
+        fs.writeFileSync(path.join(at, 'store.jess'), '.shared{y:2}\n');
+        fs.linkSync(path.join(at, 'store.jess'), path.join(at, 'b.jess'));
+      });
+      expect((await convert(true))['b.less']).toContain('is a hard-linked file');
+      expect(fs.readFileSync(path.join(dir, 'store.jess'), 'utf8')).toBe('.shared{y:2}\n');
+    });
+
     it('is a gap unless `overwrite` is set when the render did not load it', async () => {
       setUp('@import "b.less";\n.a{w:1}\n', at => fs.writeFileSync(path.join(at, 'b.jess'), '.stale{y:2}\n'));
       const kept = await convert(false);
