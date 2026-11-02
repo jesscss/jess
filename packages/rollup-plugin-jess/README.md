@@ -13,9 +13,10 @@
 
 ## Status
 
-This package has been **refreshed to be a minimal bridge to the modern `jess` compiler**.
-Historically, it relied on a legacy “runtime module” architecture; today it compiles `.jess`
-files using `jess`’s `Compiler` and **emits CSS as an asset**.
+A rewrite for the current `jess` compiler: it compiles `.jess` and `.less`
+imports, emits their CSS, and gives a stylesheet that exports variables a small
+runtime (below). The 1.x runtime-module architecture is gone. For Vite, use
+[`vite-plugin-jess`](../vite-plugin-jess), which is this plugin.
 
 ## Install
 
@@ -51,8 +52,8 @@ Then call `rollup` either via the [CLI](https://www.rollupjs.org/guide/en/#comma
 
 It compiles `.jess` and `.less` imports. The module's default export is the
 CSS. Under Rollup the CSS is also emitted as an asset (`<name>.css`); under
-Vite (the same plugin, in `plugins`) the module imports its CSS, so Vite
-injects it in dev and bundles it in a build.
+Vite (see `vite-plugin-jess`) the module imports its CSS, so Vite injects it in
+dev and bundles it in a build.
 
 ## Exported variables
 

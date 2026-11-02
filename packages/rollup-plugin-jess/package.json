@@ -35,11 +35,11 @@
     "jess": "workspace:*"
   },
   "peerDependencies": {
-    "rollup": "^2.0.0"
+    "rollup": "^3.0.0 || ^4.0.0"
   },
   "devDependencies": {
     "tsdown": "~0.21.7",
-    "rollup": "^3.20.7"
+    "rollup": "^4.63.1"
   },
   "author": "Matthew Dean",
   "license": "MIT"

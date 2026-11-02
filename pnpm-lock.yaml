@@ -732,8 +732,8 @@ importers:
         version: link:../jess
     devDependencies:
       rollup:
-        specifier: ^3.20.7
-        version: 3.30.0
+        specifier: ^4.63.1
+        version: 4.63.1
       tsdown:
         specifier: ~0.21.7
         version: 0.21.10(oxc-resolver@11.23.0)(synckit@0.11.13)(typescript@6.0.3)
@@ -892,6 +892,19 @@ importers:
       sass-spec:
         specifier: github:sass/sass-spec#67c3b83a26fd3f9772dd0d3e318fe32aefb38eef
         version: https://codeload.github.com/sass/sass-spec/tar.gz/67c3b83a26fd3f9772dd0d3e318fe32aefb38eef(@babel/core@7.29.7)(@jest/transform@29.7.0)(babel-jest@29.7.0(@babel/core@7.29.7))(eslint@9.39.5(jiti@1.21.7))(jest-util@29.7.0)(jiti@1.21.7)
+
+  packages/vite-plugin-jess:
+    dependencies:
+      rollup-plugin-jess:
+        specifier: workspace:*
+        version: link:../rollup-plugin-jess
+    devDependencies:
+      tsdown:
+        specifier: ~0.21.7
+        version: 0.21.10(oxc-resolver@11.23.0)(synckit@0.11.13)(typescript@6.0.3)
+      vite:
+        specifier: ^6.4.3
+        version: 6.4.3(@types/node@22.20.2)(jiti@1.21.7)(less@4.9.1)(sass@1.101.7)(terser@5.51.2)(tsx@4.21.1)(yaml@2.9.1)
 
 packages:
 

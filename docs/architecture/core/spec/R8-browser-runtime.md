@@ -162,6 +162,8 @@ or needs JS) to decide what ships in the bundle.
 
 - **`rollup-plugin-jess`** compiles `.jess` and `.less` imports
   (`renderToResult`); one plugin serves Rollup and Vite (`enforce: 'pre'`).
+  **`vite-plugin-jess`** is that plugin under Vite's name and `Plugin` type,
+  so there is one implementation.
   The stylesheet's module is the virtual id `\0jess:<file>.js`, so no CSS
   plugin claims it.
 - **CSS.** Rollup: emitted as the asset `<name>.css` (`emitCss`,

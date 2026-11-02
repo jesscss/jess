@@ -7,6 +7,13 @@ import jess from '../src/index.js';
 import commonJs from '@rollup/plugin-commonjs';
 import nodeResolve from '@rollup/plugin-node-resolve';
 
+type Runtime = { css: string; vars: (values: Record<string, string>) => Record<string, string> };
+
+/** The bundled module, once it is known to export the runtime. */
+function isRuntime(module: unknown): module is Runtime {
+  return typeof module === 'object' && module !== null && 'vars' in module && typeof module.vars === 'function';
+}
+
 const buildFile = async (filePath: string) => {
   const input = path.resolve(__dirname, filePath);
   const bundle = await rollup.rollup({
@@ -28,10 +35,13 @@ describe('rollup-plugin-jess', () => {
     try {
       const file = path.join(directory, 'runtime.mjs');
       fs.writeFileSync(file, output[0].code);
-      const module = await import(file) as { vars: (values: Record<string, string>) => Record<string, string> };
+      const module: unknown = await import(file);
       const recompiled = await new Compiler().renderString('@use "#less";\n.a { b: @less.darken(#08f, 10%); }', { filePath: 'entry.less', extension: '.less' });
-      expect(recompiled).toContain(`b: ${module.vars({ brand: '#08f' })['--brand-darken']};`);
-      expect(module.vars({ brand: '#08f' })['--brand']).toBe('#08f');
+      expect(isRuntime(module)).toBe(true);
+      if (isRuntime(module)) {
+        expect(recompiled).toContain(`b: ${module.vars({ brand: '#08f' })['--brand-darken']};`);
+        expect(module.vars({ brand: '#08f' })['--brand']).toBe('#08f');
+      }
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }

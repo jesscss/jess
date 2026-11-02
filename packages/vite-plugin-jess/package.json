@@ -1,0 +1,45 @@
+{
+  "name": "vite-plugin-jess",
+  "type": "module",
+  "version": "2.0.0-alpha.5",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "description": "Vite plugin for Jess",
+  "main": "lib/index.cjs",
+  "module": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "npm run build",
+    "build": "pnpm clean && pnpm compile",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "test": "vitest --run --passWithNoTests",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "dependencies": {
+    "rollup-plugin-jess": "workspace:*"
+  },
+  "peerDependencies": {
+    "vite": ">=5.0.0"
+  },
+  "devDependencies": {
+    "tsdown": "~0.21.7",
+    "vite": "^6.4.3"
+  },
+  "author": "Matthew Dean",
+  "license": "MIT"
+}
