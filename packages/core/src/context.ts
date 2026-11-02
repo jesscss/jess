@@ -29,7 +29,7 @@ import {
 
 /** Extensions of script modules and executable `@plugin` scripts. */
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
-const SCRIPT_RUNTIME_MISSING_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js to enable script execution features.';
+const SCRIPT_RUNTIME_MISSING_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.';
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
 
 /**

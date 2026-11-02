@@ -1,5 +1,6 @@
+import * as fs from 'fs';
 import * as path from 'path';
-import { loadConfigSync, loadConfigSyncWithMeta, type StylesConfig } from 'styles-config';
+import { isPackageRoot, loadConfigSync, loadConfigSyncWithMeta, type StylesConfig } from 'styles-config';
 
 /**
  * Get configuration from every styles.config.* file from the given directory up through parent
@@ -19,10 +20,107 @@ export interface ConfigWithMeta {
 
   /** What the file at `configFilePath` sets by itself, before the configs above it merge in. */
   ownConfig?: StylesConfig;
+
+  /** Every config file merged, nearest first. */
+  configFilePaths?: string[];
 }
 
+/**
+ * The settings the host resolved for a render that runs in the script sandbox,
+ * sent with it as data (`docs/design/DENO-SANDBOX-COMPILE.md` §4): the sandbox
+ * cannot read a `styles.config` above its read root.
+ */
+export type HostConfigs = {
+  /** The settings of each folder the host resolved, by absolute path. */
+  folders: Record<string, ConfigWithMeta>;
+
+  /** Each config search the host ran: from a folder up to where it stopped, and the config files it merged. */
+  searches: Array<{ from: string; to: string; files: string[] }>;
+};
+
+/** Set by the script sandbox's engine for the render it runs, and only there. */
+const HOST_CONFIGS = Symbol.for('@jesscss/compiler/host-configs');
+
+/** A folder's settings would need a config the script sandbox cannot read. */
+export class SandboxConfigError extends Error {
+  readonly code = 'config/outside-read-root';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'SandboxConfigError';
+  }
+}
+
+const isInside = (child: string, parent: string): boolean => {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+};
+
+/** Where a config search from `from` stops: its package root, else the file-system root. */
+const searchTop = (from: string): string => {
+  let dir = from;
+  while (!isPackageRoot(dir) && path.dirname(dir) !== dir) {
+    dir = path.dirname(dir);
+  }
+  return dir;
+};
+
+/** The settings and searches to send with a sandboxed render, for the folders the host knows. */
+export const hostConfigsFor = (entryDir: string | undefined, searchDirs: ReadonlyArray<string | undefined>): HostConfigs => {
+  const folders: Record<string, ConfigWithMeta> = {};
+  if (entryDir !== undefined) {
+    folders[path.resolve(entryDir)] = getConfigWithMeta(entryDir);
+  }
+  const dirs = [...new Set(searchDirs.filter((dir): dir is string => dir !== undefined).map(dir => path.resolve(dir)))];
+  return {
+    folders,
+    searches: dirs.map(from => ({ from, to: searchTop(from), files: getConfigWithMeta(from).configFilePaths ?? [] }))
+  };
+};
+
+const isHostConfigs = (value: unknown): value is HostConfigs =>
+  typeof value === 'object' && value !== null
+  && typeof Reflect.get(value, 'folders') === 'object' && Array.isArray(Reflect.get(value, 'searches'));
+
+/**
+ * In the sandbox, a folder the host did not resolve (an import only the render
+ * finds) loads its own configs, and the sandbox answers "not found" above its
+ * read root. A search that leaves the read root before its package root would
+ * miss a config there, so it fails, naming the config, instead of rendering
+ * without it.
+ */
+const assertSearchStaysReadable = (dir: string, host: HostConfigs): void => {
+  for (let at = dir; ; at = path.dirname(at)) {
+    /* An ancestor of a folder in use exists; the sandbox reports one it may not read as missing. */
+    if (!fs.existsSync(at)) {
+      const search = host.searches.find(known => isInside(known.from, at) && isInside(at, known.to));
+      if (search === undefined) {
+        throw new SandboxConfigError(`The styles.config settings of ${dir} cannot be checked in the script sandbox: the config search leaves the render's read root at ${at}. Set compile.jsReadRoot to a folder that contains the configs this file uses.`);
+      }
+      const hidden = search.files.find(file => isInside(at, path.dirname(file)));
+      if (hidden !== undefined) {
+        throw new SandboxConfigError(`The styles.config settings of ${dir} include ${hidden}, which the script sandbox cannot read: it lies outside the render's read root. Set compile.jsReadRoot to a folder that contains it.`);
+      }
+      return;
+    }
+    if (isPackageRoot(at) || path.dirname(at) === at) {
+      return;
+    }
+  }
+};
+
 export const getConfigWithMeta = (searchFrom?: string): ConfigWithMeta => {
-  return loadConfigSyncWithMeta(searchFrom);
+  const host: unknown = Reflect.get(globalThis, HOST_CONFIGS);
+  if (searchFrom === undefined || !isHostConfigs(host)) {
+    return loadConfigSyncWithMeta(searchFrom);
+  }
+  const dir = path.resolve(searchFrom);
+  const known = host.folders[dir];
+  if (known !== undefined) {
+    return known;
+  }
+  assertSearchStaysReadable(dir, host);
+  return loadConfigSyncWithMeta(dir);
 };
 
 export interface OutputTestConfig {

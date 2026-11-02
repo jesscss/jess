@@ -7,6 +7,7 @@ import type { ErrorDiagnostic, JessSpellingGap, PluginInterface, ScriptSandboxRo
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { HostConfigs } from './config.js';
 import { colorsByDefault } from './diagnostics.js';
 import type { ConfigOptions } from './index.js';
 
@@ -68,6 +69,9 @@ export type EnginePlugin = PluginInterface & {
     args: readonly unknown[];
     entryDir: string;
     jsReadRoot: string;
+
+    /** The `styles.config` settings the host resolved, sent as data (see `hostConfigsFor`). */
+    configs?: HostConfigs;
   }): Promise<unknown>;
 
   /** Starts the engine before a render needs it; `releaseEngine` ends it unused. */
@@ -309,7 +313,7 @@ const engineFor = async (source: EngineSource): Promise<EnginePlugin> => {
   }
   const factory = source.factory();
   if (factory === undefined) {
-    throw new Error(`Feature not supported. Install ${source.label} to enable script execution features.`);
+    throw new Error(`Feature not supported. Install ${source.label} where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.`);
   }
   let engine = source.engines.get(factory.key);
   if (engine === undefined) {
@@ -344,7 +348,7 @@ export const engineReadRoots = async (source: EngineSource, request: EngineReque
 /** Runs one render in the engine. */
 export const runInEngine = async (
   source: EngineSource,
-  request: EngineRequest & { method: EngineMethod; args: readonly unknown[] }
+  request: EngineRequest & { method: EngineMethod; args: readonly unknown[]; configs?: HostConfigs }
 ): Promise<unknown> => (await engineFor(source)).renderInEngine(engineRequest(request));
 
 /**

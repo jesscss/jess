@@ -115,4 +115,60 @@ describe('a sandboxed render is confined by Deno', () => {
     await expect(compiler.render(path.join(project, 'scripted.less'), { suppressWarnings: true }))
       .rejects.toMatchObject({ code: 'import/not-found' });
   }, 60_000);
+
+  /*
+   * Deno's own defaults reach past the flags: a remote module import from its
+   * default host list (deno.land, esm.sh, …) needs no `--allow-net`, and the
+   * web Cache API is kept on disk, keyed by the main module every engine
+   * shares. Without `allowHttp` a remote import is refused, and what one
+   * engine caches is gone for the next.
+   */
+  it('gives a script no remote imports and no cache that outlives its engine', async () => {
+    const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'jess-sandbox-defaults-')));
+    dirs.push(base);
+    fs.writeFileSync(path.join(base, 'plugin.js'), `
+const quoted = text => new tree.Quoted('"', text);
+const outcome = async (run) => {
+  try {
+    return quoted('open:' + await run());
+  } catch (err) {
+    return quoted('denied');
+  }
+};
+module.exports = {
+  install(less, manager, functions) {
+    functions.add('remote-import', () => outcome(async () => {
+      await import('https://deno.land/std@0.224.0/version.ts?jess=' + Date.now());
+      return 'loaded';
+    }));
+    functions.add('cache-put', () => outcome(async () => {
+      await (await caches.open('jess-sandbox-probe')).put('https://probe.invalid/', new Response('kept'));
+      return 'put';
+    }));
+    functions.add('cache-get', () => outcome(async () => {
+      const cache = await caches.open('jess-sandbox-probe');
+      const hit = await cache.match('https://probe.invalid/');
+      await caches.delete('jess-sandbox-probe');
+      return hit === undefined ? 'empty' : await hit.text();
+    }));
+  }
+};
+`);
+    const first = path.join(base, 'first.less');
+    const second = path.join(base, 'second.less');
+    fs.writeFileSync(first, '@plugin "./plugin.js";\n.a { remote: remote-import(); put: cache-put(); }');
+    fs.writeFileSync(second, '@plugin "./plugin.js";\n.b { get: cache-get(); }');
+
+    const before = new Compiler();
+    compilers.push(before);
+    const css = await before.render(first, { suppressWarnings: true });
+    before.dispose();
+    const after = new Compiler();
+    compilers.push(after);
+    const later = await after.render(second, { suppressWarnings: true });
+
+    expect(css).toContain('remote: "denied"');
+    expect(css).toContain('put: "open:put"');
+    expect(later).toContain('get: "open:empty"');
+  }, 60_000);
 });

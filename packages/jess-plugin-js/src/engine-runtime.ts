@@ -165,6 +165,20 @@ const compilerFor = async (req) => {
 
 const RENDER_METHODS = new Set(['render', 'renderToResult', 'renderString', 'safeRender', 'convertToJess']);
 
+/** Where the compiler reads the host's resolved `styles.config` settings during a render (its `HostConfigs`). */
+const HOST_CONFIGS = Symbol.for('@jesscss/compiler/host-configs');
+
+const decodeHostConfigs = async (configs) => {
+  if (!configs) {
+    return undefined;
+  }
+  const folders = {};
+  for (const [dir, folder] of Object.entries(configs.folders)) {
+    folders[dir] = await decodeEngineValue(folder);
+  }
+  return { folders, searches: configs.searches };
+};
+
 /**
  * One render. What it prints (its diagnostics) is collected and returned as
  * text, so the host writes it to its own stderr, in order, before it returns
@@ -190,11 +204,13 @@ export const renderInEngine = async (req) => {
       throw new Error(`Unknown render method "${req.method}".`);
     }
     const compiler = await compilerFor(req);
+    globalThis[HOST_CONFIGS] = await decodeHostConfigs(req.configs);
     const value = await compiler[req.method](...await decodeEngineValue(req.args));
     return { ok: true, value, stderr: printed.join('') };
   } catch (err) {
     return { ok: false, stderr: printed.join(''), ...errorToData(err) };
   } finally {
+    delete globalThis[HOST_CONFIGS];
     stderr.write = write;
     console.error = consoleError;
     console.warn = consoleWarn;

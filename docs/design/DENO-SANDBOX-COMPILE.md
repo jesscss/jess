@@ -100,6 +100,18 @@ imported into the host process. A global `jess` therefore needs
   the same conversion as today and output stays byte-identical.
 - **Plugins load once.** A script loads once per Deno process and loads again
   only when its file changes.
+- **One trust domain per compiler.** Scripts share the engine's realm with the
+  compiler and with each other, so a script in one render can change what
+  later renders in that engine produce. That is by design (ledger A19 (5)).
+  Owner 2026-11-01, verbatim: *"the point of sandboxing is not to isolate
+  compiles from each other, and its not to do "perfect" sandboxing... its to
+  prevent someone being surprised that a stylesheet can read / execute JS,
+  and make sure that doesnt' mean it's pulling private documents / caches
+  from their computer"* and *"it's more like "reasonable isolation" is what
+  we're building, not like CIA-grade sandboxing"*; and the same day the
+  owner chose, verbatim, *"One trust domain per Compiler"*. What the sandbox
+  guards is the machine: the user's files outside the read root, their
+  caches, and the network.
 - **Entry points.** `render`, `renderToResult` and `renderString` route as
   above. `compile` (internal: parse plus static imports) evaluates nothing, so
   it reaches no script boundary and stays in Node.
@@ -118,8 +130,19 @@ Nothing crosses as a live object.
   fails with an error that names the variable and the option path, instead of
   resolving it to a global or `undefined`. Functions are rebuilt only inside
   Deno.
-- **Config files** (`styles.config.*`) are loaded by the compile in Deno, as
-  they are found per source file today.
+- **Config settings cross as data.** Owner 2026-11-01: "Host sends config as
+  data". A file's settings are every `styles.config.*` from its folder up to
+  its package root, merged (C19), and the sandbox cannot read a config above
+  its read root. So the host sends the settings it resolved for the entry's
+  folder with the render, and the engine uses them for every file in that
+  folder; it never reads a config file for them.
+- **A config only the engine would need fails loudly.** For a file in another
+  folder (an import only the render finds), the engine loads that folder's
+  configs itself. If that search would leave the read root before its
+  package root, and the host's own searches show a config there, or the host
+  never searched there, the render fails with `config/outside-read-root`,
+  naming the config. It never renders without it. Setting `jsReadRoot` to a
+  folder that contains the config makes it readable.
 
 Each plugin factory records its module identity on the instances it makes
 (§8.4). A plugin instance without one cannot cross, and a sandboxed render that
@@ -133,13 +156,30 @@ process and passes it as flags; nothing asks the host during a compile.
 ```
 deno run --no-prompt \
   --allow-read=<read set> --ignore-read \
-  [--allow-net=<hosts>]   # only with allowHttp, as today
+  [--allow-net=<hosts> --allow-import=<hosts>]   # only with allowHttp
+  [--no-remote]                                  # without allowHttp
   --unstable-bare-node-builtins --unstable-sloppy-imports \
   <engine>
 ```
 
+with `DENO_CACHE_DB_MODE=memory` in the engine's environment.
+
 - **No** `--allow-write`, `--allow-run`, `--allow-ffi`, `--allow-sys` or
   `--allow-env`. The CSS returns as data and the host writes the output file.
+- **Remote module imports follow the net rule.** Deno 2.9.6 allows an
+  `import()` from a default host list (deno.land, jsr.io, esm.sh,
+  cdn.jsdelivr.net, raw.githubusercontent.com, …) without `--allow-net`.
+  Without `allowHttp`, `--no-remote` refuses every remote module; with it,
+  `--allow-import` takes the same hosts as `--allow-net`.
+- **The web Cache API's index is kept in memory.** Deno stores `caches` on disk
+  by default, needing no write permission, keyed by the main module, which
+  every engine shares; a script could leave data there for a later render of
+  any project. With `DENO_CACHE_DB_MODE=memory` the index that finds an entry
+  lives in the process and ends with it, so a later engine finds nothing. Deno
+  still writes each `put()` body to a file under
+  `$DENO_DIR/location_data/web_cache/`; nothing in a later process can reach
+  it, since the index is gone and `$DENO_DIR` is not in the read set (unless
+  `DENO_DIR` is set to a folder inside a read root), so it is not a channel. (`localStorage` is absent on the engine's worker thread.)
 - **`--ignore-read`** makes a read outside the set fail with Deno's own
   `NotFound` instead of `NotCapable`. The compile needs this: its config search
   and package resolution probe folders above the roots, and a probe that throws
@@ -183,7 +223,10 @@ deno run --no-prompt \
   packages unreadable.
 - **A different read set needs a different process.** Flags are fixed at spawn,
   so a render whose read set differs from the running process's starts a new
-  one. A compiler that renders one project keeps one process.
+  one. A compiler that renders one project keeps one process. The switch waits
+  for every render under the running read set to finish, and while a render
+  waits no new one joins the running set: a render never runs in, or is
+  stopped by, a process started for another render's read set.
 
 ### What the native check does with symlinks and paths
 

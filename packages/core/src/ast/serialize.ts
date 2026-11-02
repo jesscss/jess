@@ -213,7 +213,7 @@ import { collectNestedProperty, isNestedPropertyValue } from './nested-property.
 import { callSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
@@ -4587,14 +4587,14 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
     return quotedFromFields(node.value, node.quote, node.escaped, node.src);
   }
   if (!e.ev) {
-    return { type: 'Keyword', text: src, bytes: src, groups: 0 };
+    return makeKeyword(src);
   }
   switch (node.type) {
-    case 'Keyword': return { type: 'Keyword', text: node.src, bytes: node.src, groups: 0 };
+    case 'Keyword': return makeKeyword(node.src);
     case 'Color': return colorFromSrc(node.src);
     case 'Dimension': return dimensionFromFields(node.number, node.unit, node.src);
     case 'Any': return makeAny(node.src);
-    case 'Comment': return { type: 'Keyword', text: node.text, bytes: node.text, groups: 0 };
+    case 'Comment': return makeKeyword(node.text);
   }
 }
 
@@ -5624,7 +5624,7 @@ function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: L
   const depth = writtenParens(node, frame, e);
   return depth === 0 || (value.type === 'Keyword' && (namedColor(value.bytes) !== undefined || keptMathOf(value) !== undefined)) || isOpaqueText(value, e)
     ? value
-    : { ...value, bytes: wrapParens(value.bytes, depth) };
+    : inParens(value, wrapParens(value.bytes, depth));
 }
 
 /**

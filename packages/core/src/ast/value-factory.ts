@@ -7,7 +7,7 @@
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
 import type {
-  Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
+  Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, KeywordCall, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
 } from './value-eval.js';
 import { colorRgb, colorSourceRgb, hslToRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
@@ -147,7 +147,10 @@ export function makeQuoted(value: string, quote: string, escaped: boolean): Quot
   return q;
 }
 
-export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text, groups: 0 });
+export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text, groups: 0, call: null });
+
+/** The keyword spelling `call` as `bytes`: a call written out as-is ({@link KeywordCall}). */
+export const makeCallKeyword = (bytes: string, call: KeywordCall): Keyword => ({ type: 'Keyword', text: bytes, bytes, groups: 0, call });
 
 /** Opaque text; `escapedQuote` is set only for an escaped string (see {@link Any.escapedQuote}). */
 export const makeAny = (bytes: string, escapedQuote = '', groups = 0): Any => ({ type: 'Any', bytes, escapedQuote, groups });
