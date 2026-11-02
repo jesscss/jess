@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
 import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
 import type { ValueEvaluator } from './ast/value-eval.js';
+import type { EmitJessOptions } from './ast/emit-jess.js';
 
 export type ISafeParseResult = {
   /** Canonical parser document on successful parsing. */
@@ -177,6 +178,37 @@ export interface ScriptSandboxRoute {
   reroute(): Promise<never>;
 }
 
+/**
+ * Moves a render into the script sandbox as soon as import planning places a
+ * document (the root, or one reached through placed imports, outside any
+ * at-rule, reference import or module) whose top level has a `@plugin` the
+ * sandbox runs: evaluation is certain to reach that `@plugin` and make the
+ * same move, after this process had parsed the rest of the import graph for
+ * nothing (`docs/design/DENO-SANDBOX-COMPILE.md` §2). `rules` is null for a
+ * document whose evaluation is not certain. Only a target written as a plain
+ * string, which is what evaluation loads, and only when the plugin that loads
+ * it runs every script in the sandbox. Loads nothing; a `@plugin` that does
+ * not load, or a compile with scripts disabled, is left to evaluation.
+ */
+export const rerouteForPlacedPlugins = async (rules: readonly Statement[] | null, context: Context | undefined): Promise<void> => {
+  if (rules === null || context === undefined) {
+    return;
+  }
+  const route = context.opts.scriptSandbox;
+  if (route === undefined || context.opts.disableScriptModules || context.opts.disablePluginRule) {
+    return;
+  }
+  for (const statement of rules) {
+    if (statement.type !== 'Plugin') {
+      continue;
+    }
+    const target = statement.target.type === 'Url' ? statement.target.value : statement.target;
+    if (target.type === 'Quoted' && target.interp === null && await context.sandboxesPluginScript(target.value)) {
+      await route.reroute();
+    }
+  }
+};
+
 export interface PluginInterface {
   /**
    * e.g. 'less-plugin'
@@ -292,6 +324,14 @@ export interface PluginInterface {
    */
   importPlugin?(absoluteFilePath: string, options?: string | null, route?: ScriptSandboxRoute): Promise<unknown>;
 
+  /**
+   * True when `importPlugin` runs every script in the sandbox: given a render's
+   * {@link ScriptSandboxRoute}, it moves the render there instead of loading
+   * the script. A render reaching a `@plugin` this plugin serves can then move
+   * as soon as the `@plugin` is planned, before evaluation reaches it.
+   */
+  readonly sandboxesScripts?: boolean;
+
   /** Optional lifecycle hooks used by lazy plugin loading. */
   prewarm?(): void | Promise<void>;
   dispose?(): void | Promise<void>;
@@ -313,6 +353,13 @@ export interface PluginInterface {
    * own plugin's evaluator, whichever document imported it (DESIGN-DECISIONS C19).
    */
   readonly valueEvaluator?: ValueEvaluator;
+
+  /**
+   * The module and export names a `.jess` file converted from this plugin's
+   * documents imports their built-in functions from (`emitJess`'s `functions`).
+   * A plugin without it parses no document a converter turns into `.jess`.
+   */
+  jessFunctions?(): NonNullable<EmitJessOptions['functions']>;
 
   /** Optional compiler hooks used by compatibility plugins. */
   setContext?(context: Context): void;

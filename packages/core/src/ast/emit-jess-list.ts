@@ -25,13 +25,9 @@ export function jessCollection(node: Collection, indent: string, p: ListSpeller)
     if (entry.merge !== null || entry.valueOnNewLine === true) {
       return p.gap('CollectionEntry', 'merge marker or value-on-new-line layout on a collection entry');
     }
-    const key = isSlotArray(entry.key)
-      ? `[${p.value(entry.key, inner)}]`
-      : entry.key.type === 'Keyword'
-        ? entry.key.src
-        : entry.key.type === 'Quoted'
-          ? p.value(entry.key, inner)
-          : `[${p.value(entry.key, inner)}]`;
+
+    /* A quoted key is written computed, `['a b']:`; `['a']:` and `a:` are the same key (ledger P14). */
+    const key = !isSlotArray(entry.key) && entry.key.type === 'Keyword' ? entry.key.src : `[${p.value(entry.key, inner)}]`;
     return `${key}: ${p.value(entry.value, inner)}${entry.important ? ' !important' : ''}`;
   };
   return `#{\n${node.entries.map(e => `${inner}${item(e)};\n`).join('')}${indent}}`;

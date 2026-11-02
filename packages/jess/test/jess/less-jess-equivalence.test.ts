@@ -2,20 +2,24 @@
  * Cross-dialect equivalence harness — `docs/design/JESS-EQUIVALENCE-HARNESS.md`.
  *
  *   .less → .css   ==   .less → .jess → .css
+ *   .scss → .css   ==   .scss → .jess → .css
  *
  * Both arms run on jess's own engine with ONE explicit configuration, so the gate
  * is byte identity:
  *
  *   arm A    `Compiler.safeRender(file.less)`                         → cssA
- *   convert  `Compiler.safeCompile(file.less)` (the product parse) → `emitJess` → write `file.jess`
+ *   convert  `Compiler.convertToJess(file.less)` → write each `.jess` it returns
  *   arm B    `Compiler.safeRender(file.jess)`                         → cssB
+ *
+ * (and the same for a `.scss` file).
  *   gate     cssB === cssA
  *
- * The emitter prints the PARSED tree — nothing is evaluated — so a variable stays
- * a variable and a mixin stays a mixin; the round trip cannot pass by flattening.
- * The corpus is copied to a temp directory and EVERY `.less` file in it is
- * converted, so an `@import` resolves to its converted sibling. Both arms read the
- * copy, so they see the same files.
+ * The converter renders the file and prints the PARSED tree of it and of every
+ * file the render loaded — so a variable stays a variable and a mixin stays a
+ * mixin; the round trip cannot pass by flattening — and points each import at the
+ * file the render actually loaded (a package import, an extension-less path).
+ * The corpus is copied to a temp directory; both arms read the copy, and a
+ * converted file is written only inside it.
  *
  * Every non-passing fixture is listed in {@link KNOWN} with a cause and a reason:
  *
@@ -40,15 +44,16 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { createRequire } from 'node:module';
 import { emitJess, NoJessSpelling } from '@jesscss/core';
-import { importTargetSpelling } from '@jesscss/core/ast';
 import { parse as parseJess } from '@jesscss/jess-parser';
 import { parse as parseLess } from '@jesscss/less-parser';
 import jessPlugin from '@jesscss/plugin-jess';
 import lessPlugin, { jessFunctions } from '@jesscss/plugin-less';
+import scssPlugin from '@jesscss/plugin-scss';
 import jsPlugin from '@jesscss/plugin-js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
-import { getExpectedOutputFiles } from '../../src/config.js';
 import { Compiler, type ConfigOptions } from '../../src/index.js';
+import { generate } from '../../benchmark/gen-workload.mjs';
+import type { ConvertedFile } from '@jesscss/compiler';
 import {
   getTestCases,
   lessFixturePackagesPlugin,
@@ -104,18 +109,18 @@ const TIMEOUT_MS = 30_000;
 interface Fixture {
   readonly corpus: string;
 
-  /** Corpus-relative path of the `.less` entry. */
+  /** Corpus-relative path of the `.less` / `.scss` entry. */
   readonly file: string;
   readonly config: ConfigOptions;
 }
 
 interface Corpus {
   readonly name: string;
-  readonly source: string;
-  copy: string;
+  readonly dialect: 'less' | 'scss';
 
-  /** Directory (relative to the copy) whose `.less` files are converted. */
-  readonly convertRoot: string;
+  /** The directory copied to the temp root, or what writes a generated corpus into it. */
+  readonly source: string | ((copy: string) => void);
+  copy: string;
 
   /**
    * Where the copy sits under the temp root, and the packages a bare import in
@@ -153,12 +158,47 @@ const allLessFixtures = (): Fixture[] => {
   return fixtures;
 };
 
+/**
+ * A Sass package's `scss/` tree: every file is a fixture. A file this engine
+ * cannot render as `.scss` yet is not this harness's to gate — the package's
+ * corpus suite (`test/scss/bootstrap-corpus.test.ts`,
+ * `foundation-corpus.test.ts`) ratchets that — so an unlisted `arm-a-error`
+ * passes the ratchet here; once the file renders it must convert, or be listed.
+ */
+const scssCorpus = (pkg: string): Corpus => {
+  const root = path.dirname(requireFrom.resolve(`${pkg}/package.json`));
+  const name = `${pkg}@${(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { version: string }).version}`;
+  return {
+    name,
+    dialect: 'scss',
+    source: path.join(root, 'scss'),
+    copy: '',
+    layout: 'scss',
+    packages: [],
+    fixtures: glob.sync('**/*.scss', { cwd: path.join(root, 'scss') }).sort().map(file => ({ corpus: name, file, config: {} })),
+    plugins: () => [scssPlugin(), jessPlugin()]
+  };
+};
+
+/*
+ * Where a root CSS `@import` lands (ledger N9). The output prelude takes a typed
+ * CSS terminal (`"x.css"`), ahead of a Less import that stays a CSS `@import`
+ * (`url("https://…")`, written where it stands) and ahead of the rules of a Less
+ * import written before it. A `.jess` CSS `@import` is written where it stands.
+ */
+const CSS_IMPORT_PLACEMENT: ReadonlyArray<readonly [file: string, text: string]> = [
+  ['url-then-terminal.less', '@import url("https://fonts.example/css?family=X");\n@import "x.css";\n.a { w: 1; }\n'],
+  ['compile-import-then-terminal.less', '@import "theme.less";\n@import "x.css";\n.a { w: 1; }\n'],
+  ['theme.less', '.t { x: 1; }\n'],
+  ['x.css', '.x { y: 1; }\n']
+];
+
 const CORPORA: Corpus[] = [
   {
     name: 'all-less',
+    dialect: 'less',
     source: testData,
     copy: '',
-    convertRoot: '.',
 
     /*
      * The upstream checkout layout: the Less plugin maps `@less/test-import-module`
@@ -178,9 +218,9 @@ const CORPORA: Corpus[] = [
   },
   {
     name: 'bootstrap-less-port@2.5.1',
+    dialect: 'less',
     source: bootstrapRoot,
     copy: '',
-    convertRoot: 'less',
     layout: 'bootstrap-less-port',
     packages: [],
     fixtures: ['bootstrap.less', 'bootstrap-grid.less', 'bootstrap-reboot.less']
@@ -191,6 +231,35 @@ const CORPORA: Corpus[] = [
       lessCompatPlugin(),
       jessPlugin()
     ]
+  },
+  scssCorpus('bootstrap'),
+  scssCorpus('foundation-sites'),
+
+  /* One feature mix written as matched Less and SCSS (`benchmark/gen-workload.mjs`), at a twentieth of its benchmark size. */
+  ...(['less', 'scss'] as const).map((dialect): Corpus => ({
+    name: `gen-workload.${dialect}`,
+    dialect,
+    source: copy => fs.writeFileSync(path.join(copy, `workload.${dialect}`), generate(dialect, { components: 11 })),
+    copy: '',
+    layout: 'gen-workload',
+    packages: [],
+    fixtures: [{ corpus: `gen-workload.${dialect}`, file: `workload.${dialect}`, config: {} }],
+    plugins: () => [dialect === 'less' ? lessPlugin() : scssPlugin(), jessPlugin()]
+  })),
+  {
+    name: 'css-import-placement',
+    dialect: 'less',
+    source: (copy) => {
+      for (const [file, text] of CSS_IMPORT_PLACEMENT) {
+        fs.writeFileSync(path.join(copy, file), text);
+      }
+    },
+    copy: '',
+    layout: 'css-import-placement',
+    packages: [],
+    fixtures: ['url-then-terminal.less', 'compile-import-then-terminal.less']
+      .map(file => ({ corpus: 'css-import-placement', file, config: {} })),
+    plugins: () => [lessPlugin(), jessPlugin()]
   }
 ];
 
@@ -202,6 +271,10 @@ const shape = (tree: object): string =>
 
 /** The one explicit configuration both arms of a fixture render with. */
 function configFor(corpus: Corpus, fixture: Fixture, mode: Mode | null): ConfigOptions {
+  if (corpus.dialect === 'scss') {
+    // `.scss` and `.jess` share their defaults; nothing is pinned.
+    return { compile: { plugins: corpus.plugins(corpus.copy) }, output: mode === null ? {} : { collapseNesting: mode === 'flat' } } as ConfigOptions;
+  }
   const { compile = {}, language = {}, output, ...rest } = fixture.config;
   const { plugins: fixturePlugins = [], ...fixtureCompile } = compile;
 
@@ -233,92 +306,55 @@ function configFor(corpus: Corpus, fixture: Fixture, mode: Mode | null): ConfigO
   } as ConfigOptions;
 }
 
-/**
- * `.jess` imports name the file they load. The converter wrote `foo.jess` next to
- * every `foo.less`, so a Less import of `foo` or `foo.less` becomes `foo.jess`.
- */
-const importPath = (spelling: string): string => {
-  const ext = path.extname(spelling);
-  return ext === '' ? `${spelling}.jess` : ext === '.less' ? `${spelling.slice(0, -5)}.jess` : spelling;
-};
-
 /** The Less built-ins as `.jess` imports them — the Less plugin owns the projection. */
 const LESS_FUNCTIONS = jessFunctions();
 
 /**
- * Per converted file: its `NoJessSpelling` gaps (`null` when it converted) and
- * the corpus files its top-level imports load, so a fixture is charged with the
- * gaps of every partial it pulls in.
+ * Per fixture: every file its conversion printed, and the converted files that do
+ * not re-print to themselves; or why the conversion's render failed.
  */
 type Conversion =
-  | { readonly gaps: readonly string[] | null; readonly imports: readonly string[]; readonly reprint?: string }
-  | { readonly parseError: string };
+  | { readonly files: readonly ConvertedFile[]; readonly unstable: readonly string[] }
+  | { readonly error: string };
+
+/*
+ * The print must be a fixed point of parse-then-print: the `.jess` tree it parses
+ * to prints back to text that parses to the SAME tree. A spelling the grammar
+ * reads as a different node fails here even where the CSS happens to agree.
+ * (Trees, not text: comments are trivia, and a `.jess` statement without a source
+ * span cannot anchor one in the same place.)
+ */
+function reprintProblem(jess: string): string | undefined {
+  let tree: ReturnType<typeof parseJess>;
+  try {
+    tree = parseJess(jess, { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
+  } catch {
+    return undefined; // A print that does not parse is the fixture's `arm-b-parse`.
+  }
+  try {
+    // A `.jess` tree already carries its `@-from` imports; only the Less source needs them added.
+    const again = parseJess(emitJess(tree), { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
+    return shape(again) === shape(tree) ? undefined : 'tree changed';
+  } catch (error) {
+    return String(error);
+  }
+}
 
 async function convertCorpus(corpus: Corpus): Promise<Map<string, Conversion>> {
   const results = new Map<string, Conversion>();
-  const byFile = new Map(corpus.fixtures.map(f => [f.file, f]));
-  const files = glob.sync('**/*.less', { cwd: path.join(corpus.copy, corpus.convertRoot), ignore: ['**/node_modules/**'] })
-    .map(f => path.join(corpus.convertRoot, f))
-    .sort();
-  for (const file of files) {
-    const full = path.join(corpus.copy, file);
-
-    // A partial parses with its directory's configuration, exactly as when imported.
-    const fixture = byFile.get(file) ?? {
-      corpus: corpus.name,
-      file,
-      config: (() => {
-        try {
-          const found = getExpectedOutputFiles(full);
-          return (Array.isArray(found) ? found[0]!.config : found.config) as ConfigOptions;
-        } catch {
-          return {};
-        }
-      })()
-    };
+  for (const fixture of corpus.fixtures) {
     const compiler = new Compiler(configFor(corpus, fixture, null));
     try {
-      const { document, errors } = await compiler.safeCompile(full, { suppressWarnings: true });
-      if (document === null || errors.length > 0) {
-        results.set(file, { parseError: errors[0]?.message ?? 'no document' });
+      const { files, errors } = await compiler.convertToJess(path.join(corpus.copy, fixture.file), { suppressWarnings: true });
+      if (errors.length > 0) {
+        results.set(fixture.file, { error: firstError(errors) });
         continue;
       }
-      const imports = document.rules.flatMap((rule) => {
-        if (rule.type !== 'StyleImport') {
-          return [];
-        }
-        const spelling = importTargetSpelling(rule.target);
-        const target = path.resolve(path.dirname(full), path.extname(spelling) === '' ? `${spelling}.less` : spelling);
-        return fs.existsSync(target) ? [path.relative(corpus.copy, target)] : [];
+      const unstable = files.flatMap((file) => {
+        const problem = 'jess' in file ? reprintProblem(file.jess) : undefined;
+        return problem === undefined ? [] : [`${path.relative(corpus.copy, file.source)}: ${problem}`];
       });
-      try {
-        const jess = emitJess(document, { importPath, functions: LESS_FUNCTIONS });
-        fs.writeFileSync(full.replace(/\.less$/u, '.jess'), jess);
-
-        /*
-         * The print must be a fixed point of parse-then-print: the `.jess` tree it
-         * parses to prints back to text that parses to the SAME tree. A spelling
-         * the grammar reads as a different node fails here even where the CSS
-         * happens to agree. (Trees, not text: comments are trivia, and a `.jess`
-         * statement without a source span cannot anchor one in the same place.)
-         */
-        let reprint: string | undefined;
-        try {
-          const tree = parseJess(jess, { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
-
-          // A `.jess` tree already carries its `@-from` imports; only the Less source needs them added.
-          const again = parseJess(emitJess(tree), { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
-          reprint = shape(again) === shape(tree) ? undefined : 'tree changed';
-        } catch (error) {
-          reprint = String(error);
-        }
-        results.set(file, { gaps: null, imports, ...(reprint === undefined ? {} : { reprint }) });
-      } catch (error) {
-        if (!(error instanceof NoJessSpelling)) {
-          throw error;
-        }
-        results.set(file, { gaps: [...new Set(error.gaps.map(g => `${g.nodeType}: ${g.reason}`))], imports });
-      }
+      results.set(fixture.file, { files, unstable });
     } finally {
       compiler.dispose();
     }
@@ -336,18 +372,8 @@ type Diagnostics = Awaited<ReturnType<Compiler['safeRender']>>['errors'];
 const firstError = (errors: Diagnostics): string =>
   errors.length === 0 ? '' : `${errors[0]!.code}: ${String(errors[0]!.message).split('\n')[0]}`;
 
-/** A file's own gaps plus those of every partial it imports, transitively. */
-function gapsOf(file: string, conversions: ReadonlyMap<string, Conversion>, seen = new Set<string>()): string[] {
-  const conversion = conversions.get(file);
-  if (conversion === undefined || 'parseError' in conversion || seen.has(file)) {
-    return [];
-  }
-  seen.add(file);
-  return [
-    ...(conversion.gaps ?? []).map(g => (seen.size === 1 ? g : `${g} [in ${file}]`)),
-    ...conversion.imports.flatMap(dep => gapsOf(dep, conversions, seen))
-  ];
-}
+/* Every `.jess` file this harness wrote into a corpus copy. */
+const harnessWritten = new Set<string>();
 
 async function observe(corpus: Corpus, fixture: Fixture, mode: Mode, conversions: ReadonlyMap<string, Conversion>): Promise<Observation> {
   const conversion = conversions.get(fixture.file);
@@ -358,15 +384,45 @@ async function observe(corpus: Corpus, fixture: Fixture, mode: Mode, conversions
     if (a.css === null || a.errors.length > 0) {
       return { outcome: 'arm-a-error', detail: firstError(a.errors) };
     }
-    if (conversion === undefined || 'parseError' in conversion) {
-      return { outcome: 'arm-a-error', detail: conversion?.parseError ?? 'not converted' };
+    if (conversion === undefined || 'error' in conversion) {
+      return { outcome: 'arm-a-error', detail: conversion?.error ?? 'not converted' };
     }
-    const gaps = gapsOf(fixture.file, conversions);
+    const entry = fs.realpathSync(full);
+
+    // A partial is named inside the copy, or from its package when the render loaded it from an installed one.
+    const shown = (source: string): string => {
+      const real = fs.realpathSync(source);
+      const inCopy = path.relative(fs.realpathSync(corpus.copy), real);
+      return inCopy.startsWith('..') ? real.slice(real.lastIndexOf('node_modules/')) : inCopy;
+    };
+    const gaps = conversion.files.flatMap(({ source, ...file }) => ('gaps' in file
+      ? [...new Set(file.gaps.map(g => `${g.nodeType}: ${g.reason}`))].map(g => (fs.realpathSync(source) === entry ? g : `${g} [in ${shown(source)}]`))
+      : []));
     if (gaps.length > 0) {
       const p35 = gaps.every(g => g.includes(P35));
       return { outcome: p35 ? 'p35' : 'cannot-express', detail: [...new Set(gaps)].join(' | ') };
     }
-    const b = await compiler.safeRender(full.replace(/\.less$/u, '.jess'), { suppressWarnings: true });
+
+    // Converted files go next to their sources, which must be inside the copy.
+    const root = fs.realpathSync(path.resolve(corpus.copy, path.relative(corpus.layout, '.')));
+    let entryJess = '';
+    for (const file of conversion.files) {
+      if (!('jess' in file)) {
+        continue;
+      }
+      const at = path.join(fs.realpathSync(path.dirname(file.jessPath)), path.basename(file.jessPath));
+      if (path.relative(root, at).startsWith('..')) {
+        return { outcome: 'arm-b-error', detail: `a loaded file is outside the copy: ${at}` };
+      }
+
+      // The first write of a path never replaces a file; later ones replace only what this harness wrote.
+      fs.writeFileSync(at, file.jess, { flag: harnessWritten.has(at) ? 'w' : 'wx' });
+      harnessWritten.add(at);
+      if (fs.realpathSync(file.source) === entry) {
+        entryJess = at;
+      }
+    }
+    const b = await compiler.safeRender(entryJess, { suppressWarnings: true });
     if (b.css === null || b.errors.length > 0) {
       const detail = firstError(b.errors);
       return { outcome: detail.startsWith('parse/') ? 'arm-b-parse' : 'arm-b-error', detail };
@@ -391,9 +447,9 @@ async function observe(corpus: Corpus, fixture: Fixture, mode: Mode, conversions
  */
 const KNOWN = new Map<string, Known>([
   ['all-less:tests-config/3rd-party/bootstrap4.less', {
-    cause: 'lost-info',
-    outcome: 'arm-b-error',
-    reason: 'a bare package import (`bootstrap-less-port/less/bootstrap`) became file-relative (`./…`, the migration guide\'s rewrite); the converter does not observe that Less resolved it as a package'
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Plugin: `@-plugin` parses only as an inert at-rule statement; `.jess` script integration is `@-use`/`@-from` [in node_modules/bootstrap-less-port/less/_functions.less] (+68 more)'
   }],
   ['all-less:tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less', {
     cause: 'cannot-express',
@@ -489,6 +545,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'no-arm-a',
     outcome: 'arm-a-error',
     reason: 'the Less arm itself does not render: resolve/name-not-found: Name not found'
+  }],
+  ['all-less:tests-config/process-imports/google.less', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: '`processImports: false` drops the import from the CSS; a `.jess` import has no such policy'
   }],
   ['all-less:tests-config/rewrite-urls-all/rewrite-urls-all.less', {
     cause: 'cannot-express',
@@ -664,11 +725,6 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'StyleImport: an interpolated or escaped import target: `.jess` imports take a plain quoted path (+1 more)'
-  }],
-  ['all-less:tests-unit/import/import-module.less', {
-    cause: 'lost-info',
-    outcome: 'arm-b-error',
-    reason: 'bare package imports (`@less/test-import-module/…`) became file-relative (`./…`, the migration guide\'s rewrite); the converter does not observe that Less resolved them as a package'
   }],
   ['all-less:tests-unit/import/import-once.less', {
     cause: 'cannot-express',
@@ -879,6 +935,346 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'Plugin: `@-plugin` parses only as an inert at-rule statement; `.jess` script integration is `@-use`/`@-from` [in less/_functions.less] (+104 more)'
+  }],
+  ['bootstrap@5.3.8:_variables-dark.scss', {
+    cause: 'p35',
+    outcome: 'p35',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)'
+  }],
+  ['bootstrap@5.3.8:mixins/_border-radius.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['bootstrap@5.3.8:mixins/_box-shadow.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Param: rest/variadic parameter: `MixinParam` has no `...` form'
+  }],
+  ['bootstrap@5.3.8:mixins/_breakpoints.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+3 more)'
+  }],
+  ['bootstrap@5.3.8:mixins/_caret.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['bootstrap@5.3.8:mixins/_color-mode.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Lookup: a variable inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}` (+1 more)'
+  }],
+  ['bootstrap@5.3.8:mixins/_deprecate.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['bootstrap@5.3.8:mixins/_transition.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Param: rest/variadic parameter: `MixinParam` has no `...` form'
+  }],
+  ['foundation-sites@6.9.0:components/_badge.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names'
+  }],
+  ['foundation-sites@6.9.0:components/_breadcrumbs.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_callout.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_close-button.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_drilldown.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:components/_dropdown.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names'
+  }],
+  ['foundation-sites@6.9.0:components/_flex-video.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` [in components/_responsive-embed.scss] (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_flex.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_label.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names'
+  }],
+  ['foundation-sites@6.9.0:components/_media-object.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'MixinCall: space-run argument: the `MixinCallArgument` reducer throws on it (parser defect)'
+  }],
+  ['foundation-sites@6.9.0:components/_progress-bar.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_responsive-embed.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_slider.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_switch.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_table.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+3 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_tabs.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional'
+  }],
+  ['foundation-sites@6.9.0:components/_tooltip.scss', {
+    cause: 'p35',
+    outcome: 'p35',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)'
+  }],
+  ['foundation-sites@6.9.0:components/_top-bar.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_visibility.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+3 more)'
+  }],
+  ['foundation-sites@6.9.0:forms/_forms.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups [in forms/_text.scss] (+10 more)'
+  }],
+  ['foundation-sites@6.9.0:forms/_input-group.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:forms/_label.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:forms/_meter.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:forms/_progress.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:forms/_range.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:forms/_select.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:forms/_text.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:grid/_column.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional'
+  }],
+  ['foundation-sites@6.9.0:grid/_flex-grid.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:grid/_gutter.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:grid/_position.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:grid/_row.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_arrow.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout'
+  }],
+  ['foundation-sites@6.9.0:prototype/_border-box.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_border-none.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_bordered.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_display.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_font-styling.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_list-style-type.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_overflow.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_position.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_rotate.scss', {
+    cause: 'p35',
+    outcome: 'p35',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_rounded.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_separator.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_shadow.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_sizing.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+2 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_spacing.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_text-decoration.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_text-transformation.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_text-utilities.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Comment: a comment between value parts: `ValueSpaceGroup` separators are whitespace only (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:typography/_alignment.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:util/_direction.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:util/_flex.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:util/_selector.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_cell.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+5 more)'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_collapse.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Param: space-run default: the `MixinParam` reducer keeps only a single node and silently drops it (parser defect)'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_frame.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_grid.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_gutters.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Param: space-run default: the `MixinParam` reducer keeps only a single node and silently drops it (parser defect)'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_position.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+1 more)'
   }]
 ]);
 
@@ -895,10 +1291,15 @@ beforeAll(async () => {
       dereference: true,
       filter: source => source !== path.join(from, 'node_modules')
     });
-    copy(corpus.source, corpus.copy);
+    if (typeof corpus.source === 'string') {
+      copy(corpus.source, corpus.copy);
+    } else {
+      fs.mkdirSync(corpus.copy, { recursive: true });
+      corpus.source(corpus.copy);
+    }
     for (const [name, dir] of corpus.packages) {
       const target = path.join(root, dir);
-      const from = path.resolve(corpus.source, path.relative(corpus.layout, dir));
+      const from = path.resolve(typeof corpus.source === 'string' ? corpus.source : corpus.copy, path.relative(corpus.layout, dir));
       if (!fs.existsSync(target) && fs.existsSync(from)) {
         copy(from, target);
       }
@@ -945,8 +1346,8 @@ for (const corpus of CORPORA) {
     });
 
     it('every converted file re-prints to itself', () => {
-      const unstable = [...conversions].flatMap(([file, c]) => ('reprint' in c && c.reprint !== undefined ? [`${file}: ${c.reprint}`] : []));
-      expect(unstable).toEqual([]);
+      const unstable = new Set([...conversions.values()].flatMap(c => ('unstable' in c ? c.unstable : [])));
+      expect([...unstable]).toEqual([]);
     });
 
     for (const fixture of corpus.fixtures) {
@@ -1373,9 +1774,10 @@ describe('equivalence ratchet', () => {
     const drift: string[] = [];
     for (const [key, modes] of observed) {
       const known = KNOWN.get(key);
+      const dialect = CORPORA.find(corpus => key.startsWith(`${corpus.name}:`))?.dialect;
       for (const mode of MODES) {
         const seen = modes[mode]?.outcome;
-        if (seen === undefined) {
+        if (seen === undefined || (seen === 'arm-a-error' && known === undefined && dialect === 'scss')) {
           continue;
         }
         const expected = known === undefined

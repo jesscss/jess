@@ -381,6 +381,14 @@ export const hostFacts = (code: readonly string[]): EngineHostFacts => {
   };
 };
 
+/**
+ * The packages of a compiler module and this plugin themselves, without the
+ * dependencies {@link engineCode} walks to: part of every engine's code, known
+ * without reading a manifest.
+ */
+export const engineOwnCode = (compilerModule: string, selfModule: string): string[] =>
+  [fileURLToPath(compilerModule), fileURLToPath(selfModule)].map(packageRootOf).filter((dir): dir is string => dir !== undefined);
+
 /** The code directories of a compiler module and this plugin. */
 export const engineCode = (compilerModule: string, selfModule: string, signal?: AbortSignal): Promise<string[]> =>
   codeClosure([fileURLToPath(compilerModule), fileURLToPath(selfModule)], signal);

@@ -1,6 +1,7 @@
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, ScriptSandboxRoute, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
+import type { ImportTargets } from './import-targets.js';
 import type { TriviaMap } from './types/index.js';
 import type { ApplySelectorKind, ExtendSelectorKind, OutputOptions } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
@@ -938,6 +939,9 @@ export class Context {
 
   /** Full resolved path -> canonical parsed document (legacy Rules during migration or AST v2 Stylesheet). */
   sourceTrees = new Map<string, ParsedDocument>();
+
+  /** Set before a render to record what each import it evaluates resolved to. Unset, nothing is recorded. */
+  importTargets?: ImportTargets;
   private readonly parsedSourceTrees = new Map<string, ParsedDocument>();
 
   /**
@@ -1021,6 +1025,11 @@ export class Context {
    */
   withDocument<T>(document: Stylesheet, run: () => T | Promise<T>): T | Promise<T> {
     return this.withSourceOwner(this.documentContexts.get(document), run);
+  }
+
+  /** The plugin that parsed a document of this session. */
+  pluginOf(document: Stylesheet): PluginInterface | undefined {
+    return this.documentContexts.get(document)?.plugin;
   }
 
   /**
@@ -1723,26 +1732,41 @@ export class Context {
     throw new Error(`Plugin not found: ${importPath} (tried ${tried.join(', ')})`);
   }
 
+  /** The plugin that loads an executable Plugin module of this extension, as {@link getPluginModule} selects it. */
+  private async pluginModuleLoaderFor(ext: string): Promise<PluginInterface | undefined> {
+    /* A plugin already here that loads it wins; only without one is a plugin for the extension loaded, and kept. */
+    const plugin = this.plugins.find(candidate => candidate.supportedExtensions?.includes(ext) && candidate.importPlugin)
+      ?? await this.opts.loadPluginForExtension?.(ext);
+    if (plugin && !this.plugins.includes(plugin)) {
+      this.plugins.push(plugin);
+    }
+    return plugin && plugin.supportedExtensions?.includes(ext) && plugin.importPlugin ? plugin : undefined;
+  }
+
+  /** Where an executable Plugin module comes from, and the plugin that loads it, as {@link getPluginModule} finds them. */
+  private async pluginModuleTarget(importPath: string) {
+    refuseRemoteModule(this.importTarget(importPath));
+    const resolved = await this._getPluginPath(importPath);
+    refuseRemoteModule(resolved.resolvedPath);
+    return { ...resolved, plugin: await this.pluginModuleLoaderFor(resolved.ext) };
+  }
+
+  /**
+   * Whether the executable Plugin module `importPath` names loads, as
+   * {@link getPluginModule} would load it, through a plugin that runs every
+   * script in the sandbox (`sandboxesScripts`); false when it does not load.
+   */
+  sandboxesPluginScript(importPath: string): Promise<boolean> {
+    return this.pluginModuleTarget(importPath).then(({ plugin }) => plugin?.sandboxesScripts === true, () => false);
+  }
+
   /**
    * Load an executable Plugin module through the same Context-owned path and
    * extension dispatch used by ordinary modules. The active dialect adapter
    * interprets the returned module; Context does not know a dialect ABI.
    */
   async getPluginModule(importPath: string, options: string | null = null) {
-    refuseRemoteModule(this.importTarget(importPath));
-    const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPluginPath(importPath);
-    refuseRemoteModule(resolvedPath);
-    let plugin = this.plugins.find(candidate =>
-      candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
-    if (!plugin) {
-      plugin = await this.opts.loadPluginForExtension?.(ext);
-      if (plugin && !this.plugins.includes(plugin)) {
-        this.plugins.push(plugin);
-      }
-      if (plugin && (!plugin.supportedExtensions?.includes(ext) || !plugin.importPlugin)) {
-        plugin = undefined;
-      }
-    }
+    const { resolvedPath, triedPaths, friendlyPath, ext, plugin } = await this.pluginModuleTarget(importPath);
     if (!plugin?.importPlugin) {
       if (SCRIPT_MODULE_EXTENSIONS.has(ext)) {
         throw new Error(SCRIPT_RUNTIME_MISSING_MESSAGE);

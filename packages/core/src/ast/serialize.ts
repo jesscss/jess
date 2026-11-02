@@ -259,7 +259,7 @@ import type { ExtendClass } from './extend/document.js';
 import { leadsWithElement } from './extend/conflict.js';
 import { isPseudoElementName, isUserActionToken, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
-import type { ModuleConfigRejection } from '../plugin.js';
+import { type ModuleConfigRejection, rerouteForPlacedPlugins } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { writtenListValue, writtenResult } from './empty-list.js';
@@ -734,13 +734,11 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
      * An unclaimed external specifier (`//host/x.css`, `https:…`) is a CSS
      * terminal, not a failed load, so `(optional)` stays moot on it.
      */
-    if (loaded === undefined) {
+    const document = loaded?.node?.type === 'Stylesheet' ? loaded.node : null;
+    context.importTargets?.record(node, loaded?.resolvedPath ?? specifier, document);
+    if (loaded === undefined || document === null) {
       return undefined;
     }
-    if (loaded.node?.type !== 'Stylesheet') {
-      return undefined;
-    }
-    const document = loaded.node;
     return {
       document,
       key: loaded.resolvedPath,
@@ -13846,7 +13844,13 @@ function planImportedFacts(
         }
       }
       const collect = async (): Promise<void> => {
-        await visit(
+        /*
+         * A plain import placed on the document's top-level chain (no at-rule,
+         * reference import or module above it) is evaluated for certain, and so
+         * is a `@plugin` at its top level: one the sandbox runs moves the render
+         * there now (rerouteForPlacedPlugins).
+         */
+        await rerouteForPlacedPlugins(e.s.context?.opts.scriptSandbox !== undefined && !isCompose && !reference && !hidden && importScope === '' ? loaded.document!.rules : null, e.s.context).then(() => visit(
           loaded.document!.rules,
           childFrame,
           reference ? null : importCssPlan,
@@ -13864,7 +13868,7 @@ function planImportedFacts(
 
           /* An imported sheet's root is its importer's scope; a composed module is its own. */
           isCompose ? childFrame : importScope
-        );
+        ));
       };
       const key = isCompose || loaded.key === undefined || expanding.has(loaded.key) ? undefined : loaded.key;
       if (key !== undefined) {
@@ -20072,7 +20076,9 @@ function writeHoistedCssImport(node: AtRuleStatement, root: boolean, frame: Fram
     return false;
   }
   const slot = slots.shift();
-  if (slot === undefined) {
+
+  /* A conversion's `importTargets` records the placement; it answers whether this one is a dropped duplicate. */
+  if (e.s.context?.importTargets?.hoist(node, slot) ?? slot === undefined) {
     return true;
   }
   const from = e.chunks.length;
@@ -20808,7 +20814,8 @@ function expandStyleImport(
     throw composeNotTopLevel(node, e);
   }
   if (e.s.context?.options.processImports === false) {
-    return;
+    // Under this document's policy the import contributes nothing; nothing is resolved.
+    return e.s.context.importTargets?.skip(node);
   }
   if (importDocument) {
     const planned = e.plannedImportDocuments;
