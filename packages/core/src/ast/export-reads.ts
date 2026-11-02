@@ -4,7 +4,7 @@ import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Fn } from './functions/types.js';
-import { fnOrigin, type FnOrigin } from './module-values.js';
+import type { FnOrigin } from './module-values.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Stylesheet, type VariableDeclaration } from './nodes.js';
 import { emitValue, isValueGroupArray, type EvalModes, type EvalValue, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
@@ -26,7 +26,7 @@ export type ExportRecipe = { readonly export: string } | { readonly fn: FnOrigin
 /** What the runtime module is generated from ({@link ExportState.runtime}). */
 export interface ExportRuntime {
   /** Every name the root exports. */
-  readonly exports: readonly string[];
+  readonly exports: ReadonlySet<string>;
 
   /** The compile-time CSS of each export a derived value reads. */
   readonly defaults: Map<string, string>;
@@ -50,7 +50,7 @@ export interface ExportRuntimeData {
 export function runtimeData(x: ExportState<unknown> | undefined): { runtime?: ExportRuntimeData } {
   return x === undefined
     ? {}
-    : { runtime: { exports: x.runtime.exports, defaults: Object.fromEntries(x.runtime.defaults), derived: Object.fromEntries(x.runtime.derived) } };
+    : { runtime: { exports: [...x.runtime.exports], defaults: Object.fromEntries(x.runtime.defaults), derived: Object.fromEntries(x.runtime.derived) } };
 }
 
 /** A mixin argument as written, in the caller's frame. */
@@ -139,7 +139,7 @@ export function rootExports<F>(root: Stylesheet): ExportState<F> | undefined {
       refs.set(statement.value, { name: statement.name, call: funcCall('var', [keyword(`--${statement.name}`), statement.value]), source: undefined });
     }
   }
-  return { refs, inputs: undefined, argument: false, runtime: { exports: [...names], defaults: new Map(), derived: new Map() } };
+  return { refs, inputs: undefined, argument: false, runtime: { exports: names, defaults: new Map(), derived: new Map() } };
 }
 
 /**
@@ -299,15 +299,17 @@ export function exportCall<F>(
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */
 function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>, e: ExportLane<F>): ExportRecipe {
   const lone = (v: ValueGroup): ValueGroup => isValueGroupArray(v) && v.length === 1 ? v[0]! : v;
-  const origin = fn === undefined ? undefined : fnOrigin(fn);
+  const origin = fn?.origin;
   if (origin === undefined) {
     exportNotWritten(node, `${node.name}()`, recipeExport(inputs[0]!.recipe), e, 'as the input of a function the runtime cannot run');
   }
-  const stray = inputs.find(input => !vals.some(v => lone(v) === input.value));
+  const written = new Set<object>(vals.map(lone));
+  const stray = inputs.find(input => !written.has(input.value));
   if (stray !== undefined) {
     exportNotWritten(node, `${node.name}()`, recipeExport(stray.recipe), e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
   }
-  return { fn: origin, args: vals.map(v => inputs.find(input => input.value === lone(v))?.recipe ?? emitValue(v)) };
+  const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
+  return { fn: origin, args: vals.map(v => recipes.get(lone(v)) ?? emitValue(v)) };
 }
 
 /** The first export a recipe reads. */
@@ -330,7 +332,7 @@ function derivedName(runtime: ExportRuntime, recipe: ExportRecipe): string {
   for (let n = 1; ; n++) {
     const name = n === 1 ? base : `${base}-${n}`;
     const taken = runtime.derived.get(name);
-    if (!runtime.exports.includes(name.slice(2)) && (taken === undefined || sameRecipe(taken, recipe))) {
+    if (!runtime.exports.has(name.slice(2)) && (taken === undefined || sameRecipe(taken, recipe))) {
       runtime.derived.set(name, recipe);
       return name;
     }

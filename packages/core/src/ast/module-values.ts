@@ -46,18 +46,9 @@ function moduleFunctionResult(value: unknown, name: string): ValueGroup {
   throw new TypeError(`Module function "${name}" returned an unsupported value.`);
 }
 
-/** Where an imported function comes from: the module as the stylesheet names it, and the export. */
-export interface FnOrigin {
-  readonly module: string;
-  readonly name: string;
-}
+import type { FnOrigin } from './functions/types.js';
 
-const origins = new WeakMap<Fn, FnOrigin>();
-
-/** The module export a function imported into a stylesheet binds ({@link bindModuleFunction}). */
-export function fnOrigin(fn: Fn): FnOrigin | undefined {
-  return origins.get(fn);
-}
+export type { FnOrigin };
 
 export function bindModuleFunction(value: ModuleCallable | Fn, name: string, origin: FnOrigin): Fn {
   const fn = isModuleFn(value)
@@ -67,8 +58,7 @@ export function bindModuleFunction(value: ModuleCallable | Fn, name: string, ori
         body: (args, context) => value(args, context)
       })
     : moduleCallable(value, name);
-  origins.set(fn, origin);
-  return fn;
+  return Object.assign(fn, { origin });
 }
 
 function moduleCallable(value: ModuleCallable, name: string): Fn {

@@ -5,11 +5,11 @@
   "contractDigest": "2a8e87e264d088d05e2b455fba2cd9e24063c1b177dfc6e7cfa3472bf4c8e5f4",
   "implementations": {
     "owner": "e8fbe3f1a53792442a84382c901e8fdd390b16e6f62f878ce1e64191315dce71",
-    "compiler-convert": "189cb5bc3f276f70943f7aa1751fa32dc174ed87c7aad1939f03e63862d614b2",
+    "compiler-convert": "a79e1329f9ab72b66e51c8d28ef9b6f727f6392b4c4480823dbf73da68fb1866",
     "less-equivalence": "6c5c019ef98d3fa9ac9d517642978433c59d1d32d19f17473537b47027484689",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "Re-reviewed compiler-convert after the second #544 review round and the dev merge (convert-to-jess.ts, sandbox-route.ts, index.ts, convert-to-jess.test.ts). printConversion still takes each converted document's projection only from context.pluginOf(document)?.jessFunctions?.() and passes it unchanged as emitJess's functions option; no #less/#sass projection is built in the consumer and the owner is not imported. New code is consumer-owned: claimTargets decides which documents may write their .jess path (existing file without overwrite, symlink, same dev+ino as a loaded file), convertToJess takes { overwrite }, and the engine-result check returns paths as the render spelled them, using realpath only for containment. The alternatives' anchor lines are unchanged."
+  "rationale": "Export runtime (R8 slice 2): compiler/index.ts and sandbox-route.ts now carry the render's runtime data beside the CSS; the converter's projection path (printConversion reading each document's plugin) is unchanged."
 }
