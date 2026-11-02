@@ -1486,6 +1486,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return withSourceSpan(styleImport(requireToken(children[0]).value, target, { mode: 'compose', namespace, config }), span);
     }
   );
+  // `;` separates block-list items, so the final item in a braced body may omit
+  // it — `.a { @o: 3 }` and `.a { o: 3 }` are both Less. The omission is allowed
+  // ONLY against the block's own `}`: `@o: 3` at end-of-stylesheet stays a parse
+  // error (`lessc` 4.8.1: "@o rule is missing block or ending semi-colon"), and
+  // a declaration still may not run into a following declaration or nested rule.
+  const declarationEnd = choice(
+    literal(';'),
+    peek(literal('}'))
+  );
   /**
    * `@export brand, gap;` publishes root variables by name (ledger A4); the `@`
    * starts a read, so the names are bare. It parses in every body, as
@@ -1496,12 +1505,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'ExportStatement',
     sequence(
       keywords(['@-export', '@export'], { caseInsensitive: true, boundary: IDENT_BOUNDARY }),
-      oneOrMoreSep(field('name', staticIdentifier), literal(',')),
-      optional(literal(';'))
+      oneOrMoreSep(field('name', lessSupportedVariableName), literal(',')),
+      declarationEnd
     ),
     (_children, fields, span, _rawChildren, _triviaLog, state) => {
       closeAmbientFunctions(state);
-      return withSourceSpan(variableExport(requireFields(fields, 'name').map(name => requireTerminalText(name.value))), span);
+      const names = requireFields(fields, 'name').map(name => requireSupportedVariableName(name.value, name.span.start, name.span.end));
+      return withSourceSpan(variableExport(names), span);
     }
   );
   /** The two Less spellings share one case-insensitive, identifier-bounded terminal. */
@@ -1635,15 +1645,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
       return withSourceSpan(plugin(target, optionValue), span);
     }
-  );
-  // `;` separates block-list items, so the final item in a braced body may omit
-  // it — `.a { @o: 3 }` and `.a { o: 3 }` are both Less. The omission is allowed
-  // ONLY against the block's own `}`: `@o: 3` at end-of-stylesheet stays a parse
-  // error (`lessc` 4.8.1: "@o rule is missing block or ending semi-colon"), and
-  // a declaration still may not run into a following declaration or nested rule.
-  const declarationEnd = choice(
-    literal(';'),
-    peek(literal('}'))
   );
   const variableName = node(
     'VariableName',

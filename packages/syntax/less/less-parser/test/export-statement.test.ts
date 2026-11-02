@@ -30,8 +30,41 @@ describe('Less @export (A4)', () => {
     expect(exportOf(exported).names).toEqual(['brand']);
   });
 
-  it.each(['@export { a: b }', 'a { @export 1px; }'])('keeps any other @export a generic at-rule: %s', (source) => {
-    expect(parse(source).rules.some(rule => rule.type === 'VariableExport')).toBe(false);
+  it('reads a name with an escape as the variable it declares', () => {
+    expect(exportOf(parse('@br\\61nd: red;\n@export br\\61nd;').rules[1]).names).toEqual(['brand']);
+  });
+
+  it('reads a dashed name', () => {
+    expect(exportOf(parse('@--x: 1;\n@export --x;').rules[1]).names).toEqual(['--x']);
+  });
+
+  it('rejects a name that starts with a digit, as a declaration does', () => {
+    expect(() => parse('@export \\31 x;')).toThrow();
+  });
+
+  it('ends at the closing brace of a body', () => {
+    const rule = parse('.a { @export n }').rules[0];
+    if (rule?.type !== 'Ruleset') {
+      throw new TypeError('expected a ruleset');
+    }
+    expect(exportOf(rule.rules[0]).names).toEqual(['n']);
+  });
+
+  it.each([
+    '@export { a: b }',
+    'a { @export 1px; }',
+    '@export foo { color: red }',
+    '@export brand gap;',
+    '@export a, b c;',
+    '@export brand: red;',
+    '@export brand !important;',
+    'a { @export foo { b: c } }',
+    '@export foo bar { color: red }',
+    '@export brand\n.a { color: red }'
+  ])('keeps any other @export a generic at-rule: %s', (source) => {
+    const walk = (rules: readonly Statement[]): boolean => rules.some(rule =>
+      rule.type === 'VariableExport' || ('rules' in rule && Array.isArray(rule.rules) && walk(rule.rules)));
+    expect(walk(parse(source).rules)).toBe(false);
   });
 
   it('rejects a variable read in the name list', () => {
