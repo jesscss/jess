@@ -6,7 +6,7 @@
  * @example
  * map.set((a: 1), b, 2) // (a: 1, b: 2)
  */
-import { defineFunction, makeCollection } from '@jesscss/core';
+import { defineFunction, makeCollection } from '@jesscss/core/value';
 import { entryIndex } from './util.js';
 
 const set = defineFunction(

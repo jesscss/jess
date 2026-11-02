@@ -1,5 +1,5 @@
-import type { Collection, CollectionEntry, ValueGroup } from '@jesscss/core';
-import { collectionEntryIndex, collectionKeyIndex, isCollection } from '@jesscss/core';
+import type { Collection, CollectionEntry, ValueGroup } from '@jesscss/core/value';
+import { collectionEntryIndex, collectionKeyIndex, isCollection } from '@jesscss/core/value';
 
 /** Resolve Sass's variadic nested map-key path. */
 export function nestedCollection(map: Collection, keys: readonly ValueGroup[]): Collection | undefined {

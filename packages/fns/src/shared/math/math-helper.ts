@@ -11,7 +11,7 @@
  *
  * HARD MODULE BOUNDARY: value domain + factory only.
  */
-import { foldUnit, isValueGroupArray, makeDimension, type Dimension, type FnSpec, type ValueGroup } from '@jesscss/core';
+import { foldUnit, isValueGroupArray, makeDimension, type Dimension, type FnSpec, type ValueGroup } from '@jesscss/core/value';
 
 /**
  * Angle → radians normalization (`deg`/`grad`/`turn`, any ASCII case), else the raw number.

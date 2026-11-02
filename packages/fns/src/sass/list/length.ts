@@ -1,4 +1,4 @@
-import { defineFunction, groupItems, makeDimension } from '@jesscss/core';
+import { defineFunction, groupItems, makeDimension } from '@jesscss/core/value';
 
 /** Sass `list.length()`; scalar values are one-item lists. */
 const length = defineFunction('length', {

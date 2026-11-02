@@ -1,4 +1,4 @@
-import { compareOrder, defineFunction } from '@jesscss/core';
+import { compareOrder, defineFunction } from '@jesscss/core/value';
 import { convertToMatch } from './units.js';
 
 /**

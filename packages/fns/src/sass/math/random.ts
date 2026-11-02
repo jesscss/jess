@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension, type Dimension, type Null } from '@jesscss/core';
+import { defineFunction, makeDimension, type Dimension, type Null } from '@jesscss/core/value';
 
 /**
  * Sass's fuzzy integer test. Sass compares numbers at 10 digits of precision, so

@@ -2,6 +2,7 @@ import * as rollup from 'rollup';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { Compiler } from 'jess';
 import jess from '../src/index.js';
 import commonJs from '@rollup/plugin-commonjs';
 import nodeResolve from '@rollup/plugin-node-resolve';
@@ -17,6 +18,25 @@ const buildFile = async (filePath: string) => {
 };
 
 describe('rollup-plugin-jess', () => {
+  it('exports the runtime of a stylesheet that exports variables', async () => {
+    const bundle = await rollup.rollup({ input: path.resolve(__dirname, './runtime.less'), plugins: [nodeResolve(), commonJs(), jess()] });
+    const { output } = await bundle.generate({ format: 'es' });
+    const css = output.find(item => item.type === 'asset' && item.fileName === 'runtime.css');
+    expect(css && css.type === 'asset' ? String(css.source) : '').toContain('border-color: var(--brand-darken, #990000);');
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rollup-plugin-jess-'));
+    try {
+      const file = path.join(directory, 'runtime.mjs');
+      fs.writeFileSync(file, output[0].code);
+      const module = await import(file) as { vars: (values: Record<string, string>) => Record<string, string> };
+      const recompiled = await new Compiler().renderString('@use "#less";\n.a { b: @less.darken(#08f, 10%); }', { filePath: 'entry.less', extension: '.less' });
+      expect(recompiled).toContain(`b: ${module.vars({ brand: '#08f' })['--brand-darken']};`);
+      expect(module.vars({ brand: '#08f' })['--brand']).toBe('#08f');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('renders a `.jess` module with Jess syntax through the public compiler integration', async () => {
     const result = await buildFile('./direct.jess');
     const css = result.find(item => item.type === 'asset' && item.fileName === 'direct.css');

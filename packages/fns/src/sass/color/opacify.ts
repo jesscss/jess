@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { defineFunction } from '@jesscss/core/value';
 import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js';
 import { addExact } from '../../util/decimal.js';
 

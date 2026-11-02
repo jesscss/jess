@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { colorHsl, makeColorHsl, defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { colorHsl, makeColorHsl, defineFunction } from '@jesscss/core/value';
 import { requireColor } from './color-helper.js';
 
 /** `greyscale(color)` — zero the saturation. Byte-faithful to `less/greyscale`. */

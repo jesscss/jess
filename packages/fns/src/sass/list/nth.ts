@@ -1,4 +1,4 @@
-import { defineFunction, groupItems, listValueAt } from '@jesscss/core';
+import { defineFunction, groupItems, listValueAt } from '@jesscss/core/value';
 import { resolveSassListIndex } from './util.js';
 
 const nth = defineFunction('nth', {

@@ -1,5 +1,5 @@
-import { groupItems, makeAny, defineFunction } from '@jesscss/core';
-import type { Fn } from '@jesscss/core';
+import { groupItems, makeAny, defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 
 /**
  * `escape(value)` — URL-encode the string form of `value` (`ctx.stringify` = legacy

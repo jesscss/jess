@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { makeDimension, defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { makeDimension, defineFunction } from '@jesscss/core/value';
 import { requireColor, toHsv } from './color-helper.js';
 
 /** `hsvvalue(color)` — the hsv value as a percentage. Byte-faithful to `less/hsvvalue`. */

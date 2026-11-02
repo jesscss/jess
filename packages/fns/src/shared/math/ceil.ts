@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 
 /** Less `ceil()` and Sass `math.ceil()` over the canonical value domain. */
 const ceil = defineFunction('ceil', {

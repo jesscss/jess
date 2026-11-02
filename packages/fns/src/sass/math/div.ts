@@ -1,4 +1,4 @@
-import { defineFunction, emitValue, groupItems, isValueGroupArray, operate, type Dimension, type ValueGroup } from '@jesscss/core';
+import { defineFunction, emitValue, groupItems, isValueGroupArray, operate, type Dimension, type ValueGroup } from '@jesscss/core/value';
 
 const number = (item: ValueGroup, name: string): Dimension => {
   if (isValueGroupArray(item) || item.type !== 'Dimension') {

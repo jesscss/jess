@@ -7,7 +7,7 @@
  * map.get((a: 1, b: 2), a) // 1
  * map.get((a: (b: 2)), a, b) // 2
  */
-import { defineFunction, NULL } from '@jesscss/core';
+import { defineFunction, NULL } from '@jesscss/core/value';
 import { collectionValueAt, nestedCollection } from './util.js';
 
 const get = defineFunction(

@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { colorRawRgb, defineFunction, makeColorRgb } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { colorRawRgb, defineFunction, makeColorRgb } from '@jesscss/core/value';
 import { noExcess, percentAmount, requireColor } from './kernels.js';
 
 /**

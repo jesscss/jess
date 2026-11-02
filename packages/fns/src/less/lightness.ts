@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { colorHslClamped, makeDimension, defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { colorHslClamped, makeDimension, defineFunction } from '@jesscss/core/value';
 import { requireColor } from './color-helper.js';
 
 /** `lightness(color)` — the hsl lightness as a percentage. Byte-faithful to `less/lightness`. */

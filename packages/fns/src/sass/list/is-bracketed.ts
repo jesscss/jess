@@ -1,4 +1,4 @@
-import { defineFunction, isBracketedList, makeBool } from '@jesscss/core';
+import { defineFunction, isBracketedList, makeBool } from '@jesscss/core/value';
 
 /** Sass `list.is-bracketed()` reads the shared Block delimiter fact. */
 const isBracketed = defineFunction('is-bracketed', {

@@ -1,5 +1,5 @@
-import { defineFunction, emitValue, isValueGroupArray, makeAny } from '@jesscss/core';
-import type { Fn } from '@jesscss/core';
+import { defineFunction, emitValue, isValueGroupArray, makeAny } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 
 /**
  * `e(value)` — escape a value into opaque bytes emitted as-is. The result is an

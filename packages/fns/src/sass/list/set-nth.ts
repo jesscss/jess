@@ -1,4 +1,4 @@
-import { defineFunction, listValueAt } from '@jesscss/core';
+import { defineFunction, listValueAt } from '@jesscss/core/value';
 import { createSassListResult, getSassListInfo, resolveSassListIndex } from './util.js';
 
 const setNth = defineFunction('set-nth', {

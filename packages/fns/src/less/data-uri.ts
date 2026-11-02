@@ -1,5 +1,5 @@
-import { groupItems, makeKeyword, defineFunction } from '@jesscss/core';
-import type { Fn, Value } from '@jesscss/core';
+import { groupItems, makeKeyword, defineFunction } from '@jesscss/core/value';
+import type { Fn, Value } from '@jesscss/core/value';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { lookupMime } from '../util/mime.js';
 

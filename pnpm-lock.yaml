@@ -724,6 +724,9 @@ importers:
 
   packages/rollup-plugin-jess:
     dependencies:
+      '@jesscss/fns':
+        specifier: workspace:*
+        version: link:../fns
       jess:
         specifier: workspace:*
         version: link:../jess
