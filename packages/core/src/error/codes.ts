@@ -428,7 +428,7 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     'eval/expose-key-conflict',
     {
       summary: '@expose ${name} and @expose ${other} at ${at} are both ${key} in JavaScript',
-      reason: 'The runtime keys each exposed variable in lowerCamelCase, as CSS modules name classes, so ${name} and ${other} would be one key.',
+      reason: 'The runtime keys each exposed variable by its name with dash-case turned to camelCase (brand-color is brandColor), so ${name} and ${other} would be one key.',
       fix: 'Rename one of the variables, or expose only one of them.'
     }
   ],

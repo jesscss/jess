@@ -150,13 +150,12 @@ interface PendingExpose<F> {
 }
 
 /**
- * The key an exposed name has in the JS runtime: dash-case to lowerCamelCase,
- * as CSS modules name their classes (`brand-color` and `Brand-color` are
- * `brandColor`; a leading or trailing dash is dropped).
+ * The key an exposed name has in the JS runtime: its dash-case turned to
+ * camelCase, letter case otherwise kept (`brand-color` is `brandColor`,
+ * `Brand-color` is `BrandColor`; a leading or trailing dash is dropped).
  */
 export function exportKey(name: string): string {
-  const key = name.replace(/-+(.?)/g, (_dashes, next: string, at: number) => (at === 0 ? next : next.toUpperCase()));
-  return key.charAt(0).toLowerCase() + key.slice(1);
+  return name.replace(/-+(.?)/g, (_dashes, next: string, at: number) => (at === 0 ? next : next.toUpperCase()));
 }
 
 /** `file:line:column` of a location, for a diagnostic naming another site. */
