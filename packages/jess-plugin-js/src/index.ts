@@ -17,6 +17,7 @@ import {
   encodeEngineValue,
   engineCode,
   engineFailure,
+  engineOwnCode,
   hostFacts,
   denoRunArgs,
   encodeHostConfigs,
@@ -325,6 +326,9 @@ export class JsPlugin extends AbstractPlugin {
   private static liveInstances = new Set<JsPlugin>();
   name = 'js';
   supportedExtensions = Array.from(SCRIPT_EXTENSIONS);
+
+  /** `importPlugin` never loads a script outside the engine: it moves the render there. */
+  readonly sandboxesScripts = true;
   private runtimeState: RuntimeState = { status: 'idle' };
   private worker: ChildProcessWithoutNullStreams | undefined;
 
@@ -432,19 +436,16 @@ export class JsPlugin extends AbstractPlugin {
         env: sanitizeSpawnEnv(process.env)
       }).status === 0;
 
+    /*
+     * An explicit `denoCommand`, and else the pinned binary, are used without
+     * running them first: `deno --version` blocks this thread for ~40 ms, inside
+     * the first render now that the engine starts ahead of it. A binary that
+     * cannot run fails the spawn, which reports the same guidance.
+     */
     const explicit = this.opts.denoCommand;
     if (explicit !== undefined) {
-      if (!runs(explicit)) {
-        throw new Error(RUNTIME_MISSING_MESSAGE);
-      }
       return (this.denoCommand = explicit);
     }
-
-    /*
-     * The pinned binary is used without running it first: `deno --version`
-     * blocks this thread for ~40 ms. A binary that cannot run fails the
-     * spawn, which reports the same guidance.
-     */
     const bundled = resolveBundledDenoPath();
     if (bundled !== undefined) {
       return (this.denoCommand = bundled);
@@ -1025,6 +1026,17 @@ export class JsPlugin extends AbstractPlugin {
     const prewarm = new AbortController();
     this.prewarmAbort = prewarm;
     const warm = async () => {
+      /*
+       * Deno starts now, on the read set its code closure can only add to (the
+       * read roots, the compiler's and this plugin's own packages): the closure,
+       * computed next, is what held a cold start back. When the closure adds a
+       * folder, `useReadSet` switches the process before any render reaches it.
+       */
+      const early = await readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, engineOwnCode(request.compiler.module, import.meta.url));
+      if (!prewarm.signal.aborted && this.readSetTurn === undefined && this.runtimeState.status === 'idle') {
+        this.nextReadSet = early;
+        this.ensureRuntime().catch(() => undefined);
+      }
       const { code, release } = await this.useReadSet(request, prewarm.signal);
       try {
         if (prewarm.signal.aborted) {

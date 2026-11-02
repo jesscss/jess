@@ -47,10 +47,23 @@ A compile runs in one of two places, and the CSS must not depend on which.
 The rule needs no prediction. A compile starts in Node. The first time it
 reaches a script boundary, the plugin-js proxy stops it, and the compiler runs
 that render again in Deno. The compiler remembers that entry path, so later
-renders of it go to Deno directly. The Node work thrown away is the time to the
-first boundary: 145 ms in a cold process for `bootstrap4.less`, then never
-again for that compiler. The CLI uses the same compiler, so it behaves the same
-way and switches to Deno only when the compile needs it.
+renders of it go to Deno directly. The CLI uses the same compiler, so it
+behaves the same way and switches to Deno only when the compile needs it.
+
+A `@plugin` evaluation is certain to reach moves the render earlier, when
+import planning places its document, and the rest of the import graph is
+never parsed in Node only to be thrown away. That is a `@plugin` at the top
+level of the entry, or of a sheet reached through plain imports on the
+document's top-level chain (no at-rule, `(reference)` import or `@compose`
+above it), whose target is a plain string, and whose loader runs every
+script in the sandbox (`PluginInterface.sandboxesScripts`, as plugin-js
+does): `rerouteForPlacedPlugins` (core) checks each sheet the planner places.
+It loads nothing; a `@plugin` that does not load, or a compile with scripts
+disabled, is left to evaluation, which reports it. A `@plugin` that is only
+conditionally evaluated (inside a mixin, a guarded rule, an at-rule or a
+detached ruleset, or in a sheet imported there) moves the render only if
+evaluation reaches it, as before: moving early must never change where a
+compile that does not reach a script runs.
 
 The stop must not be swallowed. The `@plugin` load path reports load failures
 as diagnostics and keeps evaluating (P45), so the proxy signals the reroute
@@ -63,7 +76,10 @@ script finds it warm. A render that loads no script lets it go (the process
 is killed and the read-set work still in flight is aborted), and no later
 render in that process starts one ahead of time. Its output never depends on
 Deno; its cold start pays the plugin import and the spawn call on the main
-thread, about 3 ms.
+thread, about 3 ms. Deno spawns on the read set its code closure can only add
+to (the read roots and the compiler's and plugin-js's own packages) while the
+closure, about a hundred package manifests, is walked; when the closure adds a
+folder, the process is switched before any render reaches it.
 
 **Compilers that can run there.** A compiler class runs in the engine when it
 declares its own `static moduleIdentity` (module and export), as jess's
@@ -175,11 +191,15 @@ with `DENO_CACHE_DB_MODE=memory` in the engine's environment.
   by default, needing no write permission, keyed by the main module, which
   every engine shares; a script could leave data there for a later render of
   any project. With `DENO_CACHE_DB_MODE=memory` the index that finds an entry
-  lives in the process and ends with it, so a later engine finds nothing. Deno
-  still writes each `put()` body to a file under
-  `$DENO_DIR/location_data/web_cache/`; nothing in a later process can reach
-  it, since the index is gone and `$DENO_DIR` is not in the read set (unless
-  `DENO_DIR` is set to a folder inside a read root), so it is not a channel. (`localStorage` is absent on the engine's worker thread.)
+  lives in the process and ends with it, so a later engine finds nothing
+  through `caches`. Deno 2.9.6 still writes each `put()` body to a file under
+  `$DENO_DIR/location_data/web_cache/`. Those files are readable by a later
+  engine whenever a read root contains `$DENO_DIR`, which the default
+  (`~/Library/Caches/deno` on macOS, `~/.cache/deno` on Linux) is under any
+  read root at `~` or above. That only lets one compile see what another left,
+  which the sandbox does not guard against (§3, one trust domain per
+  compiler); it holds a script's own data, not the user's files.
+  (`localStorage` is absent on the engine's worker thread.)
 - **`--ignore-read`** makes a read outside the set fail with Deno's own
   `NotFound` instead of `NotCapable`. The compile needs this: its config search
   and package resolution probe folders above the roots, and a probe that throws
