@@ -49,18 +49,32 @@ import { renderCombinator } from './node.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { WHITESPACE, runSeparator } from './emit-jess-run.js';
 import { MEMBER_CALL, moduleImportText, selectorParseCall, unquoteLiteral } from './emit-jess-module.js';
+import { NO_PRELUDE, preludeImports, styleImportText, type ImportSpeller } from './emit-jess-import.js';
 import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
 import type { Trivia } from '../types/index.js';
 
 export interface EmitJessOptions {
 
   /**
-   * Rewrites a converted `@import` path. `.jess` imports name the file they
-   * load — no extension inference — so which `.jess` file a Less import becomes
-   * is the CONVERTER's fact (it knows what it wrote), not the printer's. Called
-   * with the authored path after the `./` rewrite; absent, the path is kept.
+   * Rewrites a converted import path. `.jess` imports name the file they load —
+   * no extension inference, no package lookup — so which file an import becomes
+   * is the CONVERTER's fact (it knows what the import resolved to and what it
+   * wrote), not the printer's. Called with the path as authored and the import;
+   * `null` keeps it a CSS `@import` written as authored. Absent, a Less import's
+   * bare path gains `./`. Throwing {@link NoJessSpelling} records a gap for the
+   * import.
    */
-  readonly importPath?: (path: string) => string;
+  readonly importPath?: (path: string, node: StyleImport) => string | null;
+
+  /**
+   * Where the render wrote a root CSS `@import`: `'first'` in the output
+   * prelude, ahead of every rule (ledger N9), `'dropped'` as a duplicate there,
+   * or `null` where it stands. A `.jess` CSS `@import` is written where it
+   * stands, so the printer writes a `'first'` one ahead of the file's other
+   * statements and a `'dropped'` one not at all. The converter's fact (it saw
+   * the render); throwing {@link NoJessSpelling} records a gap for the import.
+   */
+  readonly preludeImport?: (node: AtRuleStatement) => 'first' | 'dropped' | null;
 
   /**
    * The function module a converted file's calls resolved against, and the
@@ -178,7 +192,8 @@ class JessPrinter {
 
   /** Comment runs a custom-property value printed in place ({@link customValue}). */
   readonly #printed = new Set<Trivia>();
-  readonly #importPath: (path: string) => string;
+  readonly #importPath: EmitJessOptions['importPath'];
+  readonly #preludeImport: EmitJessOptions['preludeImport'];
   readonly #functions: EmitJessOptions['functions'];
 
   /** Call name → export name of every module function this file calls. */
@@ -190,6 +205,18 @@ class JessPrinter {
   /** Set while a CSS call's arguments print, where a `{ … }` is CSS's own argument braces (`CurlyList`). */
   #cssCall = false;
 
+  /** Whether the statement being printed is in the `Stylesheet` prologue, where a CSS `@import` may stand. */
+  #prologue = false;
+
+  /** What an import's spelling reads from this printer ({@link styleImportText}). */
+  readonly #importSpeller: ImportSpeller = {
+    importPath: (path, node) => (this.#importPath === undefined ? undefined : this.#importPath(path, node)),
+    prologue: () => this.#prologue,
+    value: node => this.value(node, At.Value),
+    binding: node => this.variableDeclaration(node, ''),
+    gap
+  };
+
   /** The value spelling a map and a curly list are written with ({@link jessCollection}, {@link jessCurlyList}). */
   readonly #lists: ListSpeller = { value: (slot, indent) => this.value(slot, At.Value, indent), gap };
 
@@ -198,7 +225,8 @@ class JessPrinter {
 
   constructor(root: Stylesheet, options: EmitJessOptions) {
     this.#comments = triviaMapOf(root)?.commentRuns() ?? [];
-    this.#importPath = options.importPath ?? (path => path);
+    this.#importPath = options.importPath;
+    this.#preludeImport = options.preludeImport;
     this.#functions = options.functions;
   }
 
@@ -215,27 +243,44 @@ class JessPrinter {
     let out = '';
     let cursor = start;
     let prologue = where === 'root';
+    const prelude = where === 'root'
+      ? preludeImports(rules, this.#preludeImport, rule => this.statement(rule, indent), error => this.record(error))
+      : NO_PRELUDE;
+    let leads = prelude.leads;
     for (const [index, rule] of rules.entries()) {
+      if (prelude.moved.has(rule)) {
+        continue;
+      }
       const s = startOf(rule);
       if (s !== NO_SPAN) {
         out += this.commentsBetween(cursor, s, indent);
       }
+      if (leads !== '' && !(rule.type === 'AtRuleStatement' && rule.name.toLowerCase() === '@charset')) {
+        out += leads;
+        leads = '';
+      }
       try {
         this.placement(rule, where, index, prologue);
+        this.#prologue = prologue;
         prologue &&= isPrologue(rule);
         out += this.statement(rule, indent);
       } catch (error) {
-        if (!(error instanceof NoJessSpelling)) {
-          throw error;
-        }
-        this.gaps.push({ nodeType: error.nodeType, reason: error.reason });
+        this.record(error);
       }
       const e = endOf(rule);
       if (e !== NO_SPAN) {
         cursor = e;
       }
     }
-    return out + this.commentsBetween(cursor, end, indent);
+    return out + leads + this.commentsBetween(cursor, end, indent);
+  }
+
+  /** Records the gap a statement's printing threw; any other error propagates. */
+  record(error: unknown): void {
+    if (!(error instanceof NoJessSpelling)) {
+      throw error;
+    }
+    this.gaps.push({ nodeType: error.nodeType, reason: error.reason });
   }
 
   commentsBetween(from: number, to: number, indent: string): string {
@@ -322,7 +367,7 @@ class JessPrinter {
       case 'AtRuleStatement': return `${indent}${this.atRuleStatement(node)};\n`;
       case 'UnknownAtRuleBlock':
         return `${indent}${node.name}${node.prelude === null ? '' : ` ${node.prelude}`} {${node.rawBody}}\n`;
-      case 'StyleImport': return `${indent}${this.styleImport(node)};\n`;
+      case 'StyleImport': return `${indent}${styleImportText(node, this.#importSpeller)};\n`;
       case 'Comment': return `${indent}${node.text}\n`;
       case 'Reference': return `${indent}${this.referenceCall(node)};\n`;
       case 'For': {
@@ -593,52 +638,6 @@ class JessPrinter {
 
   atRuleStatement(node: AtRuleStatement): string {
     return `${node.name}${node.prelude === null ? '' : ` ${this.value(node.prelude, At.Prelude)}`}`;
-  }
-
-  /**
-   * `StyleImport` `@-import "<path>"`. Less resolves a bare `"foo"` against the
-   * importing file first; `.jess` requires file-relative paths to be written
-   * explicitly, so a bare relative target gains `./` (the migration guide's
-   * documented rewrite). The option clause has no `.jess` spelling at all.
-   */
-  styleImport(node: StyleImport): string {
-    if (node.mode !== 'import' || node.alias !== null || node.config !== null || node.forward) {
-      if (node.name === '@-compose' || node.name === '@-export') {
-        const config = node.config === null
-          ? ''
-          : ` ${node.config.kind} {${node.config.bindings.map(b => ` ${this.variableDeclaration(b, '')};`).join('')} }`;
-        const as = node.namespace === null ? '' : ` as ${node.namespace}`;
-        return `${node.name} ${this.importTarget(node, false)}${as}${config}`;
-      }
-      return gap('StyleImport', 'module import semantics (`as`/`with`/forward) outside `@-compose`/`@-export`');
-    }
-    if (node.options !== null) {
-      const words = node.options.value.map(o => (!isSlotArray(o) && 'src' in o ? String(o.src).trim() : '?')).join(', ');
-      return gap('StyleImport', `import option \`(${words})\`: \`@-import\` takes no option clause (\`@-reference\` parses only as an inert at-rule)`);
-    }
-    return `@-import ${this.importTarget(node, node.name !== '@-import')}`;
-  }
-
-  importTarget(node: StyleImport, fromLess: boolean): string {
-    /*
-     * A compile-time import's `url(…)` wrapper is syntax around the same path,
-     * so it prints as the plain quoted path the `.jess` rule takes.
-     */
-    const target = node.target.type === 'Url' ? node.target.value : node.target;
-    if ((target.type !== 'Quoted' && target.type !== 'Any') || (target.type === 'Quoted' && (target.escaped || target.interp !== null))) {
-      return gap('StyleImport', 'an interpolated or escaped import target: `.jess` imports take a plain quoted path');
-    }
-    const quote = target.type === 'Quoted' ? target.quote : '"';
-    const path = target.type === 'Quoted' ? target.value : target.src;
-    if (!fromLess) {
-      return `${quote}${path}${quote}`;
-    }
-    const relative = path.startsWith('./') || path.startsWith('../') || path.startsWith('/')
-      || /^[a-z][a-z0-9+.-]*:/iu.test(path);
-    const rewritten = this.#importPath(relative ? path : `./${path}`);
-    return rewritten.includes(quote)
-      ? gap('StyleImport', 'an import path containing its own quote character')
-      : `${quote}${rewritten}${quote}`;
   }
 
   /* -------------------------------------------------------------- selectors */
@@ -1058,8 +1057,13 @@ class JessPrinter {
      * size(…)` (CSS Conditional 5; ledger N17) — which `.jess` reads as CSS does, so it
      * is written as authored, never as escaped text.
      */
-    if (at === At.Prelude && node.parts.every(part => 'lit' in part)) {
-      return node.parts.map(part => ('lit' in part ? part.lit : '')).join('');
+    /* A prelude takes CSS leaves or a whole `${…}` (ledger P13): `@media (prefers-color-scheme: #{$name})`. */
+    if (at === At.Prelude) {
+      return node.parts.every(part => 'lit' in part)
+        ? node.parts.map(part => ('lit' in part ? part.lit : '')).join('')
+        : node.parts.length === 1
+          ? this.template(node, 'name')
+          : gap('Interpolation', 'a template inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}`');
     }
     const first = node.parts[0];
     if (first !== undefined && 'ref' in first && first.ref.type === 'Expression') {
