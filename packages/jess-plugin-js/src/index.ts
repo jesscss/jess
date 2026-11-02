@@ -174,6 +174,14 @@ const resolveBundledDenoPath = (): string | undefined => {
   }
 };
 
+/** Why a Deno worker that exited before it was ready did so (see `startWorker`). */
+const startupExitError = (said: string, code: number | null, signal: NodeJS.Signals | null, denoCommand: string): Error =>
+  new Error(said !== ''
+    ? `Deno worker exited during startup.\n${said}`
+    : signal !== null || code === null
+      ? `Deno worker was stopped during startup${signal === null ? '' : ` by ${signal}`}.`
+      : `${RUNTIME_MISSING_MESSAGE}\nDeno worker exited during startup without a word: "${denoCommand}" may not be Deno.`);
+
 const BOOT_TIMEOUT_MS = 8000;
 const IDLE_SHUTDOWN_MS = 5_000;
 
@@ -579,15 +587,14 @@ export class JsPlugin extends AbstractPlugin {
 
       /*
        * A worker that dies before it is ready fails startup at once, with its
-       * stderr. One that exits without a word is most likely not Deno at all
-       * (a \`denoCommand\` naming another program), so it gets the same guidance
-       * as a missing binary.
+       * stderr. One stopped by a signal (killed, out of memory) says so. One that
+       * exits on its own without a word is most likely not Deno at all (a
+       * \`denoCommand\` naming another program), so it gets the same guidance as
+       * a missing binary.
        */
-      child.once('close', () => {
+      child.once('close', (code: number | null, signal: NodeJS.Signals | null) => {
         clearTimeout(timer);
-        reject(new Error(stderrText.trim()
-          ? `Deno worker exited during startup.\n${stderrText.trim()}`
-          : `${RUNTIME_MISSING_MESSAGE}\nDeno worker exited during startup without a word: "${denoCommand}" may not be Deno.`));
+        reject(startupExitError(stderrText.trim(), code, signal, denoCommand));
       });
     });
   }

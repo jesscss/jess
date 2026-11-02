@@ -173,6 +173,18 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     await expect(sandboxed(plugin).import(modulePath)).rejects.toThrow(/Deno runtime is required[\s\S]*exited during startup without a word/);
   });
 
+  it('names the signal, not a missing Deno, when the worker is killed during startup', async () => {
+    const modulePath = writeModule('export const x = 1;');
+    const root = path.dirname(modulePath);
+    const denoCommand = path.join(root, 'killed-deno');
+    fs.writeFileSync(denoCommand, '#!/bin/sh\nkill -9 $$\n', { mode: 0o755 });
+    const plugin = jsPlugin({ jsReadRoot: root, denoCommand }) as JsPlugin;
+    plugins.push(plugin);
+    const failure = await sandboxed(plugin).import(modulePath).then(() => undefined, (err: unknown) => String(err));
+    expect(failure).toMatch(/stopped during startup by SIGKILL/);
+    expect(failure).not.toMatch(/Deno runtime is required/);
+  });
+
   it('runs a render after an engine started ahead of time is let go while it starts', async () => {
     const modulePath = writeModule('export const x = 1;');
     const root = path.dirname(modulePath);
