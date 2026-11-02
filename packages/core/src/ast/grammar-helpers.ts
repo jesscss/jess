@@ -63,19 +63,25 @@ export function isToken(value: unknown): value is Token {
  * dialects must agree on where a body starts and ends.
  */
 export function bodySpanFromRaw(rawChildren: readonly unknown[]): SourceSpan | undefined {
+  /* The first `{` from the front and the last `}` from the back: the body between them is not read. */
   let start: number | undefined;
-  let end: number | undefined;
   for (const child of rawChildren) {
-    if (!isSpannedToken(child)) {
-      continue;
-    }
-    if (child.value === '{' && start === undefined) {
+    if (isSpannedToken(child) && child.value === '{') {
       start = child.span.end;
-    } else if (child.value === '}') {
-      end = child.span.start;
+      break;
     }
   }
-  return start === undefined || end === undefined || end < start ? undefined : { start, end };
+  if (start === undefined) {
+    return undefined;
+  }
+  for (let index = rawChildren.length - 1; index >= 0; index--) {
+    const child = rawChildren[index];
+    if (isSpannedToken(child) && child.value === '}') {
+      const end = child.span.start;
+      return end < start ? undefined : { start, end };
+    }
+  }
+  return undefined;
 }
 
 export function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[]): T {

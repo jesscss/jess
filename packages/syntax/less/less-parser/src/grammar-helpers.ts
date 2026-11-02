@@ -26,7 +26,7 @@ import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './c
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
-import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
+import { LESS_NODE_TRIVIA_STRIDE, type ValuePieceKind, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex, valueRunSeparators } from './trivia-layout.js';
 import { diagnosticsOf, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
 import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
@@ -98,11 +98,11 @@ type RulesetTailFact = {
   readonly firstExtensions: readonly ExtendTargetFact[];
   readonly branches: readonly SelectorBranchFact[];
   readonly selectorEnd: number;
-  readonly guard?: MixinGuard;
+  readonly guard: MixinGuard | undefined;
   readonly rules: readonly Statement[];
   readonly extensions: readonly ExtendInstruction[];
-  readonly bodySpan?: SourceSpan;
-  readonly terminated?: true;
+  readonly bodySpan: SourceSpan | undefined;
+  readonly terminated: boolean;
 };
 type CustomValuePart = string | InterpolationFact | Lookup | readonly CustomValuePart[];
 type EnclosedNameFact = { readonly name: string };
@@ -948,28 +948,15 @@ function valuePieceReducerWithTrivia(
   if (values.length === 1) {
     return values[0]!;
   }
+  return withValueLayout(values, valueRunSeparators(children, triviaLog, state, valuePieceKind));
+}
 
-  /* A delim is glued to its neighbours unless trivia stands between them (ledger N18). */
-  const separators: string[] = [];
-  let previousValue = -1;
-  for (let index = 0; index < children.length; index += 1) {
-    const child = children[index];
-    if (!isValuePiece(child)) {
-      continue;
-    }
-    if (previousValue >= 0) {
-      const trivia = triviaTextAtInsertIndex(triviaLog, state, index);
-      separators.push(trivia.length > 0
-        ? trivia
-        : children.slice(previousValue + 1, index).some(isAdjacentComponentBoundary)
-          || ((isDelimPiece(child) || isDelimPiece(children[previousValue])) && !hasTriviaAtInsertIndex(triviaLog, index))
-          ? ''
-          : ' ');
-    }
-    previousValue = index;
+/* What a value run's child is to its layout. */
+function valuePieceKind(child: unknown): ValuePieceKind {
+  if (isValuePiece(child)) {
+    return isDelimPiece(child) ? 'delim' : 'piece';
   }
-
-  return withValueLayout(values, separators);
+  return isAdjacentComponentBoundary(child) ? 'glue' : 'other';
 }
 
 /** A value piece: a value node, or the bare `-` / `%` a value may hold. */
@@ -1827,11 +1814,7 @@ function isBareMixinCallFact(value: unknown): value is BareMixinCallFact {
 }
 
 function isRulesetTailFact(value: unknown): value is RulesetTailFact {
-  return typeof value === 'object' && value !== null
-    && 'firstExtensions' in value && Array.isArray(value.firstExtensions) && value.firstExtensions.every(isExtendTargetFact)
-    && 'branches' in value && Array.isArray(value.branches) && value.branches.every(isSelectorBranchFact)
-    && 'rules' in value && Array.isArray(value.rules) && value.rules.every(isStatement)
-    && 'extensions' in value && Array.isArray(value.extensions) && value.extensions.every(isExtendInstruction);
+  return typeof value === 'object' && value !== null && 'firstExtensions' in value;
 }
 
 function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExtendsFact {
