@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { getConfigWithMeta, hostConfigsFor, type ConfigWithMeta } from './config.js';
+import { configsAboveReadRoot, getConfigWithMeta, hostConfigsFor, prepareConfigsFor, type ConfigWithMeta } from './config.js';
 import {
   Context,
   ImportTargets,
@@ -51,6 +51,7 @@ import {
   packageInstalled,
   prewarmEngine,
   prewarmWhenInstalled,
+  inScriptSandbox,
   routeRender,
   runInEngine,
   withColors,
@@ -494,6 +495,14 @@ const resolveJsReadRoot = (
   return entryRoot ?? configRoot ?? process.cwd();
 };
 
+/**
+ * Whether a source file's settings load its `styles.config` files. A config is
+ * code, so none is loaded for a file in an installed package: compiling a
+ * project never runs a dependency's config.
+ */
+const loadsConfig = (sourcePath: string): boolean =>
+  path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules');
+
 const getConsumerResolutionBaseDir = (
   filePath: string | undefined,
   configFilePath: string | undefined
@@ -578,7 +587,7 @@ export class Compiler {
        */
       const folder: ConfigWithMeta = sourcePath === filePath
         ? entryFolder
-        : path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules')
+        : loadsConfig(sourcePath)
           ? getConfigWithMeta(path.dirname(sourcePath))
           : { config: {} };
       const params = { language: sourceLanguage, input: sourcePath };
@@ -865,6 +874,9 @@ export class Compiler {
     const proxy: LazyPluginInterface = {
       name: 'js',
       supportedExtensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
+
+      /* It hands every `@plugin` to the script plugin, which runs it in the sandbox. */
+      sandboxesScripts: true,
       import: async (absoluteFilePath, route) => {
         const plugin = await getPlugin();
         if (!plugin.import) {
@@ -1026,6 +1038,11 @@ export class Compiler {
     }
     if (route !== undefined) {
       contextOptions.scriptSandbox = route;
+    }
+
+    /* In the sandbox, the config chain a file's settings need is decoded before it is parsed. */
+    if (inScriptSandbox()) {
+      contextOptions.prepareSource = file => (loadsConfig(file) ? prepareConfigsFor(path.dirname(file)) : undefined);
     }
     const usesDeprecatedDisablePluginRule = Boolean(contextOptions.disablePluginRule);
     contextOptions.disableScriptModules = Boolean(contextOptions.disableScriptModules
@@ -1348,7 +1365,7 @@ export class Compiler {
    */
   private routed<T>(method: EngineMethod, call: RoutedCall<T>): Promise<T> {
     const compiler = compilerModuleOf(this);
-    if (compiler === undefined || this.scriptPluginSpecifier === undefined) {
+    if (compiler === undefined || this.scriptPluginSpecifier === undefined || inScriptSandbox()) {
       return call.here(undefined);
     }
 
@@ -1377,8 +1394,13 @@ export class Compiler {
           method,
           args: call.engineArgs,
 
-          /* The sandbox may not read the configs above its read root; the host sends what it resolved. */
-          configs: hostConfigsFor(entryDir, [entryDir, request.jsReadRoot])
+          /*
+           * The sandbox may not read the configs above its read root: the host
+           * sends what it resolved for the entry, and resolves the chain above
+           * each read root when the script plugin knows the roots.
+           */
+          configs: hostConfigsFor(entryDir),
+          configsAbove: configsAboveReadRoot
         });
       }
     });

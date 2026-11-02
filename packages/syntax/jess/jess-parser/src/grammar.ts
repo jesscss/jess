@@ -4988,14 +4988,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(atBlockStatement),
       literal('}')
     ),
-    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValueNode(children[1]),
       collectBlockStatements(
         children,
         3
       )
-    ), rawChildren), span)
+    ), children), span)
   );
 
   /*
@@ -5061,14 +5061,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(g.PropertyDescriptor),
       literal('}')
     ),
-    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireKeyword(children[1]),
       requireStatements(children.slice(
         3,
         -1
       ))
-    ), rawChildren), span)
+    ), children), span)
   );
 
   /*
@@ -5091,7 +5091,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => {
+    (children) => {
       const selectors = children.filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
         .map(selector => selector);
       const bodyOpen = children.findIndex(child => isToken(child) && child.value === '{');
@@ -5104,7 +5104,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           bodyOpen + 1,
           -1
         ).filter(isJessDeclaration))
-      ), rawChildren);
+      ), children);
     }
   );
   const Keyframes = node<AtRuleBlock>(
@@ -5119,14 +5119,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(g.KeyframeBlock),
       literal('}')
     ),
-    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValueNode(children[1]),
       requireStatements(children.slice(
         3,
         -1
       ))
-    ), rawChildren), span)
+    ), children), span)
   );
 
   /*
@@ -5517,7 +5517,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(atBlockStatement),
       literal('}')
     ),
-    (children, _fields, span, rawChildren) => {
+    (children, _fields, span) => {
       /* The optional prelude capture emits no child when empty, so anchor on the
        * `{` literal; `collectBlockStatements` skips tokens, so its start index is
        * unchanged whether or not a prelude child is present. */
@@ -5530,7 +5530,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           children,
           2
         )
-      ), rawChildren), span);
+      ), children), span);
     }
   );
 
@@ -5559,14 +5559,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(atBlockStatement),
       literal('}')
     ),
-    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
       requireJessAtRuleHeader(children[0]).name,
       requireJessAtRuleHeader(children[0]).prelude,
       collectBlockStatements(
         children,
         2
       )
-    ), rawChildren), span)
+    ), children), span)
   );
   const AtRuleStatement = node<AtRuleStatement>(
     'AtRuleStatement',
@@ -5789,7 +5789,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(nestedBodyStatement),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => {
+    (children) => {
       const bodyOpen = children.findIndex(child =>
         isToken(child) && child.value === '{');
       if (bodyOpen < 0) {
@@ -5803,7 +5803,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           bodyOpen + 1
         ),
         children.find((child): child is GuardNode => typeof child === 'object' && child !== null && 'g' in child)
-      ), rawChildren);
+      ), children);
     }
   );
 
@@ -6354,7 +6354,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(rulesetBodyItem),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => {
+    (children) => {
       requireExactToken(
         children[1],
         '{'
@@ -6371,7 +6371,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           2
         ),
         extensions.length ? extensions : undefined
-      ), rawChildren);
+      ), children);
     }
   );
   const NestedRuleset = node<Ruleset>(
@@ -6382,7 +6382,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(rulesetBodyItem),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => {
+    (children) => {
       requireExactToken(
         children[1],
         '{'
@@ -6399,7 +6399,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           2
         ),
         extensions.length ? extensions : undefined
-      ), rawChildren);
+      ), children);
     }
   );
   const Stylesheet = node<Stylesheet>(

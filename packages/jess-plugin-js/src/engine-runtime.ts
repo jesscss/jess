@@ -168,15 +168,28 @@ const RENDER_METHODS = new Set(['render', 'renderToResult', 'renderString', 'saf
 /** Where the compiler reads the host's resolved `styles.config` settings during a render (its `HostConfigs`). */
 const HOST_CONFIGS = Symbol.for('@jesscss/compiler/host-configs');
 
+/** The config files a chain merges, else the folder it was searched from: what a chain that cannot load is named by. */
+const configFilesOf = (chain, dir) => (Array.isArray(chain?.configFilePaths) && chain.configFilePaths.length > 0 ? chain.configFilePaths.join(', ') : dir);
+
+/**
+ * The host's settings for a render. The entry folder's are decoded now, since
+ * the render reads them first; one that fails to load is kept as the config it
+ * names, so the compile reports it. A chain above a read root stays encoded
+ * until a file needs it (the compiler's `prepareConfigsFor`): decoding loads
+ * and runs a recorded plugin factory.
+ */
 const decodeHostConfigs = async (configs) => {
   if (!configs) {
     return undefined;
   }
   const folders = {};
   for (const [dir, folder] of Object.entries(configs.folders)) {
-    folders[dir] = await decodeEngineValue(folder);
+    folders[dir] = await decodeEngineValue(folder).catch(err => ({
+      unsendable: configFilesOf(folder, dir),
+      reason: `cannot be loaded in the script sandbox: ${err?.message ?? String(err)}`
+    }));
   }
-  return { folders, searches: configs.searches };
+  return { folders, above: configs.above, decode: decodeEngineValue, decoded: new Map() };
 };
 
 /**

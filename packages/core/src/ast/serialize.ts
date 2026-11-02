@@ -254,7 +254,7 @@ import { collectInstructionAtoms, documentExtendClass, documentWalkFacts, heldAn
 import { leadsWithElement } from './extend/conflict.js';
 import { isPseudoElementName, isUserActionToken, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
-import type { ModuleConfigRejection } from '../plugin.js';
+import { type ModuleConfigRejection, rerouteForPlacedPlugins } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { writtenListValue, writtenResult } from './empty-list.js';
@@ -13855,7 +13855,13 @@ function planImportedFacts(
         }
       }
       const collect = async (): Promise<void> => {
-        await visit(
+        /*
+         * A plain import placed on the document's top-level chain (no at-rule,
+         * reference import or module above it) is evaluated for certain, and so
+         * is a `@plugin` at its top level: one the sandbox runs moves the render
+         * there now (rerouteForPlacedPlugins).
+         */
+        await rerouteForPlacedPlugins(e.s.context?.opts.scriptSandbox !== undefined && !isCompose && !reference && !hidden && importScope === '' ? loaded.document!.rules : null, e.s.context).then(() => visit(
           loaded.document!.rules,
           childFrame,
           reference ? null : importCssPlan,
@@ -13873,7 +13879,7 @@ function planImportedFacts(
 
           /* An imported sheet's root is its importer's scope; a composed module is its own. */
           isCompose ? childFrame : importScope
-        );
+        ));
       };
       const key = isCompose || loaded.key === undefined || expanding.has(loaded.key) ? undefined : loaded.key;
       if (key !== undefined) {
