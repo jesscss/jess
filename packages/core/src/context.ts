@@ -1,6 +1,7 @@
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, ScriptSandboxRoute, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
+import type { ImportTargets } from './import-targets.js';
 import type { TriviaMap } from './types/index.js';
 import type { ApplySelectorKind, ExtendSelectorKind, OutputOptions } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
@@ -28,7 +29,7 @@ import {
 
 /** Extensions of script modules and executable `@plugin` scripts. */
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
-const SCRIPT_RUNTIME_MISSING_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js to enable script execution features.';
+const SCRIPT_RUNTIME_MISSING_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.';
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
 
 /**
@@ -938,6 +939,9 @@ export class Context {
 
   /** Full resolved path -> canonical parsed document (legacy Rules during migration or AST v2 Stylesheet). */
   sourceTrees = new Map<string, ParsedDocument>();
+
+  /** Set before a render to record what each import it evaluates resolved to. Unset, nothing is recorded. */
+  importTargets?: ImportTargets;
   private readonly parsedSourceTrees = new Map<string, ParsedDocument>();
 
   /**
@@ -1021,6 +1025,11 @@ export class Context {
    */
   withDocument<T>(document: Stylesheet, run: () => T | Promise<T>): T | Promise<T> {
     return this.withSourceOwner(this.documentContexts.get(document), run);
+  }
+
+  /** The plugin that parsed a document of this session. */
+  pluginOf(document: Stylesheet): PluginInterface | undefined {
+    return this.documentContexts.get(document)?.plugin;
   }
 
   /**

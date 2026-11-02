@@ -185,39 +185,6 @@ export class NodeModulesPlugin extends AbstractPlugin {
     }
     return null;
   }
-
-  /**
-   * Import method for loading JavaScript modules from npm.
-   * This is called by the context when importing modules.
-   *
-   * @param absoluteFilePath - The absolute path to the module
-   * @returns The loaded module, or throws if this plugin can't handle it
-   */
-  async import(absoluteFilePath: string): Promise<Record<string, any>> {
-    if (this.opts.enabled === false) {
-      throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}" (disabled)`);
-    }
-
-    /*
-     * Check if this looks like a node_modules path
-     * We can't directly resolve from absolute paths, but we can try to require it
-     */
-    if (absoluteFilePath.includes('node_modules')) {
-      try {
-        const module: unknown = this._require(absoluteFilePath);
-        if (!isRecord(module)) {
-          throw new TypeError(`Module "${absoluteFilePath}" did not export an object.`);
-        }
-        return module;
-      } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : String(e);
-        throw new Error(`Failed to import "${absoluteFilePath}": ${message}`);
-      }
-    }
-
-    // For non-node_modules paths, throw to let other plugins handle it
-    throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}" (not a node_modules path)`);
-  }
 }
 
 function isBareModuleSpecifier(candidate: string): boolean {

@@ -734,13 +734,11 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
      * An unclaimed external specifier (`//host/x.css`, `https:…`) is a CSS
      * terminal, not a failed load, so `(optional)` stays moot on it.
      */
-    if (loaded === undefined) {
+    const document = loaded?.node?.type === 'Stylesheet' ? loaded.node : null;
+    context.importTargets?.record(node, loaded?.resolvedPath ?? specifier, document);
+    if (loaded === undefined || document === null) {
       return undefined;
     }
-    if (loaded.node?.type !== 'Stylesheet') {
-      return undefined;
-    }
-    const document = loaded.node;
     return {
       document,
       key: loaded.resolvedPath,
@@ -20072,7 +20070,9 @@ function writeHoistedCssImport(node: AtRuleStatement, root: boolean, frame: Fram
     return false;
   }
   const slot = slots.shift();
-  if (slot === undefined) {
+
+  /* A conversion's `importTargets` records the placement; it answers whether this one is a dropped duplicate. */
+  if (e.s.context?.importTargets?.hoist(node, slot) ?? slot === undefined) {
     return true;
   }
   const from = e.chunks.length;
@@ -20808,7 +20808,8 @@ function expandStyleImport(
     throw composeNotTopLevel(node, e);
   }
   if (e.s.context?.options.processImports === false) {
-    return;
+    // Under this document's policy the import contributes nothing; nothing is resolved.
+    return e.s.context.importTargets?.skip(node);
   }
   if (importDocument) {
     const planned = e.plannedImportDocuments;

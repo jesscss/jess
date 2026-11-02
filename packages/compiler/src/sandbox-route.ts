@@ -3,7 +3,7 @@
  * this process, or, once it reaches a stylesheet script, whole in the
  * `@jesscss/plugin-js` Deno engine.
  */
-import type { ErrorDiagnostic, PluginInterface, ScriptSandboxRoute, WarningDiagnostic } from '@jesscss/core';
+import type { ErrorDiagnostic, JessSpellingGap, PluginInterface, ScriptSandboxRoute, WarningDiagnostic } from '@jesscss/core';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,28 @@ export type RenderResult = {
   sourceMapURL?: string;
 };
 
+/** The `.jess` file a converted source writes: its sibling, extension replaced. */
+export const jessPathOf = (source: string): string => `${source.slice(0, source.length - path.extname(source).length)}.jess`;
+
+/** One converted document (by its source path): its `.jess` text, or every construct `.jess` cannot spell. */
+export type ConvertedFile = { readonly source: string; readonly jessPath: string } & (
+  | { readonly jess: string }
+  | { readonly gaps: readonly JessSpellingGap[] }
+);
+
+/** How `Compiler.convertToJess` treats a `.jess` path that already exists. */
+export type ConvertOptions = {
+  /** Replace an existing `.jess` file; without it, one is a gap. A symlink, or a file the render loaded, is never replaced. */
+  overwrite?: boolean;
+};
+
+/** What `Compiler.convertToJess` produced — plain data, so it crosses from the sandbox — and the render's diagnostics. */
+export type JessConversion = {
+  files: readonly ConvertedFile[];
+  errors: ErrorDiagnostic[];
+  warnings: WarningDiagnostic[];
+};
+
 export type SafeRenderResult = {
   css: string | null;
   errors: ErrorDiagnostic[];
@@ -42,7 +64,7 @@ export type SafeRenderResult = {
 /** The module and export of a compiler class, so the script sandbox can make the same compiler. */
 export type CompilerModuleIdentity = { module: string; exportName: string };
 
-export type EngineMethod = 'render' | 'renderToResult' | 'renderString' | 'safeRender';
+export type EngineMethod = 'render' | 'renderToResult' | 'renderString' | 'safeRender' | 'convertToJess';
 
 /** The script plugin's compile engine (`@jesscss/plugin-js`): one whole render in its Deno sandbox. */
 export type EnginePlugin = PluginInterface & {
@@ -67,6 +89,9 @@ export type EnginePlugin = PluginInterface & {
     extension: string | undefined;
   }): void;
   releaseEngine?(): void;
+
+  /** The folders a render's engine may read stylesheets from, computed on this host. */
+  readRoots?(request: { entryDir: string; jsReadRoot: string }): Promise<readonly string[]>;
 };
 
 export const isEnginePlugin = (plugin: PluginInterface): plugin is EnginePlugin =>
@@ -93,6 +118,9 @@ export const withColors = <T extends { colors?: boolean }>(options: T | undefine
 
 const isDiagnosticList = (value: unknown): boolean => Array.isArray(value);
 
+/** `Array.isArray` without its `any[]` narrowing. */
+const isList = (value: unknown): value is readonly unknown[] => Array.isArray(value);
+
 /** What the engine returns for each method, checked before it is handed back as that method's result. */
 export const fromEngine = {
   render: (value: unknown): string => {
@@ -112,7 +140,77 @@ export const fromEngine = {
       throw new Error('The compile engine returned no result for this render.');
     }
     return { ...value, css: value.css };
+  },
+
+  /**
+   * Every entry is rebuilt from checked fields (ledger A19). Its `source` must
+   * be a `.less`, `.scss` or `.css` file that, and whose folder, with `..` and
+   * symlinks resolved, lie inside `readRoots`, the folders the host let the
+   * engine read. Its `jessPath` is derived here from `source` as the render
+   * spelled it, as the in-process route derives it, and must not be a symlink,
+   * nor, for `.jess` text, an existing file unless `overwrite` is set, nor a
+   * hard-linked one even then. So the
+   * engine can only point the host at the `.jess` sibling of a stylesheet it
+   * was allowed to read.
+   */
+  conversion: (value: unknown, readRoots: readonly string[], overwrite: boolean): JessConversion => {
+    const files: unknown = isRenderResultLike(value) ? Reflect.get(value, 'files') : undefined;
+    if (!isRenderResultLike(value) || !isList(files)) {
+      throw new Error('The compile engine returned no result for this conversion.');
+    }
+    return { files: files.map(entry => convertedFileFromEngine(entry, readRoots, overwrite)), errors: value.errors, warnings: value.warnings };
   }
+};
+
+const CONVERTIBLE = new Set(['.less', '.scss', '.css']);
+
+/** Whether `file`, with `..` and symlinks resolved, lies inside one of `roots`. */
+const within = (file: string, roots: readonly string[]): boolean => {
+  let real: string;
+  try {
+    real = fs.realpathSync(file);
+  } catch {
+    return false;
+  }
+  return roots.some(root => real === root || real.startsWith(root.endsWith(path.sep) ? root : `${root}${path.sep}`));
+};
+
+/** Whether `file` is a stylesheet file that, and whose folder, lie inside one of `roots`. */
+const stylesheetWithin = (file: string, roots: readonly string[]): boolean =>
+  path.isAbsolute(file) && CONVERTIBLE.has(path.extname(file)) && within(file, roots) && within(path.dirname(file), roots)
+  && CONVERTIBLE.has(path.extname(fs.realpathSync(file))) && fs.statSync(file).isFile();
+
+const convertedFileFromEngine = (entry: unknown, roots: readonly string[], overwrite: boolean): ConvertedFile => {
+  const named: unknown = typeof entry === 'object' && entry !== null ? Reflect.get(entry, 'source') : undefined;
+  const source = typeof named === 'string' && stylesheetWithin(named, roots) ? named : undefined;
+  const jessPath = source === undefined ? '' : jessPathOf(source);
+  const existing = source === undefined ? undefined : fs.lstatSync(jessPath, { throwIfNoEntry: false });
+  if (typeof entry !== 'object' || entry === null || source === undefined || existing?.isSymbolicLink() === true) {
+    throw new Error('The compile engine returned a converted file that is not a stylesheet in this render\'s read roots.');
+  }
+  const jess: unknown = Reflect.get(entry, 'jess');
+  if (typeof jess === 'string') {
+    if (existing !== undefined && (!overwrite || existing.nlink > 1)) {
+      throw new Error(`The compile engine returned \`.jess\` text for ${jessPath}, which exists${existing.nlink > 1 ? ' and is hard-linked' : ', without `overwrite`'}.`);
+    }
+    return { source, jessPath, jess };
+  }
+  const gaps: unknown = Reflect.get(entry, 'gaps');
+  if (!isList(gaps)) {
+    throw new Error(`The compile engine returned neither \`.jess\` text nor gaps for ${source}.`);
+  }
+  return {
+    source,
+    jessPath,
+    gaps: gaps.map((gap): JessSpellingGap => {
+      const nodeType: unknown = typeof gap === 'object' && gap !== null ? Reflect.get(gap, 'nodeType') : undefined;
+      const reason: unknown = typeof gap === 'object' && gap !== null ? Reflect.get(gap, 'reason') : undefined;
+      if (typeof nodeType !== 'string' || typeof reason !== 'string') {
+        throw new Error(`The compile engine returned a malformed gap for ${source}.`);
+      }
+      return { nodeType, reason };
+    })
+  };
 };
 
 const isRenderResultLike = (value: unknown): value is {
@@ -141,7 +239,7 @@ export type RoutedCall<T> = {
   options: Partial<ConfigOptions> | undefined;
 
   /** Checks what the engine returned as this entry point's result. */
-  check: (value: unknown) => T;
+  check: (value: unknown) => T | Promise<T>;
 
   /** The render in this process; it reaches the script plugin with `route`. */
   here: (route: ScriptSandboxRoute | undefined) => Promise<T>;
@@ -230,7 +328,7 @@ const engineFor = async (source: EngineSource): Promise<EnginePlugin> => {
   }
   const factory = source.factory();
   if (factory === undefined) {
-    throw new Error(`Feature not supported. Install ${source.label} to enable script execution features.`);
+    throw new Error(`Feature not supported. Install ${source.label} where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.`);
   }
   let engine = source.engines.get(factory.key);
   if (engine === undefined) {
@@ -252,6 +350,15 @@ const engineRequest = <R extends EngineRequest>({ filePath, jsReadRoot, ...rest 
   entryDir: filePath === undefined ? process.cwd() : path.dirname(path.resolve(filePath)),
   jsReadRoot: jsReadRoot ?? process.cwd()
 });
+
+/** The folders a render's engine may read, as its script plugin computes them on this host; none it cannot name. */
+export const engineReadRoots = async (source: EngineSource, request: EngineRequest): Promise<readonly string[]> => {
+  const roots = await (await engineFor(source)).readRoots?.(engineRequest(request));
+  if (roots === undefined) {
+    throw new Error(`${source.label} names no read roots, so a conversion from its engine cannot be checked.`);
+  }
+  return roots;
+};
 
 /** Runs one render in the engine. */
 export const runInEngine = async (

@@ -163,7 +163,7 @@ const compilerFor = async (req) => {
   return compiler;
 };
 
-const RENDER_METHODS = new Set(['render', 'renderToResult', 'renderString', 'safeRender']);
+const RENDER_METHODS = new Set(['render', 'renderToResult', 'renderString', 'safeRender', 'convertToJess']);
 
 /** Where the compiler reads the host's resolved `styles.config` settings during a render (its `HostConfigs`). */
 const HOST_CONFIGS = Symbol.for('@jesscss/compiler/host-configs');

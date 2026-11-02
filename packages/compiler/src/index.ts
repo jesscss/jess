@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { getConfigWithMeta, hostConfigsFor, type ConfigWithMeta } from './config.js';
 import {
   Context,
+  ImportTargets,
   type ContextOptions,
   type ErrorDiagnostic,
   type WarningDiagnostic,
@@ -34,6 +35,7 @@ import {
   type OutputOptions
 } from 'styles-config';
 import { outputDiagnostics } from './diagnostics.js';
+import { printConversion } from './convert-to-jess.js';
 import {
   createRenderProfile,
   finalizeRenderProfile,
@@ -43,6 +45,7 @@ import {
 } from './profile.js';
 import {
   compilerModuleOf,
+  engineReadRoots,
   fromEngine,
   packageInstalled,
   prewarmEngine,
@@ -59,8 +62,12 @@ import {
   type RenderResult,
   type RenderStringOptions,
   type RoutedCall,
-  type SafeRenderResult
+  type SafeRenderResult,
+  type ConvertOptions,
+  type JessConversion
 } from './sandbox-route.js';
+
+export type { ConvertedFile, ConvertOptions, JessConversion } from './sandbox-route.js';
 
 export type { CompilerModuleIdentity } from './sandbox-route.js';
 import { mergeConfig } from './merge-config.js';
@@ -249,6 +256,23 @@ function appendThrownJessDiagnostic(
   if (!target.some(existing => sameDiagnosticSite(existing, diagnostic))) {
     target.push(diagnostic);
   }
+}
+
+/** The session's diagnostics with the one `err` a compile threw added. */
+function thrownDiagnostics(
+  context: Context,
+  err: unknown,
+  filePath: string | undefined,
+  fallbackReason: string
+): { errors: ErrorDiagnostic[]; warnings: WarningDiagnostic[] } {
+  const errors: ErrorDiagnostic[] = [...context.errors];
+  const warnings: WarningDiagnostic[] = [...context.warnings];
+  if (err instanceof JessError) {
+    appendThrownJessDiagnostic(errors, warnings, err);
+  } else {
+    errors.push(internalUnknownDiagnostic(err, thrownMessage(err), filePath, fallbackReason));
+  }
+  return { errors, warnings };
 }
 
 type PluginFactoryCacheKey = string;
@@ -840,14 +864,14 @@ export class Compiler {
       import: async (absoluteFilePath, route) => {
         const plugin = await getPlugin();
         if (!plugin.import) {
-          throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable script execution features.`);
+          throw new Error(`Feature not supported. Install ${scriptPluginLabel} where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.`);
         }
         return plugin.import(absoluteFilePath, route);
       },
       importPlugin: async (absoluteFilePath: string, options?: string | null, route?: ScriptSandboxRoute) => {
         const plugin = await getScriptRuntimePlugin();
         if (!isExecutablePluginInterface(plugin)) {
-          throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable executable plugin modules.`);
+          throw new Error(`Feature not supported. Install ${scriptPluginLabel} where the compiler is installed (beside @jesscss/jess or less) to enable executable plugin modules.`);
         }
         return plugin.importPlugin(absoluteFilePath, options, route);
       },
@@ -1328,11 +1352,12 @@ export class Compiler {
      * Deno starts while the render runs here; if it never reaches a script,
      * the engine is let go, and no later render starts one ahead of time.
      * Where the script plugin is not installed, nothing more than an
-     * asynchronous look for it happens.
+     * asynchronous look for it happens, where the compiler loads it from (its
+     * own install, never the stylesheet's folder).
      */
     const specifier = this.scriptPluginSpecifier;
     const prewarm = () => prewarmWhenInstalled(
-      packageInstalled(specifier, [call.filePath, this.hooks.scriptPluginResolveFrom]),
+      packageInstalled(specifier, [this.hooks.scriptPluginResolveFrom ?? import.meta.url]),
       () => prewarmEngine(...this.engineFor(compiler, call))
     );
     return routeRender({
@@ -1352,6 +1377,14 @@ export class Compiler {
         });
       }
     });
+  }
+
+  /** The folders a render's engine may read, computed on this host ({@link engineReadRoots}). */
+  private engineReadRoots(call: { filePath: string | undefined; options: Partial<ConfigOptions> | undefined }): Promise<readonly string[]> {
+    const compiler = compilerModuleOf(this);
+    return compiler === undefined
+      ? Promise.reject(new Error('A conversion from the compile engine needs a compiler the engine can rebuild.'))
+      : engineReadRoots(...this.engineFor(compiler, call));
   }
 
   /** Where a render's engine comes from, and what decides its read root. */
@@ -1521,20 +1554,8 @@ export class Compiler {
         ...(sourceMapURL === undefined ? {} : { sourceMapURL })
       };
     } catch (err: unknown) {
-      const errors: ErrorDiagnostic[] = [...context.errors];
-      const warnings: WarningDiagnostic[] = [...context.warnings];
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath ?? undefined, 'An unexpected error occurred during compilation.');
       const errMsg = thrownMessage(err);
-
-      if (err instanceof JessError) {
-        appendThrownJessDiagnostic(errors, warnings, err);
-      } else {
-        errors.push(internalUnknownDiagnostic(
-          err,
-          errMsg,
-          filePath ?? undefined,
-          'An unexpected error occurred during compilation.'
-        ));
-      }
 
       if (renderOptions?.suppressWarnings !== true) {
         outputDiagnostics(errors, warnings, {
@@ -1596,20 +1617,8 @@ export class Compiler {
         warnings: [...context.warnings]
       };
     } catch (err: unknown) {
-      const errors: ErrorDiagnostic[] = [...context.errors];
-      const warnings: WarningDiagnostic[] = [...context.warnings];
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during compilation.');
       const errMsg = thrownMessage(err);
-
-      if (err instanceof JessError) {
-        appendThrownJessDiagnostic(errors, warnings, err);
-      } else {
-        errors.push(internalUnknownDiagnostic(
-          err,
-          errMsg,
-          filePath,
-          'An unexpected error occurred during compilation.'
-        ));
-      }
 
       finalizeRenderProfile(profile, {
         method: 'safeCompile',
@@ -1620,6 +1629,66 @@ export class Compiler {
         errorMessage: errMsg
       });
       return { document: null, context, errors, warnings };
+    }
+  }
+
+  /**
+   * @internal `.less` / `.scss` → `.jess` from an EVALUATED render: the render
+   * records what each import resolved to, and {@link printConversion} prints the
+   * entry and every document it loaded from those facts.
+   *
+   * Routed like {@link safeRender}: a conversion whose render reaches a
+   * sandboxed script runs whole in the sandbox, and returns plain data.
+   *
+   * A `.jess` path that already exists is a gap unless `conversion.overwrite`
+   * is set; a symlink, or a file the render loaded, never is written.
+   */
+  async convertToJess(filePath: string, options?: Partial<ConfigOptions>, conversion?: ConvertOptions): Promise<JessConversion> {
+    const overwrite = conversion?.overwrite === true;
+    return this.routed('convertToJess', {
+      engineArgs: [filePath, withColors(options), { overwrite }],
+      filePath,
+      memoKey: filePath,
+      options,
+      check: async value => fromEngine.conversion(value, await this.engineReadRoots({ filePath, options }), overwrite),
+      here: route => this.convertToJessHere(route, filePath, options, overwrite)
+    });
+  }
+
+  private async convertToJessHere(
+    route: ScriptSandboxRoute | undefined,
+    filePath: string,
+    options: Partial<ConfigOptions> | undefined,
+    overwrite: boolean
+  ): Promise<JessConversion> {
+    const { resolved, context, profile } = await this.prepareRender(filePath, {
+      ...options,
+      breakOnError: false,
+      suppressWarnings: options?.suppressWarnings ?? false
+    }, undefined, route);
+    const loads = context.importTargets = new ImportTargets();
+    try {
+      const entry = await this.prepareStylesheet(context, resolved, { filePath }, profile);
+      await this.renderStylesheet(entry, context, profile, undefined, resolved);
+      const files = printConversion(context, entry, loads, overwrite);
+      finalizeRenderProfile(profile, {
+        method: 'convertToJess',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warningCount
+      });
+      return { files, errors: [...context.errors], warnings: [...context.warnings] };
+    } catch (err: unknown) {
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during conversion.');
+      finalizeRenderProfile(profile, {
+        method: 'convertToJess',
+        filePath,
+        errors: errors.length,
+        warnings: warnings.length,
+        failed: true,
+        errorMessage: thrownMessage(err)
+      });
+      return { files: [], errors, warnings };
     }
   }
 
@@ -1668,20 +1737,8 @@ export class Compiler {
         warnings: [...context.warnings]
       };
     } catch (err: unknown) {
-      const errors: ErrorDiagnostic[] = [...context.errors];
-      const warnings: WarningDiagnostic[] = [...context.warnings];
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during rendering.');
       const errMsg = thrownMessage(err);
-
-      if (err instanceof JessError) {
-        appendThrownJessDiagnostic(errors, warnings, err);
-      } else {
-        errors.push(internalUnknownDiagnostic(
-          err,
-          errMsg,
-          filePath,
-          'An unexpected error occurred during rendering.'
-        ));
-      }
 
       finalizeRenderProfile(profile, {
         method: 'safeRender',
