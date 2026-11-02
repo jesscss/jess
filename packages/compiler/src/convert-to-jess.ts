@@ -53,7 +53,8 @@ export function printConversion(
  * Which documents convert, by document, not path (a `(less)` import and a CSS
  * import of one file are two documents), and why each that cannot have its
  * `.jess` path written cannot: another converted file of this render takes the
- * path first; it is a symlink; it exists and `overwrite` is not set; or, with
+ * path first; it is a symlink, or a hard-linked file (a pnpm store file, which
+ * other projects share); it exists and `overwrite` is not set; or, with
  * `overwrite`, it is the same file (`dev` and `ino`) as a document the render
  * loaded, however its path is spelled. A document that cannot be written, and
  * every import of it, is a gap.
@@ -78,11 +79,13 @@ function claimTargets(
       ? 'another converted file of this render writes it'
       : existing?.isSymbolicLink() === true
         ? 'it is a symlink'
-        : existing !== undefined && !overwrite
-          ? 'it would overwrite an existing file (pass `overwrite: true` to replace it)'
-          : existing !== undefined && (loaded ??= fileIdentities(documents.values())).has(`${existing.dev}:${existing.ino}`)
-            ? 'it is a file this render loaded'
-            : undefined;
+        : existing !== undefined && existing.nlink > 1
+          ? 'it is a hard-linked file (writing it would change every other link to it)'
+          : existing !== undefined && !overwrite
+            ? 'it would overwrite an existing file (pass `overwrite: true` to replace it)'
+            : existing !== undefined && (loaded ??= fileIdentities(documents.values())).has(`${existing.dev}:${existing.ino}`)
+              ? 'it is a file this render loaded'
+              : undefined;
     if (reason !== undefined) {
       unwritable.set(document, reason);
     }

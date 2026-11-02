@@ -47,7 +47,9 @@ behavior remains an explicit conversion diagnostic/candidate.
   when it exists. An existing file is replaced only when the caller passes
   `{ overwrite: true }`, and even then never when it is the same file (`dev` and
   `ino`) as one the render loaded, however the import spelled it (`B.jess`,
-  `alias/b.jess`). The call runs where the render runs, so a sandboxed compile
+  `alias/b.jess`), and never when it is hard-linked (a link count above 1, as a
+  pnpm `node_modules/.pnpm` file linked into the global store is), since one
+  write would change every link to it. The call runs where the render runs, so a sandboxed compile
   converts in the sandbox, under the same rules. The host rebuilds each entry
   the engine returns from checked fields (ledger A19):
   - the entry's `source` must be a `.less`, `.scss` or `.css` file;
@@ -56,8 +58,8 @@ behavior remains an explicit conversion diagnostic/candidate.
   - its `jessPath` is derived on the host from `source` as the render spelled
     it, as the in-process route derives it, so a partial reached through a
     symlink keeps the name its importer uses;
-  - the `jessPath` must not be a symlink, and must not exist for `.jess` text
-    without `overwrite`.
+  - the `jessPath` must not be a symlink, must not exist for `.jess` text
+    without `overwrite`, and must not be hard-linked even with it.
 
   Anything else is refused. So the engine can make the host write only the
   `.jess` sibling of a stylesheet the render was allowed to read. Only the
