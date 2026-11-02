@@ -56,6 +56,11 @@ export class ProvidedModules {
     return this.load.resolve(target);
   }
 
+  /** The package module a private path names (`#less` → `@jesscss/fns/less`), else `undefined`. */
+  packageOf(specifier: string): string | undefined {
+    return this.#aliases.get(specifier);
+  }
+
   /** Whether this plugin provides — and therefore trusts — the resolved module file. */
   owns(file: string): boolean {
     return this.files().has(file);

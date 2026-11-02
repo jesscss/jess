@@ -279,6 +279,13 @@ export interface PluginInterface {
   import?(absoluteFilePath: string, route?: ScriptSandboxRoute): Promise<Record<string, any>>;
 
   /**
+   * The package module a `@use` specifier this plugin provides names
+   * (`#less` → `@jesscss/fns/less`), for code that imports the same functions
+   * outside the compile: the browser runtime module (ledger A4).
+   */
+  packageModule?(specifier: string): string | undefined;
+
+  /**
    * Claim a resolved module path before extension-based executable-module
    * selection. This is for trusted package-owned modules whose file extension
    * is also used by sandboxed user scripts.

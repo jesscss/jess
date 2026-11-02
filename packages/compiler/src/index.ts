@@ -72,6 +72,7 @@ export type { ConvertedFile, ConvertOptions, JessConversion } from './sandbox-ro
 
 export type { CompilerModuleIdentity } from './sandbox-route.js';
 import { mergeConfig } from './merge-config.js';
+import { packageRuntime } from './runtime-modules.js';
 
 export type ConfigOptions = StylesConfig & {
   /** Output file path for matching against output config options */
@@ -1264,7 +1265,7 @@ export class Compiler {
         css = plugin.postProcessCss(css, context);
       }
     }
-    const runtime = result.runtime === undefined ? {} : { runtime: result.runtime };
+    const runtime = result.runtime === undefined ? {} : { runtime: packageRuntime(result.runtime, context.plugins) };
     if (!trackPositions || result.positions === undefined) {
       return { css, ...runtime };
     }

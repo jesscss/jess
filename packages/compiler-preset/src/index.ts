@@ -49,6 +49,7 @@ class DeferredDialectPlugin implements PluginInterface {
   #loading: Promise<void> | undefined;
   readonly canImportModule?: (absoluteFilePath: string) => boolean;
   readonly import?: (absoluteFilePath: string) => Promise<Record<string, unknown>>;
+  readonly packageModule?: (specifier: string) => string | undefined;
 
   constructor(
     readonly name: string,
@@ -59,6 +60,7 @@ class DeferredDialectPlugin implements PluginInterface {
     if (provided) {
       this.canImportModule = absoluteFilePath => provided.owns(absoluteFilePath);
       this.import = absoluteFilePath => provided.import(absoluteFilePath);
+      this.packageModule = specifier => provided.packageOf(specifier);
     }
   }
 
