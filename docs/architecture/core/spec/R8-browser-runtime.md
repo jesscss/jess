@@ -35,7 +35,7 @@
 | R8-8 | The statement is `@expose` (`@-expose`). Less has no `@export`; `.jess` `@-export` stays the `@forward`-style re-export (A4). | *"Yeah I think expose is the most no-brainer"* |
 | R8-9 | `@expose @brand: red;` is an error whose fix shows the name-list form. | *"It’s an error, although you can hint what it should be. It’s not “old syntax”"* |
 | R8-10 | An `@expose` in a `(reference)`-imported file does nothing, with no message. | owner picked the option “Ignore it silently” (2026-11-02) |
-| R8-11 | The runtime keys an exposed variable in lowerCamelCase, as CSS modules do; two names with one key, or two bindings exposed under one name, are an error naming both sites. | *"exports, like our CSS module’s implementation, should turn dash-case into lowerCamelCase… so that should flag conflicts"*; owner picked the option “Error naming both” (2026-11-02) |
+| R8-11 | The runtime keys an exposed variable by its name with dash-case turned to camelCase, letter case otherwise kept; two names with one key, or two bindings exposed under one name, are an error naming both sites. | *"exports, like our CSS module’s implementation, should turn dash-case into lowerCamelCase… so that should flag conflicts"*, then *"we don't force lowerCamelCase --- i was just talking about dash-case conversion"*; owner picked the option “Error naming both” (2026-11-02) |
 | R8-12 | Two `@compose`d libraries that expose one name, and two files that each declare and expose one name (two `@import`ed files, or an importer and a file it imports), are an error naming both sites. | asked of each case, 2026-11-02: *"error"* |
 
 Split off on 2026-11-01 as its own task: built-in functions that have a CSS
@@ -184,8 +184,9 @@ or needs JS) to decide what ships in the bundle.
   declare and expose the name, though an `@import` shares one top level and the
   last declaration wins (R8-12); a file that only redeclares an exposed variable,
   or only exposes one it imports, does not clash. The JavaScript runtime keys
-  an exposed variable by its name in lowerCamelCase, as CSS modules do (`export-reads.ts`
-  `exportKey`), so two names with one key (`brand-color`, `brandColor`) raise
+  an exposed variable by its name with dash-case turned to camelCase, letter case
+  otherwise kept (`export-reads.ts` `exportKey`: `Brand` stays `Brand`), so two
+  names with one key (`brand-color`, `brandColor`) raise
   `eval/expose-key-conflict`, naming both. An exposed variable name
   is the author's, so it is never numbered. An authored custom property in
   that namespace (`--brand-lightness: 1%`) is the author's own write and is not
