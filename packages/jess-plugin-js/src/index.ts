@@ -435,19 +435,16 @@ export class JsPlugin extends AbstractPlugin {
         env: sanitizeSpawnEnv(process.env)
       }).status === 0;
 
+    /*
+     * An explicit `denoCommand`, and else the pinned binary, are used without
+     * running them first: `deno --version` blocks this thread for ~40 ms, inside
+     * the first render now that the engine starts ahead of it. A binary that
+     * cannot run fails the spawn, which reports the same guidance.
+     */
     const explicit = this.opts.denoCommand;
     if (explicit !== undefined) {
-      if (!runs(explicit)) {
-        throw new Error(RUNTIME_MISSING_MESSAGE);
-      }
       return (this.denoCommand = explicit);
     }
-
-    /*
-     * The pinned binary is used without running it first: `deno --version`
-     * blocks this thread for ~40 ms. A binary that cannot run fails the
-     * spawn, which reports the same guidance.
-     */
     const bundled = resolveBundledDenoPath();
     if (bundled !== undefined) {
       return (this.denoCommand = bundled);
