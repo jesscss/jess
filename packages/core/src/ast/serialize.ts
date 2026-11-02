@@ -13890,8 +13890,8 @@ function planImportedFacts(
       const st = statements[at]!;
       if (st.type === 'VariableDeclaration') {
         activateVariableDeclaration(st, scope, e);
-      } else if (st.type === 'VariableExport' && atRules.length === 0 && publishFrame !== null) {
-        /* [A20] A top-level sheet's `@export` binds where its facts publish, before any output reads it. */
+      } else if (st.type === 'VariableExport' && atRules.length === 0 && publishFrame !== null && !hidden) {
+        /* [A20] A top-level sheet's `@export` binds where its facts publish, before any output reads it; a `(reference)` sheet's does nothing. */
         activateVariableDeclaration(st, publishFrame, e);
       } else if (st.type === 'AtRuleStatement' && cssPlan !== null) {
         const target = cssImportTarget(st);

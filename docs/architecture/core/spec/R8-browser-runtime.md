@@ -64,7 +64,7 @@ or needs JS) to decide what ships in the bundle.
   statement holding the names (`nodes.ts`).
 - **Top level, of any file (R8-6).** An `@export` exports when it is
   activated in a frame with no parent: the rendered document's root, which a
-  top-level `@import` (`(reference)` included) splices into, or a
+  top-level `@import` splices into, or a
   `@compose`d module's own frame. One in a frame with a parent (a ruleset,
   at-rule, mixin, detached-ruleset or loop body, or a file imported into one)
   raises `eval/export-not-top-level`.
@@ -80,9 +80,9 @@ or needs JS) to decide what ships in the bundle.
   `declareExport`, `settle`). The render activates the root's `@export`s before
   it starts and the import planner a top-level file's, so a read written before
   the `@export` or the `@import` is an export read too.
-- **`(reference)` imports** export like any import: `(reference)` keeps the
-  file's rules from being written, and an export writes no rule of its own; it
-  changes the reads the importer writes.
+- **`(reference)` imports** (owner 2026-11-02): an `@export` in a
+  `(reference)`-imported file does nothing, with no message. The importer can
+  still export that file's variables by naming them in its own `@export`.
 - **Value reads.** A read while a declaration value is written evaluates the
   call `var(--name, <compile-time value bytes>)`, the same `FunctionCall` an
   author writes, in both evaluators (`export-reads.ts` `exportChecked`, called
@@ -172,7 +172,11 @@ or needs JS) to decide what ships in the bundle.
   generated name never share a name (numbered). Two exports of one name are one
   custom property, so they must resolve to one binding (an importer and the file
   it imports may both export it); two bindings, such as a composed module's
-  `@brand` and the importer's own, raise `eval/export-conflict`. An export name
+  `@brand` and the importer's own, raise `eval/export-conflict`, located at one
+  name and naming the other's file, line and column. The JavaScript runtime keys
+  an export by its name in lowerCamelCase, as CSS modules do (`export-reads.ts`
+  `exportKey`), so two names with one key (`brand-color`, `brandColor`) raise
+  `eval/export-key-conflict`, naming both. An export name
   is the author's, so it is never numbered. An authored custom property in
   that namespace (`--brand-lightness: 1%`) is the author's own write and is not
   detected, as two authored writes of one custom property are not.

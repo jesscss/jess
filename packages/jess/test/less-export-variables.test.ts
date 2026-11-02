@@ -261,9 +261,15 @@ describe('Less @export variables (A4)', () => {
         .resolves.toMatchObject({ css: '.a {\n  color: var(--brand, #c00);\n}\n.x {\n  color: var(--brand, #c00);\n}\n' });
     });
 
-    /* `(reference)` keeps the file's rules from being written; its variables, exports included, are read as from any import. */
-    it('exports what a (reference) import exports', async () => {
-      await expect(resultBeside(TOKENS, '@import (reference) "tokens.less";\n.a { color: @brand; }'))
+    /* Ledger A20 (owner 2026-11-02): a `(reference)` import's own @export does nothing, without a message. */
+    it('ignores what a (reference) import exports', async () => {
+      const result = await resultBeside(TOKENS, '@import (reference) "tokens.less";\n.a { color: @brand; }');
+      expect(result).toMatchObject({ css: '.a {\n  color: #c00;\n}\n', errors: [] });
+      expect(result.runtime).toBeUndefined();
+    });
+
+    it('exports a (reference) import\'s variable the importer exports', async () => {
+      await expect(resultBeside(TOKENS, '@import (reference) "tokens.less";\n@export brand;\n.a { color: @brand; }'))
         .resolves.toMatchObject({ css: '.a {\n  color: var(--brand, #c00);\n}\n', runtime: { exports: ['brand'] } });
     });
 
@@ -277,9 +283,20 @@ describe('Less @export variables (A4)', () => {
         .resolves.toMatchObject({ css: expect.stringContaining('.a {\n  color: var(--brand, #c00);\n}'), runtime: { exports: ['brand'] } });
     });
 
-    it('rejects two exports of one name that name different variables', async () => {
+    it('rejects two exports of one name that name different variables, naming both', async () => {
       await expect(resultBeside(TOKENS, '@compose "tokens.less" as tokens;\n@brand: #00f;\n@export brand;\n.a { color: @brand; }'))
-        .resolves.toMatchObject({ css: '', errors: [{ code: 'eval/export-conflict', message: expect.stringContaining('@brand') }] });
+        .resolves.toMatchObject({
+          css: '',
+          errors: [{ code: 'eval/export-conflict', message: expect.stringContaining('entry.less:3:9'), file: { name: 'tokens.less' }, line: 1, column: 9 }]
+        });
+    });
+
+    it('rejects two exported names with one JavaScript key, naming both', async () => {
+      await expect(resultBeside('@export brand-color;\n@brand-color: #c00;\n', '@import "tokens.less";\n@brandColor: #00f;\n@export brandColor;'))
+        .resolves.toMatchObject({
+          css: '',
+          errors: [{ code: 'eval/export-key-conflict', message: expect.stringContaining('entry.less:3:9'), file: { name: 'tokens.less' }, line: 1, column: 9 }]
+        });
     });
   });
 

@@ -868,9 +868,16 @@ export const ERR = {
       ...args
     });
   },
-  exportConflict(args: Common & { meta: { name: string } }) {
+  exportConflict(args: Common & { meta: { name: string; other: string } }) {
     return makeJessError({
       code: 'eval/export-conflict',
+      phase: 'eval',
+      ...args
+    });
+  },
+  exportKeyConflict(args: Common & { meta: { name: string; key: string; other: string; at: string } }) {
+    return makeJessError({
+      code: 'eval/export-key-conflict',
       phase: 'eval',
       ...args
     });

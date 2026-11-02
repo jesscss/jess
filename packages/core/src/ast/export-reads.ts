@@ -126,8 +126,11 @@ export interface ExportState<F> {
   /** Undefined until a stylesheet exports a name: an export read pays one check. */
   runtime: ExportRuntime | undefined;
 
-  /** By name, the binding each export resolved to. */
-  readonly bound: Map<string, { readonly value: CallValue; readonly frame: F }>;
+  /** By name, the binding each export resolved to, and where the `@export` that named it first is. */
+  readonly bound: Map<string, { readonly value: CallValue; readonly frame: F; readonly site: string }>;
+
+  /** By JS key ({@link exportKey}), the name that has it and where it is exported. */
+  readonly keys: Map<string, { readonly name: string; readonly site: string }>;
 
   /** Each `@export` activated, in the frame it binds in. */
   readonly declared: Array<{ readonly node: VariableExport; readonly frame: F }>;
@@ -141,7 +144,22 @@ export interface ExportState<F> {
 interface PendingExport<F> {
   readonly node: VariableExport;
   readonly resolve: (name: string) => { value: CallValue; frame: F } | undefined;
-  readonly e: ExportLane<F>;
+
+  /** Where each name is, taken while its file is the one evaluated. */
+  readonly at: ReadonlyArray<ReturnType<typeof callSiteLocation>>;
+}
+
+/**
+ * The key an exported name has in the JS runtime: dash-case to lowerCamelCase,
+ * as CSS modules name their classes (`brand-color` is `brandColor`).
+ */
+export function exportKey(name: string): string {
+  return name.replace(/^-+/, '').replace(/-+(.)/g, (_dashes, next: string) => next.toUpperCase());
+}
+
+/** `file:line:column` of a location, for a diagnostic naming another site. */
+function siteOf(at: ReturnType<typeof callSiteLocation>): string {
+  return `${at.ctx.file?.name ?? ''}:${at.line ?? 1}:${at.column ?? 1}`;
 }
 
 /** What an export read needs from the evaluator's lane (serialize.ts `Lane`). */
@@ -150,6 +168,9 @@ export interface ExportLane<F> {
   readonly checks: Declaration | 'argument' | undefined;
   readonly modes: EvalModes;
   readonly s: { readonly context: Context | undefined; readonly exports: ExportState<F> };
+
+  /** How many `(reference)` imports the render walk is inside, where the lane walks one. */
+  readonly referenceImportDepth?: number;
 }
 
 /** The `reader` of a variable read that handles an exported binding itself. */
@@ -157,7 +178,7 @@ export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@export` activates ({@link declareExport}). */
 export function exportState<F>(): ExportState<F> {
-  return { refs: new Map(), inputs: undefined, argument: undefined, runtime: undefined, bound: new Map(), declared: [], pending: [], pendingNames: new Set() };
+  return { refs: new Map(), inputs: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set() };
 }
 
 /** The state when something is exported, else undefined. */
@@ -183,7 +204,8 @@ export function forEachExport(statements: readonly Statement[], declare: (node: 
  * `@import`ed at the top level or `@compose`d, publishes each name it lists as
  * the binding a read in `frame` resolves to (`resolve`): one declared there, by
  * an imported file or by a mixin called there. One in a body (`nested`), or in
- * a file imported into one, is an error. The names resolve once the frame is
+ * a file imported into one, is an error; one in a `(reference)` import does
+ * nothing, as that file's rules are not written. The names resolve once the frame is
  * complete, at the first read of one of them ({@link settle}), so a read
  * written before the `@export` is an export read too; the render activates the
  * root's before it starts, and the import planner a top-level sheet's.
@@ -191,11 +213,11 @@ export function forEachExport(statements: readonly Statement[], declare: (node: 
 export function declareExport<F>(node: VariableExport, nested: boolean, frame: F, resolve: PendingExport<F>['resolve'], e: ExportLane<F>): void {
   rejectNestedExport(node, nested, e);
   const x = e.s.exports;
-  if (x.declared.some(declared => declared.node === node && declared.frame === frame)) {
+  if ((e.referenceImportDepth ?? 0) !== 0 || x.declared.some(declared => declared.node === node && declared.frame === frame)) {
     return;
   }
   x.declared.push({ node, frame });
-  x.pending.push({ node, resolve, e });
+  x.pending.push({ node, resolve, at: node.names.map(exported => callSiteLocation(exported, e.s)) });
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
   }
@@ -205,7 +227,8 @@ export function declareExport<F>(node: VariableExport, nested: boolean, frame: F
 /**
  * Resolves every pending `@export`. A name nothing declares is an error,
  * located at the name, and so are two exports of one name that resolve to
- * different bindings: an export is one custom property the runtime sets.
+ * different bindings (an export is one custom property the runtime sets) and
+ * two names with one JS key ({@link exportKey}); those name the other site.
  */
 function settle<F>(x: ExportState<F>): void {
   const pending = x.pending;
@@ -215,23 +238,31 @@ function settle<F>(x: ExportState<F>): void {
   }
   x.pending = [];
   x.pendingNames.clear();
-  for (const { node, resolve, e } of pending) {
-    for (const exported of node.names) {
+  for (const { node, resolve, at } of pending) {
+    node.names.forEach((exported, i) => {
       const name = exported.name;
+      const where = at[i]!;
+      const site = siteOf(where);
       const hit = resolve(name);
       if (hit === undefined) {
-        throw ERR.exportNotDeclared({ node: exported, ...callSiteLocation(exported, e.s), meta: { name } });
+        throw ERR.exportNotDeclared({ node: exported, ...where, meta: { name } });
       }
       const bound = x.bound.get(name);
       if (bound !== undefined && (bound.value !== hit.value || bound.frame !== hit.frame)) {
-        throw ERR.exportConflict({ node: exported, ...callSiteLocation(exported, e.s), meta: { name } });
+        throw ERR.exportConflict({ node: exported, ...where, meta: { name, other: bound.site } });
       }
-      x.bound.set(name, hit);
+      const key = exportKey(name);
+      const keyed = x.keys.get(key);
+      if (keyed !== undefined && keyed.name !== name) {
+        throw ERR.exportKeyConflict({ node: exported, ...where, meta: { name, key, other: keyed.name, at: keyed.site } });
+      }
+      x.bound.set(name, bound ?? { value: hit.value, frame: hit.frame, site });
+      x.keys.set(key, keyed ?? { name, site });
       runtime.exports.add(name);
       if (isValueSlotArray(hit.value) || hit.value.type !== 'MixinCall') {
         x.refs.set(hit.value, { name, call: funcCall('var', [keyword(`--${name}`), hit.value]), frame: hit.frame, source: undefined });
       }
-    }
+    });
   }
 }
 

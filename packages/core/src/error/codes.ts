@@ -60,6 +60,7 @@ export type JessErrorCode =
   | 'eval/export-not-top-level'
   | 'eval/export-not-declared'
   | 'eval/export-conflict'
+  | 'eval/export-key-conflict'
   | 'eval/loop-iteration-limit'
   | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
@@ -418,9 +419,17 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'eval/export-conflict',
     {
-      summary: '@export ${name} names a different @${name} than another @export of ${name}',
+      summary: '@export ${name} names a different @${name} than @export ${name} at ${other}',
       reason: 'An export is one custom property, --${name}, that the runtime sets; two exports of one name may only name the same variable. These name separate ones, such as a composed module\'s own @${name} and this file\'s.',
       fix: 'Export only one of them, or rename one of the variables.'
+    }
+  ],
+  [
+    'eval/export-key-conflict',
+    {
+      summary: '@export ${name} and @export ${other} at ${at} are both ${key} in JavaScript',
+      reason: 'The runtime names each export in lowerCamelCase, as CSS modules name classes, so ${name} and ${other} would be one key.',
+      fix: 'Rename one of the variables, or export only one of them.'
     }
   ],
   [
