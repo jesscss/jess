@@ -63,7 +63,10 @@ disabled, is left to evaluation, which reports it. A `@plugin` that is only
 conditionally evaluated (inside a mixin, a guarded rule, an at-rule or a
 detached ruleset, or in a sheet imported there) moves the render only if
 evaluation reaches it, as before: moving early must never change where a
-compile that does not reach a script runs.
+compile that does not reach a script runs. A sheet whose earlier statement
+fails (`@import "./missing.less"; @plugin "./p.js";`) still moves when its
+`@plugin` is placed, and the engine then reports the same error: one extra
+engine start, with identical output.
 
 The stop must not be swallowed. The `@plugin` load path reports load failures
 as diagnostics and keeps evaluating (P45), so the proxy signals the reroute
