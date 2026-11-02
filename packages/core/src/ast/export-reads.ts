@@ -89,6 +89,14 @@ function refOf<F>(x: ExportState<F>, value: CallValue): ExportRef<F> | undefined
   return value.some(slot => x.refs.has(slot)) ? IN_ARGUMENTS : undefined;
 }
 
+/**
+ * A mixin argument being bound: whether it reads an export. A computed call
+ * still pending when the argument's binding is decided marks it as it settles.
+ */
+export interface ExportArgument {
+  read: boolean;
+}
+
 /** An export a computed call's argument reads, with the value it read. */
 interface ExportInput {
   readonly recipe: ExportRecipe;
@@ -106,8 +114,8 @@ export interface ExportState<F> {
    */
   inputs: Array<ExportInput> | undefined;
 
-  /** Whether the mixin argument being bound reads an export. */
-  argument: boolean;
+  /** The mixin argument being bound, undefined outside one. */
+  argument: ExportArgument | undefined;
 
   readonly runtime: ExportRuntime;
 }
@@ -145,7 +153,7 @@ export function rootExports<F>(root: Stylesheet): ExportState<F> | undefined {
       refs.set(statement.value, { name: statement.name, call: funcCall('var', [keyword(`--${statement.name}`), statement.value]), source: undefined });
     }
   }
-  return { refs, inputs: undefined, argument: false, runtime: { exports: names, defaults: new Map(), derived: new Map() } };
+  return { refs, inputs: undefined, argument: undefined, runtime: { exports: names, defaults: new Map(), derived: new Map() } };
 }
 
 /**
@@ -169,7 +177,7 @@ export function exportChecked<F, H extends { value: CallValue; frame: F; evaluat
     return hit;
   }
   if (e.checks === 'argument') {
-    x.argument = true;
+    markArgument(x.argument);
   } else if (typeof e.checks !== 'object') {
     exportNotWritten(reader, lookup === 'live' ? `$${name}` : `@${name}`, name, e,
       'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
@@ -216,38 +224,51 @@ export function exportInputRead<V extends ValueGroup>(e: ExportLane<unknown>, hi
       });
 }
 
+/** Note that the mixin argument being bound reads an export. */
+function markArgument(argument: ExportArgument | undefined): void {
+  if (argument !== undefined) {
+    argument.read = true;
+  }
+}
+
 /**
  * A mixin argument being bound notes whether it reads an export: start, which
- * returns whether the argument it is part of already does, then
- * {@link exportArgumentEnd} with that, which returns whether this one does.
+ * returns the argument it is part of, then {@link exportArgumentEnd} with that,
+ * which returns this one for {@link exportArgumentBound}.
  */
-export function exportArgumentStart(x: ExportState<unknown> | undefined): boolean {
-  const outer = x?.argument ?? false;
+export function exportArgumentStart(x: ExportState<unknown> | undefined): ExportArgument | undefined {
+  const outer = x?.argument;
   if (x !== undefined) {
-    x.argument = false;
+    x.argument = { read: false };
   }
   return outer;
 }
 
-/** Whether the mixin argument bound since {@link exportArgumentStart} read an export. */
-export function exportArgumentEnd(x: ExportState<unknown> | undefined, outer: boolean): boolean {
-  const read = x?.argument ?? false;
+/** The mixin argument bound since {@link exportArgumentStart}; what it read so far counts for the one it is part of. */
+export function exportArgumentEnd(x: ExportState<unknown> | undefined, outer: ExportArgument | undefined): ExportArgument | undefined {
+  const argument = x?.argument;
   if (x !== undefined) {
-    x.argument = outer || read;
+    x.argument = outer;
+    if (argument?.read === true) {
+      markArgument(outer);
+    }
   }
-  return read;
+  return argument;
 }
 
 /**
- * A mixin argument that reads an export, kept for the value it evaluated to as
- * the argument as written (`source`) in the caller's `frame`; the snapshot the
- * parameter binds as takes it over (`invalid-value-syntax.ts` `keepArgumentSyntax`).
+ * A mixin argument, kept for the value it evaluated to as the argument as
+ * written (`source`) in the caller's `frame` when it reads an export; the
+ * snapshot the parameter binds as takes it over (`invalid-value-syntax.ts`
+ * `keepArgumentSyntax`). A pending value is decided once it settles.
  */
-export function exportArgumentBound<F, V extends object>(x: ExportState<F> | undefined, value: MaybePromise<V>, source: CallValue, frame: F | null): MaybePromise<V> {
-  return x === undefined || frame === null
+export function exportArgumentBound<F, V extends object>(x: ExportState<F> | undefined, argument: ExportArgument | undefined, value: MaybePromise<V>, source: CallValue, frame: F | null): MaybePromise<V> {
+  return x === undefined || frame === null || argument === undefined || (!argument.read && !isThenable(value))
     ? value
     : mapMaybe(value, (bound) => {
-        x.refs.set(bound, { name: undefined, call: undefined, source: { value: source, frame, evaluated: null } });
+        if (argument.read) {
+          x.refs.set(bound, { name: undefined, call: undefined, source: { value: source, frame, evaluated: null } });
+        }
         return bound;
       });
 }
@@ -277,6 +298,7 @@ export function exportCall<F>(
   const outer = x.inputs;
   const inputs: NonNullable<ExportState<F>['inputs']> = [];
   const checks = e.checks;
+  const argument = outer === undefined && checks === 'argument' ? x.argument : undefined;
   let typed: Array<MaybePromise<ValueGroup>>;
   x.inputs = inputs;
   try {
@@ -292,9 +314,7 @@ export function exportCall<F>(
   return combineAll(typed, vals => inputs.length === 0
     ? dispatch(vals)
     : mapMaybe(dispatch(vals), (computed) => {
-        if (outer === undefined && checks === 'argument') {
-          x.argument = true;
-        }
+        markArgument(argument);
         const result: ValueGroup = typeof computed === 'string' ? makeKeyword(computed) : computed;
         const recipe = callRecipe(node, fn, vals, inputs, e);
         if (outer !== undefined) {
@@ -305,7 +325,7 @@ export function exportCall<F>(
           exportNotWritten(node, `${node.name}()`, recipeExport(recipe), e,
             'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
         }
-        return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe)), result], ','), e.modes);
+        return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe, node.name)), result], ','), e.modes);
       }));
 }
 
@@ -338,10 +358,9 @@ function recipeExport(recipe: ExportRecipe): string {
   return '';
 }
 
-/** The generated custom property a recipe writes: one name per recipe, `--<export>-<fn>`, numbered when another recipe or an export has it. */
-function derivedName(runtime: ExportRuntime, recipe: ExportRecipe): string {
-  const fn = 'fn' in recipe ? recipe.fn.name : 'value';
-  const base = `--${recipeExport(recipe)}-${fn}`;
+/** The generated custom property a recipe writes: one name per recipe, `--<export>-<fn>` with the function as `called` names it, numbered when another recipe or an export has it. */
+function derivedName(runtime: ExportRuntime, recipe: ExportRecipe, called: string): string {
+  const base = `--${recipeExport(recipe)}-${called.slice(called.lastIndexOf('.') + 1)}`;
   for (let n = 1; ; n++) {
     const name = n === 1 ? base : `${base}-${n}`;
     const taken = runtime.derived.get(name);

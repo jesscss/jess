@@ -205,7 +205,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, READS_EXPORT, rejectNestedExport, rootExports, runtimeData, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, READS_EXPORT, rejectNestedExport, rootExports, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -8285,14 +8285,14 @@ function resolveAuthoredMixinValue(
  */
 function evalArgument(source: ValueSlot, frame: Frame | null, e: Lane, argument: ArgumentMode, project = true): MaybePromise<ValueGroup> {
   const outerChecks = e.checks, outerFound = bindingArgument(e, source), outerRead = exportArgumentStart(e.s.exports);
-  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined, read: boolean;
+  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined, read: ExportArgument | undefined;
   try {
     value = evalTypedSlot(source, frame, e, project, argument);
   } finally {
     found = boundArgument(e, outerChecks, outerFound);
     read = exportArgumentEnd(e.s.exports, outerRead);
   }
-  return keepArgument(e.s, found, read ? exportArgumentBound(e.s.exports, value, source, frame) : value);
+  return keepArgument(e.s, found, exportArgumentBound(e.s.exports, read, value, source, frame));
 }
 
 /**

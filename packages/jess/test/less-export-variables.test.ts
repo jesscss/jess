@@ -123,6 +123,20 @@ describe('Less @export variables (A4)', () => {
         .rejects.toMatchObject({ code: 'eval/export-not-a-value' });
     });
 
+    it.each([
+      ['a selector', '.m(@l) { .x-@{l} { v: 1; } }'],
+      ['a string', '.m(@l) { content: "@{l}"; }'],
+      ['a guard', '.m(@l) when (@l > 1px) { v: yes; }']
+    ])('rejects an export it computes with in a mixin argument read in %s', async (_where, mixin) => {
+      await expect(renderBesideImage(`@use "#less";\n@export @w: 8px;\n${mixin}\n.a { .m(@less.max(@w, @less.image-width("a.png"))); }`))
+        .rejects.toMatchObject({ code: 'eval/export-not-a-value' });
+    });
+
+    it('follows an export it computes with through a mixin argument', async () => {
+      await expect(renderBesideImage('@use "#less";\n@export @w: 8px;\n.m(@l) { v: @l; }\n.a { .m(@less.max(@w, @less.image-width("a.png"))); }'))
+        .resolves.toContain('v: var(--w-max, 17px);');
+    });
+
     it('follows an export beside it', async () => {
       await expect(renderBesideImage('@use "#less";\n@export @w: 8px;\n.a { v: @less.max(@w, @less.image-width("a.png")); }'))
         .resolves.toContain('v: var(--w-max, 17px);');
@@ -138,6 +152,10 @@ describe('Less @export variables (A4)', () => {
     expect(css).toContain('v: var(--brand-lightness, 40%);');
     expect(css).toContain('w: var(--brand-lightness, 40%);');
     expect(css).toContain('x: var(--brand-lightness-2, ');
+  });
+
+  it('names a generated property by the function as written', async () => {
+    await expect(render('@use "#less";\n@export @w: 8px;\n.a { v: @less.get-unit(@w); }')).resolves.toContain('v: var(--w-get-unit, px);');
   });
 
   it('names a generated property apart from every export', async () => {

@@ -3,7 +3,7 @@
  * other exports as AST values, bound by the evaluator's module imports.
  */
 import { mapMaybe } from '@jesscss/awaitable-pipe';
-import type { Fn } from './functions/types.js';
+import type { Fn, FnOrigin } from './functions/types.js';
 import { formatNumber } from './format-number.js';
 import { sniffLiteral } from './literal-tag.js';
 import { collection, collectionEntry, dimension, keyword, list, NULL_NODE } from './nodes.js';
@@ -45,8 +45,6 @@ function moduleFunctionResult(value: unknown, name: string): ValueGroup {
   }
   throw new TypeError(`Module function "${name}" returned an unsupported value.`);
 }
-
-import type { FnOrigin } from './functions/types.js';
 
 export type { FnOrigin };
 
