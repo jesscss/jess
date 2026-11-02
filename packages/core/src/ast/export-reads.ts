@@ -5,14 +5,14 @@ import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Fn } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
-import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExport } from './nodes.js';
+import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { emitValue, isValueGroupArray, type EvalModes, type EvalValue, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
 import type { ValueCheckLane } from './invalid-value-syntax.js';
 import { makeKeyword, makeList } from './value-factory.js';
 
 /**
- * Ledger A4: a variable an `@export` names (A20) publishes a custom property, so a
+ * Ledger A4: a variable an `@expose` names (A20) publishes a custom property, so a
  * CSS value that reads it IS `var(--name, <its value>)`, and a value a
  * function Jess computes from it is a generated custom property the runtime
  * recomputes (docs/architecture/core/spec/R8-browser-runtime.md).
@@ -126,23 +126,23 @@ export interface ExportState<F> {
   /** Undefined until a stylesheet exports a name: an export read pays one check. */
   runtime: ExportRuntime | undefined;
 
-  /** By name, the binding each export resolved to, and where the `@export` that named it first is. */
+  /** By name, the binding each export resolved to, and where the `@expose` that named it first is. */
   readonly bound: Map<string, { readonly value: CallValue; readonly frame: F; readonly site: string }>;
 
   /** By JS key ({@link exportKey}), the name that has it and where it is exported. */
   readonly keys: Map<string, { readonly name: string; readonly site: string }>;
 
-  /** Each `@export` activated, in the frame it binds in. */
-  readonly declared: Array<{ readonly node: VariableExport; readonly frame: F }>;
+  /** Each `@expose` activated, in the frame it binds in. */
+  readonly declared: Array<{ readonly node: VariableExpose; readonly frame: F }>;
 
-  /** The `@export`s not yet resolved ({@link settle}), and the names they list. */
-  pending: Array<PendingExport<F>>;
+  /** The `@expose`s not yet resolved ({@link settle}), and the names they list. */
+  pending: Array<PendingExpose<F>>;
   readonly pendingNames: Set<string>;
 }
 
-/** An `@export` waiting for its frame to be complete, with how its names resolve there. */
-interface PendingExport<F> {
-  readonly node: VariableExport;
+/** An `@expose` waiting for its frame to be complete, with how its names resolve there. */
+interface PendingExpose<F> {
+  readonly node: VariableExpose;
   readonly resolve: (name: string) => { value: CallValue; frame: F } | undefined;
 
   /** Where each name is, taken while its file is the one evaluated. */
@@ -176,7 +176,7 @@ export interface ExportLane<F> {
 /** The `reader` of a variable read that handles an exported binding itself. */
 export const READS_EXPORT = {};
 
-/** A render's export state, holding nothing until an `@export` activates ({@link declareExport}). */
+/** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
 export function exportState<F>(): ExportState<F> {
   return { refs: new Map(), inputs: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set() };
 }
@@ -190,28 +190,28 @@ function hasRuntime<F>(x: ExportState<F>): x is ExportState<F> & { runtime: Expo
   return x.runtime !== undefined;
 }
 
-/** Each `@export` among a document's top-level statements. */
-export function forEachExport(statements: readonly Statement[], declare: (node: VariableExport) => void): void {
+/** Each `@expose` among a document's top-level statements. */
+export function forEachExpose(statements: readonly Statement[], declare: (node: VariableExpose) => void): void {
   for (const statement of statements) {
-    if (statement.type === 'VariableExport') {
+    if (statement.type === 'VariableExpose') {
       declare(statement);
     }
   }
 }
 
 /**
- * Ledger A20: an `@export` at the top level of a stylesheet, whether rendered,
+ * Ledger A20: an `@expose` at the top level of a stylesheet, whether rendered,
  * `@import`ed at the top level or `@compose`d, publishes each name it lists as
  * the binding a read in `frame` resolves to (`resolve`): one declared there, by
  * an imported file or by a mixin called there. One in a body (`nested`), or in
  * a file imported into one, is an error; one in a `(reference)` import does
  * nothing, as that file's rules are not written. The names resolve once the frame is
  * complete, at the first read of one of them ({@link settle}), so a read
- * written before the `@export` is an export read too; the render activates the
+ * written before the `@expose` is an export read too; the render activates the
  * root's before it starts, and the import planner a top-level sheet's.
  */
-export function declareExport<F>(node: VariableExport, nested: boolean, frame: F, resolve: PendingExport<F>['resolve'], e: ExportLane<F>): void {
-  rejectNestedExport(node, nested, e);
+export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F, resolve: PendingExpose<F>['resolve'], e: ExportLane<F>): void {
+  rejectNestedExpose(node, nested, e);
   const x = e.s.exports;
   if ((e.referenceImportDepth ?? 0) !== 0 || x.declared.some(declared => declared.node === node && declared.frame === frame)) {
     return;
@@ -225,7 +225,7 @@ export function declareExport<F>(node: VariableExport, nested: boolean, frame: F
 }
 
 /**
- * Resolves every pending `@export`. A name nothing declares is an error,
+ * Resolves every pending `@expose`. A name nothing declares is an error,
  * located at the name, and so are two exports of one name that resolve to
  * different bindings (an export is one custom property the runtime sets) and
  * two names with one JS key ({@link exportKey}); those name the other site.
@@ -245,16 +245,16 @@ function settle<F>(x: ExportState<F>): void {
       const site = siteOf(where);
       const hit = resolve(name);
       if (hit === undefined) {
-        throw ERR.exportNotDeclared({ node: exported, ...where, meta: { name } });
+        throw ERR.exposeNotDeclared({ node: exported, ...where, meta: { name } });
       }
       const bound = x.bound.get(name);
       if (bound !== undefined && (bound.value !== hit.value || bound.frame !== hit.frame)) {
-        throw ERR.exportConflict({ node: exported, ...where, meta: { name, other: bound.site } });
+        throw ERR.exposeConflict({ node: exported, ...where, meta: { name, other: bound.site } });
       }
       const key = exportKey(name);
       const keyed = x.keys.get(key);
       if (keyed !== undefined && keyed.name !== name) {
-        throw ERR.exportKeyConflict({ node: exported, ...where, meta: { name, key, other: keyed.name, at: keyed.site } });
+        throw ERR.exposeKeyConflict({ node: exported, ...where, meta: { name, key, other: keyed.name, at: keyed.site } });
       }
       x.bound.set(name, bound ?? { value: hit.value, frame: hit.frame, site });
       x.keys.set(key, keyed ?? { name, site });
@@ -527,23 +527,23 @@ function sameRecipe(a: ExportRecipe | string, b: ExportRecipe | string): boolean
 /** An exported variable read where a `var()` cannot replace it. */
 function exportNotWritten(reader: object | undefined, symbol: string, name: string, e: ExportLane<unknown>, where: string): never {
   const node = reader ?? {};
-  throw ERR.exportNotAValue({ node, ...callSiteLocation(node, e.s), meta: { symbol, name, where } });
+  throw ERR.exposeNotAValue({ node, ...callSiteLocation(node, e.s), meta: { symbol, name, where } });
 }
 
-/** `@export` publishes a stylesheet's top-level variables; one in a body (`nested`) is an error. */
-export function rejectNestedExport(node: VariableExport, nested: boolean, e: ExportLane<unknown>): void {
+/** `@expose` publishes a stylesheet's top-level variables; one in a body (`nested`) is an error. */
+export function rejectNestedExpose(node: VariableExpose, nested: boolean, e: ExportLane<unknown>): void {
   if (nested) {
-    throw ERR.exportNotTopLevel({ node, ...callSiteLocation(node, e.s) });
+    throw ERR.exposeNotTopLevel({ node, ...callSiteLocation(node, e.s) });
   }
 }
 
 /**
  * What a ruleset argument's body holds that it cannot write, for its error. An
- * `@export` there (an `each()` body) is one below the top level and raises so.
+ * `@expose` there (an `each()` body) is one below the top level and raises so.
  */
 export function argumentStatementKind(rule: Statement, e: ExportLane<unknown>): string {
-  if (rule.type === 'VariableExport') {
-    rejectNestedExport(rule, true, e);
+  if (rule.type === 'VariableExpose') {
+    rejectNestedExpose(rule, true, e);
   }
   return `a ${rule.type}`;
 }

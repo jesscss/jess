@@ -847,37 +847,37 @@ export const ERR = {
       ...args
     });
   },
-  exportNotAValue(args: Common & { meta: { symbol: string; name: string; where: string } }) {
+  exposeNotAValue(args: Common & { meta: { symbol: string; name: string; where: string } }) {
     return makeJessError({
-      code: 'eval/export-not-a-value',
+      code: 'eval/expose-not-a-value',
       phase: 'eval',
       ...args
     });
   },
-  exportNotTopLevel(args: Common) {
+  exposeNotTopLevel(args: Common) {
     return makeJessError({
-      code: 'eval/export-not-top-level',
+      code: 'eval/expose-not-top-level',
       phase: 'eval',
       ...args
     });
   },
-  exportNotDeclared(args: Common & { meta: { name: string } }) {
+  exposeNotDeclared(args: Common & { meta: { name: string } }) {
     return makeJessError({
-      code: 'eval/export-not-declared',
+      code: 'eval/expose-not-declared',
       phase: 'eval',
       ...args
     });
   },
-  exportConflict(args: Common & { meta: { name: string; other: string } }) {
+  exposeConflict(args: Common & { meta: { name: string; other: string } }) {
     return makeJessError({
-      code: 'eval/export-conflict',
+      code: 'eval/expose-conflict',
       phase: 'eval',
       ...args
     });
   },
-  exportKeyConflict(args: Common & { meta: { name: string; key: string; other: string; at: string } }) {
+  exposeKeyConflict(args: Common & { meta: { name: string; key: string; other: string; at: string } }) {
     return makeJessError({
-      code: 'eval/export-key-conflict',
+      code: 'eval/expose-key-conflict',
       phase: 'eval',
       ...args
     });

@@ -1356,16 +1356,16 @@ export interface VariableDeclaration extends SpanSlots {
 }
 
 /**
- * `@export brand, gap;` publishes top-level variables by name (ledger A4): every
+ * `@expose brand, gap;` publishes top-level variables by name (ledger A4): every
  * CSS value that reads one becomes a `var(--brand, …)`.
  */
-export interface VariableExport extends SpanSlots {
-  readonly type: 'VariableExport';
-  readonly names: readonly ExportedName[];
+export interface VariableExpose extends SpanSlots {
+  readonly type: 'VariableExpose';
+  readonly names: readonly ExposedName[];
 }
 
-/** One name an `@export` lists, located where it is written. */
-export interface ExportedName extends SpanSlots {
+/** One name an `@expose` lists, located where it is written. */
+export interface ExposedName extends SpanSlots {
   readonly name: string;
 }
 
@@ -1709,7 +1709,7 @@ export type Statement =
   | MixinCall
   | Apply
   | VariableDeclaration
-  | VariableExport
+  | VariableExpose
   | AtRuleBlock
   | AtRuleStatement
   | Plugin
@@ -2068,10 +2068,10 @@ export const variableDeclaration = (
 ): VariableDeclaration =>
   ({ type: 'VariableDeclaration', name, value, write, _s: NO_SPAN, _e: NO_SPAN });
 
-export const variableExport = (names: readonly ExportedName[]): VariableExport =>
-  ({ type: 'VariableExport', names, _s: NO_SPAN, _e: NO_SPAN });
+export const variableExpose = (names: readonly ExposedName[]): VariableExpose =>
+  ({ type: 'VariableExpose', names, _s: NO_SPAN, _e: NO_SPAN });
 
-export const exportedName = (name: string): ExportedName => ({ name, _s: NO_SPAN, _e: NO_SPAN });
+export const exposedName = (name: string): ExposedName => ({ name, _s: NO_SPAN, _e: NO_SPAN });
 
 /** The one `MixinDefinition` literal: every field, in one order, so all share one hidden class (V8 invariant 1). */
 const mixinDefinition = (name: string, params: Param[], rules: Statement[], extendInstructions: ExtendInstruction[] | undefined, guard: GuardNode | undefined): MixinDefinition =>

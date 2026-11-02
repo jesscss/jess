@@ -29,8 +29,8 @@ export type JessErrorCode =
   | 'parse/source-import-css-syntax'
   | 'parse/invalid-mixin-argument'
   | 'parse/ambiguous-not'
-  | 'parse/export-declaration'
-  | 'parse/malformed-export'
+  | 'parse/expose-declaration'
+  | 'parse/malformed-expose'
   | 'parse/condition-keyword-case'
   | 'parse/selector-capture-argument'
   | 'parse/arithmetic-outside-expression'
@@ -56,11 +56,11 @@ export type JessErrorCode =
   | 'eval/uncalled-mixin-reference'
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
-  | 'eval/export-not-a-value'
-  | 'eval/export-not-top-level'
-  | 'eval/export-not-declared'
-  | 'eval/export-conflict'
-  | 'eval/export-key-conflict'
+  | 'eval/expose-not-a-value'
+  | 'eval/expose-not-top-level'
+  | 'eval/expose-not-declared'
+  | 'eval/expose-conflict'
+  | 'eval/expose-key-conflict'
   | 'eval/loop-iteration-limit'
   | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
@@ -285,19 +285,19 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
-    'parse/export-declaration',
+    'parse/expose-declaration',
     {
-      summary: '@export names variables; it does not declare one',
-      reason: '@export lists the names of variables declared on their own, without their @.',
-      fix: 'Declare the variable, then export it by name, for example: @brand: red; @export brand;'
+      summary: '@expose names variables; it does not declare one',
+      reason: '@expose lists the names of variables declared on their own, without their @.',
+      fix: 'Declare the variable, then expose it by name, for example: @brand: red; @expose brand;'
     }
   ],
   [
-    'parse/malformed-export',
+    'parse/malformed-expose',
     {
-      summary: '@export takes a comma-separated list of variable names',
-      reason: '@export is followed by one or more variable names without their @, separated by commas, and ends at a semicolon.',
-      fix: 'Write the names it exports, for example: @export brand, gap;'
+      summary: '@expose takes a comma-separated list of variable names',
+      reason: '@expose is followed by one or more variable names without their @, separated by commas, and ends at a semicolon.',
+      fix: 'Write the names it exposes, for example: @expose brand, gap;'
     }
   ],
   [
@@ -393,43 +393,43 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
-    'eval/export-not-a-value',
+    'eval/expose-not-a-value',
     {
-      summary: 'Exported variable read outside a CSS value',
-      reason: '${symbol} is exported, so a CSS value that reads it becomes var(--${name}, …); here it is read ${where}.',
-      fix: 'Read a variable that is not exported here, or stop exporting ${symbol}.'
+      summary: 'Exposed variable read outside a CSS value',
+      reason: '${symbol} is exposed, so a CSS value that reads it becomes var(--${name}, …); here it is read ${where}.',
+      fix: 'Read a variable that is not exposed here, or stop exposing ${symbol}.'
     }
   ],
   [
-    'eval/export-not-top-level',
+    'eval/expose-not-top-level',
     {
-      summary: '@export is only allowed at the top level of a stylesheet',
-      reason: 'An @export is written inside a ruleset, at-rule, mixin, guard or loop body, or in a file imported into one; it publishes a variable of a stylesheet\'s top level.',
-      fix: 'Move the @export to the top level of the stylesheet, or import the file at its top level.'
+      summary: '@expose is only allowed at the top level of a stylesheet',
+      reason: 'An @expose is written inside a ruleset, at-rule, mixin, guard or loop body, or in a file imported into one; it publishes a variable of a stylesheet\'s top level.',
+      fix: 'Move the @expose to the top level of the stylesheet, or import the file at its top level.'
     }
   ],
   [
-    'eval/export-not-declared',
+    'eval/expose-not-declared',
     {
-      summary: '@export names @${name}, which is not visible at the top level of this file',
-      reason: '@export ${name} publishes the variable @${name} a read at the top level of this file sees: one declared there, by a file it imports or by a mixin it calls there. A variable declared only in a nested block is not one.',
-      fix: 'Declare @${name} at the top level of this file, or remove ${name} from the @export.'
+      summary: '@expose names @${name}, which is not visible at the top level of this file',
+      reason: '@expose ${name} publishes the variable @${name} a read at the top level of this file sees: one declared there, by a file it imports or by a mixin it calls there. A variable declared only in a nested block is not one.',
+      fix: 'Declare @${name} at the top level of this file, or remove ${name} from the @expose.'
     }
   ],
   [
-    'eval/export-conflict',
+    'eval/expose-conflict',
     {
-      summary: '@export ${name} names a different @${name} than @export ${name} at ${other}',
-      reason: 'An export is one custom property, --${name}, that the runtime sets; two exports of one name may only name the same variable. These name separate ones, such as a composed module\'s own @${name} and this file\'s.',
-      fix: 'Export only one of them, or rename one of the variables.'
+      summary: '@expose ${name} names a different @${name} than @expose ${name} at ${other}',
+      reason: 'An exposed variable is one custom property, --${name}, that the runtime sets; two @expose lists may name it only if they name the same variable. These name separate ones, such as a composed module\'s own @${name} and this file\'s.',
+      fix: 'Expose only one of them, or rename one of the variables.'
     }
   ],
   [
-    'eval/export-key-conflict',
+    'eval/expose-key-conflict',
     {
-      summary: '@export ${name} and @export ${other} at ${at} are both ${key} in JavaScript',
-      reason: 'The runtime names each export in lowerCamelCase, as CSS modules name classes, so ${name} and ${other} would be one key.',
-      fix: 'Rename one of the variables, or export only one of them.'
+      summary: '@expose ${name} and @expose ${other} at ${at} are both ${key} in JavaScript',
+      reason: 'The runtime keys each exposed variable in lowerCamelCase, as CSS modules name classes, so ${name} and ${other} would be one key.',
+      fix: 'Rename one of the variables, or expose only one of them.'
     }
   ],
   [

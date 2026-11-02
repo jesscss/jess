@@ -2681,7 +2681,7 @@ function isStatement(value: unknown): value is Statement {
   }
   switch (value.type) {
     case 'ModuleImport':
-    case 'VariableExport':
+    case 'VariableExpose':
       return true;
     case 'StyleImport':
       return isStyleImport(value);

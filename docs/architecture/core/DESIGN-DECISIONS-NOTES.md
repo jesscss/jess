@@ -351,28 +351,30 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 
 ## A20
 
-Built as a `VariableExport` statement holding the names (`nodes.ts`). The
+Built as a `VariableExpose` statement holding the names (`nodes.ts`). The
 names use the Less variable-name terminal every read uses, so escapes decode
 and a leading-digit name is rejected as in a declaration; the statement ends
-at `;` or the body's `}`. Both spellings read the same: the old declaration
-form (`@export @brand: red;`) is `parse/export-declaration` with the name-list
-spelling as its fix, and any other shape after the keyword (`@export brand gap;`,
-`@export;`, `@export { … }`) is `parse/malformed-export`; neither writes CSS.
-`@export: red;` stays a variable declaration.
+at `;` or the body's `}`. Both spellings read the same: a declaration after the keyword
+(`@expose @brand: red;`) is `parse/expose-declaration`, whose fix shows the
+name-list form, and any other shape after the keyword (`@expose brand gap;`,
+`@expose;`, `@expose { … }`) is `parse/malformed-expose`; neither writes CSS.
+`@expose: red;` stays a variable declaration. Less has no `@export`: it stays a
+generic at-rule, as before A20.
 
-Each name binds to what a read beside the `@export` resolves to, in the frame
+Each name binds to what a read beside the `@expose` resolves to, in the frame
 it activates in: the rendered root (which a top-level `@import` splices into)
 or a `@compose`d module's frame; a frame with a parent
-raises `eval/export-not-top-level`. So an imported or mixin-declared variable is
-exported, and the importer's override of an imported export is the export. The
+raises `eval/expose-not-top-level`. So an imported or mixin-declared variable is
+exposed, and the importer's override of an imported exposed variable is the one
+exposed. The
 names resolve at the first read of one of them or at the end of the render
-(`export-reads.ts` `declareExport`, `settle`); the render activates the root's
-`@export`s and the import planner a top-level file's before any output, so a
-read before either is an export read. A name nothing declares there raises
-`eval/export-not-declared`, located at the name; two exports of one name that
+(`export-reads.ts` `declareExpose`, `settle`); the render activates the root's
+`@expose`s and the import planner a top-level file's before any output, so a
+read before either reads the exposed variable. A name nothing declares there raises
+`eval/expose-not-declared`, located at the name; two exposures of one name that
 resolve to different bindings (a composed module's and the importer's own)
-raise `eval/export-conflict`, since an export is one custom property, and two
+raise `eval/expose-conflict`, since an exposed variable is one custom property, and two
 names with one JavaScript key (`exportKey`: lowerCamelCase) raise
-`eval/export-key-conflict`; both errors name the other site. An `@export` in a
-`(reference)`-imported file does nothing, silently (`declareExport` returns when
+`eval/expose-key-conflict`; both errors name the other site. An `@expose` in a
+`(reference)`-imported file does nothing, silently (`declareExpose` returns when
 `referenceImportDepth` is non-zero, and the planner skips hidden imports).

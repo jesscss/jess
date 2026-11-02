@@ -150,7 +150,7 @@ import type {
   ValueNode,
   ValueSlot,
   VariableDeclaration,
-  VariableExport,
+  VariableExpose,
   VariableLookup,
   Lookup,
   Url
@@ -206,7 +206,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { argumentStatementKind, declareExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExport, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, declareExpose, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -3693,15 +3693,15 @@ function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall 
   return { ...value };
 }
 
-function activateVariableDeclaration(node: VariableDeclaration | VariableExport, frame: Frame, e: Lane): void {
+function activateVariableDeclaration(node: VariableDeclaration | VariableExpose, frame: Frame, e: Lane): void {
   /*
-   * [A20] An `@export` binds each name to what a read beside it resolves to. A
+   * [A20] An `@expose` binds each name to what a read beside it resolves to. A
    * document's top level is a frame with no parent: the rendered root, which a
    * top-level `@import` splices into, or a `@compose`d module's own. A ruleset,
    * at-rule, mixin, detached-ruleset or loop body always has one.
    */
-  if (node.type === 'VariableExport') {
-    return declareExport(node, frame.parent !== null, frame, name => resolveVarRef(frame, name, 'scoped', e, READS_EXPORT), e);
+  if (node.type === 'VariableExpose') {
+    return declareExpose(node, frame.parent !== null, frame, name => resolveVarRef(frame, name, 'scoped', e, READS_EXPORT), e);
   }
   if (
     !('scope' in node.write)
@@ -4454,7 +4454,7 @@ interface EvalSession {
 
   /**
    * [A4] The `var()` call each exported binding reads as in a CSS value
-   * ({@link exportChecked}). Its `runtime` is undefined until an `@export`
+   * ({@link exportChecked}). Its `runtime` is undefined until an `@expose`
    * activates, so a lookup in a document with none pays one check.
    */
   exports: ExportState<Frame>;
@@ -12700,7 +12700,7 @@ function evaluateLeafStatement(
 
 /** Publish a definition/variable independently of the selected writer. */
 function evaluateSilentStatement(
-  node: MixinDefinition | VariableDeclaration | VariableExport,
+  node: MixinDefinition | VariableDeclaration | VariableExpose,
   frame: Frame,
   e: Emit
 ): void {
@@ -13888,11 +13888,9 @@ function planImportedFacts(
     };
     for (let at = 0; at < statements.length; at++) {
       const st = statements[at]!;
-      if (st.type === 'VariableDeclaration') {
-        activateVariableDeclaration(st, scope, e);
-      } else if (st.type === 'VariableExport' && atRules.length === 0 && publishFrame !== null && !hidden) {
-        /* [A20] A top-level sheet's `@export` binds where its facts publish, before any output reads it; a `(reference)` sheet's does nothing. */
-        activateVariableDeclaration(st, publishFrame, e);
+      if (st.type === 'VariableDeclaration' || (st.type === 'VariableExpose' && atRules.length === 0 && publishFrame !== null && !hidden)) {
+        /* [A20] A top-level sheet's `@expose` binds where its facts publish, before any output reads it; a `(reference)` sheet's does nothing. */
+        activateVariableDeclaration(st, st.type === 'VariableDeclaration' ? scope : publishFrame ?? scope, e);
       } else if (st.type === 'AtRuleStatement' && cssPlan !== null) {
         const target = cssImportTarget(st);
         if (target !== null) {
@@ -14147,9 +14145,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     pendingPlannedModuleImports: undefined,
     preparedImportsOwnedByCaller: false
   });
-  const rootFrame = makeRootFrame(root, rootFns, e);
-  rootFrame.sourceOwner = e.s.context?.currentSourceOwner?.() ?? null;
-  rootFrame.importContext = '';
+  const rootFrame = makeRenderRootFrame(root, rootFns, e);
   const plannerRootFrame = makeRootFrame(root, rootFns, e);
   const prepare = activateBodyDependencies(root.rules, rootFrame, e, false);
   const plan = (): MaybePromise<PreparedImports> => {
@@ -14177,6 +14173,14 @@ function makeRootFrame(root: Stylesheet, rootFns: Map<string, Fn> | null, e: Emi
   return frame;
 }
 
+/** The rendered root frame: {@link makeRootFrame}, owned by the context's current source, in the root import context. */
+function makeRenderRootFrame(root: Stylesheet, rootFns: Map<string, Fn> | null, e: Emit): Frame {
+  const frame = makeRootFrame(root, rootFns, e);
+  frame.sourceOwner = e.s.context?.currentSourceOwner?.() ?? null;
+  frame.importContext = '';
+  return frame;
+}
+
 export function serialize(root: Stylesheet, options?: SerializeOptions): SerializeReturn {
   const pluginHost = options?.pluginHost;
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
@@ -14195,10 +14199,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     pendingPlannedModuleImports: preparedModulePlan?.size,
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined
   });
-  const rootFrame = makeRootFrame(root, rootFns, e);
-  rootFrame.sourceOwner = e.s.context?.currentSourceOwner?.() ?? null;
-  rootFrame.importContext = '';
-  forEachExport(root.rules, node => activateVariableDeclaration(node, rootFrame, e)); // [A20] bound before any read, written before or after it
+  const rootFrame = makeRenderRootFrame(root, rootFns, e);
+  forEachExpose(root.rules, node => activateVariableDeclaration(node, rootFrame, e)); // [A20] bound before any read, written before or after it
   const continueRender = (planned: ImportPlannerInput): SerializeReturn => {
     const plannedRoot = planned.root;
 
@@ -14518,7 +14520,7 @@ function emitDocumentStatements(
         }
         markSilentStatementBlockCommentTrivia(child, e);
         break;
-      case 'VariableExport':
+      case 'VariableExpose':
       case 'VariableDeclaration':
         activateVariableDeclaration(child, frame, e);
         markSilentStatementBlockCommentTrivia(child, e);
@@ -17080,7 +17082,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           break;
         }
         case 'MixinDefinition':
-        case 'VariableExport':
+        case 'VariableExpose':
         case 'VariableDeclaration':
           evaluateSilentStatement(node, frame, e);
           break;
@@ -17137,7 +17139,7 @@ function walkReferenceAncestorBody(
           markSilentStatementBlockCommentTrivia(node, e);
           emitted = undefined;
           break;
-        case 'VariableExport':
+        case 'VariableExpose':
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);
           markSilentStatementBlockCommentTrivia(node, e);
@@ -22266,7 +22268,7 @@ function emitAtRuleBody(
         publishSelectedMixinDefinition(frame, node);
         markSilentStatementBlockCommentTrivia(node, e);
         return undefined;
-      case 'VariableExport':
+      case 'VariableExpose':
       case 'VariableDeclaration':
         activateVariableDeclaration(node, frame, e);
         markSilentStatementBlockCommentTrivia(node, e);
@@ -22820,7 +22822,7 @@ function emitBubbleBody(
           publishSelectedMixinDefinition(frame, node);
           markSilentStatementBlockCommentTrivia(node, e);
           break;
-        case 'VariableExport':
+        case 'VariableExpose':
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);
           markSilentStatementBlockCommentTrivia(node, e);

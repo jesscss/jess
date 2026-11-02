@@ -361,7 +361,7 @@ class JessPrinter {
       case 'Ruleset': return `${indent}${this.ruleset(node, indent)}\n`;
       case 'Declaration': return `${indent}${this.declaration(node)};\n`;
       case 'VariableDeclaration': return `${indent}${this.variableDeclaration(node, indent)};\n`;
-      case 'VariableExport': return gap('VariableExport', 'the `.jess` grammar does not parse a variable export yet (ledger A4)');
+      case 'VariableExpose': return gap('VariableExpose', 'the `.jess` grammar does not parse `@-expose` yet (ledger A20)');
       case 'MixinDefinition': return `${indent}${this.mixinDefinition(node, indent)}\n`;
       case 'MixinCall': return `${indent}${this.mixinCall(node, indent)};\n`;
       case 'AtRuleBlock': return `${indent}${this.atRuleBlock(node, indent)}\n`;
