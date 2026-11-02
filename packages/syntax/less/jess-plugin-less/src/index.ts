@@ -17,7 +17,7 @@ import {
   UNIT_MODES,
   logger, recordPluginModule, type PluginHost, type ValueEvaluator } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
-import { LESS_MODULE } from './jess-functions.js';
+import { LESS_MODULE, jessFunctions } from './jess-functions.js';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { MathMode, ModuleMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
@@ -475,6 +475,7 @@ export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
   readonly valueEvaluator: ValueEvaluator = lessValueEvaluator;
+  readonly jessFunctions = jessFunctions;
   readonly #policy: LessPolicy;
 
   /** The modes this plugin was built with, under the settings a host scopes to each source. */

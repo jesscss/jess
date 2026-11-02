@@ -15,6 +15,7 @@ export {
   type SourceOptions,
   type SourceSettings
 } from './context.js';
+export { ImportTargets } from './import-targets.js';
 export { logger, type Logger } from './logger.js';
 export {
   type DiagnosticDisplay,

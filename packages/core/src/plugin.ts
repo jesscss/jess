@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
 import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
 import type { ValueEvaluator } from './ast/value-eval.js';
+import type { EmitJessOptions } from './ast/emit-jess.js';
 
 export type ISafeParseResult = {
   /** Canonical parser document on successful parsing. */
@@ -313,6 +314,13 @@ export interface PluginInterface {
    * own plugin's evaluator, whichever document imported it (DESIGN-DECISIONS C19).
    */
   readonly valueEvaluator?: ValueEvaluator;
+
+  /**
+   * The module and export names a `.jess` file converted from this plugin's
+   * documents imports their built-in functions from (`emitJess`'s `functions`).
+   * A plugin without it parses no document a converter turns into `.jess`.
+   */
+  jessFunctions?(): NonNullable<EmitJessOptions['functions']>;
 
   /** Optional compiler hooks used by compatibility plugins. */
   setContext?(context: Context): void;

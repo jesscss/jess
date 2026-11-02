@@ -53,4 +53,12 @@ describe('scss: map functions match non-string keys by value', () => {
     expect(jess).toContain('y: $map.get($m, 1px);');
     await expect(render(jess, '.jess')).resolves.toBe('x {\n  y: a;\n}\n');
   });
+
+  /* `.jess` writes a quoted key computed (`['a b']:`); it is the same key as the bare word (ledger P14). */
+  it('converts quoted string keys to .jess and renders the same CSS', async () => {
+    const scss = `${MAP}$m: ("a": 1, 'b c': 2); x { y: map.get($m, a); z: map.get($m, "b c"); }`;
+    const jess = emitJess(parseScss(scss));
+    expect(jess).toContain(`["a"]: 1;`);
+    await expect(render(jess, '.jess')).resolves.toBe(await render(scss));
+  });
 });
