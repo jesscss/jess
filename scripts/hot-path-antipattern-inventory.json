@@ -1077,13 +1077,6 @@
     {
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
       "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "f748df590277ac6a",
-      "ordinal": 0,
-      "snippet": "children.slice(colonIndex + 1)"
-    },
-    {
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "rule": "no-speculative-allocation-predicate",
       "fingerprint": "15485804cc1b1995",
       "ordinal": 0,
       "snippet": "children.slice(1)"
