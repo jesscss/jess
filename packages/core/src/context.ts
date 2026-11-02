@@ -1734,12 +1734,9 @@ export class Context {
 
   /** The plugin that loads an executable Plugin module of this extension, as {@link getPluginModule} selects it. */
   private async pluginModuleLoaderFor(ext: string): Promise<PluginInterface | undefined> {
-    const configured = this.plugins.find(candidate =>
-      candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
-    if (configured) {
-      return configured;
-    }
-    const plugin = await this.opts.loadPluginForExtension?.(ext);
+    /* A plugin already here that loads it wins; only without one is a plugin for the extension loaded, and kept. */
+    const plugin = this.plugins.find(candidate => candidate.supportedExtensions?.includes(ext) && candidate.importPlugin)
+      ?? await this.opts.loadPluginForExtension?.(ext);
     if (plugin && !this.plugins.includes(plugin)) {
       this.plugins.push(plugin);
     }
