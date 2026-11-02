@@ -23,10 +23,10 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
-import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
+import { LESS_NODE_TRIVIA_STRIDE, type ValuePieceKind, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex, valueRunSeparators } from './trivia-layout.js';
 import { diagnosticsOf, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
 import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
@@ -942,48 +942,21 @@ function valuePieceReducerWithTrivia(
   triviaLog: readonly number[],
   state: unknown
 ): ValueSlot {
-  /* One piece and nothing else, the common value (`color: red`): no layout to read. */
-  if (children.length === 1 && isValueNode(children[0])) {
-    return children[0];
-  }
-
-  /*
-   * One pass: the pieces, and between two of them the separator. A delim is glued
-   * to its neighbours unless trivia stands between them (ledger N18). The log's
-   * insert indices never decrease, so one cursor reads every gap.
-   */
-  const values: ValueNode[] = [];
-  const separators: string[] = [];
-  const source = sourceFromState(state);
-  let entry = 0;
-  let previousValue = -1;
-  let adjacentBoundary = false;
-  for (let index = 0; index < children.length; index += 1) {
-    const child = children[index];
-    if (!isValuePiece(child)) {
-      adjacentBoundary ||= isAdjacentComponentBoundary(child);
-      continue;
-    }
-    values.push(isValueNode(child) ? child : keyword(requireTerminalText(child)));
-    if (previousValue >= 0) {
-      while (entry < triviaLog.length && triviaLog[entry + 2]! < index) {
-        entry += LESS_NODE_TRIVIA_STRIDE;
-      }
-      const hasTrivia = entry < triviaLog.length && triviaLog[entry + 2] === index;
-      const trivia = hasTrivia && source !== undefined ? triviaTextAt(triviaLog, source, index, entry) : '';
-      separators.push(trivia.length > 0
-        ? trivia
-        : adjacentBoundary || ((isDelimPiece(child) || isDelimPiece(children[previousValue])) && !hasTrivia)
-          ? ''
-          : ' ');
-    }
-    previousValue = index;
-    adjacentBoundary = false;
-  }
+  const values = children
+    .filter(isValuePiece)
+    .map(child => isValueNode(child) ? child : keyword(requireTerminalText(child)));
   if (values.length === 1) {
     return values[0]!;
   }
-  return withValueLayout(values, separators);
+  return withValueLayout(values, valueRunSeparators(children, triviaLog, state, valuePieceKind));
+}
+
+/** What a value run's child is to its layout ({@link ValuePieceKind}). */
+function valuePieceKind(child: unknown): ValuePieceKind {
+  if (isValuePiece(child)) {
+    return isDelimPiece(child) ? 'delim' : 'piece';
+  }
+  return isAdjacentComponentBoundary(child) ? 'boundary' : 'other';
 }
 
 /** A value piece: a value node, or the bare `-` / `%` a value may hold. */

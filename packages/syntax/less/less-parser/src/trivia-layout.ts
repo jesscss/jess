@@ -90,3 +90,45 @@ export function separatorWithSurroundingTrivia(
     + separator
     + triviaTextAtInsertIndex(triviaLog, state, rawIndex + 1);
 }
+
+/** A value run child, as its layout reads it: a delim piece, another piece, the adjacent-component marker, or neither. */
+export type ValuePieceKind = 'delim' | 'piece' | 'boundary' | 'other';
+
+/**
+ * The separators between a value run's pieces. A delim is glued to its
+ * neighbours unless trivia stands between them, and an adjacent-component
+ * marker glues the pieces either side of it (ledger N18). The log's insert
+ * indices never decrease, so one cursor reads every gap.
+ */
+export function valueRunSeparators(
+  children: readonly unknown[],
+  triviaLog: readonly number[],
+  state: unknown,
+  kindOf: (child: unknown) => ValuePieceKind
+): string[] {
+  const separators: string[] = [];
+  const source = sourceFromState(state);
+  let entry = 0;
+  let previous: ValuePieceKind = 'other';
+  let boundary = false;
+  for (let index = 0; index < children.length; index += 1) {
+    const kind = kindOf(children[index]);
+    if (kind === 'other' || kind === 'boundary') {
+      boundary ||= kind === 'boundary';
+      continue;
+    }
+    if (previous !== 'other') {
+      while (entry < triviaLog.length && triviaLog[entry + 2]! < index) {
+        entry += LESS_NODE_TRIVIA_STRIDE;
+      }
+      const hasTrivia = entry < triviaLog.length && triviaLog[entry + 2] === index;
+      const trivia = hasTrivia && source !== undefined ? triviaTextAt(triviaLog, source, index, entry) : '';
+      separators.push(trivia.length > 0
+        ? trivia
+        : boundary || ((kind === 'delim' || previous === 'delim') && !hasTrivia) ? '' : ' ');
+    }
+    previous = kind;
+    boundary = false;
+  }
+  return separators;
+}

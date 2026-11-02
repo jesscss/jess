@@ -369,7 +369,7 @@
     "statements": 49
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts": {
-    "statements": 1277
+    "statements": 1271
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts#callWithLayout": {
     "params": 6
