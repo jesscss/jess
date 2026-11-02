@@ -1,0 +1,10 @@
+@use "#less";
+@export @brand: #c00;
+
+.card {
+  color: @brand;
+
+  &__title {
+    border-color: @less.darken(@brand, 10%);
+  }
+}

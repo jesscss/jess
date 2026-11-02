@@ -6,6 +6,13 @@ import jess from '../src/index.js';
 
 type Runtime = { css: string; vars: (values: Record<string, string>) => Record<string, string> };
 
+type Module = Runtime & { classes: Record<string, string>; card: string };
+
+/** The bundled module of a `.module.less`, once it is known to export its classes. */
+function isModule(module: unknown): module is Module {
+  return isRuntime(module) && 'classes' in module && typeof module.classes === 'object' && 'card' in module;
+}
+
 /** The bundled module, once it is known to export the runtime. */
 function isRuntime(module: unknown): module is Runtime {
   return typeof module === 'object' && module !== null && 'vars' in module && typeof module.vars === 'function';
@@ -35,6 +42,38 @@ describe('vite-plugin-jess', () => {
         expect(module.css).toContain('var(--brand,');
         // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
         expect(module.vars({ brand: '#08f' })).toEqual({ '--brand': '#08f', '--brand-darken': '#006dcc' });
+      }
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('scopes a `.module.less` through Vite\'s CSS Modules, the class map as its default export', async () => {
+    const result = await build({
+      root: __dirname,
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [jess()],
+      build: { write: false, lib: { entry: path.resolve(__dirname, 'module.js'), formats: ['es'], fileName: 'module' } }
+    });
+    const first = [result].flat()[0];
+    const output = first !== undefined && 'output' in first ? first.output : [];
+    const css = output.find(item => item.type === 'asset' && item.fileName.endsWith('.css'));
+    const text = css?.type === 'asset' ? String(css.source) : '';
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vite-plugin-jess-'));
+    try {
+      const file = path.join(directory, 'module.mjs');
+      fs.writeFileSync(file, output[0]?.code ?? '');
+      const module: unknown = await import(file);
+      expect(isModule(module)).toBe(true);
+      if (isModule(module)) {
+        expect(Object.keys(module.classes)).toEqual(['card', 'card__title']);
+        expect(module.card).toBe(module.classes.card);
+        expect(module.classes.card).not.toBe('card');
+        expect(text).toContain(`.${module.classes.card}{color:var(--brand, #c00)}`);
+        expect(text).toContain(`.${module.classes.card__title}{border-color:var(--brand-darken, #990000)}`);
+        expect(module.vars({ brand: '#08f' })['--brand-darken']).toBe('#006dcc');
       }
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });

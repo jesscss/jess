@@ -33,6 +33,8 @@ const LANGUAGES: ReadonlyMap<string, string> = new Map([['.jess', 'jess'], ['.le
 
 /** A stylesheet's JS module (`<prefix><file>.js`), and its CSS under Vite: ids no CSS plugin claims. */
 const MODULE = '\0jess:';
+/** A CSS Modules stylesheet; under Vite its CSS id keeps the `.module.css` ending, so Vite's CSS Modules scope it. */
+const MODULES = /\.module\.[^./]+$/;
 const CSS = '\0jess-css:';
 
 /** Where the runtime's own imports (`@jesscss/fns/…`) resolve from: this package, which depends on them. */
@@ -99,7 +101,7 @@ export default function jessRollupPlugin(options: JessRollupPluginOptions = {}):
       }
       let cssImport: string | undefined;
       if (vite) {
-        cssImport = `${CSS}${file}.css`;
+        cssImport = MODULES.test(file) ? `${CSS}${file.slice(0, -path.extname(file).length)}.css` : `${CSS}${file}.css`;
         styles.set(cssImport, result.css);
       } else if (emitCss) {
         this.emitFile({ type: 'asset', fileName: cssFileName(file), source: result.css });
@@ -119,7 +121,8 @@ function log(diagnostic: Diagnostic, file: string): RollupLog {
 
 /** The stylesheet's JS module: its CSS, and the runtime when it exports variables. */
 export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, cssImport?: string): string {
-  const lines = cssImport === undefined ? [] : [`import ${JSON.stringify(cssImport)};`];
+  const modules = cssImport?.endsWith('.module.css') === true;
+  const lines = cssImport === undefined ? [] : modules ? [`export * from ${JSON.stringify(cssImport)};`, `export { default } from ${JSON.stringify(cssImport)};`] : [`import ${JSON.stringify(cssImport)};`];
   if (runtime !== undefined) {
     const locals = new Map<string, string>();
     const imports = new Map<string, string[]>();
@@ -144,6 +147,8 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
     }
     lines.push(`export const { vars, set } = createRuntime({ defaults: ${JSON.stringify(runtime.defaults)}, derived: { ${derived.join(', ')} } });`);
   }
-  lines.push(`export default ${JSON.stringify(css)};`);
+  if (!modules) {
+    lines.push(`export default ${JSON.stringify(css)};`);
+  }
   return `${lines.join('\n')}\n`;
 }

@@ -44,7 +44,8 @@ or needs JS) to decide what ships in the bundle.
    need the R7.4 per-kind emit split (rulings below).
 4. **Bundler output.** Built; contract below. `rollup-plugin-jess` / Vite
    emit the `.css` plus the `.js` module when a file has an `@export`.
-5. **Class-name scoping (R7.3).** Its O-CSSM items stay open.
+5. **Class-name scoping (R7.3).** Not built in Jess (R7 O-CSSM-1): a `.module.*`
+   stylesheet uses the bundler's CSS Modules (slice 4 contract).
 
 ## Slice 1 contract (as built)
 
@@ -164,6 +165,12 @@ or needs JS) to decide what ships in the bundle.
   (`renderToResult`); one plugin serves Rollup and Vite (`enforce: 'pre'`).
   **`vite-plugin-jess`** is that plugin under Vite's name and `Plugin` type,
   so there is one implementation.
+- **CSS Modules.** Under Vite, a `.module.*` stylesheet's CSS is the virtual
+  `\0jess-css:<name>.module.css`, so Vite's CSS Modules scope it after Jess
+  has evaluated it (`&__el` is scoped as the name it builds). The module
+  re-exports Vite's class map as its default export and each class as a named
+  export, as `import styles from './x.module.css'` does; `vars`/`set` are
+  unchanged. Under plain Rollup the CSS is emitted unscoped.
   The stylesheet's module is the virtual id `\0jess:<file>.js`, so no CSS
   plugin claims it.
 - **CSS.** Rollup: emitted as the asset `<name>.css` (`emitCss`,

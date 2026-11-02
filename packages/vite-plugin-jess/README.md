@@ -30,6 +30,25 @@ import css from './theme.less';
 
 The module's default export is the CSS.
 
+## CSS Modules
+
+A `.module.less` (or `.module.jess`) stylesheet goes through Vite's CSS
+Modules, as a `.module.css` file does: Jess evaluates it, then Vite scopes its
+class names. The default export is the class map, and Vite's `css.modules`
+options apply.
+
+```less
+// card.module.less
+.card { &__title { font-weight: bold; } }
+```
+
+```js
+import styles from './card.module.less';
+
+styles.card;         // '_card_1u2kc_1'
+styles.card__title;  // '_card__title_1u2kc_2'
+```
+
 ## Exported variables
 
 A stylesheet that exports a variable writes each value that reads it as a

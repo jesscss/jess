@@ -53,7 +53,8 @@ Then call `rollup` either via the [CLI](https://www.rollupjs.org/guide/en/#comma
 It compiles `.jess` and `.less` imports. The module's default export is the
 CSS. Under Rollup the CSS is also emitted as an asset (`<name>.css`); under
 Vite (see `vite-plugin-jess`) the module imports its CSS, so Vite injects it in
-dev and bundles it in a build.
+dev and bundles it in a build, and a `.module.*` stylesheet goes through Vite's
+CSS Modules. Rollup has no CSS Modules, so there its CSS is not scoped.
 
 ## Exported variables
 
