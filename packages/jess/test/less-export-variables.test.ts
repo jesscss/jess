@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { Compiler } from '../src/index.js';
 
 /**
- * Ledger A4 (owner 2026-11-01): a root variable named by `@export` publishes a
- * custom property (`@export brand, gap;`, owner 2026-11-02). Every CSS value that reads it is `var(--name, <its
+ * Ledger A4 (owner 2026-11-01): a variable named by `@export` publishes a
+ * custom property (`@export brand, gap;`, A20). Every CSS value that reads it is `var(--name, <its
  * compile-time value>)`; a read where a `var()` cannot stand in is an error,
  * and an export nothing reads is a no-op. Browser-runtime spec, slice 1.
  */
@@ -214,11 +214,17 @@ describe('Less @export variables (A4)', () => {
     });
   });
 
-  describe('beside an imported file', () => {
-    /** Compiles `source` beside a `vars.less` holding `vars`. */
-    async function resultBeside(vars: string, source: string) {
+  it('exports a variable a mixin called at the top level declares, not another call\'s', async () => {
+    await expect(render('.m(@c) { @brand: @c; }\n.m(#c00);\n@export brand;\n.a { .m(#00f); color: @brand; }\n.b { color: @brand; }'))
+      .resolves.toBe('.a {\n  color: #00f;\n}\n.b {\n  color: var(--brand, #c00);\n}\n');
+  });
+
+  /* Ledger A20 (owner 2026-11-02): an @export outside a selector or other sub-frame exports, in an imported or composed file too. */
+  describe('across files', () => {
+    /** Compiles `source` beside a `tokens.less` holding `tokens`. */
+    async function resultBeside(tokens: string, source: string) {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-export-import-'));
-      fs.writeFileSync(path.join(dir, 'vars.less'), vars);
+      fs.writeFileSync(path.join(dir, 'tokens.less'), tokens);
       try {
         return await new Compiler({}).renderToResult({ filePath: path.join(dir, 'entry.less'), source, language: 'less' });
       } finally {
@@ -226,15 +232,54 @@ describe('Less @export variables (A4)', () => {
       }
     }
 
-    it('rejects an @export in the imported file', async () => {
-      await expect(resultBeside('@export brand;\n@brand: #c00;\n', '@import "vars.less";\n.a { color: @brand; }'))
+    const TOKENS = '@export brand;\n@brand: #c00;\n.x { color: @brand; }\n';
+
+    it('exports what an imported file exports, in its rules and the importer\'s', async () => {
+      await expect(resultBeside(TOKENS, '@import "tokens.less";\n.a { color: @brand; }')).resolves.toMatchObject({
+        css: '.x {\n  color: var(--brand, #c00);\n}\n.a {\n  color: var(--brand, #c00);\n}\n',
+        runtime: { exports: ['brand'] }
+      });
+    });
+
+    it('exports the importer\'s override of an imported export', async () => {
+      await expect(resultBeside(TOKENS, '@import "tokens.less";\n@brand: #00f;\n.a { color: @brand; }'))
+        .resolves.toMatchObject({ css: '.x {\n  color: var(--brand, #00f);\n}\n.a {\n  color: var(--brand, #00f);\n}\n' });
+    });
+
+    it('exports a variable an imported file declares', async () => {
+      await expect(resultBeside('@brand: #c00;\n.x { color: @brand; }\n', '@import "tokens.less";\n@export brand;\n.a { color: @brand; }'))
+        .resolves.toMatchObject({ css: '.x {\n  color: var(--brand, #c00);\n}\n.a {\n  color: var(--brand, #c00);\n}\n' });
+    });
+
+    it('lets the importer export what the imported file exports', async () => {
+      await expect(resultBeside(TOKENS, '@import "tokens.less";\n@export brand;\n.a { color: @brand; }'))
+        .resolves.toMatchObject({ errors: [], runtime: { exports: ['brand'] } });
+    });
+
+    it('follows a read written before the import', async () => {
+      await expect(resultBeside(TOKENS, '.a { color: @brand; }\n@import "tokens.less";'))
+        .resolves.toMatchObject({ css: '.a {\n  color: var(--brand, #c00);\n}\n.x {\n  color: var(--brand, #c00);\n}\n' });
+    });
+
+    /* `(reference)` keeps the file's rules from being written; its variables, exports included, are read as from any import. */
+    it('exports what a (reference) import exports', async () => {
+      await expect(resultBeside(TOKENS, '@import (reference) "tokens.less";\n.a { color: @brand; }'))
+        .resolves.toMatchObject({ css: '.a {\n  color: var(--brand, #c00);\n}\n', runtime: { exports: ['brand'] } });
+    });
+
+    it('rejects an @export in a file imported into a ruleset', async () => {
+      await expect(resultBeside(TOKENS, '.a { @import "tokens.less"; }'))
         .resolves.toMatchObject({ css: '', errors: [{ code: 'eval/export-not-top-level' }] });
     });
 
-    /* Whether a root @export may name an imported variable is open (browser-runtime spec). */
-    it('rejects a root export of a variable the imported file declares', async () => {
-      await expect(resultBeside('@brand: #c00;\n', '@import "vars.less";\n@export brand;\n.a { color: @brand; }'))
-        .resolves.toMatchObject({ css: '', errors: [{ code: 'eval/export-not-declared' }] });
+    it('exports what a composed module exports, read as its member', async () => {
+      await expect(resultBeside(TOKENS, '@compose "tokens.less" as tokens;\n.a { color: @tokens.brand; }'))
+        .resolves.toMatchObject({ css: expect.stringContaining('.a {\n  color: var(--brand, #c00);\n}'), runtime: { exports: ['brand'] } });
+    });
+
+    it('rejects two exports of one name that name different variables', async () => {
+      await expect(resultBeside(TOKENS, '@compose "tokens.less" as tokens;\n@brand: #00f;\n@export brand;\n.a { color: @brand; }'))
+        .resolves.toMatchObject({ css: '', errors: [{ code: 'eval/export-conflict', message: expect.stringContaining('@brand') }] });
     });
   });
 

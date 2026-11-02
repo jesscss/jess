@@ -26,6 +26,13 @@
 | R8-4 | Jess 1.x module syntax is a source of ideas, not a compatibility target. | *"not sure any? you can source it for good ideas if they exist but the 2.x syntax has changed drastically"* |
 | R8-5 | Values derived from an export re-evaluate at runtime: dependency tracking through functions, not passthrough-only. | the goal statement above |
 
+## Owner rulings, 2026-11-02 (ledger A20)
+
+| # | Ruling | Verbatim |
+| --- | --- | --- |
+| R8-6 | "Top level" means not inside a selector or other sub-frame: an `@export` at the top level of an `@import`ed or `@compose`d file exports. | *"By “root” I meant “not defined in a selector” or other sub frame. My feeling is that if it’s an import or compose, it can be exported. But I’m willing to be persuaded if you think it should be explicit somehow?"* |
+| R8-7 | The entry can export a variable an imported file declares (`@import "tokens.less"; @export brand;`). | *"Yes, export it"* |
+
 Split off on 2026-11-01 as its own task: built-in functions that have a CSS
 counterpart are represented internally as that counterpart (`darken()` as
 relative color syntax), resolved when inputs are known and written as CSS when
@@ -55,13 +62,27 @@ or needs JS) to decide what ships in the bundle.
   an expression start. So I think @export brand or @export brand, gap; is what
   I would want"*). It parses in any body (P45); the AST is a `VariableExport`
   statement holding the names (`nodes.ts`).
-- **Top level only.** An `@export` activated in a frame with a parent (a
-  ruleset, at-rule, mixin, detached-ruleset or loop body) raises
-  `eval/export-not-top-level`. A name the document's top level does not
-  declare raises `eval/export-not-declared`.
-- **Which reads are the export.** The rendered document's root `@export`
-  names, bound in its root frame (`EvalSession.exports`). A nested shadow of the
-  name is not the export.
+- **Top level, of any file (R8-6).** An `@export` exports when it is
+  activated in a frame with no parent: the rendered document's root, which a
+  top-level `@import` (`(reference)` included) splices into, or a
+  `@compose`d module's own frame. One in a frame with a parent (a ruleset,
+  at-rule, mixin, detached-ruleset or loop body, or a file imported into one)
+  raises `eval/export-not-top-level`.
+- **Which binding is the export (R8-7).** Each name is the binding a read in
+  that frame resolves to: declared there, by a file imported there (the last
+  declaration wins, so the importer's override of an imported export is the
+  export) or by a mixin called there. A name nothing there declares raises
+  `eval/export-not-declared`, located at the name. A binding is its value in the
+  frame it was bound in, so a nested shadow, or another call of the mixin, is not
+  the export. A composed module's export is read as its member (`@tokens.brand`).
+- **When it binds.** The names resolve once the frame is complete: at the first
+  read of one of them, or at the end of the render (`export-reads.ts`
+  `declareExport`, `settle`). The render activates the root's `@export`s before
+  it starts and the import planner a top-level file's, so a read written before
+  the `@export` or the `@import` is an export read too.
+- **`(reference)` imports** export like any import: `(reference)` keeps the
+  file's rules from being written, and an export writes no rule of its own; it
+  changes the reads the importer writes.
 - **Value reads.** A read while a declaration value is written evaluates the
   call `var(--name, <compile-time value bytes>)`, the same `FunctionCall` an
   author writes, in both evaluators (`export-reads.ts` `exportChecked`, called
@@ -84,8 +105,8 @@ or needs JS) to decide what ships in the bundle.
   found"), which makes it a read and an error for an export.
 - **Error location.** A read reached with no reader node, and a ref inside an
   interpolation (which the parser gives no span), reports line 1 column 1.
-- **Cost.** A document with no export pays one `undefined` check per variable
-  lookup.
+- **Cost.** A document with no export pays one check (an `undefined`
+  `runtime`) per variable lookup.
 
 ## Slice 2 contract (as built)
 
@@ -130,9 +151,9 @@ or needs JS) to decide what ships in the bundle.
   `emitValue`, not the output modes, so compressed CSS may spell it shorter) and
   `derived` (each generated property's recipe). JSON, so it crosses the sandbox
   route.
-- **Cost.** A document with no export pays one `undefined` check per variable
-  read and per computed call, and two calls per mixin argument bound
-  (`exportArgumentStart` / `exportArgumentEnd`, each an `undefined` check).
+- **Cost.** A document with no export pays one check per variable read and per
+  computed call, and two calls per mixin argument bound
+  (`exportArgumentStart` / `exportArgumentEnd`, each one check).
 
 ## Orchestrator rulings for slices 3–5 (2026-11-01, owner delegated: *"You do not have to wait for my permission for slices. Get all slices done"*)
 
@@ -148,7 +169,11 @@ or needs JS) to decide what ships in the bundle.
   per function is a size task of its own.
 - **Generated names are the export's namespace.** `@export brand` publishes
   `--brand` and reserves `--brand-*` for values derived from it; an export and a
-  generated name never share a name (numbered). An authored custom property in
+  generated name never share a name (numbered). Two exports of one name are one
+  custom property, so they must resolve to one binding (an importer and the file
+  it imports may both export it); two bindings, such as a composed module's
+  `@brand` and the importer's own, raise `eval/export-conflict`. An export name
+  is the author's, so it is never numbered. An authored custom property in
   that namespace (`--brand-lightness: 1%`) is the author's own write and is not
   detected, as two authored writes of one custom property are not.
 - **Module shape:** `export const vars`, `export const set`, and a default
@@ -156,14 +181,6 @@ or needs JS) to decide what ships in the bundle.
 
 ## Open — needs the owner
 
-- **Exports in an imported document.** Only the rendered document's root
-  counts. An `@import`ed document folds into a child scope, so an `@export` in
-  it raises `eval/export-not-top-level`, as a nested one does; in a `@compose`d
-  module it is not the rendered root's and does nothing.
-- **Exporting a variable the root does not declare itself.** A root
-  `@export brand;` where `@brand` comes from an `@import`ed file or a mixin
-  call raises `eval/export-not-declared` ("not declared in this file's top
-  level"). Should an export reach a variable the root only receives?
 - **`.jess` `@-export`.** The `.jess` grammar reads `@-export "path"` as the
   `@forward`-style re-export (A4 keeps the two features distinct), so the
   name-list form needs a dispatch on the token after the keyword. `.less →

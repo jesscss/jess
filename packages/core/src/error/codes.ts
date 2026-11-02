@@ -59,6 +59,7 @@ export type JessErrorCode =
   | 'eval/export-not-a-value'
   | 'eval/export-not-top-level'
   | 'eval/export-not-declared'
+  | 'eval/export-conflict'
   | 'eval/loop-iteration-limit'
   | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
@@ -402,16 +403,24 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     'eval/export-not-top-level',
     {
       summary: '@export is only allowed at the top level of a stylesheet',
-      reason: 'An @export is written inside a ruleset, at-rule, mixin, guard or loop body; it publishes a variable of the stylesheet, at its top level.',
-      fix: 'Move the @export to the top level of the stylesheet.'
+      reason: 'An @export is written inside a ruleset, at-rule, mixin, guard or loop body, or in a file imported into one; it publishes a variable of a stylesheet\'s top level.',
+      fix: 'Move the @export to the top level of the stylesheet, or import the file at its top level.'
     }
   ],
   [
     'eval/export-not-declared',
     {
-      summary: '@export names @${name}, which is not declared in this file\'s top level',
-      reason: '@export ${name} publishes the variable @${name} declared at the top level of this file. A variable declared only in an imported file, a mixin call or a nested block is not one.',
+      summary: '@export names @${name}, which is not visible at the top level of this file',
+      reason: '@export ${name} publishes the variable @${name} a read at the top level of this file sees: one declared there, by a file it imports or by a mixin it calls there. A variable declared only in a nested block is not one.',
       fix: 'Declare @${name} at the top level of this file, or remove ${name} from the @export.'
+    }
+  ],
+  [
+    'eval/export-conflict',
+    {
+      summary: '@export ${name} names a different @${name} than another @export of ${name}',
+      reason: 'An export is one custom property, --${name}, that the runtime sets; two exports of one name may only name the same variable. These name separate ones, such as a composed module\'s own @${name} and this file\'s.',
+      fix: 'Export only one of them, or rename one of the variables.'
     }
   ],
   [

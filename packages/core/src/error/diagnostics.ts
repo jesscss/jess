@@ -868,6 +868,13 @@ export const ERR = {
       ...args
     });
   },
+  exportConflict(args: Common & { meta: { name: string } }) {
+    return makeJessError({
+      code: 'eval/export-conflict',
+      phase: 'eval',
+      ...args
+    });
+  },
   invalidFunction(args: Common & { meta: { name: string; reason: string } }) {
     return makeJessError({
       code: 'eval/invalid-function',

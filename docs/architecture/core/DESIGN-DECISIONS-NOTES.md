@@ -358,5 +358,17 @@ at `;` or the body's `}`. Both spellings read the same: the old declaration
 form (`@export @brand: red;`) is `parse/export-declaration` with the name-list
 spelling as its fix, and any other shape after the keyword (`@export brand gap;`,
 `@export;`, `@export { … }`) is `parse/malformed-export`; neither writes CSS.
-`@export: red;` stays a variable declaration. A name the top level does not
-declare raises `eval/export-not-declared`, located at the name.
+`@export: red;` stays a variable declaration.
+
+Each name binds to what a read beside the `@export` resolves to, in the frame
+it activates in: the rendered root (which a top-level `@import`, `(reference)`
+included, splices into) or a `@compose`d module's frame; a frame with a parent
+raises `eval/export-not-top-level`. So an imported or mixin-declared variable is
+exported, and the importer's override of an imported export is the export. The
+names resolve at the first read of one of them or at the end of the render
+(`export-reads.ts` `declareExport`, `settle`); the render activates the root's
+`@export`s and the import planner a top-level file's before any output, so a
+read before either is an export read. A name nothing declares there raises
+`eval/export-not-declared`, located at the name; two exports of one name that
+resolve to different bindings (a composed module's and the importer's own)
+raise `eval/export-conflict`, since an export is one custom property.
