@@ -7,10 +7,10 @@ import { Compiler } from '../src/index.js';
 /*
  * A render that runs a script runs in the Deno sandbox, which cannot read a
  * `styles.config` above its read root. The host sends the settings it resolved
- * for the entry (docs/design/DENO-SANDBOX-COMPILE.md §4), so the sandboxed
- * render uses the same settings as one in Node; a file only the sandbox finds,
- * whose settings need a config it cannot read, fails instead of rendering
- * without it.
+ * for the entry, and the chain of configs above each read root, as data
+ * (docs/design/DENO-SANDBOX-COMPILE.md §4), so every file of a sandboxed render,
+ * imports included, has the settings it has in Node. A config that cannot cross
+ * into the sandbox fails the render, naming it, instead of being left out.
  */
 const dirs: string[] = [];
 const compilers: Compiler[] = [];
@@ -35,7 +35,7 @@ const layout = (parent: string | undefined) => {
   }
   fs.writeFileSync(path.join(child, 'styles.config.cjs'), 'module.exports = { compile: { allowCallerScope: true } };');
   fs.writeFileSync(path.join(child, 'plugin.js'), 'module.exports = { install() {} };');
-  fs.writeFileSync(path.join(child, 'sub/part.less'), '.part { .inner { e: f; } }');
+  fs.writeFileSync(path.join(child, 'sub/part.less'), '.part { .inner { w: 4px / 2; } }');
   const compiler = new Compiler();
   compilers.push(compiler);
   const render = (name: string, source: string) => {
@@ -45,7 +45,7 @@ const layout = (parent: string | undefined) => {
   return { base, render };
 };
 
-const COLLAPSE = 'module.exports = { output: { collapseNesting: true } };';
+const COLLAPSE = 'module.exports = { output: { collapseNesting: true }, compile: { mathMode: \'always\' } };';
 
 describe('styles.config settings in the script sandbox', () => {
   it('are the settings the render has in Node, configs above the read root included', async () => {
@@ -56,8 +56,17 @@ describe('styles.config settings in the script sandbox', () => {
     expect(sandboxed).toBe(inNode);
   }, 60_000);
 
-  it('fail, naming the config, for an import whose settings need a config the sandbox cannot read', async () => {
-    const { base, render } = layout(COLLAPSE);
+  it('are the settings an import has in Node, from the configs above the read root', async () => {
+    const { render } = layout(COLLAPSE);
+    const inNode = await render('plain.less', '@import "./sub/part.less";');
+    const sandboxed = await render('scripted.less', '@plugin "./plugin.js";\n@import "./sub/part.less";');
+    expect(inNode).toContain('w: 2px');
+    expect(sandboxed).toBe(inNode);
+  }, 60_000);
+
+  it('fail, naming the config, when a config above the read root cannot cross into the sandbox', async () => {
+    const { base, render } = layout('class Banner { name = "banner"; }\nmodule.exports = { compile: { plugins: [new Banner()] } };');
+    await expect(render('plain.less', '@import "./sub/part.less";')).resolves.toContain('.part');
     await expect(render('scripted.less', '@plugin "./plugin.js";\n@import "./sub/part.less";'))
       .rejects.toThrow(path.join(base, 'styles.config.cjs'));
   }, 60_000);

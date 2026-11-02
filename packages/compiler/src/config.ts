@@ -34,14 +34,19 @@ export type HostConfigs = {
   /** The settings of each folder the host resolved, by absolute path. */
   folders: Record<string, ConfigWithMeta>;
 
-  /** Each config search the host ran: from a folder up to where it stopped, and the config files it merged. */
-  searches: Array<{ from: string; to: string; files: string[] }>;
+  /**
+   * What the configs above each read root merge to, keyed by the folder just
+   * above the root, which the sandbox cannot read: the config search from
+   * there, run by the host. Every folder inside the root shares it. A chain
+   * that cannot cross into the sandbox names its nearest config instead.
+   */
+  above: Record<string, ConfigWithMeta | { unsendable: string }>;
 };
 
 /** Set by the script sandbox's engine for the render it runs, and only there. */
 const HOST_CONFIGS = Symbol.for('@jesscss/compiler/host-configs');
 
-/** A folder's settings would need a config the script sandbox cannot read. */
+/** A folder's settings need a config the script sandbox cannot have. */
 export class SandboxConfigError extends Error {
   readonly code = 'config/outside-read-root';
 
@@ -51,62 +56,61 @@ export class SandboxConfigError extends Error {
   }
 }
 
-const isInside = (child: string, parent: string): boolean => {
-  const rel = path.relative(parent, child);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-};
+/** The settings to send with a sandboxed render for the folder the host resolved (`above` is added beside the read roots). */
+export const hostConfigsFor = (entryDir: string | undefined): HostConfigs => ({
+  folders: entryDir === undefined ? {} : { [path.resolve(entryDir)]: getConfigWithMeta(entryDir) },
+  above: {}
+});
 
-/** Where a config search from `from` stops: its package root, else the file-system root. */
-const searchTop = (from: string): string => {
-  let dir = from;
-  while (!isPackageRoot(dir) && path.dirname(dir) !== dir) {
-    dir = path.dirname(dir);
-  }
-  return dir;
-};
-
-/** The settings and searches to send with a sandboxed render, for the folders the host knows. */
-export const hostConfigsFor = (entryDir: string | undefined, searchDirs: ReadonlyArray<string | undefined>): HostConfigs => {
-  const folders: Record<string, ConfigWithMeta> = {};
-  if (entryDir !== undefined) {
-    folders[path.resolve(entryDir)] = getConfigWithMeta(entryDir);
-  }
-  const dirs = [...new Set(searchDirs.filter((dir): dir is string => dir !== undefined).map(dir => path.resolve(dir)))];
-  return {
-    folders,
-    searches: dirs.map(from => ({ from, to: searchTop(from), files: getConfigWithMeta(from).configFilePaths ?? [] }))
-  };
-};
+/**
+ * The config search above a read root, for `HostConfigs.above`: none when the
+ * root is a package root, where every search from inside it stops.
+ */
+export const configsAboveReadRoot = (root: string): ConfigWithMeta | undefined =>
+  isPackageRoot(root) ? undefined : getConfigWithMeta(path.dirname(root));
 
 const isHostConfigs = (value: unknown): value is HostConfigs =>
   typeof value === 'object' && value !== null
-  && typeof Reflect.get(value, 'folders') === 'object' && Array.isArray(Reflect.get(value, 'searches'));
+  && typeof Reflect.get(value, 'folders') === 'object' && typeof Reflect.get(value, 'above') === 'object';
+
+/**
+ * The folder at which a config search from `dir` leaves what the sandbox may
+ * read (it answers "not found" there), or undefined when a package root ends
+ * the search first. An ancestor of a folder in use exists, so one the sandbox
+ * reports missing is one it may not read.
+ */
+const leavesReadRootAt = (dir: string): string | undefined => {
+  for (let at = dir; ; at = path.dirname(at)) {
+    if (!fs.existsSync(at)) {
+      return at;
+    }
+    if (isPackageRoot(at) || path.dirname(at) === at) {
+      return undefined;
+    }
+  }
+};
 
 /**
  * In the sandbox, a folder the host did not resolve (an import only the render
- * finds) loads its own configs, and the sandbox answers "not found" above its
- * read root. A search that leaves the read root before its package root would
- * miss a config there, so it fails, naming the config, instead of rendering
+ * finds) loads the configs it may read itself, and merges them over the chain
+ * the host sent for the configs above its read root: the settings it has in
+ * Node. Only a search that leaves the readable folders where no chain was sent,
+ * or whose chain could not cross, fails, naming why, instead of rendering
  * without it.
  */
-const assertSearchStaysReadable = (dir: string, host: HostConfigs): void => {
-  for (let at = dir; ; at = path.dirname(at)) {
-    /* An ancestor of a folder in use exists; the sandbox reports one it may not read as missing. */
-    if (!fs.existsSync(at)) {
-      const search = host.searches.find(known => isInside(known.from, at) && isInside(at, known.to));
-      if (search === undefined) {
-        throw new SandboxConfigError(`The styles.config settings of ${dir} cannot be checked in the script sandbox: the config search leaves the render's read root at ${at}. Set compile.jsReadRoot to a folder that contains the configs this file uses.`);
-      }
-      const hidden = search.files.find(file => isInside(at, path.dirname(file)));
-      if (hidden !== undefined) {
-        throw new SandboxConfigError(`The styles.config settings of ${dir} include ${hidden}, which the script sandbox cannot read: it lies outside the render's read root. Set compile.jsReadRoot to a folder that contains it.`);
-      }
-      return;
-    }
-    if (isPackageRoot(at) || path.dirname(at) === at) {
-      return;
-    }
+const withConfigsAbove = (dir: string, host: HostConfigs): ConfigWithMeta => {
+  const leaves = leavesReadRootAt(dir);
+  if (leaves === undefined) {
+    return loadConfigSyncWithMeta(dir);
   }
+  const above = host.above[leaves];
+  if (above === undefined) {
+    throw new SandboxConfigError(`The styles.config settings of ${dir} cannot be resolved in the script sandbox: the config search leaves the folders it may read at ${leaves}, above no read root of this render.`);
+  }
+  if ('unsendable' in above) {
+    throw new SandboxConfigError(`The styles.config settings of ${dir} include ${above.unsendable}, which cannot be sent into the script sandbox: it holds an object that does not record the factory that made it. A plugin factory records it with \`recordPluginModule\` from @jesscss/core.`);
+  }
+  return loadConfigSyncWithMeta(dir, above);
 };
 
 export const getConfigWithMeta = (searchFrom?: string): ConfigWithMeta => {
@@ -115,12 +119,7 @@ export const getConfigWithMeta = (searchFrom?: string): ConfigWithMeta => {
     return loadConfigSyncWithMeta(searchFrom);
   }
   const dir = path.resolve(searchFrom);
-  const known = host.folders[dir];
-  if (known !== undefined) {
-    return known;
-  }
-  assertSearchStaysReadable(dir, host);
-  return loadConfigSyncWithMeta(dir);
+  return host.folders[dir] ?? withConfigsAbove(dir, host);
 };
 
 export interface OutputTestConfig {

@@ -176,7 +176,11 @@ const decodeHostConfigs = async (configs) => {
   for (const [dir, folder] of Object.entries(configs.folders)) {
     folders[dir] = await decodeEngineValue(folder);
   }
-  return { folders, searches: configs.searches };
+  const above = {};
+  for (const [dir, chain] of Object.entries(configs.above)) {
+    above[dir] = await decodeEngineValue(chain);
+  }
+  return { folders, above };
 };
 
 /**

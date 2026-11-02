@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { getConfigWithMeta, hostConfigsFor, type ConfigWithMeta } from './config.js';
+import { configsAboveReadRoot, getConfigWithMeta, hostConfigsFor, type ConfigWithMeta } from './config.js';
 import {
   Context,
   type ContextOptions,
@@ -1348,8 +1348,13 @@ export class Compiler {
           method,
           args: call.engineArgs,
 
-          /* The sandbox may not read the configs above its read root; the host sends what it resolved. */
-          configs: hostConfigsFor(entryDir, [entryDir, request.jsReadRoot])
+          /*
+           * The sandbox may not read the configs above its read root: the host
+           * sends what it resolved for the entry, and resolves the chain above
+           * each read root when the script plugin knows the roots.
+           */
+          configs: hostConfigsFor(entryDir),
+          configsAbove: configsAboveReadRoot
         });
       }
     });

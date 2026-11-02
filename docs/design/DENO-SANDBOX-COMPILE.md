@@ -136,13 +136,21 @@ Nothing crosses as a live object.
   its read root. So the host sends the settings it resolved for the entry's
   folder with the render, and the engine uses them for every file in that
   folder; it never reads a config file for them.
-- **A config only the engine would need fails loudly.** For a file in another
-  folder (an import only the render finds), the engine loads that folder's
-  configs itself. If that search would leave the read root before its
-  package root, and the host's own searches show a config there, or the host
-  never searched there, the render fails with `config/outside-read-root`,
-  naming the config. It never renders without it. Setting `jsReadRoot` to a
-  folder that contains the config makes it readable.
+- **The configs above the read root cross as data too.** Every config above a
+  read root is an ancestor of every folder inside it, so the host runs that
+  part of the search once per render, from the folder just above each read
+  root (in each spelling the render uses), and sends what it merges to. For a
+  file in another folder (an import only the render finds), the engine loads
+  the configs it may read itself and, when its search leaves the readable
+  folders before a package root, merges them over that chain: the settings
+  the file has in Node, with no read root widened.
+- **What still fails loudly.** A chain above a read root that cannot cross
+  into the sandbox (a config holding an object that records no factory, such
+  as a class-based plugin made without `recordPluginModule`) fails a file that
+  needs it with `config/outside-read-root`, naming the config. So would a
+  search that left the readable folders above no read root, though none
+  should: every other readable folder is an installed package, whose
+  `package.json` ends the search.
 
 Each plugin factory records its module identity on the instances it makes
 (§8.4). A plugin instance without one cannot cross, and a sandboxed render that
