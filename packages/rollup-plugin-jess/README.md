@@ -49,6 +49,36 @@ export default {
 
 Then call `rollup` either via the [CLI](https://www.rollupjs.org/guide/en/#command-line-reference) or the [API](https://www.rollupjs.org/guide/en/#javascript-api).
 
+It compiles `.jess` and `.less` imports. The module's default export is the
+CSS. Under Rollup the CSS is also emitted as an asset (`<name>.css`); under
+Vite (the same plugin, in `plugins`) the module imports its CSS, so Vite
+injects it in dev and bundles it in a build.
+
+## Exported variables
+
+A stylesheet that exports a variable writes each value that reads it as a
+custom property, and its module exports `vars` and `set`:
+
+```less
+// theme.less
+@use "#less";
+@export @brand: #c00;
+
+.button { border-color: @less.darken(@brand, 10%); }
+// .button { border-color: var(--brand-darken, #990000); }
+```
+
+```js
+import { vars, set } from './theme.less';
+
+set({ brand: '#08f' });            // on :root
+set({ brand: '#08f' }, element);   // on one element
+vars({ brand: '#08f' });           // { '--brand': '#08f', '--brand-darken': '#006dcc' }, e.g. as a React style
+```
+
+Values are CSS literals (`#08f`, `8px`, `red`). The runtime recomputes each
+derived value with the same function the compile ran.
+
 ## Options
 
 The plugin forwards options to the `jess` compiler. See `jess`’s `ConfigOptions`.

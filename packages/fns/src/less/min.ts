@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
 import { minMax } from './min-max.js';
 
 /** Less `min()` — reference-unit coercion, canonical comparison. */

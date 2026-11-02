@@ -1,4 +1,4 @@
-import { defineFunction, emitValue, groupItems, makeDimension, NULL } from '@jesscss/core';
+import { defineFunction, emitValue, groupItems, makeDimension, NULL } from '@jesscss/core/value';
 
 const index = defineFunction('index', {
   params: [

@@ -1,5 +1,5 @@
-import type { Dimension } from '@jesscss/core';
-import { groupOf } from '@jesscss/core';
+import type { Dimension } from '@jesscss/core/value';
+import { groupOf } from '@jesscss/core/value';
 import { compatibleUnits, convertNumber, isUnitlessDimension, unitsOf } from '../../shared/math/units.js';
 
 /**

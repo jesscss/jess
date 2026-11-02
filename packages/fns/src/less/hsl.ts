@@ -1,5 +1,5 @@
-import type { Color, ValueGroup, Fn } from '@jesscss/core';
-import { colorHsl, defineFunction, groupItems, makeColorHsl, makeColorRgb, hslToRgb, HSL } from '@jesscss/core';
+import type { Color, ValueGroup, Fn } from '@jesscss/core/value';
+import { colorHsl, defineFunction, groupItems, makeColorHsl, makeColorRgb, hslToRgb, HSL } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 

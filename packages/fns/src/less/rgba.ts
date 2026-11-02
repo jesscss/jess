@@ -1,6 +1,6 @@
 import { makeRgb } from './rgb.js';
-import { defineFunction } from '@jesscss/core';
-import type { Fn } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 
 /** `rgba` — an ALIAS of `rgb` (same construction / reformat kernel, distinct name). */
 export const rgba: Fn = defineFunction('rgba', {

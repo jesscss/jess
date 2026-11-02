@@ -1,4 +1,4 @@
-import { defineFunction, groupItems, makeList, type ValueGroup } from '@jesscss/core';
+import { defineFunction, groupItems, makeList, type ValueGroup } from '@jesscss/core/value';
 
 const zip = defineFunction('zip', {
   params: [{ name: 'lists', type: 'any', rest: true }] as const,

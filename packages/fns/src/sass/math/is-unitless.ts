@@ -1,4 +1,4 @@
-import { defineFunction, makeBool } from '@jesscss/core';
+import { defineFunction, makeBool } from '@jesscss/core/value';
 import { isUnitlessDimension } from './units.js';
 
 /**

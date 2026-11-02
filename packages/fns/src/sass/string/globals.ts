@@ -8,12 +8,12 @@
  * `fn.name`, so each gets its own callable that delegates to the single body in
  * the module file — no logic is duplicated and no name is overloaded.
  */
-import { defineFunction } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
 import insert from './insert.js';
 import length from './length.js';
 import slice from './slice.js';
 import stringIndex from './string-index.js';
-import type { Dimension } from '@jesscss/core';
+import type { Dimension } from '@jesscss/core/value';
 import { STRING_KINDS, type SassString } from './util.js';
 
 export { default as quote } from './quote.js';

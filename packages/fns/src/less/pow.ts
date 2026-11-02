@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { defineFunction } from '@jesscss/core/value';
 import { applyMath, requireDimension } from '../shared/math/math-helper.js';
 
 /** `pow(x, y)` — `x^y`, keeping `x`'s unit. No angle normalization (legacy parity). */

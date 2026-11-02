@@ -10,8 +10,8 @@
  * Indexing is by UNICODE CODE POINT, not UTF-16 code unit: dart-sass answers
  * `str-length("😊")` with `1` and `str-index("😊abc","abc")` with `2`.
  */
-import type { Keyword, Quoted } from '@jesscss/core';
-import { makeKeyword, makeQuoted, NULL } from '@jesscss/core';
+import type { Keyword, Quoted } from '@jesscss/core/value';
+import { makeKeyword, makeQuoted, NULL } from '@jesscss/core/value';
 
 /** The two value-domain shapes a Sass string arrives as. */
 export type SassString = Quoted | Keyword;

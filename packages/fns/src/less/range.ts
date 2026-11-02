@@ -1,5 +1,5 @@
-import type { Value, Fn } from '@jesscss/core';
-import { makeDimension, defineFunction } from '@jesscss/core';
+import type { Value, Fn } from '@jesscss/core/value';
+import { makeDimension, defineFunction } from '@jesscss/core/value';
 import { requireDimension } from '../shared/math/math-helper.js';
 
 /**

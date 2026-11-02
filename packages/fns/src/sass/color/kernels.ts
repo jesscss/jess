@@ -13,8 +13,8 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../../tree`, no legacy node).
  */
-import type { Color, Dimension, ValueGroup, Value } from '@jesscss/core';
-import { HEX, HSL, RGB, colorHsl, colorRawRgb, colorRgbRounded, groupSeparator, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core';
+import type { Color, Dimension, ValueGroup, Value } from '@jesscss/core/value';
+import { HEX, HSL, RGB, colorHsl, colorRawRgb, colorRgbRounded, groupSeparator, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core/value';
 import { clamp01, percentOf } from '../../shared/color/kernels.js';
 
 export function requireColor(value: Value): Color {

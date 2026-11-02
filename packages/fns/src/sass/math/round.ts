@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/core';
+import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/core/value';
 
 /**
  * Sass `math.round($number)` / the global `round()`.

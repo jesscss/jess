@@ -1,5 +1,5 @@
-import type { Dimension, ValueGroup, Value } from '@jesscss/core';
-import { groupItems, isValueGroupArray, makeDimension, unify } from '@jesscss/core';
+import type { Dimension, ValueGroup, Value } from '@jesscss/core/value';
+import { groupItems, isValueGroupArray, makeDimension, unify } from '@jesscss/core/value';
 import { compatibleUnits, isUnitlessDimension } from '../shared/math/units.js';
 
 const isDimension = (value: ValueGroup): value is Dimension =>

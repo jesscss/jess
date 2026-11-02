@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
 import { createSassListResult, getSassListInfo, resolveSassBracketed, resolveSassSeparator } from './util.js';
 
 /*
