@@ -291,6 +291,15 @@ describe('Less @expose variables (A4)', () => {
         });
     });
 
+    it.each([
+      ['@Brand: #c00;\n@brand: #00f;\n@expose Brand, brand;', 'Brand'],
+      ['@brand-: #c00;\n@brand: #00f;\n@expose brand-, brand;', 'brand-']
+    ])('keys %s in lowerCamelCase, so two names with one key clash', async (source, first) => {
+      await expect(result(source)).resolves.toMatchObject({
+        errors: [{ code: 'eval/expose-key-conflict', message: expect.stringContaining(`@expose ${first} at entry.less:3:9`) }]
+      });
+    });
+
     it('rejects two exposed names with one JavaScript key, naming both', async () => {
       await expect(resultBeside('@expose brand-color;\n@brand-color: #c00;\n', '@import "tokens.less";\n@brandColor: #00f;\n@expose brandColor;'))
         .resolves.toMatchObject({

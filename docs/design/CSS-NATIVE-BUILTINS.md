@@ -41,7 +41,7 @@ The `round` and `mod` rows are existing defects. In legacy-mode `.less` the Less
 built-in is the author's request (P36), and a call printed as written there
 already means something else to the browser.
 
-Out of scope here: the browser runtime, `@export`, and the bundler. The runtime
+Out of scope here: the browser runtime, `@expose`, and the bundler. The runtime
 work reads the `class` column of the inventory to decide what ships as JS: a
 `none` row needs JS; every other row prints as CSS.
 
