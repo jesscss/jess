@@ -8,6 +8,11 @@
  *
  *   node scripts/compare-sandbox-corpus.mjs [--node-modules]
  *
+ * The corpus is `$LESS_TEST_DATA_ROOT/tests-unit` (the Less.js
+ * `packages/test-data` folder), else the installed `@less/test-data`, else the
+ * sibling `../less.js` checkout, the same lookup as `compare-less-builds.mjs`.
+ * Set it to a checkout of the branch the expected outputs come from.
+ *
  * The corpus is copied to a temporary folder first, so nothing is written into
  * the checkout it comes from. A copy has no `package.json` or `node_modules`,
  * so each fixture's read root is its own config folder; `--node-modules` puts a
@@ -23,7 +28,21 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const { Compiler } = await import(path.join(root, 'packages/jess/lib/index.js'));
-const corpus = path.join(path.dirname(require.resolve('@less/test-data/package.json')), 'tests-unit');
+const testDataRoot = () => {
+  const candidates = [process.env.LESS_TEST_DATA_ROOT];
+  try {
+    candidates.push(path.dirname(require.resolve('@less/test-data/package.json')));
+  } catch {
+    // Fall through to the sibling checkout.
+  }
+  candidates.push(path.resolve(root, '../less.js/packages/test-data'));
+  const found = candidates.find(dir => dir && fs.existsSync(dir));
+  if (!found) {
+    throw new Error('Unable to resolve @less/test-data. Set LESS_TEST_DATA_ROOT to the Less.js packages/test-data directory.');
+  }
+  return fs.realpathSync(found);
+};
+const corpus = path.join(testDataRoot(), 'tests-unit');
 const copy = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'jess-sandbox-corpus-')));
 const fixtures = path.join(copy, 'tests-unit');
 fs.cpSync(corpus, fixtures, { recursive: true });

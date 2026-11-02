@@ -204,8 +204,14 @@ with `DENO_CACHE_DB_MODE=memory` in the engine's environment.
   per-file settings core resolves) has a key list there, checked against its
   type, so the build fails when the two drift. Every other key is left out,
   stray top-level ones included, and so is any other `language.<dialect>`
-  block. Plugin instances cross with the arguments they were made with
-  (§4); `globalVars` and `modifyVars` cross as the settings they are.
+  block. Inside a setting whose value is an object of a fixed shape
+  (`sourceMap`), only that shape's keys cross, from a key list checked the
+  same way. A setting whose keys the user names (`lint.rules`,
+  `lint.diagnostics`, `globalVars`, `modifyVars`) crosses whole, but only
+  holding plain data (strings, numbers, booleans, arrays and plain objects of
+  them): a function, class instance or `RegExp` in one is refused, and a file
+  that needs it fails with `config/outside-read-root`, naming the config.
+  Plugin instances cross with the arguments they were made with (§4).
 - **No** `--allow-write`, `--allow-run`, `--allow-ffi`, `--allow-sys` or
   `--allow-env`. The CSS returns as data and the host writes the output file.
 - **Remote module imports follow the net rule.** Deno 2.9.6 allows an
