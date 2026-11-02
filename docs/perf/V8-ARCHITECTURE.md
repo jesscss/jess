@@ -323,6 +323,13 @@ constructor give one shape two maps. parseman bundled a copy of its own construc
 into each entry, and Jess's SCSS parse ran +6.7% on Node 26 from the polymorphic
 reads until the copies were merged (parseman#230).
 
+*Cost:* a constructor-built tree is never pretenured, so a tree that survives several
+scavenges is copied by the scavenger. Real SCSS was measured no slower: Bootstrap 5,
+Foundation and the sass-spec fixtures read −0.2% to −2.1% JIT on Node 24 and 26. The
+synthetic single-file SCSS `gen-workload`, about 1G instructions per parse, reads +3.6% on
+Node 26: scavenge time doubles, at the same scavenge count. To win that back, allocate less
+short-lived garbage during the parse. Adding a literal back would bring the split back.
+
 **INCIDENT:** R10 below.
 
 **DETECTOR:** parseman's `pnpm perf:pretenure` pads parseman's bundle and fails on a
