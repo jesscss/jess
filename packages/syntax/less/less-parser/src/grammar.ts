@@ -3061,34 +3061,47 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         optional(choice(g.ValueListWithPriority, rejectedValueStart))
       ))
     )),
-    (children, fields, span) => {
+    (children, _fields, span) => {
       // Property, delimiter, and value are independently recognized grammar
       // children; AST construction does not split or reclassify authored text.
+      // The head fixes the positions: the name, an optional `+` / `+_`, `:`, the
+      // `valueGap` leaf, then the optional value (an interpolated property name
+      // is itself an `Interpolation` value node, so the value is only read after
+      // `:`). The merge modifier is the `+` / `+_` before `:`, else a `+` / `+_`
+      // token value, as the first-match search it replaces read it.
       const rawName = children[0];
-      // Parseman's optional branch is transparent when absent. Find the value
-      // only after the property delimiter, because an interpolated property
-      // name is itself an `Interpolation` value node.
-      const mergeToken = children.find(child => isToken(child) && (child.value === '+' || child.value === '+_'));
-      const colonIndex = children.findIndex(child => isLessTerminalText(child, ':'));
+      const colonIndex = isLessTerminalText(children[1], ':') ? 1 : isLessTerminalText(children[2], ':') ? 2 : -1;
+      const last = children[colonIndex + 2];
+      const valueChild = children.length === colonIndex + 3 && isLessValueSlotValue(last) ? last : undefined;
+      const mergeChild = colonIndex === 2 ? children[1] : last;
+      const mergeText = isToken(mergeChild) ? mergeChild.value : '';
       if (colonIndex < 0) {
         throw new TypeError('Less grammar produced no declaration delimiter.');
       }
-      const valueChild = children.slice(colonIndex + 1).find(isLessValueSlotValue);
-      const value: ValueSlot = valueChild === undefined ? any('') : requireValueSlot(valueChild);
-      const merge = mergeToken === undefined ? null : requireToken(mergeToken).value === '+_' ? ' ' : ',';
-      const valueGap = fields?.valueGap === undefined ? '' : requireTerminalText(requireField(fields, 'valueGap').value);
+      // `isLessValueSlotValue` has checked it, so a non-array value only needs `lessValueSlot`.
+      const value: ValueSlot = valueChild === undefined ? any('') : Array.isArray(valueChild) ? valueChild : lessValueSlot(valueChild);
+      const merge = mergeText === '+_' ? ' ' : mergeText === '+' ? ',' : null;
+      // The `valueGap` field's leaf, read where the grammar puts it: right after `:`.
+      const gap = children[colonIndex + 1];
+      const valueGap = isToken(gap) ? gap.value : '';
       // A lone line break after `:` is ordinary parser layout and canonicalizes
       // back to `: value`. Preserve the declaration break only when the value
-      // itself carries multiline separator facts (grid-area style output).
-      const layout = Array.isArray(value) || isSequence(value) ? valueLayoutOf(value) : undefined;
-      const valueOnNewLine = (valueGap.includes('\n') || valueGap.includes('\r'))
-        && layout?.some(separator => separator.includes('\n') || separator.includes('\r')) === true;
-      if (merge !== null && merge !== ',' && merge !== ' ') {
-        throw new TypeError('Less grammar produced an invalid declaration merge modifier.');
+      // itself carries multiline separator facts (grid-area style output); the
+      // layout is read only after such a break.
+      let valueOnNewLine = false;
+      if ((valueGap.includes('\n') || valueGap.includes('\r')) && (Array.isArray(value) || isSequence(value))) {
+        for (const separator of valueLayoutOf(value) ?? []) {
+          if (separator.includes('\n') || separator.includes('\r')) {
+            valueOnNewLine = true;
+            break;
+          }
+        }
       }
+      const name = isInterp(rawName) ? rawName : isToken(rawName) ? rawName.value : requireToken(rawName).value;
+      // `lessValueSlot` has already been applied to a non-array value.
       const node = !Array.isArray(value) && isValueNode(value) && value.type === 'Important'
-        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, lessValueSlot(value.value), merge, true, valueOnNewLine)
-        : decl(isInterp(rawName) ? rawName : requireToken(rawName).value, Array.isArray(value) ? value : lessValueSlot(value), merge, false, valueOnNewLine);
+        ? decl(name, lessValueSlot(value.value), merge, true, valueOnNewLine)
+        : decl(name, value, merge, false, valueOnNewLine);
       return withSourceSpan(node, span);
     }
   );
