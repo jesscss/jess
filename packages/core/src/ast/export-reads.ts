@@ -34,6 +34,9 @@ export interface ExportRuntime {
 
   /** Each generated custom property, by its name, with how the runtime computes it. */
   readonly derived: Map<string, ExportRecipe>;
+
+  /** Each generated custom property's name, by its recipe as JSON: one name per recipe, however the call is spelled. */
+  readonly named: Map<string, string>;
 }
 
 /**
@@ -118,6 +121,9 @@ export interface ExportState<F> {
   /** By what a variable read resolves to. */
   readonly refs: Map<object, ExportRef<F>>;
 
+  /** By `var()` stand-in ({@link ExportRef}`.call`), the declaration value it stands in for. */
+  readonly behind: Map<object, CallValue>;
+
   /**
    * The exports read as the arguments of the computed call being evaluated,
    * each with the value it read; undefined outside a computed call.
@@ -142,6 +148,9 @@ export interface ExportState<F> {
   /** The `@expose`s not yet resolved ({@link settle}), and the names they list. */
   pending: Array<PendingExpose<F>>;
   readonly pendingNames: Set<string>;
+
+  /** By name, the top-level statements of the first file to declare and expose it, and where. */
+  readonly owners: Map<string, { readonly own: readonly Statement[]; readonly site: string }>;
 }
 
 /** An `@expose` waiting for its frame to be complete, with how its names resolve there. */
@@ -151,6 +160,18 @@ interface PendingExpose<F> {
 
   /** Where each name is, taken while its file is the one evaluated. */
   readonly at: ReadonlyArray<ReturnType<typeof callSiteLocation>>;
+
+  /** The top-level statements of the `@expose`'s file, where the activation knows them. */
+  readonly own: readonly Statement[] | undefined;
+
+  /** The names that file declares at its top level. */
+  readonly declares: ReadonlySet<string>;
+}
+
+/** Where an `@expose` binds: how a name resolves there, and its file's top level when the caller knows it. */
+export interface ExposeScope<F> {
+  readonly resolve: PendingExpose<F>['resolve'];
+  readonly own: readonly Statement[] | undefined;
 }
 
 /**
@@ -183,7 +204,28 @@ export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
 export function exportState<F>(): ExportState<F> {
-  return { refs: new Map(), inputs: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set() };
+  return { refs: new Map(), behind: new Map(), inputs: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map() };
+}
+
+/**
+ * Excludes `node` from lookups while a read evaluates it (`on`), or releases it.
+ * An exposed variable's read evaluates its `var()` stand-in, whose fallback is
+ * the declaration's own value, so the declaration is excluded with it: in
+ * `@b: @b + 1` the `@b` then reads the earlier `@b`, as it does unexposed.
+ */
+export function excluding<F>(e: { readonly excluded: Set<CallValue>; readonly s: { readonly exports: ExportState<F> } }, node: CallValue, on: boolean): void {
+  const behind = e.s.exports.runtime === undefined ? undefined : e.s.exports.behind.get(node);
+  if (on) {
+    e.excluded.add(node);
+    if (behind !== undefined) {
+      e.excluded.add(behind);
+    }
+  } else {
+    e.excluded.delete(node);
+    if (behind !== undefined) {
+      e.excluded.delete(behind);
+    }
+  }
 }
 
 /** The state when something is exported, else undefined. */
@@ -215,18 +257,24 @@ export function forEachExpose(statements: readonly Statement[], declare: (node: 
  * written before the `@expose` is an export read too; the render activates the
  * root's before it starts, and the import planner a top-level sheet's.
  */
-export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F, resolve: PendingExpose<F>['resolve'], e: ExportLane<F>): void {
+export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F, { resolve, own }: ExposeScope<F>, e: ExportLane<F>): void {
   rejectNestedExpose(node, nested, e);
   const x = e.s.exports;
   if ((e.referenceImportDepth ?? 0) !== 0 || x.declared.some(declared => declared.node === node && declared.frame === frame)) {
     return;
   }
   x.declared.push({ node, frame });
-  x.pending.push({ node, resolve, at: node.names.map(exported => callSiteLocation(exported, e.s)) });
+  const declares = new Set<string>();
+  for (const statement of own ?? []) {
+    if (statement.type === 'VariableDeclaration') {
+      declares.add(statement.name);
+    }
+  }
+  x.pending.push({ node, resolve, own, declares, at: node.names.map(exported => callSiteLocation(exported, e.s)) });
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), derived: new Map() };
+  x.runtime ??= { exports: new Set(), defaults: new Map(), derived: new Map(), named: new Map() };
 }
 
 /**
@@ -243,7 +291,7 @@ function settle<F>(x: ExportState<F>): void {
   }
   x.pending = [];
   x.pendingNames.clear();
-  for (const { node, resolve, at } of pending) {
+  for (const { node, resolve, at, own, declares } of pending) {
     node.names.forEach((exported, i) => {
       const name = exported.name;
       const where = at[i]!;
@@ -256,6 +304,16 @@ function settle<F>(x: ExportState<F>): void {
       if (bound !== undefined && (bound.value !== hit.value || bound.frame !== hit.frame)) {
         throw ERR.exposeConflict({ node: exported, ...where, meta: { name, other: bound.site } });
       }
+
+      /* Owner 2026-11-02: two files that each declare and expose a name clash, though an import shares one top level. */
+      const declaring = declares.has(name) ? own : undefined;
+      const owner = declaring === undefined ? undefined : x.owners.get(name);
+      if (owner !== undefined && owner.own !== declaring) {
+        throw ERR.exposeConflict({ node: exported, ...where, meta: { name, other: owner.site } });
+      }
+      if (declaring !== undefined && owner === undefined) {
+        x.owners.set(name, { own: declaring, site });
+      }
       const key = exportKey(name);
       const keyed = x.keys.get(key);
       if (keyed !== undefined && keyed.name !== name) {
@@ -265,7 +323,9 @@ function settle<F>(x: ExportState<F>): void {
       x.keys.set(key, keyed ?? { name, site });
       runtime.exports.add(name);
       if (isValueSlotArray(hit.value) || hit.value.type !== 'MixinCall') {
-        x.refs.set(hit.value, { name, call: funcCall('var', [keyword(`--${name}`), hit.value]), frame: hit.frame, source: undefined });
+        const call = funcCall('var', [keyword(`--${name}`), hit.value]);
+        x.refs.set(hit.value, { name, call, frame: hit.frame, source: undefined });
+        x.behind.set(call, hit.value);
       }
     });
   }
@@ -508,25 +568,20 @@ function recipeExport(recipe: ExportRecipe): string {
 
 /** The generated custom property a recipe writes: one name per recipe, `--<export>-<fn>` with the function as `called` names it, numbered when another recipe or an export has it. */
 function derivedName(runtime: ExportRuntime, recipe: ExportRecipe, called: string): string {
+  const key = JSON.stringify(recipe);
+  const known = runtime.named.get(key);
+  if (known !== undefined) {
+    return known;
+  }
   const base = `--${recipeExport(recipe)}-${called.slice(called.lastIndexOf('.') + 1)}`;
   for (let n = 1; ; n++) {
     const name = n === 1 ? base : `${base}-${n}`;
-    const taken = runtime.derived.get(name);
-    if (!runtime.exports.has(name.slice(2)) && (taken === undefined || sameRecipe(taken, recipe))) {
+    if (!runtime.exports.has(name.slice(2)) && !runtime.derived.has(name)) {
       runtime.derived.set(name, recipe);
+      runtime.named.set(key, name);
       return name;
     }
   }
-}
-
-function sameRecipe(a: ExportRecipe | string, b: ExportRecipe | string): boolean {
-  if (typeof a === 'string' || typeof b === 'string') {
-    return a === b;
-  }
-  if ('export' in a || 'export' in b) {
-    return 'export' in a && 'export' in b && a.export === b.export;
-  }
-  return a.fn.module === b.fn.module && a.fn.name === b.fn.name && a.args.length === b.args.length && a.args.every((arg, i) => sameRecipe(arg, b.args[i]!));
 }
 
 /** An exported variable read where a `var()` cannot replace it. */

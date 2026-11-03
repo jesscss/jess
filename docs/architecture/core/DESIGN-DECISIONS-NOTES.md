@@ -375,6 +375,9 @@ read before either reads the exposed variable. A name nothing declares there rai
 resolve to different bindings (a composed module's and the importer's own)
 raise `eval/expose-conflict`, since an exposed variable is one custom property, and two
 names with one JavaScript key (`exportKey`: dash-case to camelCase, letter case kept) raise
-`eval/expose-key-conflict`; both errors name the other site. An `@expose` in a
+`eval/expose-key-conflict`; both errors name the other site. Two files that each
+declare and expose a name also raise `eval/expose-conflict` (`settle` compares the
+top-level statements of each `@expose`'s file, passed by the render start and
+the import planner), though their imports share one binding. An `@expose` in a
 `(reference)`-imported file does nothing, silently (`declareExpose` returns when
 `referenceImportDepth` is non-zero, and the planner skips hidden imports).
