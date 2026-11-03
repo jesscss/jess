@@ -18,11 +18,12 @@
  *              `functions` value; their suites pass; every value a consumer
  *              passes for a dialect is the same one, with the contract's `from`
  *              and its required call → export pairs.
- *   ownership  behavior, then the OWNER's rule in each plugin is probed — a
- *              suffix on its module specifier and an extra name — and the
- *              plugins are rebuilt: every consumer's value must now carry both.
- *              A local copy (or a copy beside an unused owner import) keeps its
- *              own value and fails.
+ *   ownership  the OWNER's rule in each plugin is probed — a suffix on its
+ *              module specifier and an extra name — and the plugins are
+ *              rebuilt: every consumer's value must now carry both. A local
+ *              copy (or a copy beside an unused owner import) keeps its own
+ *              value and fails. It does not rerun behavior first: cod runs
+ *              behavior as its own check for every variant.
  *   changes    a contract-only change (a required pair the owner does not
  *              produce) and an implementation-only change (the owner drops a
  *              required pair) must each fail behavior.
@@ -220,7 +221,6 @@ function dialectOf(value, contract) {
 const readContract = path => JSON.parse(readFileSync(path, 'utf8'));
 
 function ownership(contract) {
-  judge(observe(), contract);
   const probe = rule => rule
     .replace(/from: (\w+)/, `from: $1 + ${JSON.stringify(PROBE_SUFFIX)}`)
     .replace(/names: (\w+)\(\)/, `names: new Map([...$1(), ${JSON.stringify(PROBE)}])`);

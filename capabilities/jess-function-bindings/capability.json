@@ -308,6 +308,7 @@
   },
   "checks": {
     "entrypoint": "capabilities/jess-function-bindings/check.mjs",
+    "repeatable": true,
     "files": [
       "capabilities/jess-function-bindings/observe.setup.ts",
       "capabilities/jess-function-bindings/vitest.config.ts",
