@@ -33,6 +33,7 @@ const LANGUAGES: ReadonlyMap<string, string> = new Map([['.jess', 'jess'], ['.le
 
 /** A stylesheet's JS module (`<prefix><file>.js`), and its CSS under Vite: ids no CSS plugin claims. */
 const MODULE = '\0jess:';
+
 /** A CSS Modules stylesheet; under Vite its CSS id keeps the `.module.css` ending, so Vite's CSS Modules scope it. */
 const MODULES = /\.module\.[^./]+$/;
 const CSS = '\0jess-css:';
