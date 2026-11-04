@@ -314,6 +314,7 @@ type GrammarRuleName =
   | 'stylesheetBodyBlock'
   | 'declarationListBlock'
   | 'descriptorBodyBlock'
+  | 'descriptorBodyItem'
   | 'declarationListItem'
   | 'declarationListDeclaration'
   | 'simpleSelectorAtom'
@@ -4844,10 +4845,17 @@ const cssFactory = (g: GrammarSelf) => {
     )
   );
   const declarationListItem = choice(g.declarationListDeclaration, g.NestedConditionalBlock, g.DeclarationListAtRule, g.Ruleset, literal(';'));
+
+  /*
+   * An item of a declarations-only block (descriptor at-rules, page-margin
+   * boxes, keyframes, font-feature values). A rule key read through `g`, so a
+   * dialect that adds an item there overrides this one choice rather than
+   * restating the block.
+   */
   const descriptorBodyItem = choice(g.declarationListDeclaration, literal(';'));
   const conditionalGroupBodyItem = choice(g.ConditionalBlock, g.ConditionalGroupAtRule, g.TopLevelRuleset);
   const stylesheetBodyItem = choice(g.ConditionalBlock, g.StylesheetAtRule, g.TopLevelRuleset);
-  const descriptorBodyBlock = sequence(literal('{'), many(descriptorBodyItem), literal('}'));
+  const descriptorBodyBlock = sequence(literal('{'), many(g.descriptorBodyItem), literal('}'));
   const declarationListBlock = sequence(literal('{'), many(g.declarationListItem), literal('}'));
   const conditionalGroupBodyBlock = sequence(literal('{'), many(conditionalGroupBodyItem), literal('}'));
   const stylesheetBodyBlock = sequence(literal('{'), many(g.stylesheetBodyItem), literal('}'));
@@ -5503,6 +5511,7 @@ const cssFactory = (g: GrammarSelf) => {
     stylesheetBodyBlock,
     declarationListBlock,
     descriptorBodyBlock,
+    descriptorBodyItem,
     declarationListItem,
     declarationListDeclaration,
     RoutedAtRuleStatement,
