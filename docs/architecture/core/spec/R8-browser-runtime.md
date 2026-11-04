@@ -50,10 +50,10 @@ or needs JS) to decide what ships in the bundle.
 2. **Dependency tracking.** Built; contract below. A value an imported function
    computes from an exposed variable writes a generated custom property, and the compile
    returns how the runtime computes it. Mixin arguments carry an exposed variable.
-3. **Runtime module.** `@jesscss/fns/runtime`: `vars()`/`set()` over the
-   recipes slice 2 returns, calling the functions they name. It recomputes
-   values and never re-serializes CSS, so it does not need the R7.4 per-kind
-   emit split (rulings below).
+3. **Runtime module.** Built; contract below. `@jesscss/fns/runtime`:
+   `vars()`/`set()` over the recipes slice 2 returns, calling the functions
+   they name. It recomputes values and never re-serializes CSS, so it does not
+   need the R7.4 per-kind emit split (rulings below).
 4. **Bundler output.** `rollup-plugin-jess` / Vite emit the `.css` plus the
    `.js` module when a file has an `@expose`.
 5. **Class-name scoping (R7.3).** Its O-CSSM items stay open.
@@ -153,7 +153,9 @@ or needs JS) to decide what ships in the bundle.
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent
-  when nothing is exposed): `exports` (every exposed name), `defaults` (the
+  when nothing is exposed): `exports` (every exposed name), `keys` (each exposed
+  name by its JavaScript key, R8-11; the generated module reads it rather than
+  re-deriving the key), `defaults` (the
   compile-time value of each exposed variable a recipe reads, as the runtime reads it:
   `emitValue`, not the output modes, so compressed CSS may spell it shorter) and
   `derived` (each generated property's recipe). JSON, so it crosses the sandbox
@@ -161,6 +163,35 @@ or needs JS) to decide what ships in the bundle.
 - **Cost.** A document with no exposed variable pays one check per variable read and per
   computed call, and two calls per mixin argument bound
   (`exportArgumentStart` / `exportArgumentEnd`, each one check).
+
+## Slice 3 contract (as built)
+
+- **`createRuntime({ keys, defaults, derived })`** (`packages/fns/src/runtime.ts`)
+  returns `vars(values)` and `set(values, target?)`. Values are given by
+  JavaScript key (`brandColor` for `@brand-color`); a key the stylesheet does
+  not expose raises. A derived recipe is an
+  export (`{ export }`), an argument's compile-time CSS (a string) or
+  `[fn, args]` with the imported function itself, as the generated module
+  writes it.
+- **`vars(values)`** is pure: `--<name>` for each export given, and each
+  derived property that reads one of them, computed with the function the
+  compile ran on the given values and the compile-time value of every export
+  not given. It is usable as a React or Vue `style` object.
+- **`set(values, target)`** writes `vars(values)` on `target`'s inline style,
+  `document.documentElement` by default. ponytail: no per-frame batching; a
+  caller setting many values in one frame calls `set` once with all of them.
+- **Values are CSS literals** (`#c00`, `8px`, `red`, lists of them); a value
+  written as a function (`hsl(…)`, `calc(…)`) raises, since the runtime has no
+  CSS parser. `<input type="color">` gives hex.
+- **The runtime writes what a compile writes**: for a value `v`, a derived
+  property equals the bytes a compile with `@brand: v` writes
+  (`packages/jess/test/export-runtime.test.ts`).
+- **Modules.** The compiler writes each recipe's module as the runtime module
+  imports it: a plugin's private path through its new `packageModule` hook
+  (`#less` → `@jesscss/fns/less`, `ProvidedModules.packageOf`); a package
+  spelling as written. A relative module is refused with a message, since a
+  `@use` in an imported file resolves against that file, which the recipe does
+  not record (`packages/compiler/src/runtime-modules.ts`).
 
 ## Orchestrator rulings for slices 3–5 (2026-11-01, owner delegated: *"You do not have to wait for my permission for slices. Get all slices done"*)
 
@@ -201,7 +232,7 @@ or needs JS) to decide what ships in the bundle.
   (`--x: @brand` is written verbatim, as today.) Should the lone splice be the
   `var()`?
 
-## API direction (proposal for slices 3–4, not built)
+## API direction (proposal; slices 3–4 build `vars`/`set`)
 
 The base layer is a pure function from values to a style object. DOM writing is
 a thin layer on top, so SSR, React `style`, Vue `:style` and `el.style` share
