@@ -340,6 +340,8 @@ type GrammarRuleName =
   | 'branchLead'
   | 'VarFallbackOpener'
   | 'VarFallbackLead'
+  | 'identOrFunction'
+  | 'identifierOrFunction'
   | 'MediaTest'
   | 'MediaTestBody'
   | 'StyleTestBody'
@@ -361,7 +363,9 @@ type GrammarRuleName =
 type GrammarSelf = {
   readonly [K in GrammarRuleName]: K extends keyof typeof cssSyntax
     ? (typeof cssSyntax)[K]
-    : Combinator<unknown>
+    : K extends 'identOrFunction' | 'identifierOrFunction'
+      ? Combinator<string>
+      : Combinator<unknown>
 };
 
 /*
@@ -857,7 +861,16 @@ const cssFactory = (g: GrammarSelf) => {
     literal('(')
   ));
 
-  const pseudoIdentOrFunction = token(noTrivia(sequence(
+  /*
+   * A selector-position identifier, or the same identifier glued to `(` as a
+   * function opener: the `<ident-token>` / `<function-token>` after a pseudo's
+   * colon or double colon (selectors-4 §3.5, §3.6). It reads `Identifier`, the
+   * non-value slot, where `identOrFunction` reads the value-position
+   * `IdentToken`, and the two accept different languages: `Identifier` refuses
+   * a leading `--`, which a value identifier may have. A rule key, so a
+   * dialect routes its own pseudo openers through this one token.
+   */
+  const identifierOrFunction = token(noTrivia(sequence(
     g.Identifier,
     optional(literal('('))
   )));
@@ -1471,7 +1484,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       pseudoColon,
       dispatch(
-        pseudoIdentOrFunction,
+        g.identifierOrFunction,
         cssCase(
           ['nth-child(', 'nth-last-child('],
           sequence(
@@ -2466,7 +2479,9 @@ const cssFactory = (g: GrammarSelf) => {
    * with `--`; css-mixins-1 calls a dashed ident glued to `(` a
    * `<dashed-function>` (`--*( <declaration-value>#? )`). Both dispatches route
    * `--f(` to the generic call tail and a bare `--x` (by its `--` prefix) to its
-   * `CustomPropertyValue` node.
+   * `CustomPropertyValue` node. It is a rule key, read through `g` by every
+   * value-position dispatch here, so a dialect reads the same opener and an
+   * override of it reaches all of them.
    */
   const identOrFunction = token(noTrivia(
     sequence(
@@ -2614,7 +2629,7 @@ const cssFactory = (g: GrammarSelf) => {
    * a parenthesized value because the opener is parsed with noTrivia.
    */
   const IdentOrFunction = dispatch(
-    identOrFunction,
+    g.identOrFunction,
     cssCase(
       'url(',
       UrlFunction
@@ -2670,7 +2685,7 @@ const cssFactory = (g: GrammarSelf) => {
     otherwise(IdentBlockOrKeyword)
   );
   const typedIdentOrFunction = dispatch(
-    identOrFunction,
+    g.identOrFunction,
     cssCase(
       'url(',
       UrlFunction
@@ -2730,7 +2745,7 @@ const cssFactory = (g: GrammarSelf) => {
    * fallback's own permissive body (`VarFallbackCall`, ledger P2).
    */
   const VarFallbackOpener = dispatch(
-    identOrFunction,
+    g.identOrFunction,
     cssCase(
       'url(',
       UrlFunction
@@ -4580,7 +4595,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const ifTestHead = choice(
     g.UnicodeRangeToken,
-    identOrFunction
+    g.identOrFunction
   );
 
   /*
@@ -5512,6 +5527,8 @@ const cssFactory = (g: GrammarSelf) => {
     branchLead,
     VarFallbackOpener,
     VarFallbackLead,
+    identOrFunction,
+    identifierOrFunction,
     whitespace,
     rw: whitespace
   };
