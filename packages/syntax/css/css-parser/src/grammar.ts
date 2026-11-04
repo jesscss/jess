@@ -150,7 +150,6 @@ type GrammarRuleName =
   | 'ConditionalAtKeyword'
   | 'ContainerAtKeyword'
   | 'CustomPropertyName'
-  | 'CustomPropertyToken'
   | 'IdentToken'
   | 'DescriptorAtKeyword'
   | 'DocumentAtKeyword'
@@ -1738,14 +1737,11 @@ const cssFactory = (g: GrammarSelf) => {
    * Dashed identifiers are not ordinary CSS keywords, but they are valid
    * component values (most visibly as `var(--name)` arguments). Keep the
    * authored dashed identifier as a structured keyword leaf rather than
-   * collapsing the whole function or its enclosing calc to raw bytes. It reads
-   * the bare `CustomPropertyToken`, not `CustomPropertyName`: the name slot is
-   * the declaration's, which a dialect widens with interpolation, and a value
-   * leaf takes the token alone.
+   * collapsing the whole function or its enclosing calc to raw bytes.
    */
   const CustomPropertyValue = node(
     'CustomPropertyValue',
-    g.CustomPropertyToken,
+    g.CustomPropertyName,
     children => keyword(tokenText(children[0]))
   );
 
@@ -3088,8 +3084,10 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * What `@import` names: a `<string>` or a `<url>` (css-cascade-5 §2). A
-   * slot, so a dialect that widens the target or takes a list of them
-   * overrides it rather than restating `ImportStatement`.
+   * slot for another spelling of that one static target: the reducer takes
+   * the first `Quoted` or `Url` node, so an override must still produce exactly
+   * one of those. A target of another kind, or a list of targets, needs the
+   * reducer changed with it.
    */
   const ImportTarget = choice(
     g.Quoted,
