@@ -148,6 +148,7 @@ type GrammarRuleName =
   | 'ConditionalAtKeyword'
   | 'ContainerAtKeyword'
   | 'CustomPropertyName'
+  | 'CustomPropertyToken'
   | 'IdentToken'
   | 'DescriptorAtKeyword'
   | 'DocumentAtKeyword'
@@ -1715,11 +1716,14 @@ const cssFactory = (g: GrammarSelf) => {
    * Dashed identifiers are not ordinary CSS keywords, but they are valid
    * component values (most visibly as `var(--name)` arguments). Keep the
    * authored dashed identifier as a structured keyword leaf rather than
-   * collapsing the whole function or its enclosing calc to raw bytes.
+   * collapsing the whole function or its enclosing calc to raw bytes. It reads
+   * the bare `CustomPropertyToken`, not `CustomPropertyName`: the name slot is
+   * the declaration's, which a dialect widens with interpolation, and a value
+   * leaf takes the token alone.
    */
   const CustomPropertyValue = node(
     'CustomPropertyValue',
-    g.CustomPropertyName,
+    g.CustomPropertyToken,
     children => keyword(tokenText(children[0]))
   );
 
