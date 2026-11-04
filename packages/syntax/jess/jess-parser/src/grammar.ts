@@ -313,7 +313,6 @@ type JessRules = {
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
   typedAtRuleHeader: Combinator<unknown>;
-  identifierOrFunction: Combinator<string>;
 };
 
 type SharedSyntax = {
@@ -459,6 +458,12 @@ type SharedSyntax = {
   VarFallbackEmpty: Combinator<ValueNode>;
   NamespaceTypeSelector: Combinator<SimpleSelector>;
   keyframeSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Inherited from the CSS base: the glued `<ident-token>` / `<function-token>`
+   * opener. Jess routes both its value and its pseudo-selector dispatches on it.
+   */
+  identifierOrFunction: Combinator<string>;
 };
 
 const rawWhitespace = regex(/[ \t\n\r\f]+/);
@@ -916,16 +921,6 @@ const nullWord = word('null', IDENT_BOUNDARY);
 const jessFactory = (g: JessRules & SharedSyntax) => {
   const caseInsensitiveWhen = makeWhen({ caseInsensitive: true });
   const syntaxWord = makeWord(IDENT_BOUNDARY);
-
-  /*
-   * CSS identifier-or-function positions consume the adjacent `(` as one
-   * routed opener. Jess reuses the same opener for values and pseudo selectors;
-   * only their selected tails differ.
-   */
-  const identifierOrFunction = token(noTrivia(sequence(
-    g.Identifier,
-    optional(literal('('))
-  )));
 
   /*
    * Names another typed production owns in EVERY position, statement included:
@@ -6628,8 +6623,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     While,
     rw: whitespace,
     whitespace,
-    typedAtRuleHeader,
-    identifierOrFunction
+    typedAtRuleHeader
   };
 };
 
