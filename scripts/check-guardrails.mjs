@@ -55,13 +55,16 @@
  *      only shrink.
  *
  *   8. Grammars decide on the current token: no `not(...)`/`peek(...)` over more
- *      than one token and no `attempt(...)` (a pre-scan or a rollback is a
- *      missing parseman capability, never a grammar workaround), no dialect
- *      prefix in a rule name, a JSDoc block on every rule, no runtime code
- *      generation in a parser package, and no `productions.ts`. Existing
- *      sites are baselined in `scripts/check-guardrails.grammar-baseline.json`,
- *      each with its tracking issue; the baseline may only shrink. The scan
- *      lives in `scripts/grammar-guardrails.mjs`.
+ *      than one token, no lookaround past one token inside a `regex()`, and no
+ *      `attempt(...)` (a pre-scan or a rollback is a missing parseman capability,
+ *      never a grammar workaround), combinators imported under their own names,
+ *      no dialect prefix in a rule name, a JSDoc block on every rule, no runtime
+ *      code generation in a parser package, no `productions.ts`, and no parseman
+ *      combinator imported outside the scanned sources. Existing sites are
+ *      baselined in `scripts/check-guardrails.grammar-baseline.json`, each with
+ *      its tracking issue. An entry records what its lookahead resolved to, so
+ *      widening a baselined site fails, and `--shrink-against` fails a PR that
+ *      adds an entry. The scan lives in `scripts/grammar-guardrails.mjs`.
  *
  * This gate deliberately does NOT try to judge whether a closure is correct. It
  * forces the author to say, in writing and in the same block, whose authority
@@ -84,6 +87,8 @@
  *                                never adds an entry or raises a ceiling.
  *   --require-structure          fail, rather than skip, assertions 6 and 8 when
  *                                the TypeScript parser is not installed.
+ *   --shrink-against=<ref>       fail if the assertion-8 baseline holds any entry
+ *                                the baseline at <ref>'s merge base does not.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -93,7 +98,10 @@ import { createRequire } from 'node:module';
 import { join, relative, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compareRulingsLock, LOCK, LEDGER, RULING_TESTS } from './rulings-lock.mjs';
-import { compareGrammarBaseline, grammarDefinitions, PRODUCTIONS_FILE, RULE_MESSAGES, scanGrammarSource } from './grammar-guardrails.mjs';
+import {
+  addedBaselineEntries, ANY_SOURCE, compareGrammarBaseline, GRAMMAR_SOURCE, grammarBaselineEntries, grammarDefinitions,
+  NOT_A_GRAMMAR, parsemanCombinatorImports, PRODUCTIONS_FILE, RULE_MESSAGES, scanGrammarSource
+} from './grammar-guardrails.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -1134,7 +1142,6 @@ if (predicates.stale.length > 0) {
  * resolves inherited `g.Rule` names through the CSS grammar and parser-shared.
  */
 const GRAMMAR_BASELINE = 'scripts/check-guardrails.grammar-baseline.json';
-const GRAMMAR_SOURCE = /^packages\/(?:syntax\/[^/]+\/[^/]+-parser|parser-shared)\/src\/(?!(?:.*\/)?__tests__\/).+(?<!\.d|\.test|\.spec)\.ts$/;
 const GRAMMAR_BASE = /^packages\/(?:parser-shared\/src\/|syntax\/css\/css-parser\/src\/grammar\.ts$)/;
 const listGrammar = process.argv.includes('--list-grammar');
 const grammar = { skipped: !ts, counts: {} };
@@ -1149,6 +1156,67 @@ if (productionsFiles.length > 0) {
       ...productionsFiles.map(f => `    ${f}`)
     ].join('\n')
   );
+}
+
+/*
+ * A grammar written outside the scanned sources would escape every check here,
+ * so importing a combinator there fails. Text-only: it needs no TypeScript parser.
+ */
+const strayGrammars = gitFiles
+  .filter(f => ANY_SOURCE.test(f) && !GRAMMAR_SOURCE.test(f) && !NOT_A_GRAMMAR.test(f) && existsSync(join(root, f)))
+  .map(f => ({ file: f, names: parsemanCombinatorImports(readFileSync(join(root, f), 'utf8')) }))
+  .filter(s => s.names.length > 0);
+if (strayGrammars.length > 0) {
+  failures.push(
+    [
+      `${strayGrammars.length} file(s) outside the scanned grammar sources import parseman combinators.`,
+      '',
+      '  Grammar code lives in `packages/syntax/*/*-parser/src/` or `packages/parser-shared/src/`,',
+      '  where assertion 8 reads it. Move it there.',
+      '',
+      ...strayGrammars.map(s => `    ${s.file}: ${s.names.join(', ')}`)
+    ].join('\n')
+  );
+}
+
+/*
+ * Shrink-only, against the base branch. The scan compares the tree with the
+ * baseline in the same commit, so on its own it cannot see a baseline entry
+ * added along with the violation. Needs git and the JSON only.
+ */
+const shrinkAgainst = process.argv.find(a => a.startsWith('--shrink-against='))?.slice('--shrink-against='.length);
+if (shrinkAgainst) {
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  let baseCommit;
+  try {
+    baseCommit = git('rev-parse', '--verify', `${shrinkAgainst}^{commit}`);
+  } catch {
+    failures.push(`--shrink-against: \`${shrinkAgainst}\` is not a commit here; fetch it first. The baseline cannot be proven to shrink.`);
+  }
+  if (baseCommit) {
+    /* A shallow PR checkout has no merge base, but its HEAD merges the base tip, so the tip is the right comparison. */
+    try {
+      baseCommit = git('merge-base', 'HEAD', baseCommit);
+    } catch { /* shallow: keep the tip */ }
+    let baseText;
+    try {
+      baseText = git('show', `${baseCommit}:${GRAMMAR_BASELINE}`);
+    } catch { /* The base branch has no baseline yet: this change introduces it. */ }
+    const current = existsSync(join(root, GRAMMAR_BASELINE)) ? JSON.parse(readFileSync(join(root, GRAMMAR_BASELINE), 'utf8')) : {};
+    const added = baseText === undefined ? [] : addedBaselineEntries(JSON.parse(baseText), current);
+    if (added.length > 0) {
+      failures.push(
+        [
+          `${added.length} entr${added.length === 1 ? 'y' : 'ies'} added to ${GRAMMAR_BASELINE} (against ${baseCommit.slice(0, 9)}).`,
+          '',
+          '  The baseline only shrinks. A new or wider violation does not get an entry: file the',
+          '  missing parseman capability and land the grammar without the workaround.',
+          '',
+          ...added.map(e => `    ${e.rule}  ${e.file}\n      ${e.construct}`)
+        ].join('\n')
+      );
+    }
+  }
 }
 
 function scanGrammarTree(sources) {
@@ -1169,9 +1237,8 @@ if (ts) {
   const hits = scanGrammarTree(sources);
 
   /*
-   * Negative control: a planted pre-scan, a planted dialect-prefixed rule and a
-   * planted `new Function` in a copy of the Less grammar are each caught, and a
-   * one-token lookahead is not.
+   * Negative control: one planted violation per rule in a copy of the Less
+   * grammar is caught, and a one-token lookahead is not.
    */
   const probeFile = 'packages/syntax/less/less-parser/src/grammar.ts';
   if (sources.has(probeFile)) {
@@ -1182,24 +1249,24 @@ const plantedNarrowProbe = not(literal('{'));
 const lessPlantedNameProbe = literal('x');
 const plantedCodegenProbe = new Function('return 1');
 const plantedAttemptProbe = attempt(literal('z'));
+const plantedRegexProbe = regex(/[-\\w]+(?=[ \\t]*:)/);
+const plantedAliasProbe = not;
 const PlantedRuleProbe = literal('y');
 `);
     const planted = scanGrammarTree(probe).filter(h => h.file === probeFile && /^(?:planted|lessPlanted|Planted)/.test(h.const));
     const caught = rule => planted.some(h => h.rule === rule);
-    if (['lookahead', 'dialect-prefix', 'runtime-codegen', 'attempt', 'jsdoc'].some(rule => !caught(rule)) || planted.some(h => h.const === 'plantedNarrowProbe')) {
+    if (['lookahead', 'dialect-prefix', 'runtime-codegen', 'attempt', 'jsdoc', 'parseman-import'].some(rule => !caught(rule)) || !planted.some(h => h.const === 'plantedRegexProbe') || planted.some(h => h.const === 'plantedNarrowProbe')) {
       failures.push('Assertion 8 self-test failed: a planted grammar violation was not caught, or a one-token lookahead was. The grammar scan is blind; fix it before trusting its result.');
     }
   }
 
   const baselinePath = join(root, GRAMMAR_BASELINE);
   const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : { entries: [] };
-  const undocumented = Object.entries(baseline.undocumentedRules ?? {})
-    .flatMap(([file, names]) => names.map(name => ({ rule: 'jsdoc', file, construct: name, issue: baseline.issue })));
   if (listGrammar) {
     const issue = baseline.issue ?? '';
     console.log(JSON.stringify(hits.map(h => ({ ...h, issue })), null, 2));
   }
-  const { fresh, stale, kept } = compareGrammarBaseline(hits, [...baseline.entries, ...undocumented]);
+  const { fresh, stale, kept } = compareGrammarBaseline(hits, grammarBaselineEntries(baseline));
   const keptUndocumented = {};
   for (const e of kept.filter(e => e.rule === 'jsdoc')) {
     (keptUndocumented[e.file] ??= []).push(e.construct);
@@ -1236,7 +1303,8 @@ const PlantedRuleProbe = literal('y');
         '',
         `  Good — remove ${stale.length === 1 ? 'it' : 'them'} from ${GRAMMAR_BASELINE} so the baseline only`,
         '  shrinks: `node scripts/check-guardrails.mjs --prune-baselines`. (A rewritten construct',
-        '  that is still a violation shows up above as new.)',
+        '  that is still a violation, or a baselined lookahead whose definition changed, shows',
+        '  up above as new: the entry does not follow it.)',
         '',
         ...stale.map(e => `    ${e.file}${e.line ? `:${e.line}` : ''}  ${e.rule}\n      ${e.construct}`)
       ].join('\n')

@@ -641,11 +641,15 @@ that shape intentionally and fail with the richer diagnostic.
     and do not land the workaround. The standing example is Less's
     `rulesetNotDeclaration`, `not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/))`, which
     scans an identifier, whitespace and a colon to choose between a ruleset and a
-    declaration. `pnpm check:guardrails` (assertion 8) fails on any lookahead it
-    cannot prove one token wide, on `attempt(...)`, and on a dialect-prefixed
-    rule name (item 16);
-    the existing sites are baselined in
-    `scripts/check-guardrails.grammar-baseline.json` and may only shrink.
+    declaration. A lookaround past one token inside a consuming `regex()` is the
+    same pre-scan in a different place. `pnpm check:guardrails` (assertion 8) fails
+    on any lookahead it cannot prove one token wide, on such a lookaround, on
+    `attempt(...)`, on a combinator imported under another name, and on a
+    dialect-prefixed rule name (item 16); `token(...)` narrows only a provable
+    one-token shape, not whatever it wraps. The existing sites are baselined in
+    `scripts/check-guardrails.grammar-baseline.json` and may only shrink: an entry
+    records what its lookahead resolves to, so widening one fails, and CI fails a
+    pull request that adds one.
 
 ### Naming is a duplication mechanism, not a style preference
 

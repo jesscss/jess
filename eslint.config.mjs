@@ -488,6 +488,22 @@ export default tseslint.config([
   },
 
   /*
+   * Parser packages never build code at runtime; codegen belongs to parseman's
+   * build-time `compile()`. `check:guardrails` assertion 8 reads the same rule.
+   */
+  {
+    files: [
+      'packages/syntax/*/*-parser/src/**/*.{ts,mts,cts,tsx}',
+      'packages/parser-shared/src/**/*.{ts,mts,cts,tsx}'
+    ],
+    rules: {
+      'no-eval': 'error',
+      'no-implied-eval': 'error',
+      'no-new-func': 'error'
+    }
+  },
+
+  /*
    * TEMPORARY, and deliberately narrow: `less-parser` is still in a heavy
    * grammar-shaping pass. Keep parser-correctness rules on, but defer line
    * comment and non-ASCII cleanup until the remaining Less productions stop
