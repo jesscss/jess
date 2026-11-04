@@ -432,8 +432,8 @@ type SharedSyntax = {
   SupportsCondition: Combinator<ValueNode>;
   // Inherited from the CSS base: the comma list of supports conditions an @supports prelude reads.
   SupportsPrelude: Combinator<ValueNode>;
-  // Inherited from the CSS base's recognition: the css-syntax-3 §4.3.9 identifier token.
-  IdentToken: Combinator<string>;
+  // Inherited from the CSS base: the value-position `<ident-token>` / `<function-token>` opener.
+  identOrFunction: Combinator<string>;
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;
@@ -2235,23 +2235,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `genericFunctionOpen`: widening it would scan every `--x: …` custom-property
   // declaration through its dispatch and turn `--f(…);` into a statement call.
   //
-  // BLOCKED restatements (checklist item 1, outcome 4): `valueIdentOrFunction`
-  // is css's `identOrFunction`, a local terminal there rather than a rule this
-  // grammar can reference, and `RoutedCustomPropertyValue` is css's rule of
-  // that name, which routes through `routed()` — the case parseman does not
-  // see through a composed rule (jess#298, as for the if-test shells below).
-  // Both go when css exposes its opener and jess#298 lands.
-  const valueIdentOrFunction = token(noTrivia(sequence(
-    g.IdentToken,
-    optional(literal('('))
-  )));
+  // That opener is css's `identOrFunction` rule key.
+  //
+  // BLOCKED restatement (checklist item 1, outcome 4): `RoutedCustomPropertyValue`
+  // is css's rule of that name, which routes through `routed()` — the case
+  // parseman does not see through a composed rule (jess#298, as for the if-test
+  // shells below). It goes when jess#298 lands.
   const RoutedCustomPropertyValue = node(
     'CustomPropertyValue',
     routed(),
     children => keyword(requireToken(children[0]).value)
   );
   const IdentifierOrFunction = dispatch(
-    valueIdentOrFunction,
+    g.identOrFunction,
     caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
     caseOf('calc(', g.CalcFunction),
     caseOf('var(', g.VarFunction),
@@ -2938,10 +2934,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * the `less-var-fallback` context, where a Less variable is read as in any
    * argument (`customAtName`); its end is trimmed at the `)`.
    *
-   * BLOCKED from overriding only the slot: routing `var(` to the inherited css
-   * `VarFunction` makes the macro compose fall back to the interpreter ("ref()
-   * used before .define()"), so `VarFunction` is restated here with the css
-   * shape — opener, custom property, optional `, <fallback>` — and Less trivia.
+   * BLOCKED from overriding only the slot: the inherited css `VarCall` gives the
+   * call no source span and this one does, so `VarFunction` is restated here
+   * with the css shape — opener, custom property, optional `, <fallback>` — and
+   * Less trivia.
    * The gap after the comma is the custom-property value's own gap, so a `//`
    * that opens the fallback is value text (see CustomDeclaration).
    */
