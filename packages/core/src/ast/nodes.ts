@@ -1857,14 +1857,14 @@ export const reference = (
   base: ValueNode | MixinCall,
   steps: ReferenceStep[],
   raw: string
-): Reference => (new ReferenceNode(base, steps, raw, NO_SPAN, NO_SPAN));
+): Reference => (new ReferenceNode(base, steps.slice(), raw, NO_SPAN, NO_SPAN));
 
 /** A Less property accessor `$name` — {@link Lookup} of kind `prop`. */
 export const propertyReference = (name: string, raw: string = `$${name}`): Lookup =>
   (new LookupNode('scoped', 'prop', name, raw, NO_SPAN, NO_SPAN));
 
 /** A compound from an already-built list of simple tokens. */
-export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => (new CompoundSelectorNode(value, NO_SPAN, NO_SPAN));
+export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => (new CompoundSelectorNode([...value], NO_SPAN, NO_SPAN));
 
 /** A selector term: a lone simple token stays direct; adjacent tokens form a compound. */
 export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]): SelectorTerm => {
@@ -1887,7 +1887,7 @@ export const complexSelector = (
     head.term,
     ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
   ];
-  return new ComplexSelectorNode(value, NO_SPAN, NO_SPAN);
+  return new ComplexSelectorNode([...value], NO_SPAN, NO_SPAN);
 };
 export const relativeSelector = (
   combinator: Combinator,
@@ -2003,8 +2003,8 @@ export const operation = (
 export const callArg = <V extends CallValue>(value: V, name?: string, spread = false, sigil?: string): CallArg<V> =>
   new CallArgValue(value, name, spread, sigil);
 
-/** A call step after a reference or lookup. */
-export const referenceCall = (args: CallArg[]): ReferenceCall => new ReferenceCallNode(args);
+/** A call step after a reference or lookup. It owns a copy of its argument list (invariant 12). */
+export const referenceCall = (args: readonly CallArg[]): ReferenceCall => new ReferenceCallNode(args.slice());
 
 /** Normalize a mixed authored-argument array to {@link CallArg}s. A bare value
  *  slot (node OR nested array) is positional; an already-built `CallArg` passes
@@ -2098,7 +2098,7 @@ export const mixinPathSegment = (combinator: Combinator, selector: string): Mixi
 
 /** `call` with a namespace `path` (and optionally `!important`). */
 export const withMixinPath = (call: MixinCall, path: MixinCall['path'], important: boolean = call.important): MixinCall =>
-  new MixinCallNode(call.name, call.args, path, important, call.content, call._s, call._e);
+  new MixinCallNode(call.name, call.args, [...path], important, call.content, call._s, call._e);
 
 /** `call` with `args`, every other field kept. */
 const withMixinArgs = (call: MixinCall, args: CallArg[]): MixinCall =>
@@ -2131,13 +2131,14 @@ export const rule = (
         ? selector
         : selist(selector);
 
+  const own = rules.slice();
   return extendInstructions === undefined
     ? guard === undefined
-      ? new RulesetNode(list, rules, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
-      : new RulesetGuardNode(list, rules, guard, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
+      ? new RulesetNode(list, own, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
+      : new RulesetGuardNode(list, own, guard, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
     : guard === undefined
-      ? new RulesetExtendNode(list, rules, extendInstructions, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
-      : new RulesetExtendGuardNode(list, rules, extendInstructions, guard, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN);
+      ? new RulesetExtendNode(list, own, extendInstructions, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
+      : new RulesetExtendGuardNode(list, own, extendInstructions, guard, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN);
 };
 
 /**
