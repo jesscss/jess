@@ -1899,7 +1899,7 @@ export const relativeSelector = (
     head.term,
     ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
   ];
-  return new RelativeSelectorNode(value, NO_SPAN, NO_SPAN);
+  return new RelativeSelectorNode([...value], NO_SPAN, NO_SPAN);
 };
 export const selectorBranchOf = (segments: readonly [SelectorPartInput, ...SelectorPartInput[]]): SelectorBranch => {
   const [first, second, ...rest] = segments;

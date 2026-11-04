@@ -302,16 +302,31 @@ work.
 
 ## 12. A node a parse keeps is constructor-built, never a literal
 
-**RULE:** every object an AST keeps past the reducer that builds it — a node, a
-call argument, a reference step — is built by its shape's constructor in
-`packages/core/src/ast/node-ctors.js`, through the core factory. Never by an object
-literal, in a factory or a reducer, and never copied by spread (`{ ...node, key }`):
+**RULE:** every typed node, call argument and reference step an AST keeps is built by
+its shape's constructor in `packages/core/src/ast/node-ctors.js`, through the core
+factory. It is never built by an object literal, in a factory or a reducer, and never
+copied by spread (`{ ...node, key }`):
 a changed node is rebuilt through its constructor (`withMixinPath`, `withWrite`,
 `withParens`, `withFields`, `copyNode`). The values `value-factory.ts` builds for
 eval and render follow the same rule. Each shape has ONE constructor, and the module
-is loaded once per process. An array a node keeps is the factory's own copy (`[...xs]`
-or `xs.slice()`), never the caller's array: an array literal has an allocation site too.
-The one shared array is the frozen empty mixin path, `NO_PATH`, which allocates nothing.
+is loaded once per process. The arrays measured as load-bearing are the factory's own
+copy (`[...xs]` or `xs.slice()`), never the caller's array, because an array literal has an
+allocation site too. These are the rules of `rule` and `atRuleBlock`, the selector values
+of `compoundSelectorOf`, `complexSelector` and `relativeSelector`, the steps of
+`reference`, the args of `referenceCall`, and the mixin path. The one shared array is the
+frozen empty mixin path, `NO_PATH`, which allocates nothing.
+
+*Debt (TODO, jesscss/jess#575):* none of the items below has been measured on its own,
+and none split in the padding matrix.
+- Untyped objects a node keeps are still literals: the `{ mode }` and `{ mode, scope }`
+  writes, interpolation parts, mixin params, extend targets, the `{ guard, value }` and
+  `{ guard, rules }` branches, `{ kind, ... }`, `{ name, alias }`, `{ ambient }`,
+  `{ item, written, recoveredValue }` and `Stylesheet._trivia`.
+- Some factories keep the caller's array: `anonymousMixin`, `forNode`, `whileNode`,
+  `mixinDef`, `stylesheet`, `interpolation`, `spaced`, `list`, `funcCall`, `collection`
+  and `apply`.
+- The constructor module ships twice, once in the ESM build and once in the CJS build.
+  A process that loads both gets two maps per shape.
 
 *Why:* V8 keeps an allocation site per object or array literal and decides per site
 whether to allocate straight into old space (pretenuring), from where scavenges
