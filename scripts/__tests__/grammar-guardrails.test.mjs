@@ -120,7 +120,7 @@ test('lookahead: a nested not or peek after a consuming arm reads a token, at an
 test('regexWidth: tokens glued in one regex are counted; a real single token passes', () => {
   const many_ = [
     String.raw`/(?:[-\w]+):/`, String.raw`/([-\w]+):/`, '/color:/', '/(?:color|margin|padding):/', String.raw`/;[-\w]+/`, String.raw`/\{[-\w]+/`,
-    '/.?.?.?.?.?.?.?.?.?.?:/', '/[^;]?[^;]?[^;]?[^;]?;/', String.raw`/\p{Any}+(?=;)/u`, '/[!-:<-~]+(?=;)/', String.raw`/([-\w]+):\1/`, String.raw`/(?:[-\w]+)[^\S]?:/`
+    '/.?.?.?.?.?.?.?.?.?.?:/', '/[^;]?[^;]?[^;]?[^;]?;/', String.raw`/\p{Any}+(?=;)/u`, '/[!-:<-~]+(?=;)/', String.raw`/([-\w]+):\1/`, String.raw`/(?:[-\w]+)[^\S]?:/`, '/.foo/', '/[^;]:/'
   ];
   for (const pattern of many_) {
     assert.equal(regexWidth(pattern).width, MANY, pattern);
