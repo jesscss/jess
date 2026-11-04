@@ -33,6 +33,7 @@ import {
   ifTestCall,
   blockStatements,
   branchSegments,
+  charsetPreludeFrom,
   queryConditionChain,
   queryFeatureBlock,
   generalEnclosedGroup,
@@ -3211,23 +3212,20 @@ const cssFactory = (g: GrammarSelf) => {
    * and less and a NODE in scss, so a bare quoted string is a rule that only
    * works in two of the three; spelling the comment positions makes ONE rule
    * correct in all of them, and it costs css nothing because trivia has already
-   * consumed them by the time `many` runs. They are dropped from the reduced
-   * prelude, which is what css produced for the same source before.
+   * consumed them by the time `many` runs. The reduced prelude is the `charset`
+   * field alone, so a comment never reaches it.
    */
   const CharsetPrelude = node(
     'CharsetPrelude',
     sequence(
       many(g.BlockCommentToken),
-      g.AtRulePreludeQuoted,
+      field(
+        'charset',
+        g.AtRulePreludeQuoted
+      ),
       many(g.BlockCommentToken)
     ),
-    children => any(
-      children
-        .map(child => tokenText(child))
-        .filter(text => !text.startsWith('/*'))
-        .join('')
-        .trim()
-    )
+    (_children, fields) => charsetPreludeFrom(fields)
   );
 
   /*
