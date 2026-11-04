@@ -657,7 +657,7 @@ that shape intentionally and fail with the richer diagnostic.
     The existing sites are baselined in
     `scripts/check-guardrails.grammar-baseline.json`. A new site is never
     allowed. An entry records a fingerprint of its site and every definition the
-    site reaches, so any edit that changes what a site reads fails unless the
+    site reaches in the grammar it is written for, so any edit that changes what a site reads fails unless the
     entry records the new fingerprint and a `changed` note saying why. The gate
     prints every note, so a widening can never be silent; a comment-only edit
     does not move the fingerprint. CI fails a pull request that adds a site or
@@ -671,7 +671,8 @@ that shape intentionally and fail with the richer diagnostic.
     `not`/`peek` directly over one is caught. Calling parseman's `compile` is not
     flagged. The stray-grammar check knows parseman by name, so an npm alias
     outside the scanned sources escapes it, and `scripts/`, `tools/`, `docs/` are
-    exempt. `less…` with no capital after the prefix and a rule returned from a
+    exempt. A dialect's override of a rule moves the fingerprints of sites in that
+    dialect, not of a baselined site in the grammar it composes over. `less…` with no capital after the prefix and a rule returned from a
     function declaration are not read as rule names. Finally, the gate and its
     baseline live in the tree they check, so one pull request can edit them
     together; requiring a code-owner review on them is a repository setting and

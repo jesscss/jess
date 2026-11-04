@@ -398,6 +398,15 @@ test('fingerprint: attempt, a consuming regex and a dispatch selector carry one'
   assert.match(hit(String.raw`const probe = dispatch(regex(/[-\w]+[ \t]*:/), a);`).resolved, /^[0-9a-f]{16}$/);
 });
 
+test('fingerprint: it reads the grammar the site is written for, not every dialect', () => {
+  const definitions = (file, text) => grammarDefinitions(ts, file, `import { literal } from 'parseman'; const map = { Thing: literal('${text}') };`);
+  const hash = base => scan(planted(`const probe = not(sequence(g.Thing, literal('z')));`), base).find(h => h.const === 'probe').resolved;
+  const LESS = 'packages/syntax/less/less-parser/src/grammar.ts';
+  const SHARED = 'packages/parser-shared/src/recognition.ts';
+  assert.equal(hash(definitions(LESS, 'a')), hash(definitions(LESS, 'b')));
+  assert.notEqual(hash(definitions(SHARED, 'a')), hash(definitions(SHARED, 'b')));
+});
+
 test('ratchet: a site whose fingerprint moved is changed, not fresh; a new site at another const is fresh', () => {
   const source = regexSource => `${CLEAN}\nconst wide = regex(${regexSource});\nconst probe = not(wide);\n`;
   const before = scan(source(String.raw`/[-\w]+[ \t]*:/`));

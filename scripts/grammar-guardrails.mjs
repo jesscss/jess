@@ -578,6 +578,8 @@ function calleeName(ts, call) {
   return ts.isIdentifier(callee) ? parsemanName(ts, callee) : undefined;
 }
 
+const GRAMMAR_BASE = /^packages\/(?:parser-shared\/src\/|syntax\/css\/css-parser\/src\/grammar\.ts$)/;
+
 const scriptKind = (ts, rel) => (/\.[cm]?tsx$/.test(rel) ? ts.ScriptKind.TSX : /\.[cm]?jsx?$/.test(rel) ? ts.ScriptKind.JS : ts.ScriptKind.TS);
 
 const isCombinatorShape = (ts, init) => ts.isCallExpression(init) || ts.isIdentifier(init) || ts.isPropertyAccessExpression(init);
@@ -938,10 +940,13 @@ function createWidth(ts, defs, baseDefs) {
     return hard(`\`${node.getText().slice(0, 40)}\` is not a combinator expression`);
   }
 
+  /* The grammar this file composes: its own definition of a name, else the CSS grammar's or parser-shared's. */
+  const composedDefinitions = name => defs.get(name) ?? baseDefs.get(name)?.filter(init => GRAMMAR_BASE.test(init.getSourceFile().fileName));
+
   /*
    * What a baselined site means: its own text and every definition reachable from
-   * it, comments and formatting stripped, reducers skipped. Any change to what it
-   * reads changes the fingerprint; a comment does not.
+   * it in the grammar it is written for, comments and formatting stripped, reducers
+   * skipped. Any change to what it reads changes the fingerprint; a comment does not.
    */
   const printer = ts.createPrinter({ removeComments: true });
   const print = node => printer.printNode(ts.EmitHint.Unspecified, node, node.getSourceFile());
@@ -952,8 +957,7 @@ function createWidth(ts, defs, baseDefs) {
         return;
       }
       if (ts.isIdentifier(node) && !(ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node)) {
-        const isMember = ts.isPropertyAccessExpression(node.parent) && node.parent.name === node;
-        const inits = isMember ? memberDefinitions(node.text) : definitions(node.text);
+        const inits = composedDefinitions(node.text);
         if (inits?.length && !seen.has(node.text)) {
           seen.set(node.text, inits.map(print).sort().join('|'));
           inits.forEach(visit);
