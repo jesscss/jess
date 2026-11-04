@@ -1141,7 +1141,7 @@ const cssFactory = (g: GrammarSelf) => {
     children => simpleSelector(children.map(tokenText).join(''))
   );
 
-  /*
+  /**
    * The value an attribute selector compares against: a `<string-token>` or
    * an `<ident-token>` (selectors-4 §6). A slot, so a dialect whose strings
    * differ in this position overrides the value alone, not the selector:
@@ -3082,7 +3082,7 @@ const cssFactory = (g: GrammarSelf) => {
     children => any(sourceText(children[children.length - 1]!))
   );
 
-  /*
+  /**
    * What `@import` names: a `<string>` or a `<url>` (css-cascade-5 §2). A
    * slot for another spelling of that one static target: the reducer takes
    * the first `Quoted` or `Url` node, so an override must still produce exactly

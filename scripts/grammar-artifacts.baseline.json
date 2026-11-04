@@ -5,7 +5,7 @@
   "grammars": {
     "css": {
       "source": "packages/syntax/css/css-parser/src/grammar.ts",
-      "sourceBytes": 182476,
+      "sourceBytes": 182478,
       "artifacts": {
         "lib/grammar/ast.js": {
           "bytes": 417521,
@@ -33,27 +33,27 @@
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 83465,
+          "bytes": 84122,
           "ratio": 0.46,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 83548,
+          "bytes": 84205,
           "ratio": 0.46,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/base.js": {
-          "bytes": 84008,
+          "bytes": 84665,
           "ratio": 0.46,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 83946,
+          "bytes": 84603,
           "ratio": 0.46,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 83555,
+          "bytes": 84212,
           "ratio": 0.46,
           "assemblyFunctions": null
         }
