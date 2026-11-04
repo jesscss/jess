@@ -34,7 +34,8 @@ import {
   simpleSelector,
   spaced,
   compoundSelectorOf,
-  selist
+  selist,
+  withFields
 } from './nodes.js';
 import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withGluedKeywordSpan, withValueLayout } from './provenance.js';
 import { walkAuthoredValue } from './traversal.js';
@@ -963,7 +964,7 @@ export function valueSlot(value: ValueSlot): ValueSlot {
     return value.parts;
   }
   if (value.type === 'Block' && isValue(value.value) && value.value.type === 'Sequence') {
-    return { ...value, value: value.value.parts };
+    return withFields(value, { value: value.value.parts });
   }
   return value;
 }

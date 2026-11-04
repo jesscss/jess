@@ -2,7 +2,7 @@
   "reviewVersion": 2,
   "id": "jess-function-bindings",
   "definitionDigest": "c327223c6be426f6ea7c2d8f6212bf8d9b8f9b1b8717d189e36c9d97253dc347",
-  "contractDigest": "01b298fb267f28101a8fb2cae738759bb068c87c0ed78a995426765a1fb38a57",
+  "contractDigest": "ecdba804323966f9ae9d3490911f547e2ab033bdf4ebcab024dc2128c4b6d377",
   "implementations": {
     "owner": "c4feef9b75ce5c0baad559f8838ec2d8e98eb2f95d6984c709647097ed5d9a2c",
     "compiler-convert": "852176a8fe4f1016719327ee4d23fbbfa8a264d82810c2d4779cd1c10beedf5f",
@@ -11,5 +11,5 @@
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "Slice 4's value-barrel imports and slice 3's packageModule hook meet in one branch; neither changes which module or export a converted .jess file imports."
+  "rationale": "Slice 4's value-barrel imports now also carry dev's withFields; which module or export a converted .jess file imports does not change."
 }

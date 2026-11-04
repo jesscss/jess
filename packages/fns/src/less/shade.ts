@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { makeColorRgb, defineFunction, RGB } from '@jesscss/core/value';
+import { makeColorRgb, defineFunction, RGB, withFields } from '@jesscss/core/value';
 import { mixColors, reformatColor, requireColor, snapAlpha } from './color-helper.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
@@ -16,6 +16,6 @@ export const shade: Fn = defineFunction('shade', {
     const color = requireColor(c);
     const black = makeColorRgb([0, 0, 0], 1, RGB);
     const out = mixColors(black, color, amt === undefined ? 50 : requireDimension(amt).number);
-    return reformatColor({ ...out, alpha: snapAlpha(out.alpha) }, color.format);
+    return reformatColor(withFields(out, { alpha: snapAlpha(out.alpha) }), color.format);
   }
 });

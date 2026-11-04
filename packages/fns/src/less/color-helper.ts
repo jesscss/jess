@@ -6,7 +6,7 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../tree`, no legacy node).
  */
-import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, serializeColor, textOf, type Color, type Value } from '@jesscss/core/value';
+import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, serializeColor, textOf, withFields, type Color, type Value } from '@jesscss/core/value';
 import { clamp01 } from './color-ctor-helper.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
@@ -23,8 +23,8 @@ export function requireColor(value: Value): Color {
  * format-preserving fns (`contrast`/`tint`/`shade`) share.
  */
 export function reformatColor(c: Color, format: number): Color {
-  const base: Color = { ...c, format, bytes: '' };
-  return { ...base, bytes: serializeColor(base) };
+  const base = withFields(c, { format, bytes: '' });
+  return withFields(base, { bytes: serializeColor(base) });
 }
 
 /** Collapse a hair's-breadth-of-1 alpha (mix float drift) back to exactly 1. */

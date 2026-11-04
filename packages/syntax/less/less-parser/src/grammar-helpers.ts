@@ -23,8 +23,8 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout, lookupStep, referenceCall, guardCall, guardCompare, guardDefault, guardLogical, guardNot, withFields, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
+import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, MixinPathSegment, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, type ValuePieceKind, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex, valueRunSeparators } from './trivia-layout.js';
 import { diagnosticsOf, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
@@ -559,7 +559,7 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
   for (const child of accessors) {
     const accessor = requireInterpolationAccessorFact(child);
     raw += `[${accessor.src}]`;
-    steps.push({ type: 'LookupStep', kind: accessor.keyKind, name: accessor.key });
+    steps.push(lookupStep(accessor.keyKind, accessor.key));
   }
   return reference(base, steps, raw);
 }
@@ -575,17 +575,17 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
  */
 function referenceBracketTailFact(children: readonly unknown[]): ReferenceTailFact {
   const accessor = requireInterpolationAccessorFact(children[0]);
-  return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
+  return { step: lookupStep(accessor.keyKind, accessor.key), src: `[${accessor.src}]` };
 }
 
 function referenceDotTailFact(children: readonly unknown[]): ReferenceTailFact {
   const name = requireToken(children[1]).value;
-  return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
+  return { step: lookupStep('member', name), src: `.${name}` };
 }
 
 function referenceCallTailFact(children: readonly unknown[]): ReferenceTailFact {
   const args = mixinArgumentsFromChildren(children);
-  return { step: { type: 'Call', args }, src: `(${args.map(callArgumentSource).join(', ')})` };
+  return { step: referenceCall(args), src: `(${args.map(callArgumentSource).join(', ')})` };
 }
 
 function referenceWithTails(base: ValueNode | MixinCall, baseRaw: string, tails: readonly unknown[]): Reference {
@@ -1212,7 +1212,7 @@ function lessValueSlot(value: ValueSlot): ValueSlot {
     return value.parts;
   }
   if (isValueNode(value) && value.type === 'Block' && isSequence(value.value)) {
-    return { ...value, value: value.value.parts };
+    return withFields(value, { value: value.value.parts });
   }
   return value;
 }
@@ -1313,14 +1313,14 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
    * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
   const fold = (kind: 'and' | 'or'): MixinGuard =>
     args.slice(1).reduce<MixinGuard>(
-      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value), word: call.name, gluedAt: NO_SPAN, parens: 0 }),
+      (left, arg) => guardLogical(kind, left, lessConditionGuard(arg.value), call.name, NO_SPAN),
       lessConditionGuard(first)
     );
   switch (call.name.toLowerCase()) {
     case 'boolean':
       return args.length === 1 ? boundaryCondition(lessConditionGuard(first), call) : call;
     case 'not':
-      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first), word: call.name, gluedAt: NO_SPAN, parens: 0 }) : call;
+      return args.length === 1 ? boundaryCondition(guardNot(lessConditionGuard(first), call.name, NO_SPAN, 0)) : call;
     case 'and':
       return boundaryCondition(fold('and'));
     case 'or':
@@ -1521,7 +1521,7 @@ function lessBranchSegments(branch: SelectorBranch): [{ combinator?: SelectorCom
   return [segments[0]!, ...segments.slice(1)];
 }
 
-type MixinPrefixSegment = { readonly combinator: ' ' | '>'; readonly selector: string };
+type MixinPrefixSegment = MixinPathSegment;
 
 function mixinPrefixFromSelectorBranch(branch: SelectorBranch): readonly MixinPrefixSegment[] | null {
   const prefix: MixinPrefixSegment[] = [];
@@ -1536,10 +1536,7 @@ function mixinPrefixFromSelectorBranch(branch: SelectorBranch): readonly MixinPr
       if (!isSimpleSelector(token) || token.text === null || (!token.text.startsWith('.') && !token.text.startsWith('#'))) {
         return null;
       }
-      prefix.push({
-        combinator: prefix.length === 0 ? ' ' : segment.combinator ?? ' ',
-        selector: token.text
-      });
+      prefix.push(mixinPathSegment(prefix.length === 0 ? ' ' : segment.combinator ?? ' ', token.text));
     }
   }
   return prefix.length === 0 ? null : prefix;
@@ -1559,11 +1556,7 @@ function mixinCallFromSelectorBranch(
     throw new SyntaxError('Less mixin calls require a class or id selector path.');
   }
   const call = mixinCall(final.selector, args);
-  return withSourceSpan({
-    ...call,
-    ...(prefix.length > 1 ? { path: prefix.slice(0, -1) } : {}),
-    ...(important ? { important: true } : {})
-  }, span);
+  return withSourceSpan(withMixinPath(call, prefix.length > 1 ? prefix.slice(0, -1) : call.path, important || call.important), span);
 }
 
 function mixinDefinitionNameFromSelectorBranch(branch: SelectorBranch): string {
@@ -2034,14 +2027,14 @@ function mixinCallArgsFromInterior(interior: MixinInteriorFact): MixinCallArgume
  * never `(1 == true and 2 == true)` (ledger J20).
  */
 function lessTruth(value: ValueSlot): MixinGuard {
-  return { g: 'cmp', op: '==', left: value, right: keyword('true'), implied: true, parens: 0 };
+  return guardCompare('cmp', '==', value, keyword('true'), true);
 }
 
 /** {@link lessTruth} in `when` position — the same lowering, as a MATCH test
  *  (§4.2a), so a `when` tree contains no value-position assertion. `==` never
  *  raises, so this changes no answer; it keeps the invariant readable. */
 function lessGuardTruth(value: ValueSlot): MixinGuard {
-  return { g: 'match', op: '==', left: value, right: keyword('true'), implied: true, parens: 0 };
+  return guardCompare('match', '==', value, keyword('true'), true);
 }
 
 function isMixinGuard(value: unknown): value is MixinGuard {
@@ -2113,8 +2106,8 @@ function isLessGuardOperand(value: unknown): value is LessGuardOperand {
 function bareOperandGuard(value: ValueNode): MixinGuard {
   if (isFunctionCall(value)) {
     return isDefaultGuardCall(value)
-      ? { g: 'default', parens: 0 }
-      : { g: 'call', name: value.name, args: value.args.map(arg => requireValueNode(arg.value)), parens: 0 };
+      ? guardDefault(0)
+      : guardCall(value.name, value.args.map(arg => requireValueNode(arg.value)), 0);
   }
   return lessGuardTruth(value);
 }
@@ -2200,7 +2193,7 @@ function mixinGuardTermFrom(
       term = isLessGuardOperand(inner)
         ? { kind: 'less-guard-operand', run: guardGroupValue(inner, span, state), guard: inParens(requireGuardTerm(inner, state)) }
         : inParens(requireGuardTerm(inner, state));
-      return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), gluedAt: NO_SPAN, parens: 0 } : term;
+      return negated ? guardNot(requireGuardTerm(term, state), requireTerminalText(children[0]), NO_SPAN, 0) : term;
     }
     const operand = continueGuardMathRun(guardGroupValue(inner, span, state), children, rawChildren, index + 3);
     left = operand.run;
@@ -2223,16 +2216,9 @@ function mixinGuardTermFrom(
      * and so does the owner-maintained expected CSS. Value position keeps
      * the assertion, built separately in `FunctionConditionTerm`.
      */
-    term = {
-      g: 'match',
-      op: operator,
-      left: lessMathInValue(left, state),
-      right: lessMathInValue(requireMathOperand(children[index + 1]), state),
-      implied: false,
-      parens: 0
-    };
+    term = guardCompare('match', operator, lessMathInValue(left, state), lessMathInValue(requireMathOperand(children[index + 1]), state), false);
   }
-  return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), gluedAt: NO_SPAN, parens: 0 } : term;
+  return negated ? guardNot(requireGuardTerm(term, state), requireTerminalText(children[0]), NO_SPAN, 0) : term;
 }
 
 /** One `MathSum` reduction: an operand, or an unfolded run. */
@@ -2255,7 +2241,7 @@ function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], rawCh
     if (isMixinGuard(child) || isLessGuardOperand(child)) {
       result = result === undefined
         ? child
-        : { g: kind, left: requireGuardTerm(result, state), right: requireGuardTerm(child, state), word, gluedAt: NO_SPAN, parens: 0 };
+        : guardLogical(kind, requireGuardTerm(result, state), requireGuardTerm(child, state), word, NO_SPAN);
     } else if (isLessKeyword(child, kind) || isLessTerminalText(child, ',')) {
       /* The keyword as the author spelled it (`AND`), or the `,` a guard writes `or` as. */
       word = requireTerminalText(child);
@@ -2386,7 +2372,7 @@ function functionConditionTermFrom(
   if (index < children.length && (index + 2 < children.length || guardOperatorText(children[index]) === null || children.some(holdsDelimRun))) {
     const run = flattenRuns(functionConditionRun(left, children, index, triviaLog, state));
     const fact = { guard: lessTruth(spaced(run)), src: run.map((value, at) => `${at === 0 ? '' : valueLayoutOf(run)?.[at - 1] ?? ' '}${functionConditionSource(value)}`).join(''), grouped: false, hasComparison: false };
-    return negated ? { ...fact, guard: { g: 'not', inner: fact.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${fact.src})` } : { ...fact, run };
+    return negated ? { ...fact, guard: guardNot(fact.guard, notWord, notGluedAt, 0), src: `${notWord}(${fact.src})` } : { ...fact, run };
   }
   const operator = guardOperatorText(children[index]);
 
@@ -2397,15 +2383,15 @@ function functionConditionTermFrom(
   if (operator === null) {
     const grouped = left.grouped;
     if (negated) {
-      return withCss({ guard: { g: 'not', inner: left.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison }, cssNegation(left, notWord, notGluedAt, rawChildren[0]));
+      return withCss({ guard: guardNot(left.guard, notWord, notGluedAt, 0), src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison }, cssNegation(left, notWord, notGluedAt, rawChildren[0]));
     }
     return { ...left, grouped };
   }
   const right = functionConditionOperandFact(children[index + 1], state);
-  const guard: MixinGuard = { g: 'cmp', op: operator, left: functionConditionValue(left, state), right: functionConditionValue(right, state), implied: false, parens: 0 };
+  const guard: MixinGuard = guardCompare('cmp', operator, functionConditionValue(left, state), functionConditionValue(right, state), false);
   const src = `${left.src} ${operator} ${right.src}`;
   return negated
-    ? { guard: { g: 'not', inner: guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
+    ? { guard: guardNot(guard, notWord, notGluedAt, 0), src: `${notWord}(${src})`, grouped: false, hasComparison: true }
     : { guard, src, grouped: false, hasComparison: true };
 }
 
@@ -2655,7 +2641,7 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[],
       hasComparison = child.hasComparison;
       continue;
     }
-    guard = { g: kind, left: guard, right: child.guard, word, gluedAt, parens: 0 };
+    guard = guardLogical(kind, guard, child.guard, word, gluedAt);
     src += ` ${word} ${child.src}`;
     hasComparison ||= child.hasComparison;
   }
