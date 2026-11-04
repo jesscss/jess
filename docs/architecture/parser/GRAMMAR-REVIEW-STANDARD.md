@@ -626,6 +626,21 @@ that shape intentionally and fail with the richer diagnostic.
     error diagnostic, not a stop. `pnpm check:guardrails` ratchets the count of
     author-facing `throw` sites per parser package (it may only shrink).
 
+18. **Is it a grammar-side workaround for something parseman should handle?**
+    Parseman never backtracks, re-parses or pre-scans; a grammar decides on the
+    current token. When a rule cannot make its decision on one token — and
+    reaches for a regex pre-scan, a multi-token `not(...)`/`peek(...)`, a
+    hand-rolled scanner, or a second pass — that is a **missing parseman
+    capability**, and the grammar-side workaround is a defect. The fix goes in
+    parseman: file a parseman issue naming the decision the grammar cannot make,
+    and do not land the workaround. The standing example is Less's
+    `rulesetNotDeclaration`, `not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/))`, which
+    scans an identifier, whitespace and a colon to choose between a ruleset and a
+    declaration. `pnpm check:guardrails` (assertion 8) fails on any lookahead it
+    cannot prove one token wide, and on a dialect-prefixed rule name (item 16);
+    the existing sites are baselined in
+    `scripts/check-guardrails.grammar-baseline.json` and may only shrink.
+
 ### Naming is a duplication mechanism, not a style preference
 
 This item is here for a causal reason, and the reason is the whole point of it.

@@ -1,0 +1,609 @@
+{
+  "description": "check:guardrails assertion 8 (scripts/grammar-guardrails.mjs): grammar sites that predate the gate. Entries match by rule, file and construct; `line` is refreshed by --prune-baselines. This file may only shrink: a new site fails the gate, a removed one must be removed here.",
+  "issue": "jesscss/jess#576",
+  "entries": [
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 10,
+      "const": "cssIdentifier",
+      "construct": "cssIdentifier",
+      "why": "rule name `cssIdentifier`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 420,
+      "const": "lessBareIdentifier",
+      "construct": "lessBareIdentifier",
+      "why": "rule name `lessBareIdentifier`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 432,
+      "const": "lessDeclarationProperty",
+      "construct": "lessDeclarationProperty",
+      "why": "rule name `lessDeclarationProperty`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 448,
+      "const": "lessPunctuationMapKey",
+      "construct": "lessPunctuationMapKey",
+      "why": "rule name `lessPunctuationMapKey`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 454,
+      "const": "lessPercentEscape",
+      "construct": "lessPercentEscape",
+      "why": "rule name `lessPercentEscape`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 461,
+      "const": "lessInterpHead",
+      "construct": "lessInterpHead",
+      "why": "rule name `lessInterpHead`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 462,
+      "const": "lessInterpBareKey",
+      "construct": "lessInterpBareKey",
+      "why": "rule name `lessInterpBareKey`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 470,
+      "const": "lessQuotedDoubleChunk",
+      "construct": "lessQuotedDoubleChunk",
+      "why": "rule name `lessQuotedDoubleChunk`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 471,
+      "const": "lessQuotedSingleChunk",
+      "construct": "lessQuotedSingleChunk",
+      "why": "rule name `lessQuotedSingleChunk`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 558,
+      "const": "lessCustomProperty",
+      "construct": "lessCustomProperty",
+      "why": "rule name `lessCustomProperty`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 574,
+      "const": "lessCustomOuterContent",
+      "construct": "lessCustomOuterContent",
+      "why": "rule name `lessCustomOuterContent`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 575,
+      "const": "lessCustomInnerContent",
+      "construct": "lessCustomInnerContent",
+      "why": "rule name `lessCustomInnerContent`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/parser-shared/src/recognition.ts",
+      "line": 578,
+      "const": "lessCustomAtName",
+      "construct": "lessCustomAtName",
+      "why": "rule name `lessCustomAtName`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 405,
+      "const": "cssValueTrivia",
+      "construct": "cssValueTrivia",
+      "why": "rule name `cssValueTrivia`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 1173,
+      "const": "LeadingDashRawPseudoArgument",
+      "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
+      "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 1251,
+      "const": "PseudoArgument",
+      "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
+      "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 1275,
+      "const": "OfTypePseudoArgument",
+      "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
+      "why": "`nth` — regex /even|odd|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*\\d+)?|[-+]?\\d+/i: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 1288,
+      "const": "OfTypePseudoArgument",
+      "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
+      "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 1963,
+      "const": "VarFallbackParen",
+      "construct": "not(choice(varFallbackParenCrossBracket, varFallbackParenCrossBrace))",
+      "why": "`varFallbackParenCrossBracket` — scanTo() scans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 1999,
+      "const": "VarFallbackBracket",
+      "construct": "not(choice(varFallbackBracketCrossParen, varFallbackBracketCrossBrace))",
+      "why": "`varFallbackBracketCrossParen` — scanTo() scans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 2017,
+      "const": "VarFallbackBrace",
+      "construct": "not(choice(varFallbackBraceCrossParen, varFallbackBraceCrossBracket))",
+      "why": "`varFallbackBraceCrossParen` — scanTo() scans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 3930,
+      "const": "QueryConnective",
+      "construct": "peek(g.QueryGluedConnective)",
+      "why": "`queryGluedConnective` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 1970,
+      "const": "interpolatedSimpleAhead",
+      "construct": "peek(regex(/[.#]?[-_a-zA-Z0-9\\u0080-\\uffff]*\\$\\{/))",
+      "why": "regex /[.#]?[-_a-zA-Z0-9\\u0080-\\uffff]*\\$\\{/: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 2107,
+      "const": "NthChildArgument",
+      "construct": "not(noTrivia(sequence(g.NthExpression, g.NthOfKeyword)))",
+      "why": "`nth` — it calls a computed combinator",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 2163,
+      "const": "NthTypeArgument",
+      "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
+      "why": "`nth` — it calls a computed combinator",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 4323,
+      "const": "containerName",
+      "construct": "not(containerFunctionOpen)",
+      "why": "`containerFunctionOpen` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 4337,
+      "const": "jessStyleFunctionOpener",
+      "construct": "jessStyleFunctionOpener",
+      "why": "rule name `jessStyleFunctionOpener`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 4809,
+      "const": "combinator",
+      "construct": "peek(g.QueryGluedConnective)",
+      "why": "`queryGluedConnective` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 4820,
+      "const": "SupportsCondition",
+      "construct": "peek(g.QueryGluedConnective)",
+      "why": "`queryGluedConnective` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 5171,
+      "const": "assignHead",
+      "construct": "not(reservedVarHead)",
+      "why": "`reservedVarHead` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 5265,
+      "const": "interpolatedPropertyAhead",
+      "construct": "peek(regex(/[^{};:]*\\$\\{/))",
+      "why": "regex /[^{};:]*\\$\\{/: it repeats an any-character class, a scan",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 790,
+      "const": "lessSupportedVariableName",
+      "construct": "lessSupportedVariableName",
+      "why": "rule name `lessSupportedVariableName`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 791,
+      "const": "lessUnsupportedNumericVariableName",
+      "construct": "lessUnsupportedNumericVariableName",
+      "why": "rule name `lessUnsupportedNumericVariableName`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 797,
+      "const": "lessDashVariableName",
+      "construct": "lessDashVariableName",
+      "why": "rule name `lessDashVariableName`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 801,
+      "const": "lessVariableName",
+      "construct": "lessVariableName",
+      "why": "rule name `lessVariableName`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 926,
+      "const": "lessDimensionUnit",
+      "construct": "lessDimensionUnit",
+      "why": "rule name `lessDimensionUnit`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 949,
+      "const": "lessOwnAtKeyword",
+      "construct": "lessOwnAtKeyword",
+      "why": "rule name `lessOwnAtKeyword`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 1682,
+      "const": "inlineJavaScriptFollowingDeclaration",
+      "construct": "peek(choice(literal('}'), sequence(choice(variableName, g.PunctuationMapKeyToken, sequence(choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPr…",
+      "why": "`variableNameEscape` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 1786,
+      "const": "MixinReferenceValue",
+      "construct": "not(regex(/#[0-9a-fA-F]+[ \\t\\n\\r\\f]*[;}!]/))",
+      "why": "regex /#[0-9a-fA-F]+[ \\t\\n\\r\\f]*[;}!]/: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 1900,
+      "const": "FunctionConditionOperand",
+      "construct": "not(functionConditionStop)",
+      "why": "`functionConditionOperator` — regex /[<>=]*=~|[<>=]+/: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 1984,
+      "const": "functionConditionNotAhead",
+      "construct": "peek(choice(parser({ trivia: functionTrivia }, sequence(functionConditionNot, literal('('))), noTrivia(sequence(functionConditionNot, whitespaceRun, regex(/[^,…",
+      "why": "a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 2005,
+      "const": "conditionArgumentValue",
+      "construct": "not(functionConditionStop)",
+      "why": "`functionConditionOperator` — regex /[<>=]*=~|[<>=]+/: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 2634,
+      "const": "combinator",
+      "construct": "not(syntaxTypeOpen)",
+      "why": "`syntaxTypeOpen` — regex /<(?=-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*>)/: its lookaround `(?=-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*>)` reads past the token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 2650,
+      "const": "valueTriviaBoundary",
+      "construct": "not(valueRunEndAhead)",
+      "why": "`nestedAtRuleValueStart` — regex /@[^;{}()'\"]*\\{/: it repeats an any-character class, a scan",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 3040,
+      "const": "interpolatedPropertyAhead",
+      "construct": "peek(regex(/[^:;{}]*[@$]\\{/))",
+      "why": "regex /[^:;{}]*[@$]\\{/: it repeats an any-character class, a scan",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 3709,
+      "const": "rulesetNotDeclaration",
+      "construct": "not(regex(/[-\\w]+[ \\t]*:[ \\t\\n\\r\\f]/))",
+      "why": "regex /[-\\w]+[ \\t]*:[ \\t\\n\\r\\f]/: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 4402,
+      "const": "ContainerName",
+      "construct": "not(g.QueryFunctionOpen)",
+      "why": "`queryFunctionOpen` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 4726,
+      "const": "lessUnknownAtPreludeText",
+      "construct": "lessUnknownAtPreludeText",
+      "why": "rule name `lessUnknownAtPreludeText`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 4727,
+      "const": "lessUnknownAtPreludeCapture",
+      "construct": "lessUnknownAtPreludeCapture",
+      "why": "rule name `lessUnknownAtPreludeCapture`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 5670,
+      "const": "ExtendComplex",
+      "construct": "not(regex(/[ \\t\\n\\r\\f]*!?all(?=[ \\t\\n\\r\\f]*(?:,|\\)))/i))",
+      "why": "regex /[ \\t\\n\\r\\f]*!?all(?=[ \\t\\n\\r\\f]*(?:,|\\)))/i: its lookaround `(?=[ \\t\\n\\r\\f]*(?:,|\\)))` reads past the token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 5687,
+      "const": "ExtendTargetComplex",
+      "construct": "not(extendAllFlagAhead)",
+      "why": "`extendAllFlagAhead` — regex /[ \\t\\n\\r\\f]*!?all(?=[ \\t\\n\\r\\f]*(?:,|\\)))/i: its lookaround `(?=[ \\t\\n\\r\\f]*(?:,|\\)))` reads past the token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 524,
+      "const": "scssScanSkipDoubleString",
+      "construct": "scssScanSkipDoubleString",
+      "why": "rule name `scssScanSkipDoubleString`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 529,
+      "const": "scssScanSkipSingleString",
+      "construct": "scssScanSkipSingleString",
+      "why": "rule name `scssScanSkipSingleString`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 618,
+      "const": "scssVarName",
+      "construct": "scssVarName",
+      "why": "rule name `scssVarName`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 625,
+      "const": "scssVarSigilName",
+      "construct": "scssVarSigilName",
+      "why": "rule name `scssVarSigilName`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 1915,
+      "const": "VariableDeclaration",
+      "construct": "not(reservedVarHead)",
+      "why": "`reservedVarHead` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 2255,
+      "const": "directNestedPropertyAhead",
+      "construct": "not(regex(/[^{};]*[;}]/))",
+      "why": "regex /[^{};]*[;}]/: it repeats an any-character class, a scan",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 2540,
+      "const": "ImportTail",
+      "construct": "not(importSupportsOpen)",
+      "why": "`importSupportsOpen` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 2540,
+      "const": "ImportTail",
+      "construct": "not(importLayerOpen)",
+      "why": "`importLayerOpen` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 4000,
+      "const": "combinator",
+      "construct": "peek(g.QueryGluedConnective)",
+      "why": "`queryGluedConnective` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 4011,
+      "const": "SupportsCondition",
+      "construct": "peek(g.QueryGluedConnective)",
+      "why": "`queryGluedConnective` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 4874,
+      "const": "scssRelativeSelectorCombinator",
+      "construct": "scssRelativeSelectorCombinator",
+      "why": "rule name `scssRelativeSelectorCombinator`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 4946,
+      "const": "NthPseudo",
+      "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
+      "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 4978,
+      "const": "NthTypePseudo",
+      "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
+      "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 4979,
+      "const": "NthTypePseudo",
+      "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
+      "why": "`nth` — regex /even|odd|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*\\d+)?|[-+]?\\d+/i: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 5166,
+      "const": "scssCombinator",
+      "construct": "scssCombinator",
+      "why": "rule name `scssCombinator`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "dialect-prefix",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 5301,
+      "const": "ScssGenericAtRuleName",
+      "construct": "ScssGenericAtRuleName",
+      "why": "rule name `ScssGenericAtRuleName`",
+      "issue": "jesscss/jess#576"
+    }
+  ]
+}

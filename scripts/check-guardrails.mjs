@@ -15,7 +15,7 @@
  * A rule written in a document does not stop that: the next agent can edit the
  * document exactly as the last one edited the spec. So the rule is also a gate.
  *
- * SEVEN ASSERTIONS, all mechanical:
+ * EIGHT ASSERTIONS, all mechanical:
  *
  *   1. `docs/OWNER-REQUIREMENTS.md` is byte-frozen against a hash recorded in
  *      this file. Any edit fails the build. Updating the hash is the owner's
@@ -54,6 +54,14 @@
  *      `scripts/check-guardrails.duplicate-predicates.json`; the inventory may
  *      only shrink.
  *
+ *   8. Grammars decide on the current token: no `not(...)`/`peek(...)` over more
+ *      than one token (a pre-scan is a missing parseman capability, never a
+ *      grammar workaround), no dialect prefix in a rule name, no runtime code
+ *      generation in a parser package, and no `productions.ts`. Existing
+ *      sites are baselined in `scripts/check-guardrails.grammar-baseline.json`,
+ *      each with its tracking issue; the baseline may only shrink. The scan
+ *      lives in `scripts/grammar-guardrails.mjs`.
+ *
  * This gate deliberately does NOT try to judge whether a closure is correct. It
  * forces the author to say, in writing and in the same block, whose authority
  * the closure rests on. An agent that types `OWNER-RULED:` over its own opinion
@@ -66,12 +74,15 @@
  *                                not) in the baseline's JSON format, and exit.
  *   --list-predicates            print every assertion-7 site (baselined or not)
  *                                in the inventory's JSON format, and exit.
+ *   --list-grammar               print every assertion-8 site (baselined or not)
+ *                                as baseline entries, and exit.
  *   --prune-baselines            drop entries that no longer occur from the
- *                                assertion-3, -5 and -7 baselines, and lower each
+ *                                assertion-3, -5, -7 and -8 baselines (and
+ *                                refresh the -8 line numbers), and lower each
  *                                assertion-6 ceiling to its current value. It
  *                                never adds an entry or raises a ceiling.
- *   --require-structure          fail, rather than skip, assertion 6 when the
- *                                TypeScript parser is not installed.
+ *   --require-structure          fail, rather than skip, assertions 6 and 8 when
+ *                                the TypeScript parser is not installed.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -81,6 +92,7 @@ import { createRequire } from 'node:module';
 import { join, relative, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compareRulingsLock, LOCK, LEDGER, RULING_TESTS } from './rulings-lock.mjs';
+import { compareGrammarBaseline, grammarDefinitions, PRODUCTIONS_FILE, RULE_MESSAGES, scanGrammarSource } from './grammar-guardrails.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -1103,12 +1115,131 @@ if (predicates.stale.length > 0) {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Assertion 8 — grammars decide on the current token.
+ * ------------------------------------------------------------------ */
+
+/*
+ * Owner rules: parseman never backtracks, re-parses or pre-scans; a grammar
+ * decides on the current token, and a grammar-side workaround for something
+ * parseman should handle is a defect whose fix goes in parseman
+ * (GRAMMAR-REVIEW-STANDARD items 9 and 18). Plus the naming law (item 16), no
+ * runtime codegen in a parser package, and "never create a `productions.ts`".
+ * The scan and its width model: scripts/grammar-guardrails.mjs. Scope: every
+ * parser package's `src/` and `parser-shared/src/`, tests excluded; a dialect
+ * resolves inherited `g.Rule` names through the CSS grammar and parser-shared.
+ */
+const GRAMMAR_BASELINE = 'scripts/check-guardrails.grammar-baseline.json';
+const GRAMMAR_SOURCE = /^packages\/(?:syntax\/[^/]+\/[^/]+-parser|parser-shared)\/src\/(?!(?:.*\/)?__tests__\/).+(?<!\.d|\.test|\.spec)\.ts$/;
+const GRAMMAR_BASE = /^packages\/(?:parser-shared\/src\/|syntax\/css\/css-parser\/src\/grammar\.ts$)/;
+const listGrammar = process.argv.includes('--list-grammar');
+const grammar = { skipped: !ts, counts: {} };
+
+const productionsFiles = gitFiles.filter(f => PRODUCTIONS_FILE.test(f) && existsSync(join(root, f)));
+if (productionsFiles.length > 0) {
+  failures.push(
+    [
+      `${productionsFiles.length} \`productions.ts\` file(s). Never create a \`productions.ts\`; upgrade \`productions/*.ts\``,
+      '  in place (GRAMMAR-REVIEW-STANDARD.md §3, hard constraints).',
+      '',
+      ...productionsFiles.map(f => `    ${f}`)
+    ].join('\n')
+  );
+}
+
+function scanGrammarTree(sources) {
+  const base = new Map();
+  for (const [rel, text] of sources) {
+    if (GRAMMAR_BASE.test(rel)) {
+      for (const [name, inits] of grammarDefinitions(ts, rel, text)) {
+        base.set(name, [...(base.get(name) ?? []), ...inits]);
+      }
+    }
+  }
+  return [...sources].flatMap(([rel, text]) => scanGrammarSource(ts, rel, text, base));
+}
+
+if (ts) {
+  const sources = new Map(gitFiles.filter(f => GRAMMAR_SOURCE.test(f) && existsSync(join(root, f)))
+    .map(rel => [rel, readFileSync(join(root, rel), 'utf8')]));
+  const hits = scanGrammarTree(sources);
+
+  /*
+   * Negative control: a planted pre-scan, a planted dialect-prefixed rule and a
+   * planted `new Function` in a copy of the Less grammar are each caught, and a
+   * one-token lookahead is not.
+   */
+  const probeFile = 'packages/syntax/less/less-parser/src/grammar.ts';
+  if (sources.has(probeFile)) {
+    const probe = new Map(sources);
+    probe.set(probeFile, `${sources.get(probeFile)}
+const plantedLookaheadProbe = not(regex(/[-\\w]+[ \\t]*:[ \\t\\n\\r\\f]/));
+const plantedNarrowProbe = not(literal('{'));
+const lessPlantedNameProbe = literal('x');
+const plantedCodegenProbe = new Function('return 1');
+`);
+    const planted = scanGrammarTree(probe).filter(h => h.file === probeFile && /^planted|^lessPlanted/.test(h.const));
+    const caught = rule => planted.some(h => h.rule === rule);
+    if (!caught('lookahead') || !caught('dialect-prefix') || !caught('runtime-codegen') || planted.some(h => h.const === 'plantedNarrowProbe')) {
+      failures.push('Assertion 8 self-test failed: a planted grammar violation was not caught, or a one-token lookahead was. The grammar scan is blind; fix it before trusting its result.');
+    }
+  }
+
+  const baselinePath = join(root, GRAMMAR_BASELINE);
+  const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : { entries: [] };
+  if (listGrammar) {
+    const issue = baseline.issue ?? '';
+    console.log(JSON.stringify(hits.map(h => ({ ...h, issue })), null, 2));
+  }
+  const { fresh, stale, kept } = compareGrammarBaseline(hits, baseline.entries);
+  const pruned = `${JSON.stringify({ ...baseline, entries: kept }, null, 2)}\n`;
+  if (pruneBaselines && existsSync(baselinePath) && pruned !== readFileSync(baselinePath, 'utf8')) {
+    writeFileSync(baselinePath, pruned);
+    console.log(`Pruned ${stale.length} stale entr${stale.length === 1 ? 'y' : 'ies'} from ${GRAMMAR_BASELINE} and refreshed its line numbers.`);
+    stale.length = 0;
+  }
+  for (const entry of kept) {
+    const dialect = /^packages\/(?:syntax\/[^/]+\/([^/]+)-parser|(parser-shared))\//.exec(entry.file);
+    const key = `${dialect?.[1] ?? dialect?.[2]} ${entry.rule}`;
+    grammar.counts[key] = (grammar.counts[key] ?? 0) + 1;
+  }
+  for (const rule of Object.keys(RULE_MESSAGES)) {
+    const ruleFresh = fresh.filter(h => h.rule === rule);
+    if (ruleFresh.length > 0) {
+      failures.push(
+        [
+          `${ruleFresh.length} new grammar ${rule} violation(s).`,
+          '',
+          ...RULE_MESSAGES[rule],
+          '',
+          ...ruleFresh.map(h => `    ${h.file}:${h.line}  (${h.const})\n      ${h.construct}\n      ${h.why}`)
+        ].join('\n')
+      );
+    }
+  }
+  if (stale.length > 0) {
+    failures.push(
+      [
+        `${stale.length} baselined grammar violation(s) no longer occur.`,
+        '',
+        `  Good — remove ${stale.length === 1 ? 'it' : 'them'} from ${GRAMMAR_BASELINE} so the baseline only`,
+        '  shrinks: `node scripts/check-guardrails.mjs --prune-baselines`. (A rewritten construct',
+        '  that is still a violation shows up above as new.)',
+        '',
+        ...stale.map(e => `    ${e.file}:${e.line}  ${e.rule}\n      ${e.construct}`)
+      ].join('\n')
+    );
+  }
+} else if (requireStructure) {
+  failures.push('Assertion 8 needs the TypeScript parser (`@typescript/typescript6`): run `pnpm install` first.');
+}
+
 /* ------------------------------------------------------------------ */
 
 /* exitCode, not exit(): a piped stdout/stderr is asynchronous on macOS and exit() truncates it. */
 if (listReferenceReasons) {
   console.log(JSON.stringify(referenceHits, null, 1));
-} else if (listStructure || listPredicates) {
+} else if (listStructure || listPredicates || listGrammar) {
   /* Printed above. */
 } else if (failures.length > 0) {
   console.error('\ncheck:guardrails FAILED\n');
@@ -1131,6 +1262,9 @@ if (listReferenceReasons) {
     + (structure.skipped
       ? 'structure SKIPPED (TypeScript parser not installed; run with --require-structure after `pnpm install`); '
       : `no structure growth (${structure.files} files and ${structure.functions} functions baselined); `)
-    + `no new predicate copy (${predicateHits.length} baselined).`
+    + `no new predicate copy (${predicateHits.length} baselined); `
+    + (grammar.skipped
+      ? 'grammar scan SKIPPED (TypeScript parser not installed; run with --require-structure after `pnpm install`).'
+      : `no new grammar violation (${Object.entries(grammar.counts).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'} baselined).`)
   );
 }
