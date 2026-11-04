@@ -208,7 +208,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { channelMath, isModernHsl, rejectChannelMath, resolveHsl, type ColorChannels } from './css-color.js';
-import { argumentStatementKind, declareExpose, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -3695,15 +3695,16 @@ function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall 
   return { ...value };
 }
 
-function activateVariableDeclaration(node: VariableDeclaration | VariableExpose, frame: Frame, e: Lane): void {
+function activateVariableDeclaration(node: VariableDeclaration | VariableExpose, frame: Frame, e: Lane, own?: readonly Statement[]): void {
   /*
    * [A20] An `@expose` binds each name to what a read beside it resolves to. A
    * document's top level is a frame with no parent: the rendered root, which a
    * top-level `@import` splices into, or a `@compose`d module's own. A ruleset,
-   * at-rule, mixin, detached-ruleset or loop body always has one.
+   * at-rule, mixin, detached-ruleset or loop body always has one. `own` is the
+   * `@expose`'s file's top level, where the caller knows it.
    */
   if (node.type === 'VariableExpose') {
-    return declareExpose(node, frame.parent !== null, frame, name => resolveVarRef(frame, name, 'scoped', e, READS_EXPORT), e);
+    return declareExpose(node, frame.parent !== null, frame, { resolve: name => resolveVarRef(frame, name, 'scoped', e, READS_EXPORT), own }, e);
   }
   if (
     !('scope' in node.write)
@@ -4016,12 +4017,12 @@ function hasExcludedPropRef(frame: Frame | null, name: string, e: Lane): boolean
  * also {@link whileReached}.
  */
 function withExcluded<T>(e: Lane, node: Binding, run: () => T, reader?: object): T {
-  e.excluded.add(node);
+  excluding(e, node, true);
   try {
     /* A root variable's value is looked up only once the session's documents differ. */
     return whileReachedFrom(e, node, e.s.context?.mixedPolicies === true ? e.s.context.bodyOwner(node) : undefined, run, reader);
   } finally {
-    e.excluded.delete(node);
+    excluding(e, node, false);
   }
 }
 
@@ -13921,7 +13922,7 @@ function planImportedFacts(
       const st = statements[at]!;
       if (st.type === 'VariableDeclaration' || (st.type === 'VariableExpose' && atRules.length === 0 && publishFrame !== null && !hidden)) {
         /* [A20] A top-level sheet's `@expose` binds where its facts publish, before any output reads it; a `(reference)` sheet's does nothing. */
-        activateVariableDeclaration(st, st.type === 'VariableDeclaration' ? scope : publishFrame ?? scope, e);
+        activateVariableDeclaration(st, st.type === 'VariableDeclaration' ? scope : publishFrame ?? scope, e, statements);
       } else if (st.type === 'AtRuleStatement' && cssPlan !== null) {
         const target = cssImportTarget(st);
         if (target !== null) {
@@ -14232,7 +14233,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined
   });
   const rootFrame = makeRenderRootFrame(root, rootFns, e);
-  forEachExpose(root.rules, node => activateVariableDeclaration(node, rootFrame, e)); // [A20] bound before any read, written before or after it
+  forEachExpose(root.rules, node => activateVariableDeclaration(node, rootFrame, e, root.rules)); // [A20] bound before any read, written before or after it
   const continueRender = (planned: ImportPlannerInput): SerializeReturn => {
     const plannedRoot = planned.root;
 
