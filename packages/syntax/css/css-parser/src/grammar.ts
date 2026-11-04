@@ -236,6 +236,7 @@ type GrammarRuleName =
   | 'PseudoArgument'
   | 'PseudoSelector'
   | 'RelativeSelector'
+  | 'forgivingSelectorRestPart'
   | 'ForgivingSelectorRest'
   | 'ForgivingSelectorItem'
   | 'ForgivingSelectorList'
@@ -1422,6 +1423,27 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * One run of a forgiving item's rest: text up to the item's end, with nested
+   * groups and blocks skipped whole. The leading `not()` keeps it from matching
+   * nothing (`scanTo` succeeds empty when its sentinel is next). A dialect
+   * overrides this slot with a choice of its interpolation and the same scan
+   * stopped also at the interpolation opener.
+   */
+  const forgivingSelectorRestPart = sequence(
+    not(choice(literal(','), literal(')'))),
+    scanTo(
+      choice(literal(','), literal(')')),
+      {
+        skip: [
+          balanced('(', ')'),
+          balanced('[', ']'),
+          balanced('{', '}')
+        ]
+      }
+    )
+  );
+
+  /*
    * `:is()` and `:where()` take a `<forgiving-selector-list>` (Selectors 4
    * §4.2, §4.4, §16.1): an item that is not a selector is dropped by a browser
    * and the others still match, so `.card:is(.active, 1px)` is
@@ -1429,30 +1451,17 @@ const cssFactory = (g: GrammarSelf) => {
    * match nothing. Each comma-separated item is read once, at the current
    * token: the dialect's `RelativeSelector` as far as it goes, then any rest of
    * the item up to its `,` or `)` — balanced, so a nested group or block is
-   * part of it. The rest's leading `not()` keeps it from matching nothing
-   * (`scanTo` succeeds empty when its sentinel is next); a dialect overrides
-   * the rest to read its interpolation there. An item with a rest, a relative
-   * item and an empty item beside another are kept as written, their structure
-   * kept so their interpolations and `&` evaluate (`forgivingSelectorItem`,
-   * which records them for the compiler's `css/forgiving-selector-item`
-   * warning). Trivia is the caller's: each dialect's pseudo reads this list
-   * under its own selector trivia.
+   * part of it. The rest is one or more `forgivingSelectorRestPart`s, and a
+   * dialect overrides that part to read its interpolation there. An item with
+   * a rest, a relative item and an empty item beside another are kept as
+   * written, their structure kept so their interpolations and `&` evaluate
+   * (`forgivingSelectorItem`, which records them for the compiler's
+   * `css/forgiving-selector-item` warning). Trivia is the caller's: each
+   * dialect's pseudo reads this list under its own selector trivia.
    */
   const ForgivingSelectorRest = node(
     'ForgivingSelectorRest',
-    sequence(
-      not(choice(literal(','), literal(')'))),
-      scanTo(
-        choice(literal(','), literal(')')),
-        {
-          skip: [
-            balanced('(', ')'),
-            balanced('[', ']'),
-            balanced('{', '}')
-          ]
-        }
-      )
-    ),
+    oneOrMore(g.forgivingSelectorRestPart),
     children => forgivingSelectorRest(children)
   );
   const ForgivingSelectorItem = node(
@@ -5358,6 +5367,7 @@ const cssFactory = (g: GrammarSelf) => {
     AttributeSelector,
     PseudoSelector,
     RelativeSelector,
+    forgivingSelectorRestPart,
     ForgivingSelectorRest,
     ForgivingSelectorItem,
     ForgivingSelectorList,
