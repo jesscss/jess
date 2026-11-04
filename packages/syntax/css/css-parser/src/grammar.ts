@@ -338,6 +338,7 @@ type GrammarRuleName =
   | 'calcFunctionArguments'
   | 'functionArgument'
   | 'branchLead'
+  | 'varName'
   | 'VarFallbackOpener'
   | 'VarFallbackLead'
   | 'identOrFunction'
@@ -856,10 +857,10 @@ const cssFactory = (g: GrammarSelf) => {
     identWord('calc'),
     literal('(')
   ));
-  const varOpen = noTrivia(sequence(
+  const varOpen = token(noTrivia(sequence(
     identWord('var'),
     literal('(')
-  ));
+  )));
 
   /*
    * A selector-position identifier, or the same identifier glued to `(` as a
@@ -1721,6 +1722,9 @@ const cssFactory = (g: GrammarSelf) => {
     g.CustomPropertyName,
     children => keyword(tokenText(children[0]))
   );
+
+  /* The name a `var()` reads: CSS's `<custom-property-name>`, as its value leaf. */
+  const varName = g.CustomPropertyValue;
   const Color = node(
     'Color',
     hexColor,
@@ -2202,29 +2206,6 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     children => fallbackCall(children)
   );
-  const VarCall = node(
-    'VarCall',
-    sequence(
-      varOpen,
-      optional(cssValueTrivia),
-      g.CustomPropertyValue,
-      optional(cssValueTrivia),
-      optional(sequence(
-        literal(','),
-        optional(cssValueTrivia),
-        choice(
-          g.VarFallback,
-          g.VarFallbackEmpty
-        ),
-        optional(cssValueTrivia)
-      )),
-      literal(')')
-    ),
-    children => funcCall(
-      functionOpenName(children[0]),
-      children.filter(isValueSlotValue)
-    )
-  );
 
   /*
    * Blast radius: `../../../jess/jess-parser/src/grammar.ts` PORTS this family
@@ -2578,12 +2559,27 @@ const cssFactory = (g: GrammarSelf) => {
       );
     }
   );
-  const VarFunction = node(
+
+  /*
+   * `var( <custom-property-name> , <declaration-value>? )` (css-variables-1
+   * §3), one rule for the key and every CSS dispatch: routed from a `var(`
+   * arm it reuses the opener the dispatch already read, and entered directly
+   * `routed(varOpen)` reads the opener itself. The name is the `varName` slot,
+   * so a dialect that accepts more than a `<custom-property-name>` there
+   * overrides only the name.
+   *
+   * CSS's own dispatches read this binding, not `g.VarCall`: `.jess` overrides
+   * the key with a fallback in its value grammar, and through `g` that override
+   * would reach the query values `.jess` inherits (`(var(--x, 1px + 2px) <
+   * width)` stops parsing). Whether inherited CSS positions should take the
+   * dialect's fallback is a semantics decision, not a slot change.
+   */
+  const VarCall = node(
     'VarCall',
     sequence(
-      routed(),
+      routed(varOpen),
       optional(cssValueTrivia),
-      g.CustomPropertyValue,
+      g.varName,
       optional(cssValueTrivia),
       optional(sequence(
         literal(','),
@@ -2654,7 +2650,7 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     cssCase(
       'var(',
-      VarFunction
+      VarCall
     ),
     cssCase(
       'media(',
@@ -2710,7 +2706,7 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     cssCase(
       'var(',
-      VarFunction
+      VarCall
     ),
 
     /*
@@ -2756,7 +2752,7 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     cssCase(
       'var(',
-      VarFunction
+      VarCall
     ),
     when(endsWith('\\('), g.RoutedKeyword),
     when(matches(/^--[\s\S]*\($/), GenericFunction),
@@ -3622,7 +3618,7 @@ const cssFactory = (g: GrammarSelf) => {
   const RoutedVarQueryValue = node(
     'QueryValue',
     sequence(
-      node('TypedValue', VarFunction, { project: 0 }),
+      node('TypedValue', VarCall, { project: 0 }),
       queryRatioTail
     ),
     children => queryValueRatio(children)
@@ -5385,6 +5381,7 @@ const cssFactory = (g: GrammarSelf) => {
     VarFallbackItem,
     VarFallback,
     VarCall,
+    varName,
     CalcIdentOrFunction,
     CalcParen,
     ParenValue,
