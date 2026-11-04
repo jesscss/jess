@@ -7,11 +7,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  addedBaselineEntries, ANY_SOURCE, compareGrammarBaseline, GRAMMAR_SOURCE, grammarDefinitions, MANY, NOT_A_GRAMMAR,
+  ANY_SOURCE, compareBaselineToBase, compareGrammarBaseline, GRAMMAR_SOURCE, grammarDefinitions, MANY, NOT_A_GRAMMAR,
   parsemanCombinatorImports, PRODUCTIONS_FILE, regexWidth, scanGrammarSource
 } from '../grammar-guardrails.mjs';
 
@@ -24,7 +25,7 @@ const scan = (source, base = new Map()) => scanGrammarSource(ts, FILE, source, b
 const rulesOf = (source, base) => scan(source, base).map(h => `${h.rule}:${h.const}`);
 
 const CLEAN = String.raw`
-import { choice, classifiedTrivia, keywords, literal, makeWord, node, noTrivia, not, optional, parser, peek, regex, rules, sequence, token, word, composeLeaf } from 'parseman' with { type: 'macro' };
+import { attempt, choice, classifiedTrivia, dispatch, keywords, literal, makeWord, many, node, noTrivia, not, optional, parser, peek, regex, rules, sequence, token, word, composeLeaf } from 'parseman' with { type: 'macro' };
 const trivia = classifiedTrivia({ whitespace: regex(/[ \t\n\r\f]+/), comment: regex(/\/\*(?:[^*]|\*(?!\/))*\*\//) });
 const identWord = makeWord({ boundary: '-_a-zA-Z0-9' });
 const identifier = regex(/-?(?:[_a-zA-Z\u0080-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
@@ -89,7 +90,7 @@ test('lookahead: a production defined nowhere cannot be proven narrow', () => {
 });
 
 test('lookahead: an inherited production resolves through the base grammar', () => {
-  const base = grammarDefinitions(ts, 'base.ts', `const Narrow = literal('x'); const Wide = sequence(literal('a'), many(literal('b')));`);
+  const base = grammarDefinitions(ts, 'base.ts', `import { literal, many, sequence } from 'parseman'; const Narrow = literal('x'); const Wide = sequence(literal('a'), many(literal('b')));`);
   assert.deepEqual(rulesOf(planted(`const probe = not(g.Narrow);`), base), []);
   assert.deepEqual(rulesOf(planted(`const probe = not(g.Wide);`), base), ['lookahead:probe']);
 });
@@ -98,6 +99,100 @@ test('lookahead: token() cannot declare whitespace or a scan to be one token', (
   assert.deepEqual(rulesOf(planted(String.raw`const probe = not(token(regex(/[-\w]+[ \t]*:/)));`)), ['lookahead:probe']);
   assert.deepEqual(rulesOf(planted(String.raw`const probe = not(token(regex(/[^;]*;/)));`)), ['lookahead:probe']);
   assert.deepEqual(rulesOf(planted(`const probe = not(token(sequence(literal('a'), trivia, literal('b'))));`)), ['lookahead:probe']);
+});
+
+test('lookahead: a lookaround cannot hide what follows whitespace, in a lookahead or a consuming regex', () => {
+  for (const pattern of [String.raw`/[-\w]+[ \t]*(?=:[ \t\n\r\f])/`, String.raw`/[-\w]+(?=[ \t]*(?=:))/`, String.raw`/[a-z](?=(?:[-\w]+):)/`, String.raw`/(?<=(?:[-\w]+):)x/`]) {
+    assert.deepEqual(rulesOf(planted(`const probe = not(regex(${pattern}));`)), ['lookahead:probe'], pattern);
+    assert.deepEqual(rulesOf(planted(`const probe = regex(${pattern});`)), ['lookahead:probe'], pattern);
+  }
+});
+
+test('lookahead: a nested not or peek after a consuming arm reads a token, at any depth', () => {
+  const caught = body => assert.deepEqual(rulesOf(planted(body)), ['lookahead:probe'], body);
+  caught(String.raw`const probe = not(sequence(regex(/[-\w]+/), peek(literal(':'))));`);
+  caught(String.raw`const probe = not(sequence(regex(/[-\w]+/), not(literal(':'))));`);
+  caught(String.raw`const inner = sequence(regex(/[-\w]+/), peek(literal(';'))); const probe = peek(sequence(optional(trivia), inner));`);
+  caught(String.raw`const probe = not(token(sequence(regex(/[-\w]+/), peek(literal(':')))));`);
+  assert.deepEqual(rulesOf(planted(`const probe = not(sequence(peek(literal(':')), literal(':')));`)), []);
+});
+
+test('regexWidth: tokens glued in one regex are counted; a real single token passes', () => {
+  const many_ = [
+    String.raw`/(?:[-\w]+):/`, String.raw`/([-\w]+):/`, '/color:/', '/(?:color|margin|padding):/', String.raw`/;[-\w]+/`, String.raw`/\{[-\w]+/`,
+    '/.?.?.?.?.?.?.?.?.?.?:/', '/[^;]?[^;]?[^;]?[^;]?;/', String.raw`/\p{Any}+(?=;)/u`, '/[!-:<-~]+(?=;)/', String.raw`/([-\w]+):\1/`, String.raw`/(?:[-\w]+)[^\S]?:/`
+  ];
+  for (const pattern of many_) {
+    assert.equal(regexWidth(pattern).width, MANY, pattern);
+    assert.equal(regexWidth(pattern).hard, true, pattern);
+  }
+  const one = [
+    '/[0-9]+\\.[0-9]+/', String.raw`/[-+]?\d*\.?\d+/`, '/"[^"]*"/', '/[<>=]*=~/', String.raw`/[a-z]+\\./`, '/[^;]/', '/./', String.raw`/\d+%/`, String.raw`/#[0-9a-f]+/`, String.raw`/@[-\w]+/`, String.raw`/[-\w]+\(/`
+  ];
+  for (const pattern of one) {
+    assert.equal(regexWidth(pattern).width, 1, pattern);
+  }
+  assert.equal(regexWidth(String.raw`/\/\*[^*]*\*\//`).width, 0);
+});
+
+test('literal, keywords and word: text with more than one token in it is not one token', () => {
+  const caught = body => assert.deepEqual(rulesOf(planted(body)), ['lookahead:probe'], body);
+  caught(`const probe = not(literal('foo : bar'));`);
+  caught(`const probe = not(keywords(['foo : bar', 'a b']));`);
+  caught(`const probe = not(word('foo : bar'));`);
+  caught(`const probe = not(token(literal('foo : bar')));`);
+  caught(`const kw = makeWord();\nconst probe = not(kw('foo : bar'));`);
+  caught(`const probe = not(literal('color:'));`);
+  assert.deepEqual(rulesOf(planted(`const probe = not(literal('@{')); const other = not(literal('::'));`)), []);
+});
+
+test('names: a combinator is what parseman exports, not what happens to share its name', () => {
+  const clean = body => assert.deepEqual(scan(body).map(h => h.rule), [], body);
+  clean(`const token = 'x'; export const y = [token];`);
+  clean(`export function f(ctx) { const { node, field } = ctx; return node ?? field; }`);
+  clean(`import { label as tag } from './other.js'; export const z = tag;`);
+  clean(`export function f() { try { return 1; } catch (regex) { return String(regex); } }`);
+  clean(`function peek(s) { return s[0]; } export const q = peek('a b');`);
+  clean(`const not = b => !b; export const q = not(true);`);
+  clean(`import type { not as N } from 'parseman'; export type M = N;`);
+  clean(`export type { Combinator } from 'parseman';`);
+  clean(`export { run as parsemanRun } from 'parseman';`);
+  clean(`import { not } from 'parseman'; const f = (not) => not(sequence(a, b));`);
+});
+
+test('resolution: what a name could be counts, not what it first looked like', () => {
+  const caught = body => assert.deepEqual(rulesOf(planted(body)), ['lookahead:probe'], body);
+  const WIDE = String.raw`regex(/[-\w]+[ \t]*:/)`;
+  caught(`let w = literal('x');\nw = ${WIDE};\nconst probe = not(w);`);
+  caught(`const n = literal(';');\nconst la = (n) => { const probe = not(n); return probe; };`);
+  caught(`const n = literal(';');\nconst o = { n: ${WIDE} };\nconst probe = not(o.n);`);
+  caught(`const o = {\n  /** x */\n  Semi: literal(';')\n};\no.Semi = ${WIDE};\nconst probe = not(o.Semi);`);
+  caught(`const probe = not(parser(() => ${WIDE}));`);
+  caught(`const probe = dispatch(${WIDE}, a);`);
+  caught(`const probe = not(word('a', '-\\\\w])(?=[ \\\\t]*:)(?![x'));`);
+  caught(`const probe = keywords(['a'], { boundary: '-\\\\w])(?=[ \\\\t]*:)(?![x' });`);
+  const dialect = grammarDefinitions(ts, 'dialect.ts', `import { regex } from 'parseman'; const map = { Narrow: ${WIDE} };`);
+  const own = `const probe = not(g.Narrow);\nconst map = {\n  /** One token. */\n  Narrow: literal('x')\n};`;
+  assert.deepEqual(rulesOf(planted(own)), []);
+  assert.deepEqual(rulesOf(planted(own), dialect), ['lookahead:probe']);
+});
+
+test('dialect-prefix: an uppercase, suffix or infix dialect name is caught, through every rule form', () => {
+  const named = (body, name) => assert.deepEqual(rulesOf(planted(`/** x */\n${body}`)), [`dialect-prefix:${name}`], body);
+  named(`const LESSThing = literal('x');`, 'LESSThing');
+  named(`const CSSThing = literal('x');`, 'CSSThing');
+  named(`const DeclarationLess = literal('x');`, 'DeclarationLess');
+  named(`const AtScssRule = literal('x');`, 'AtScssRule');
+  named(`const t = node('SCSSThing', literal('x'));`, 't');
+  named(`const lessKw = makeWord();`, 'lessKw');
+  named(`const b = literal('x');\nconst LessThing = b;`, 'LessThing');
+  assert.deepEqual(rulesOf(planted(`const NodeList = literal('x'); const blessed = literal('y'); const unless = literal('z');`)).filter(r => r.startsWith('dialect')), []);
+});
+
+test('jsdoc: a rule in a map and an empty block need one too', () => {
+  assert.deepEqual(rulesOf(planted(`const map = { PlantedRule: literal('y') };`)), ['jsdoc:PlantedRule']);
+  assert.deepEqual(rulesOf(planted(`/** */\nconst PlantedRule = literal('y');`)), ['jsdoc:PlantedRule']);
+  assert.deepEqual(rulesOf(planted(`const map = {\n  /** Recognizes y. */\n  PlantedRule: literal('y')\n};`)), []);
 });
 
 test('dialect-prefix: a prefixed or Ast/Cst rule name is caught; a whole grammar export is not', () => {
@@ -142,7 +237,7 @@ test('regex(): a lookaround past one token is caught in a consuming regex too', 
   assert.deepEqual(rulesOf(planted(String.raw`const probe = regex(/[-\w]+[ \t]*:(?=[ \t]*\{)/);`)), ['lookahead:probe']);
 });
 
-test('regex(): a one-character boundary check and plain multi-token consumption pass', () => {
+test('regex(): a check of the adjacent character and plain multi-token consumption pass', () => {
   assert.deepEqual(rulesOf(planted(String.raw`const probe = regex(/[-\w]+(?![-\w])/);`)), []);
   assert.deepEqual(rulesOf(planted(String.raw`const probe = regex(/:(?=[ \t\n\r\f]|\{)/);`)), []);
   assert.deepEqual(rulesOf(planted(String.raw`const probe = regex(/-(?![0-9]|\/[*/])/);`)), []);
@@ -197,9 +292,15 @@ test('parseman-import: an alias, a namespace, destructuring or a re-export canno
   assert.deepEqual(imports(`const pm = require('parseman');`), ['parseman-import']);
   assert.deepEqual(imports(`export { not as n } from 'parseman';`), ['parseman-import']);
   assert.deepEqual(imports(`export * from 'parseman';`), ['parseman-import']);
-  assert.deepEqual(imports(`const n = not;`), ['parseman-import']);
-  assert.deepEqual(imports(`const r = regex;`), ['parseman-import']);
-  assert.deepEqual(imports(`const o = { attempt };`), ['parseman-import']);
+  assert.deepEqual(imports(`import { not } from 'parseman'; const n = not;`), ['parseman-import']);
+  assert.deepEqual(imports(`import { regex } from 'parseman'; const r = regex;`), ['parseman-import']);
+  assert.deepEqual(imports(`import { attempt } from 'parseman'; const o = { attempt };`), ['parseman-import']);
+  assert.deepEqual(imports(`import pm from 'parseman';`), ['parseman-import']);
+  assert.deepEqual(imports(`import { default as pm } from 'parseman';`), ['parseman-import']);
+  assert.deepEqual(imports(`import pm = require('parseman');`), ['parseman-import']);
+  assert.deepEqual(imports(`import { createRequire } from 'node:module'; const r = createRequire(import.meta.url);`), ['parseman-import']);
+  assert.deepEqual(imports(`import { not } from 'pm-alias';`), ['parseman-import']);
+  assert.deepEqual(imports(`import { thing } from './__tests__/helper.js';`), ['parseman-import']);
 });
 
 test('parseman-import: own names, other modules, types and local variables named like a combinator pass', () => {
@@ -243,6 +344,12 @@ test('runtime-codegen: another route to eval or Function is caught; a type is no
   assert.deepEqual(rulesOf(planted(`const probe = (0, eval)('1');`)), ['runtime-codegen:probe']);
   assert.deepEqual(rulesOf(planted(`const probe = globalThis['Function']('return 1');`)), ['runtime-codegen:probe']);
   assert.deepEqual(rulesOf(planted(`let probe: Function | undefined;`)), []);
+  assert.deepEqual(rulesOf(planted(`const probe = (() => {}).constructor('return 1');`)), ['runtime-codegen:probe']);
+  assert.deepEqual(rulesOf(planted(`const probe = setTimeout('1');`)), ['runtime-codegen:probe']);
+  assert.deepEqual(rulesOf(planted(`const probe = globalThis['ev' + 'al']('1');`)), ['runtime-codegen:probe']);
+  assert.deepEqual(scan(planted(`const { eval: probe } = globalThis;`)).map(h => h.rule), ['runtime-codegen']);
+  assert.deepEqual(scan(`import vm from 'node:vm';`).map(h => h.rule), ['runtime-codegen']);
+  assert.deepEqual(scan(`import type { Script } from 'node:vm';`), []);
 });
 
 test('coverage: every source extension is scanned; a combinator imported elsewhere is found', () => {
@@ -253,49 +360,74 @@ test('coverage: every source extension is scanned; a combinator imported elsewhe
   assert.equal(GRAMMAR_SOURCE.test('packages/parser-shared/src/thing.d.ts'), false);
   assert.equal(GRAMMAR_SOURCE.test('packages/parser-shared/src/thing.test.ts'), false);
   assert.equal(GRAMMAR_SOURCE.test('packages/core/src/thing.ts'), false);
-  assert.deepEqual(scanGrammarSource(ts, 'packages/parser-shared/src/thing.tsx', `const probe = not(many(a));`).map(h => h.rule), ['lookahead']);
+  assert.deepEqual(scanGrammarSource(ts, 'packages/parser-shared/src/thing.tsx', `import { many, not } from 'parseman'; const probe = not(many(a));`).map(h => h.rule), ['lookahead']);
   assert.equal(NOT_A_GRAMMAR.test('packages/core/src/grammar.ts'), false);
   assert.equal(NOT_A_GRAMMAR.test('packages/syntax/less/less-parser/test/a.ts'), true);
+  assert.equal(NOT_A_GRAMMAR.test('test/dialects.ts'), true);
+  assert.equal(NOT_A_GRAMMAR.test('packages/core/src/perf/helper.ts'), false);
+  assert.equal(NOT_A_GRAMMAR.test('packages/core/perf/helper.ts'), true);
   assert.equal(NOT_A_GRAMMAR.test('tools/grammar-tournament/src/coverage.mjs'), true);
 
   assert.deepEqual(parsemanCombinatorImports(`import { not, literal as l, parse } from 'parseman';`), ['not', 'literal']);
   assert.deepEqual(parsemanCombinatorImports(`import * as pm from 'parseman';`), ['* from parseman']);
   assert.deepEqual(parsemanCombinatorImports(`export { not } from 'parseman';`), ['not']);
   assert.deepEqual(parsemanCombinatorImports(`const pm = await import('parseman');`), ['dynamic parseman']);
+  assert.deepEqual(parsemanCombinatorImports(`const pm = createRequire(import.meta.url)('parseman');`), ['dynamic parseman']);
+  assert.deepEqual(parsemanCombinatorImports(`import { not } from '../node_modules/.pnpm/parseman@1.0.0/node_modules/parseman/dist/index.js';`), ['not']);
   assert.deepEqual(parsemanCombinatorImports(`import parseman from 'parseman/plugin';`), []);
   assert.deepEqual(parsemanCombinatorImports(`import type { Combinator } from 'parseman';`), []);
   assert.deepEqual(parsemanCombinatorImports(`import { DIGEST_FORMAT } from 'parseman/oracle';`), []);
   assert.deepEqual(parsemanCombinatorImports(`import { not } from './mine.js';`), []);
 });
 
-test('ratchet: widening what a baselined lookahead resolves to fails, though its call text is the same', () => {
-  const source = regex => `${CLEAN}\nconst wide = regex(${regex});\nconst probe = not(wide);\n`;
+test('fingerprint: any change to what a site reads moves it, past any clip; a comment or formatting does not', () => {
+  const site = (regexSource, comment = '') => `${CLEAN}\nconst wide = regex(${regexSource});${comment}\nconst probe = not(choice(literal('a'), wide));\n`;
+  const fingerprint = source => scan(source).find(h => h.const === 'probe').resolved;
+  const base = fingerprint(site(String.raw`/[-\w]+[ \t]*:/`));
+  assert.notEqual(fingerprint(site(String.raw`/[^;{}]*[;{]/`)), base);
+  assert.equal(fingerprint(site(String.raw`/[-\w]+[ \t]*:/`, ' /* why */ // and why')), base);
+  const long = 'x'.repeat(400);
+  const clipped = end => fingerprint(`${CLEAN}\nconst probe = not(regex(/${long} ${end}/));\n`);
+  assert.notEqual(clipped('a'), clipped('b'));
+});
+
+test('fingerprint: attempt, a consuming regex and a dispatch selector carry one', () => {
+  const hit = body => scan(planted(body)).find(h => h.const === 'probe');
+  assert.match(hit(`const probe = attempt(literal('a'));`).resolved, /^[0-9a-f]{16}$/);
+  assert.match(hit(String.raw`const probe = regex(/[-\w]+[ \t]*(?=:)/);`).resolved, /^[0-9a-f]{16}$/);
+  assert.match(hit(String.raw`const probe = dispatch(regex(/[-\w]+[ \t]*:/), a);`).resolved, /^[0-9a-f]{16}$/);
+});
+
+test('ratchet: a site whose fingerprint moved is changed, not fresh; a new site at another const is fresh', () => {
+  const source = regexSource => `${CLEAN}\nconst wide = regex(${regexSource});\nconst probe = not(wide);\n`;
   const before = scan(source(String.raw`/[-\w]+[ \t]*:/`));
   const after = scan(source(String.raw`/[^;{}]*[;{]/`));
   assert.equal(before[0].construct, after[0].construct);
-  const { fresh, stale } = compareGrammarBaseline(after, before);
-  assert.equal(fresh.length, 1);
-  assert.equal(stale.length, 1);
-  assert.deepEqual(compareGrammarBaseline(before, before).fresh, []);
+  const { fresh, stale, changed } = compareGrammarBaseline(after, before);
+  assert.deepEqual([fresh.length, stale.length, changed.length], [0, 0, 1]);
+  assert.equal(changed[0].hit.resolved, after[0].resolved);
+  assert.deepEqual(compareGrammarBaseline(before, before).changed, []);
+  const moved = compareGrammarBaseline(before.map(h => ({ ...h, const: 'other' })), before);
+  assert.deepEqual([moved.fresh.length, moved.stale.length], [1, 1]);
 });
 
-test('ratchet: widening a baselined sequence fails too', () => {
-  const source = args => `${CLEAN}\nconst wide = sequence(${args});\nconst probe = not(wide);\n`;
-  const { fresh } = compareGrammarBaseline(scan(source(`literal('a'), literal('b'), literal('c')`)), scan(source(`literal('a'), literal('b')`)));
-  assert.equal(fresh.length, 1);
-});
-
-test('shrink-only: an added entry, a repeat of one, or an added undocumented rule is reported; a removal is not', () => {
-  const entry = { rule: 'lookahead', file: FILE, construct: 'not(x)', resolved: 'aaa' };
+test('shrink-only: a new site or repeat is added; a moved fingerprint needs a new note; a removal is fine', () => {
+  const entry = { rule: 'lookahead', file: FILE, const: 'probe', construct: 'not(x)', resolved: 'aaa' };
   const base = { entries: [entry], undocumentedRules: { [FILE]: ['Rule'] } };
-  assert.deepEqual(addedBaselineEntries(base, base), []);
-  assert.deepEqual(addedBaselineEntries(base, { entries: [], undocumentedRules: {} }), []);
-  assert.deepEqual(addedBaselineEntries(base, { ...base, entries: [{ ...entry, line: 99 }] }), []);
-  assert.equal(addedBaselineEntries(base, { ...base, entries: [entry, { ...entry, construct: 'not(y)' }] }).length, 1);
-  assert.equal(addedBaselineEntries(base, { ...base, entries: [entry, entry] }).length, 1);
-  assert.equal(addedBaselineEntries(base, { ...base, entries: [{ ...entry, resolved: 'bbb' }] }).length, 1);
-  const added = addedBaselineEntries(base, { ...base, undocumentedRules: { [FILE]: ['Rule', 'Other'] } });
-  assert.deepEqual(added.map(e => e.construct), ['Other']);
+  const added = current => compareBaselineToBase(base, { ...base, ...current }).added;
+  const unexplained = current => compareBaselineToBase(base, { ...base, ...current }).unexplained;
+  assert.deepEqual(added(base), []);
+  assert.deepEqual(added({ entries: [], undocumentedRules: {} }), []);
+  assert.deepEqual(added({ entries: [{ ...entry, line: 99 }] }), []);
+  assert.equal(added({ entries: [entry, { ...entry, const: 'other' }] }).length, 1);
+  assert.equal(added({ entries: [entry, entry] }).length, 1);
+  assert.deepEqual(added({ undocumentedRules: { [FILE]: ['Rule', 'Other'] } }).map(e => e.construct), ['Other']);
+  assert.equal(unexplained({ entries: [{ ...entry, resolved: 'bbb' }] }).length, 1);
+  assert.equal(unexplained({ entries: [{ ...entry, resolved: 'bbb', changed: 'A shared definition grew a case.' }] }).length, 0);
+  assert.equal(compareBaselineToBase(
+    { ...base, entries: [{ ...entry, changed: 'old reason' }] },
+    { ...base, entries: [{ ...entry, resolved: 'bbb', changed: 'old reason' }] }
+  ).unexplained.length, 1);
 });
 
 test('shrink-only: a ref that cannot be read fails rather than skips', () => {
@@ -321,15 +453,160 @@ test('no-eval, no-implied-eval and no-new-func are enabled for parser sources', 
 });
 
 test('ratchet: a new site is fresh, a removed one is stale, a moved one keeps its entry', () => {
-  const entry = { rule: 'lookahead', file: FILE, line: 10, construct: 'not(x)', issue: 'jesscss/jess#1' };
-  const moved = { rule: 'lookahead', file: FILE, line: 12, construct: 'not(x)' };
-  const added = { rule: 'lookahead', file: FILE, line: 20, construct: 'not(y)' };
+  const entry = { rule: 'lookahead', file: FILE, line: 10, construct: 'not(x)', why: 'a', issue: 'jesscss/jess#1' };
+  const moved = { rule: 'lookahead', file: FILE, line: 12, construct: 'not(x)', why: 'a' };
+  const added = { rule: 'lookahead', file: FILE, line: 20, construct: 'not(y)', why: 'a' };
   const same = compareGrammarBaseline([moved], [entry]);
   assert.deepEqual(same.fresh, []);
   assert.deepEqual(same.stale, []);
   assert.deepEqual(same.kept, [{ ...entry, line: 12 }]);
   assert.deepEqual(compareGrammarBaseline([moved, added], [entry]).fresh, [added]);
   assert.deepEqual(compareGrammarBaseline([], [entry]).stale, [entry]);
+});
+
+/*
+ * The gate as CI runs it, on a throwaway checkout: a violation that only the
+ * library catches is no protection if the command still exits zero.
+ */
+test('the gate command exits non-zero on every planted failure', () => {
+  const tree = join(mkdtempSync(join(tmpdir(), 'grammar-gate-')), 'tree');
+  const git = (...args) => {
+    const run = spawnSync('git', args, { cwd: tree, encoding: 'utf8' });
+    assert.equal(run.status, 0, `git ${args.join(' ')}: ${run.stderr}`);
+    return run.stdout.trim();
+  };
+  const copy = (rel) => {
+    mkdirSync(dirname(join(tree, rel)), { recursive: true });
+    copyFileSync(join(ROOT, rel), join(tree, rel));
+  };
+  const added = spawnSync('git', ['worktree', 'add', '--detach', tree, 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
+  assert.equal(added.status, 0, added.stderr);
+  const BASELINE = 'scripts/check-guardrails.grammar-baseline.json';
+  const CSS = 'packages/syntax/css/css-parser/src/grammar.ts';
+  const SIBLING = 'packages/parser-shared/src/recognition.ts';
+  const at = rel => join(tree, rel);
+  const read = rel => readFileSync(at(rel), 'utf8');
+  const gate = (...args) => {
+    const run = spawnSync(process.execPath, ['scripts/check-guardrails.mjs', ...args], { cwd: tree, encoding: 'utf8', maxBuffer: 1 << 28 });
+    return { status: run.status, out: run.stdout + run.stderr };
+  };
+  const list = () => JSON.parse(gate('--list-grammar').out);
+  const fails = (name, message, ...args) => {
+    const { status, out } = gate(...args);
+    assert.notEqual(status, 0, `${name}: exited zero\n${out}`);
+    assert.match(out, message, name);
+  };
+
+  /* Run `body` on the tree, then put every touched file back. */
+  const scenario = (files, body) => {
+    const saved = files.map(rel => [rel, existsSync(at(rel)) ? read(rel) : undefined]);
+    try {
+      body();
+    } finally {
+      for (const [rel, text] of saved) {
+        if (text === undefined) {
+          rmSync(at(rel), { force: true });
+        } else {
+          writeFileSync(at(rel), text);
+        }
+      }
+    }
+  };
+  const addCommit = (message) => {
+    git('add', '-A', 'scripts', 'packages');
+    const commit = git('-c', 'user.name=gate', '-c', 'user.email=gate@example.invalid', 'commit-tree', git('write-tree'), '-p', 'HEAD', '-m', message);
+    git('update-ref', '--no-deref', 'HEAD', commit);
+    return commit;
+  };
+  const PLANT = String.raw`
+const plantedCliFresh = not(regex(/[-\w]+[ \t]*:[ \t]/));
+`;
+  try {
+    symlinkSync(join(ROOT, 'node_modules'), at('node_modules'));
+    for (const rel of spawnSync('git', ['ls-files', '-m', '-o', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' }).stdout.split('\n').filter(Boolean)) {
+      if (/^(?:scripts|packages)\//.test(rel) && existsSync(join(ROOT, rel))) {
+        copy(rel);
+      }
+    }
+    const clean = gate();
+    assert.equal(clean.status, 0, clean.out);
+
+    scenario([CSS], () => {
+      writeFileSync(at(CSS), read(CSS) + PLANT);
+      fails('fresh hit', /new grammar lookahead violation/);
+    });
+
+    scenario([BASELINE], () => {
+      const baseline = JSON.parse(read(BASELINE));
+      baseline.entries.push({ ...baseline.entries[0], construct: 'noSuchSite', const: 'noSuchSite' });
+      writeFileSync(at(BASELINE), JSON.stringify(baseline));
+      fails('stale entry', /no longer occur/);
+    });
+
+    scenario(['packages/core/src/planted-grammar.ts'], () => {
+      writeFileSync(at('packages/core/src/planted-grammar.ts'), `import { not } from 'parseman';\nexport const x = not;\n`);
+      fails('stray file', /outside the scanned grammar sources/);
+    });
+
+    scenario(['packages/core/productions.ts'], () => {
+      writeFileSync(at('packages/core/productions.ts'), 'export {};\n');
+      fails('productions.ts', /productions\.ts/);
+    });
+
+    scenario(['scripts/grammar-guardrails.mjs'], () => {
+      writeFileSync(at('scripts/grammar-guardrails.mjs'), read('scripts/grammar-guardrails.mjs').replace(`new Set(['not', 'peek'])`, 'new Set()'));
+      fails('blinded scanner', /self-test/);
+    });
+
+    /* A site planted and baselined together: the shrink comparison sees a new site. */
+    scenario([CSS, BASELINE], () => {
+      const site = regexSource => String.raw`
+const plantedCliProbe = not(regex(${regexSource}));
+`;
+      const stock = read(CSS);
+      const setSite = regexSource => writeFileSync(at(CSS), stock + site(regexSource));
+      const baseline = JSON.parse(read(BASELINE));
+      const saveEntry = (fields) => {
+        const planted = list().find(h => h.const === 'plantedCliProbe');
+        const others = baseline.entries.filter(e => e.const !== 'plantedCliProbe');
+        baseline.entries = [...others, { ...planted, issue: baseline.issue, ...fields }];
+        writeFileSync(at(BASELINE), JSON.stringify(baseline));
+      };
+      setSite(String.raw`/[-\w]+[ \t]*:[ \t]/`);
+      saveEntry({});
+      assert.equal(gate().status, 0);
+      fails('added site', /added to scripts\/check-guardrails\.grammar-baseline\.json/, '--shrink-against=HEAD');
+
+      addCommit('base with the site');
+      assert.equal(gate('--shrink-against=HEAD').status, 0);
+
+      setSite(String.raw`/[-\w]+[ \t]*:[ \t]+x/`);
+      fails('changed fingerprint', /changed what they read/);
+      saveEntry({});
+      assert.equal(gate().status, 0);
+      fails('changed with no note', /no new `changed` note/, '--shrink-against=HEAD');
+
+      const NOTE = 'Planted: the site grew a tail.';
+      saveEntry({ changed: NOTE });
+      const noted = gate('--shrink-against=HEAD');
+      assert.equal(noted.status, 0, noted.out);
+      assert.match(noted.out, new RegExp(NOTE));
+
+      addCommit('base with the note');
+      setSite(String.raw`/[-\w]+[ \t]*:[ \t]+y/`);
+      saveEntry({ changed: NOTE });
+      fails('a note copied from the base', /no new `changed` note/, '--shrink-against=HEAD');
+
+      const good = read(BASELINE);
+      writeFileSync(at(BASELINE), '{ not json');
+      const broken = addCommit('base with a broken baseline');
+      writeFileSync(at(BASELINE), good);
+      fails('an unreadable base baseline', /cannot be proven to shrink/, `--shrink-against=${broken}`);
+    });
+  } finally {
+    spawnSync('git', ['worktree', 'remove', '--force', tree], { cwd: ROOT });
+    rmSync(dirname(tree), { recursive: true, force: true });
+  }
 });
 
 test('productions.ts: any package path is caught; a productions/ directory is not', () => {

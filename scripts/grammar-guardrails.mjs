@@ -12,47 +12,63 @@
  *                   repetition or a production that spans more than one token is
  *                   a pre-scan: a workaround for a missing parseman capability.
  *                   So is a lookaround past one token inside a consuming
- *                   `regex()`, and a `regex()` whose pattern is not a literal.
- *   dialect-prefix  A rule name carries no dialect prefix (`css…`, `less…`,
- *                   `scss…`, `jess…`) and no `Ast`/`Cst`. Exported whole
+ *                   `regex()`, a `regex()` whose pattern is not a literal, and a
+ *                   `dispatch` selector wider than one token.
+ *   dialect-prefix  A rule name carries no dialect name (`css…`, `LESS…`,
+ *                   `DeclarationScss`, …) and no `Ast`/`Cst`. Exported whole
  *                   grammars (`rules`/`compose`/`composeLeaf` results) are not
  *                   rule names.
  *   runtime-codegen Parser packages never build code at runtime (`new
- *                   Function`, `Function(…)`, `eval(…)`, or either by another
- *                   route: `const F = Function`, `globalThis.eval`, `(0, eval)`).
+ *                   Function`, `Function(…)`, `eval(…)`, `node:vm`, or any other
+ *                   route to them: `const F = Function`, `globalThis.eval`,
+ *                   `(0, eval)`, `x.constructor(…)`, a string to `setTimeout`).
  *                   Codegen belongs to parseman's build-time `compile()`.
- *   attempt         `attempt(...)` tries a parse and rolls it back on failure:
- *                   backtracking. Orchestrator ruling 2026-11-04: it counts
- *                   against the owner's zero-backtracking rule, so it is a
- *                   missing parseman capability, like a pre-scan.
+ *   attempt         `attempt(...)` tries a parse and rolls it back on failure,
+ *                   which is backtracking: a missing parseman capability, like a
+ *                   pre-scan.
  *   parseman-import A grammar source names each combinator itself: no alias, no
- *                   namespace import, no destructuring, no dynamic import, no
- *                   re-export, no binding `not`/`peek`/`attempt`/`regex`/`token`
- *                   to a value. A scan by name is only sound if names are honest.
- *   jsdoc           Every rule — a PascalCase const whose value is a combinator
- *                   — carries a `/** … *\/` JSDoc block (review items 4 and 5).
+ *                   default or namespace import, no destructuring, no dynamic
+ *                   import, no re-export, no binding `not`/`peek`/`attempt`/
+ *                   `regex`/`token` to a value. A scan by name is only sound if
+ *                   names are honest.
+ *   jsdoc           Every rule — a PascalCase const or rule-map property whose
+ *                   value is a combinator — carries a non-empty `/** … *\/` JSDoc
+ *                   block (review items 4 and 5).
  *   productions.ts  No package carries a `productions.ts` (PRODUCTIONS_FILE).
  *
  * WIDTH MODEL. Every combinator expression has a width: 0 (zero-width: a
  * lookahead or trivia), 1 (one token) or MANY.
  *
- *   one token   `literal`, `keywords`, `word`, a `makeWord`/`makeWhen` matcher,
- *               a one-token `regex` (below), `token(x)`, or a wrapper (`node`,
- *               `field`, `noTrivia`, `optional`, `parser`, …) around one.
+ *   one token   `literal`, `keywords`, `word`, a `makeWord`/`makeWhen` matcher
+ *               (each only if its text is one token), a one-token `regex`
+ *               (below), `token(x)`, or a wrapper (`node`, `field`, `noTrivia`,
+ *               `optional`, `parser`, …) around one.
  *   trivia      `classifiedTrivia(...)`; a whitespace or comment regex.
- *   sequence    adds its arms; leading trivia is free.
+ *   sequence    adds its arms; leading trivia is free. A nested `not`/`peek`
+ *               after a consuming arm reads the next token, so it counts.
  *   choice      its widest arm.
  *   MANY        repetition (`many`, `oneOrMore`, …), scanning (`scanTo`,
- *               `balanced`, `dispatch`), recursion, and any name neither this
- *               file nor the base grammar defines: what the scan cannot prove
- *               narrow is reported, because an unprovable lookahead is the
- *               defect this exists for.
+ *               `balanced`, `dispatch`), recursion, and any name neither the
+ *               scanned sources nor parseman defines.
+ *
+ * NAMES. A name is a combinator only if this file imports it from parseman and
+ * no local variable shadows it. `g.Rule` resolves through every definition of
+ * that name in the scanned sources, because a composed grammar can override it;
+ * a bare name resolves in this file first. Anything else on the left of a dot,
+ * and a function parameter, cannot be proven narrow.
  *
  * `token(x)` is parseman's declaration that glued pieces form one lexical token,
  * but it proves nothing by itself. It narrows a SOFT width (adjacent pieces) only
  * when x has a one-token shape: sigils, at most one name or number, at most a
  * glued `(` or `%`. It cannot narrow a HARD width: whitespace between tokens, a
  * scan, or a lookaround past the token are never one token, whatever wraps them.
+ *
+ * WHAT THIS SCAN DOES NOT SEE. A consuming `choice` arm or `optional` that fails
+ * after several tokens and rewinds is backtracking too, and so is `scanTo` in a
+ * consuming arm: parseman's backtrack probe measures those (parseman#246). A
+ * hand-written `{ parse() }` object and a reducer that reads the input are not
+ * combinators, so only a `not`/`peek` directly over one is caught. Regex width
+ * counts lexical shapes, not meaning: `=foo` reads as one token.
  */
 
 import { createHash } from 'node:crypto';
@@ -67,8 +83,12 @@ export const PRODUCTIONS_FILE = /^packages\/(?:.*\/)?productions\.ts$/;
 export const GRAMMAR_SOURCE = /^packages\/(?:syntax\/[^/]+\/[^/]+-parser|parser-shared)\/src\/(?!(?:.*\/)?__tests__\/).+(?<!\.d|\.test|\.spec)\.(?:[cm]?[jt]s|[jt]sx)$/;
 export const ANY_SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 
-/* What may import parseman without being a grammar, because it never ships: tests, perf probes, docs and dev tools. */
-export const NOT_A_GRAMMAR = /^(?:docs|scratchpad|scripts|tools)\/|(?:^|\/)(?:__tests__|tests?|perf|bench|benchmarks?|fixtures?)\/|\.(?:test|spec)\.[^/]+$/;
+/*
+ * What may import parseman without being a grammar, because it never ships:
+ * docs and dev tools, test files, and test or perf directories outside a `src/`.
+ * Anything under a `src/` ships unless it is a `__tests__` directory or a test file.
+ */
+export const NOT_A_GRAMMAR = /^(?:docs|scratchpad|scripts|tools)\/|(?:^|\/)__tests__\/|\.(?:test|spec)\.[^/]+$|^(?:(?!src\/)[^/]+\/)*(?:tests?|perf|bench|benchmarks?|fixtures?)\//;
 
 const ZERO_WIDTH = new Set(['not', 'peek']);
 const ONE_TOKEN = new Set(['literal', 'keywords', 'word']);
@@ -84,26 +104,29 @@ const TRANSPARENT = new Set([
 const REPEATS = new Set(['many', 'oneOrMore', 'oneOrMoreSep']);
 const SCANS = new Set(['scanTo', 'balanced', 'dispatch']);
 
-/* `rules`/`compose`/`composeLeaf` build whole grammars, not rules, so they are not here. */
+/* `rules`/`compose`/`composeLeaf` build whole grammars, not rules. */
+const GRAMMAR_BUILDERS = new Set(['rules', 'compose', 'composeLeaf']);
+
 const COMBINATORS = new Set([
-  ...ZERO_WIDTH, ...ONE_TOKEN, ...TRANSPARENT, ...REPEATS, ...SCANS,
+  ...ZERO_WIDTH, ...ONE_TOKEN, ...MATCHER_FACTORIES, ...TRANSPARENT, ...REPEATS, ...SCANS,
   'regex', 'sequence', 'choice', 'token', 'classifiedTrivia'
 ]);
 
-const DIALECT_PREFIX = /^(?:[Cc]ss|[Ll]ess|[Ss]css|[Jj]ess)(?=[A-Z0-9_]|$)|(?:^|[a-z0-9])(?:Ast|Cst|AST|CST)(?=[A-Z0-9_]|$)|^(?:ast|cst)(?=[A-Z])/;
+const DIALECT_PREFIX = /^(?:[Cc]ss|[Ll]ess|[Ss]css|[Jj]ess|CSS|LESS|SCSS|JESS)(?=[A-Z0-9_]|$)|[a-z0-9](?:Css|Less|Scss|Jess|CSS|LESS|SCSS|JESS)(?=[A-Z0-9_]|$)|(?:^|[a-z0-9])(?:Ast|Cst|AST|CST)(?=[A-Z0-9_]|$)|^(?:ast|cst)(?=[A-Z])/;
 
 export const RULE_MESSAGES = {
   lookahead: [
     '  Parseman never backtracks, re-parses or pre-scans: a grammar decides on the CURRENT',
     '  token. `not(...)` / `peek(...)` over a regex, a multi-token sequence, a repetition or',
-    '  a whole production looks past it. That is a MISSING PARSEMAN CAPABILITY, not a',
-    '  grammar problem: file a parseman issue (github.com/jesscss/parseman) describing',
-    '  the decision the grammar cannot make on one token, and do NOT land a grammar',
-    '  workaround. One-token lookahead (`not(literal(\'{\'))`, `peek(keywords([...]))`)',
-    '  stays allowed. GRAMMAR-REVIEW-STANDARD.md items 9 and 18.'
+    '  a whole production looks past it, and so does a lookaround past one token inside a',
+    '  `regex()`. That is a MISSING PARSEMAN CAPABILITY, not a grammar problem: file a',
+    '  parseman issue (github.com/matthew-dean/parseman) describing the decision the',
+    '  grammar cannot make on one token, and do NOT land a grammar workaround. One-token',
+    '  lookahead (`not(literal(\'{\'))`, `peek(keywords([...]))`) stays allowed.',
+    '  GRAMMAR-REVIEW-STANDARD.md items 9 and 18.'
   ],
   'dialect-prefix': [
-    '  A dialect prefix (`css…`, `less…`, `scss…`, `jess…`) or an `Ast`/`Cst` in a rule',
+    '  A dialect name (`css…`, `LESS…`, `DeclarationScss`, …) or an `Ast`/`Cst` in a rule',
     '  name claims the rule accepts a different language than its plain counterpart.',
     '  Use the plain name; where the divergence is real, name the divergence, not the',
     '  dialect. GRAMMAR-REVIEW-STANDARD.md item 16.'
@@ -112,61 +135,60 @@ export const RULE_MESSAGES = {
     '  Parseman never backtracks: a grammar decides on the CURRENT token. `attempt(...)`',
     '  tries a parse and rolls it back when it fails, which is backtracking. That is a',
     '  MISSING PARSEMAN CAPABILITY, not a grammar problem: file a parseman issue',
-    '  (github.com/jesscss/parseman) describing the decision the grammar cannot make on',
-    '  one token, and do NOT land a grammar workaround. GRAMMAR-REVIEW-STANDARD.md item 18.'
+    '  (github.com/matthew-dean/parseman) describing the decision the grammar cannot make',
+    '  on one token, and do NOT land a grammar workaround. GRAMMAR-REVIEW-STANDARD.md item 18.'
   ],
   jsdoc: [
-    '  Every grammar rule (a PascalCase const whose value is a combinator) carries a',
-    '  `/** … */` JSDoc block saying what it recognizes (GRAMMAR-REVIEW-STANDARD.md items',
-    '  4 and 5). A `/* … */` block above the rule becomes one by changing its opener.'
+    '  Every grammar rule (a PascalCase const or rule-map property whose value is a',
+    '  combinator) carries a non-empty `/** … */` JSDoc block saying what it recognizes',
+    '  (GRAMMAR-REVIEW-STANDARD.md items 4 and 5). A `/* … */` block above the rule becomes',
+    '  one by changing its opener.'
   ],
   'parseman-import': [
     '  A grammar source imports each combinator under its own name, so the scan sees every',
-    '  call: no `import { not as … }`, no `import * as …`, no destructuring, no dynamic',
-    '  import or `require()`, no re-export, and no passing `not`/`peek`/`attempt`/`regex`/',
-    '  `token` around as a value.',
-    '  A renamed lookahead is still a lookahead. GRAMMAR-REVIEW-STANDARD.md item 18.'
+    '  call: no `import { not as … }`, no default or `import * as …` import, no destructuring,',
+    '  no dynamic import, `require()` or `createRequire`, no re-export, no import from a test',
+    '  file, and no passing `not`/`peek`/`attempt`/`regex`/`token` around as a value. A renamed',
+    '  lookahead is still a lookahead. GRAMMAR-REVIEW-STANDARD.md item 18.'
   ],
   'runtime-codegen': [
     '  Parser packages never build code at runtime (`new Function`, `Function(...)`,',
-    '  `eval(...)`, or either reached by another name: `const F = Function`,',
-    '  `globalThis.eval`, `(0, eval)`). Code generation belongs to parseman\'s build-time `compile()`; a',
-    '  grammar that needs it at runtime is a missing parseman capability.'
+    '  `eval(...)`, `node:vm`, or any other route to them: `const F = Function`,',
+    '  `globalThis.eval`, `(0, eval)`, `x.constructor(...)`, a string to `setTimeout`). Code',
+    '  generation belongs to parseman\'s build-time `compile()`; a grammar that needs it at',
+    '  runtime is a missing parseman capability.'
   ]
 };
 
 const ONE = { width: 1, why: '' };
 const ZERO = { width: 0, why: '' };
 const TRIVIA = { width: 0, why: '', trivia: true };
-const soft = (why, at = '') => ({ width: MANY, why, hard: false, at });
-const hard = (why, at = '') => ({ width: MANY, why, hard: true, at });
+const soft = why => ({ width: MANY, why, hard: false });
+const hard = why => ({ width: MANY, why, hard: true });
 
 /*
  * ------------------------------------------------------------------------
- * Regex width — a walk over the pattern's AST from `@eslint-community/regexpp`
- * (the parser ESLint ships; resolved through eslint, no extra dependency). It
- * counts TOKENS; it never decides what the pattern matches.
+ * Regex width — an abstract run over the pattern's AST from
+ * `@eslint-community/regexpp` (the parser ESLint ships; resolved through eslint,
+ * no extra dependency). It counts TOKENS; it never decides what the pattern
+ * matches.
  *
- *   - Characters, escapes, classes and groups glue into one token. A character
- *     is classified by its code point, so `\x20` is whitespace and `\x3a` is
- *     punctuation; a `{0}` quantifier removes its atom.
- *   - Whitespace (a whitespace character, `\s`, a class of only whitespace) is
- *     trivia: it ends the token, and a token after it is another token (HARD).
- *     A class that mixes whitespace with token characters counts as whitespace;
- *     repeated, it is HARD on its own.
- *   - A comment is trivia only in its canonical spellings (COMMENT_FORMS); any
- *     other text after `\/\*` or `\/\/` is read like the rest of the pattern.
- *   - A repeated atom followed by a non-name atom at the same nesting level
- *     (`[-\w]+:`, `[\w]*\$\{`) starts another token (SOFT: `token()` may declare
- *     it one only in a one-token shape, below).
- *   - A group carries its edge whitespace: `(?:[-\w]+[ \t]*):` is a name, a gap
- *     and another token (HARD), not one glued atom.
- *   - A lookaround checks one boundary (`(?![-\w])`, `(?=\()`) or, before any
- *     atom, leading trivia and one token; a lookaround that crosses whitespace
- *     to a token after the token, or spans more than one token, reads past the
- *     token (HARD). This holds in a consuming `regex()` too: there the scan
- *     reports the lookaround itself (`lookarounds`).
- *   - A repeated any-character class (`[^;]*`, `.+`, `[\s\S]*`) is a scan (HARD).
+ * The run carries the set of lexical states the pattern can be in. One token is
+ * the shape `token()` allows: sigils, at most one name or number (a decimal
+ * included), at most a glued `(` or `%`; or a run of operator characters; or one
+ * structural character; or a quoted string; or one any-character atom, alone.
+ * Whitespace ends the token. Reaching `over` means a second token:
+ *
+ *   `/color:/`  word, then `:`        `/[^;]?[^;]?;/`  any, then any
+ *   `/;[-\w]+/` `;`, then a word      `/[-\w]+[ \t]*(?=:)/`  a gap, then a token
+ *
+ * A group is the union of its alternatives, a quantifier a fixpoint, and `{0}`
+ * nothing, so groups hide nothing. A lookahead continues from the states before
+ * it and rejoins them: reaching `over` inside reads past the token. A consuming
+ * regex may span several tokens, so `lookarounds` is computed by a second run
+ * that starts a new token instead of going `over`, and asks only whether each
+ * lookaround reads past the token it follows. A comment is trivia only in its
+ * canonical spellings (COMMENT_FORMS).
  * ------------------------------------------------------------------------
  */
 
@@ -181,282 +203,285 @@ function parseRegexLiteral(text) {
 const COMMENT_FORMS = [
   String.raw`\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)`,
   String.raw`\/\*(?:[^*]|\*(?!\/))*\*\/`,
+  String.raw`\/\*[^*]*\*\/`,
   String.raw`\/\/[^\n\r]*`,
   String.raw`\/[/*]`,
   String.raw`\/[*/]`
 ];
 const canonicalComments = text => COMMENT_FORMS.reduce((t, form) => t.split(form).join(String.raw`\s`), text);
 
+const OVER = 'over';
+
+/* state -> kind of the next character -> state; anything unlisted is a second token. */
+const NEXT = {
+  start: { ws: 'start', digit: 'num', name: 'word', dash: 'op', sigil: 'op', dot: 'op', percent: 'op', open: 'end', brace: 'end', struct: 'end', any: 'end', string: 'end' },
+  op: { ws: 'gap', digit: 'num', name: 'word', dash: 'op', sigil: 'op', dot: 'op', percent: 'op', open: 'end', brace: 'end' },
+  num: { ws: 'gap', digit: 'num', name: 'word', dash: 'word', dot: 'dot', percent: 'end', open: 'end' },
+  dot: { ws: 'gap', digit: 'frac' },
+  frac: { ws: 'gap', digit: 'frac', name: 'word', dash: 'word', percent: 'end' },
+  word: { ws: 'gap', digit: 'word', name: 'word', dash: 'word', open: 'end', percent: 'end' },
+  end: { ws: 'gap' },
+  gap: { ws: 'gap' },
+  [OVER]: {}
+};
+
 /* CSS whitespace (plus `\v`); every non-ASCII code point is a name code point (CSS Syntax §4.2). */
-const isWhitespace = cp => cp === 0x20 || (cp >= 0x09 && cp <= 0x0d);
-const isNameChar = cp => cp >= 0x80 || /[-\w]/.test(String.fromCharCode(cp));
-const charKind = cp => (isWhitespace(cp) ? 'ws' : isNameChar(cp) ? 'name' : 'punct');
+function charKind(cp) {
+  if (cp === 0x20 || (cp >= 0x09 && cp <= 0x0d)) {
+    return 'ws';
+  }
 
-function rangeKinds(min, max, kinds) {
-  for (let cp = min; cp <= Math.min(max, 0x7f); cp++) {
-    kinds.add(charKind(cp));
+  /* A backslash starts an escape, which is a name code point (CSS Syntax §4.3.7). */
+  if (cp >= 0x80 || cp === 0x5c) {
+    return 'name';
   }
-  if (max >= 0x80) {
-    kinds.add('name');
+  const ch = String.fromCharCode(cp);
+  if (ch === '-') {
+    return 'dash';
   }
+  if (/[0-9]/.test(ch)) {
+    return 'digit';
+  }
+  if (/[a-zA-Z_]/.test(ch)) {
+    return 'name';
+  }
+  if (ch === '.' || ch === '%') {
+    return ch === '.' ? 'dot' : 'percent';
+  }
+  if (ch === '(') {
+    return 'open';
+  }
+  if (ch === '{' || ch === '[') {
+    return 'brace';
+  }
+  return /[@:$#*!&+~?<>=/^|]/.test(ch) ? 'sigil' : 'struct';
 }
 
-function setKind(set) {
+/* `\p{L}`-style properties are letters; anything else (`\p{Any}`, `\p{P}`) can match anything. */
+const NAME_PROPERTY = /^(?:L|Lu|Ll|Lt|Lm|Lo|Letter|N|Nd|Number|Alphabetic|ID_Start|ID_Continue|XID_Start|XID_Continue|Uppercase|Lowercase)$/;
+
+function setKinds(set) {
   if (set.kind === 'any' || set.negate) {
-    return 'any';
+    return ['any'];
   }
-  return set.kind === 'space' ? 'ws' : 'name';
+  if (set.kind === 'space') {
+    return ['ws'];
+  }
+  if (set.kind === 'digit') {
+    return ['digit'];
+  }
+  if (set.kind === 'word') {
+    return ['digit', 'name'];
+  }
+  return NAME_PROPERTY.test(set.value ?? set.key ?? '') ? ['name'] : ['any'];
 }
 
-function classKind(cls) {
+function classKinds(cls) {
   if (cls.type !== 'CharacterClass' || cls.negate) {
-    return 'any';
+    return ['any'];
   }
   const kinds = new Set();
   for (const el of cls.elements) {
     if (el.type === 'Character') {
       kinds.add(charKind(el.value));
     } else if (el.type === 'CharacterClassRange') {
-      rangeKinds(el.min.value, el.max.value, kinds);
+      for (let cp = el.min.value; cp <= Math.min(el.max.value, 0x7f); cp++) {
+        kinds.add(charKind(cp));
+      }
+      if (el.max.value >= 0x80) {
+        kinds.add('name');
+      }
     } else if (el.type === 'CharacterSet') {
-      kinds.add(setKind(el));
+      setKinds(el).forEach(k => kinds.add(k));
     } else {
       kinds.add('any');
     }
   }
-  if (kinds.has('any')) {
-    return 'any';
-  }
-  if (kinds.has('ws')) {
-    return kinds.size === 1 ? 'ws' : 'mixed';
-  }
-  return kinds.has('punct') ? 'punct' : 'name';
+  return kinds.has('any') ? ['any'] : [...kinds];
 }
 
+function atomKinds(el) {
+  if (el.type === 'Character') {
+    return [charKind(el.value)];
+  }
+  if (el.type === 'CharacterSet') {
+    return setKinds(el);
+  }
+  return el.type === 'Backreference' ? ['any'] : classKinds(el);
+}
+
+const isBackslash = el => el?.type === 'Character' && el.value === 0x5c;
+
 /*
- * `\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?`: the one whitespace character that ends a CSS
- * hex escape belongs to the escape (CSS Syntax §4.3.7), so it is not trivia.
+ * What follows a backslash in a CSS escape: one character, or
+ * `(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])`. The one whitespace character that
+ * ends a hex escape belongs to the escape (CSS Syntax §4.3.7), so it is not trivia.
  */
 const isHexRun = el => el?.type === 'Quantifier' && el.max !== null && el.max <= 6 && el.element.type === 'CharacterClass'
-  && /^\[(?:0-9a-fA-F|a-fA-F0-9|0-9A-Fa-f|a-f0-9|0-9a-f)\]$/.test(el.element.raw);
-const isBackslash = el => el?.type === 'Character' && el.value === 0x5c;
-function followsBackslash(elements, i) {
-  if (i > 0) {
-    return isBackslash(elements[i - 1]);
+  && classKinds(el.element).every(k => k === 'digit' || k === 'name');
+const isTerminator = el => el?.type === 'Quantifier' && el.min === 0 && el.max === 1 && classKinds(el.element).join() === 'ws';
+const isOneChar = el => el.type === 'Character' || el.type === 'CharacterSet' || el.type === 'CharacterClass';
+function isEscapeBody(el) {
+  if (isOneChar(el)) {
+    return true;
   }
-  const group = elements[0].parent.parent;
-  const outer = group.parent;
-  return (group.type === 'Group' || group.type === 'CapturingGroup') && outer.type === 'Alternative' && isBackslash(outer.elements[outer.elements.indexOf(group) - 1]);
-}
-const isEscapeTerminator = (elements, i) => i > 0 && elements[i].type === 'Quantifier' && elements[i].min === 0 && elements[i].max === 1
-  && classKind(elements[i].element) === 'ws' && isHexRun(elements[i - 1]) && followsBackslash(elements, i - 1);
-
-/*
- * Reads one alternative. Returns MANY (hard/soft) or
- * `{ tokens, trivia, name, lead, trail, triviaThenToken }`: `lead`/`trail` say
- * whitespace can sit before the first / after the last token, and
- * `triviaThenToken` that a token follows whitespace.
- */
-function alternativeWidth(elements) {
-  let tokens = 0;
-  let gap = false;
-  let inToken = false;
-  let lastRepeated = false;
-  let name = true;
-  let word = false;
-  let trivia = false;
-  let lead = false;
-  let trail = false;
-  let triviaThenToken = false;
-  const whitespace = () => {
-    trivia = true;
-    lead ||= tokens === 0;
-    trail = tokens > 0;
-    gap ||= tokens > 0;
-    inToken = false;
-  };
-  const atom = (nameAtom, repeats) => {
-    if (!inToken) {
-      tokens++;
-      triviaThenToken ||= trivia;
-      if (tokens > 1 && gap) {
-        return hard('its pattern spans more than one token');
-      }
-    } else if (lastRepeated && !nameAtom) {
-      tokens++;
-    }
-    trail = false;
-    inToken = true;
-    name &&= nameAtom;
-    word ||= nameAtom;
-    lastRepeated = repeats;
-    return undefined;
-  };
-  for (const [index, element] of elements.entries()) {
-    let node = element;
-    let repeats = false;
-    if (isEscapeTerminator(elements, index)) {
-      continue;
-    }
-    if (element.type === 'Quantifier') {
-      if (element.max === 0) {
-        continue;
-      }
-      node = element.element;
-      repeats = element.max === null || element.max > 1;
-    }
-    let kind;
-    if (node.type === 'Character') {
-      kind = charKind(node.value);
-    } else if (node.type === 'CharacterSet') {
-      kind = setKind(node);
-    } else if (node.type === 'Backreference') {
-      kind = 'punct';
-    } else if (node.type === 'Assertion') {
-      if (node.kind === 'lookahead' || node.kind === 'lookbehind') {
-        const inner = alternativesWidth(node.alternatives);
-        if (inner.width === MANY || (tokens > 0 && inner.triviaThenToken)) {
-          return hard(`its lookaround \`${node.raw}\` reads past the token`);
-        }
-      }
-      continue;
-    } else if (node.type === 'Group' || node.type === 'CapturingGroup') {
-      const inner = alternativesWidth(node.alternatives);
-      if (inner.width === MANY) {
-        return inner;
-      }
-      if (repeats && inner.tokens > 0 && (inner.lead || inner.trail)) {
-        return hard('it repeats a group that crosses whitespace');
-      }
-      if (inner.lead || (inner.tokens === 0 && inner.trivia)) {
-        whitespace();
-      }
-      if (inner.tokens > 0) {
-        const fail = atom(inner.name, repeats);
-        if (fail) {
-          return fail;
-        }
-        word ||= inner.word;
-        if (inner.trail) {
-          whitespace();
-        }
-      }
-      continue;
-    } else {
-      kind = classKind(node);
-    }
-    if (repeats && kind === 'any') {
-      return hard('it repeats an any-character class, a scan');
-    }
-    if (repeats && kind === 'mixed') {
-      return hard('it repeats a class that matches whitespace and token characters');
-    }
-    if (kind === 'ws' || kind === 'mixed') {
-      whitespace();
-      continue;
-    }
-    const fail = atom(kind === 'name', repeats);
-    if (fail) {
-      return fail;
-    }
+  if (isHexRun(el)) {
+    return true;
   }
-  return { tokens, trivia, name, word, lead, trail, triviaThenToken };
+  return el?.type === 'Group' && el.alternatives.every(({ elements: e }) => (e.length === 1 && (isOneChar(e[0]) || isHexRun(e[0])))
+    || (e.length === 2 && isHexRun(e[0]) && isTerminator(e[1])));
 }
 
-function alternativesWidth(alternatives) {
-  const best = { width: 0, tokens: 0, trivia: false, name: true, word: false, lead: false, trail: false, triviaThenToken: false };
-  let firstSoft = null;
-  for (const alternative of alternatives) {
-    const r = alternativeWidth(alternative.elements);
-    if (r.width === MANY) {
-      if (r.hard) {
-        return r;
-      }
-      firstSoft ??= r;
-      continue;
-    }
-    best.tokens = Math.max(best.tokens, r.tokens);
-    best.trivia ||= r.trivia;
-    best.name &&= r.name;
-    best.word ||= r.word;
-    best.lead ||= r.lead;
-    best.trail ||= r.trail;
-    best.triviaThenToken ||= r.triviaThenToken;
+/* A string body: repeats of anything but its quote, and escapes. */
+function isStringBody(el, quote) {
+  const atom = el.type === 'Quantifier' ? el.element : el;
+  if (atom.type === 'CharacterClass') {
+    return atom.negate && atom.elements.some(m => m.type === 'Character' && m.value === quote);
   }
-  if (firstSoft) {
-    return firstSoft;
-  }
-  if (best.tokens > 1) {
-    return soft('its pattern spans more than one token');
-  }
-  return { ...best, width: best.tokens };
+  return atom.type === 'Group' && atom.alternatives.every(({ elements: e }) => (e.length === 1 && isStringBody(e[0], quote))
+    || (e.length === 2 && isBackslash(e[0]) && isOneChar(e[1])));
 }
 
-/* Does anything but whitespace or an assertion match before `node` in the pattern? */
-function consumesBefore(node) {
-  for (let child = node, parent = node.parent; parent; child = parent, parent = parent.parent) {
-    if (parent.type !== 'Alternative') {
-      continue;
+function stringEnd(elements, i) {
+  const open = elements[i];
+  if (open.type !== 'Character' || (open.value !== 0x22 && open.value !== 0x27)) {
+    return -1;
+  }
+  for (let j = i + 1; j < elements.length; j++) {
+    const el = elements[j];
+    if (el.type === 'Character' && el.value === open.value) {
+      return j;
     }
-    for (const el of parent.elements.slice(0, parent.elements.indexOf(child))) {
-      const inner = el.type === 'Quantifier' ? (el.max === 0 ? null : el.element) : el;
-      if (!inner || inner.type === 'Assertion') {
-        continue;
-      }
-      if (inner.type === 'Group' || inner.type === 'CapturingGroup') {
-        const w = alternativesWidth(inner.alternatives);
-        if (w.width !== 0) {
-          return true;
-        }
-      } else if ((inner.type === 'Character' ? charKind(inner.value) : inner.type === 'CharacterSet' ? setKind(inner) : inner.type === 'Backreference' ? 'punct' : classKind(inner)) !== 'ws') {
-        return true;
-      }
+    if (!isStringBody(el, open.value)) {
+      return -1;
     }
   }
-  return false;
+  return -1;
 }
 
-/* Every lookaround that reads past the token: it spans more than one token, or it follows a token and crosses whitespace to another. */
-function wideLookarounds(node, out) {
-  if (node.type === 'Assertion' && (node.kind === 'lookahead' || node.kind === 'lookbehind')) {
-    const inner = alternativesWidth(node.alternatives);
-    if (inner.width === MANY || (inner.triviaThenToken && consumesBefore(node))) {
-      out.push(node.raw);
-    }
-  }
-  for (const child of node.alternatives ?? node.elements ?? (node.element ? [node.element] : [])) {
-    if (child.type !== 'CharacterClass') {
-      wideLookarounds(child, out);
+function step(states, kinds, ctx) {
+  const out = new Set();
+  for (const state of states) {
+    for (const kind of kinds) {
+      ctx.word ||= kind === 'name' || kind === 'digit';
+      ctx.trivia ||= kind === 'ws';
+      const next = NEXT[state][kind] ?? (ctx.restart ? NEXT.start[kind] : OVER);
+      out.add(next);
     }
   }
   return out;
 }
 
+/* `(?![-\w])`: not followed by one character. It ends the token it follows, and reads nothing past it. */
+const isBoundaryCheck = el => el.kind === 'lookahead' && el.negate
+  && el.alternatives.every(({ elements: e }) => e.length === 1 && isOneChar(e[0]));
+
+function runLookaround(el, states, ctx) {
+  if (isBoundaryCheck(el)) {
+    return states;
+  }
+  const probe = { ...ctx, restart: false };
+  const from = el.kind === 'lookbehind' ? new Set(['start']) : new Set([...states].filter(s => s !== OVER));
+  const inner = runAlternatives(el.alternatives, from, probe);
+  ctx.lookarounds = probe.lookarounds;
+  if (inner.has(OVER)) {
+    if (!ctx.lookarounds.includes(el.raw)) {
+      ctx.lookarounds.push(el.raw);
+    }
+    return ctx.restart ? states : new Set([...states, OVER]);
+  }
+  ctx.reads ||= states.has('start') && [...inner].some(s => s !== 'start');
+  return states;
+}
+
+function runElement(el, states, ctx) {
+  if (el.type === 'Quantifier') {
+    if (el.max === 0) {
+      return states;
+    }
+    const out = new Set(el.min === 0 ? states : []);
+    let current = states;
+    for (let grew = true; grew;) {
+      current = runElement(el.element, current, ctx);
+      const size = out.size;
+      current.forEach(s => out.add(s));
+      grew = el.max !== 1 && out.size > size;
+    }
+    return out;
+  }
+  if (el.type === 'Assertion') {
+    return el.kind === 'lookahead' || el.kind === 'lookbehind' ? runLookaround(el, states, ctx) : states;
+  }
+  if (el.type === 'Group' || el.type === 'CapturingGroup') {
+    return runAlternatives(el.alternatives, states, ctx);
+  }
+  return step(states, atomKinds(el), ctx);
+}
+
+function runAlternatives(alternatives, states, ctx) {
+  const out = new Set();
+  for (const { elements } of alternatives) {
+    let current = states;
+    for (let i = 0; i < elements.length; i++) {
+      const end = stringEnd(elements, i);
+      if (end !== -1) {
+        current = step(current, ['string'], ctx);
+        i = end;
+      } else if (isBackslash(elements[i]) && i + 1 < elements.length && isEscapeBody(elements[i + 1])) {
+        current = step(current, ['name'], ctx);
+        i += isHexRun(elements[i + 1]) && isTerminator(elements[i + 2]) ? 2 : 1;
+      } else {
+        current = runElement(elements[i], current, ctx);
+      }
+    }
+    current.forEach(s => out.add(s));
+  }
+  return out;
+}
+
+const runPattern = (pattern, restart) => {
+  const ctx = { lookarounds: [], restart, word: false, trivia: false, reads: false };
+  return { states: runAlternatives(pattern.alternatives, new Set(['start']), ctx), ctx };
+};
+
 /**
- * Width of a regex literal: `{ width, hard, why, trivia, word, at }` (`word`:
- * it can match a name character, so it is no bare punctuation), plus
- * `lookarounds`: every lookaround in it that reads past the token, which a
- * consuming `regex()` is reported for.
+ * Width of a regex literal: `{ width, hard, why, trivia, word, reads }` (`word`:
+ * it can match a name or digit; `reads`: though zero-width, a lookaround reads a
+ * token), plus `lookarounds`: every lookaround in it that reads past the token
+ * it follows, which a consuming `regex()` is reported for.
  */
 export function regexWidth(literalText) {
   let pattern;
   try {
     pattern = parseRegexLiteral(canonicalComments(literalText)).pattern;
   } catch (error) {
-    return { ...hard(`regex ${literalText} does not parse: ${error.message}`, literalText), lookarounds: [] };
+    return { ...hard(`regex ${literalText} does not parse: ${error.message}`), lookarounds: [] };
   }
-  const lookarounds = wideLookarounds(pattern, []);
-  const result = alternativesWidth(pattern.alternatives);
-  if (result.width === MANY) {
-    return { width: MANY, hard: result.hard, why: `regex ${literalText}: ${result.why}`, at: literalText, lookarounds };
+  const { lookarounds } = runPattern(pattern, true).ctx;
+  const { states, ctx } = runPattern(pattern, false);
+  if (states.has(OVER)) {
+    const reason = ctx.lookarounds.length > 0 ? `its lookaround \`${ctx.lookarounds[0]}\` reads past the token` : 'its pattern spans more than one token';
+    return { ...hard(`regex ${literalText}: ${reason}`), lookarounds };
   }
-  const base = result.width === 0 ? (result.trivia ? TRIVIA : ZERO) : { ...ONE, word: result.word };
-  return { ...base, lookarounds };
+  if ([...states].every(s => s === 'start')) {
+    return { ...(ctx.trivia ? TRIVIA : ZERO), reads: ctx.reads ? 1 : 0, lookarounds };
+  }
+  return { ...ONE, word: ctx.word, lookarounds };
+}
+
+/** Width of matcher text (`literal('a:b')`), read character by character like a regex. */
+function textIsOneToken(text) {
+  let states = new Set(['start']);
+  const ctx = { restart: false };
+  for (const ch of text) {
+    states = step(states, [charKind(ch.codePointAt(0))], ctx);
+  }
+  return !states.has(OVER);
 }
 
 /*
  * ------------------------------------------------------------------------
- * Combinator width over the TypeScript AST.
+ * Names: what a call really is.
  * ------------------------------------------------------------------------
  */
 
@@ -469,14 +494,98 @@ function unwrap(ts, node) {
   return node;
 }
 
-const isCombinatorShape = (ts, init) => ts.isCallExpression(init) || ts.isIdentifier(init) || ts.isPropertyAccessExpression(init);
+const PARSEMAN_MODULE = /^parseman(?:\/|$)|\/node_modules\/(?:\.pnpm\/[^/]*\/node_modules\/)?parseman\//;
+
+const parsemanImports = new WeakMap();
+
+/* Value names this source file imports from parseman: local name -> imported name. */
+function importsOf(ts, sourceFile) {
+  let imports = parsemanImports.get(sourceFile);
+  if (!imports) {
+    imports = new Map();
+    for (const st of sourceFile.statements) {
+      if (ts.isImportDeclaration(st) && PARSEMAN_MODULE.test(st.moduleSpecifier.text) && !st.importClause?.isTypeOnly
+        && st.importClause?.namedBindings && ts.isNamedImports(st.importClause.namedBindings)) {
+        for (const spec of st.importClause.namedBindings.elements) {
+          if (!spec.isTypeOnly) {
+            imports.set(spec.name.text, (spec.propertyName ?? spec.name).text);
+          }
+        }
+      }
+    }
+    parsemanImports.set(sourceFile, imports);
+  }
+  return imports;
+}
+
+/* Names a binding (identifier or destructuring pattern) declares. */
+function boundNames(ts, name, out = []) {
+  if (ts.isIdentifier(name)) {
+    out.push(name.text);
+  } else if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+    for (const el of name.elements) {
+      if (ts.isBindingElement(el)) {
+        boundNames(ts, el.name, out);
+      }
+    }
+  }
+  return out;
+}
+
+const hasParameter = (ts, fn, name) => fn.parameters?.some(p => boundNames(ts, p.name).includes(name));
+
+/* Is `id` a function parameter in scope? Its value could be anything. */
+function isParameter(ts, id) {
+  for (let n = id.parent; n && !ts.isSourceFile(n); n = n.parent) {
+    if (ts.isFunctionLike(n) && hasParameter(ts, n, id.text)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* Is `id` a local variable, parameter or catch binding, shadowing an import of the same name? */
+function declaredLocally(ts, id) {
+  for (let n = id.parent; n && !ts.isSourceFile(n); n = n.parent) {
+    if (ts.isFunctionLike(n) && hasParameter(ts, n, id.text)) {
+      return true;
+    }
+    if (ts.isCatchClause(n) && n.variableDeclaration && boundNames(ts, n.variableDeclaration.name).includes(id.text)) {
+      return true;
+    }
+    if ((ts.isForOfStatement(n) || ts.isForInStatement(n) || ts.isForStatement(n)) && n.initializer && ts.isVariableDeclarationList(n.initializer)
+      && n.initializer.declarations.some(d => boundNames(ts, d.name).includes(id.text))) {
+      return true;
+    }
+    for (const st of n.statements ?? []) {
+      if ((ts.isVariableStatement(st) && st.declarationList.declarations.some(d => boundNames(ts, d.name).includes(id.text)))
+        || (ts.isFunctionDeclaration(st) && st.name?.text === id.text)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/* The parseman combinator this identifier is, if it is one. */
+function parsemanName(ts, id) {
+  const imported = importsOf(ts, id.getSourceFile()).get(id.text);
+  return imported !== undefined && !declaredLocally(ts, id) ? imported : undefined;
+}
+
+function calleeName(ts, call) {
+  const callee = unwrap(ts, call.expression);
+  return ts.isIdentifier(callee) ? parsemanName(ts, callee) : undefined;
+}
 
 const scriptKind = (ts, rel) => (/\.[cm]?tsx$/.test(rel) ? ts.ScriptKind.TSX : /\.[cm]?jsx?$/.test(rel) ? ts.ScriptKind.JS : ts.ScriptKind.TS);
 
+const isCombinatorShape = (ts, init) => ts.isCallExpression(init) || ts.isIdentifier(init) || ts.isPropertyAccessExpression(init);
+
 /**
- * Every combinator-valued const and every PascalCase rule-map property in one
- * source file, by name. The base grammar's map (CSS plus `parser-shared`) is
- * passed to each dialect's scan so an inherited `g.Rule` resolves.
+ * Every combinator-valued const, rule-map property and reassignment in one
+ * source file, by name. The map over all scanned sources is passed to each scan,
+ * so an inherited `g.Rule` resolves and an override in any dialect counts.
  */
 export function grammarDefinitions(ts, rel, text) {
   const defs = new Map();
@@ -492,6 +601,13 @@ export function grammarDefinitions(ts, rel, text) {
       add(node.name.text, init);
     } else if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && /^[A-Z]/.test(node.name.text)) {
       add(node.name.text, init);
+    } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const target = unwrap(ts, node.left);
+      if (ts.isIdentifier(target)) {
+        add(target.text, unwrap(ts, node.right));
+      } else if (ts.isPropertyAccessExpression(target)) {
+        add(target.name.text, unwrap(ts, node.right));
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -499,22 +615,20 @@ export function grammarDefinitions(ts, rel, text) {
   return defs;
 }
 
-function calleeName(ts, call) {
-  return ts.isIdentifier(call.expression) ? call.expression.text : undefined;
-}
-
 const collapse = text => text.replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/ \)/g, ')').trim();
 const clip = text => (text.length > 160 ? `${text.slice(0, 159)}…` : text);
 
 /*
- * `token(x)` narrows a soft width only when x is provably ONE lexical token:
- * sigils, then at most one name or number, then at most a glued `(` or `%`
- * (`@media`, `:nth-child(`, `$name`, `10%`, `url(`). No whitespace, no second
- * word, no repetition, no scan.
+ * ------------------------------------------------------------------------
+ * Combinator width over the TypeScript AST.
+ * ------------------------------------------------------------------------
  */
-const SIGIL_CHARS = /^[@:$#.*!&%-]+$/;
+
+const SIGIL_CHARS = /^[@:$#.*!&%+~-]+$/;
 const SUFFIXES = new Set(['(', '%']);
 const MAX_SHAPES = 256;
+
+const effective = w => Math.max(w.width, w.reads ?? 0);
 
 function punctPiece(text) {
   return { kind: 'punct', sigil: SIGIL_CHARS.test(text), suffix: SUFFIXES.has(text), text };
@@ -534,41 +648,60 @@ function shapeProblem(pieces) {
   return i === pieces.length ? null : `\`${pieces.map(p => (p.kind === 'word' ? '<word>' : p.text)).join(' ')}\``;
 }
 
+/* Is `id` the grammar parameter, `g` in `g.Rule`? Any other object could hold anything. */
+const isGrammarObject = (ts, node) => ts.isIdentifier(node) && isParameter(ts, node);
+
+/* Strings a matcher call recognizes: its string arguments and string-array elements. */
+function matcherTexts(ts, call, name) {
+  const first = call.arguments[0];
+  if (!first) {
+    return [];
+  }
+  if (name === 'keywords' && ts.isArrayLiteralExpression(first)) {
+    return first.elements.filter(e => ts.isStringLiteralLike(e)).map(e => e.text);
+  }
+  return ts.isStringLiteralLike(first) ? [first.text] : [];
+}
+
 function createWidth(ts, defs, baseDefs) {
   const active = new Set();
   const definitions = name => defs.get(name) ?? baseDefs.get(name);
-  const textOf = node => collapse(node.getText());
 
-  function resolve(name) {
-    const inits = definitions(name);
-    if (!inits) {
-      return hard(`\`${name}\` is defined neither in this file nor in the base grammar, so it cannot be proven one token wide`, name);
+  /* `g.Rule` can be overridden by any dialect composed over this one, so every definition counts. */
+  const memberDefinitions = name => [...new Set([...(defs.get(name) ?? []), ...(baseDefs.get(name) ?? [])])];
+
+  function resolveAll(name, inits) {
+    if (inits === undefined || inits.length === 0) {
+      return hard(`\`${name}\` is defined nowhere in the scanned sources, so it cannot be proven one token wide`);
     }
     let best = ZERO;
     for (const init of inits) {
       if (active.has(init)) {
-        return hard(`\`${name}\` is recursive`, name);
+        return hard(`\`${name}\` is recursive`);
       }
       active.add(init);
       const w = width(init);
       active.delete(init);
       if (w.width === MANY) {
-        return { ...w, why: w.why.startsWith('`') ? w.why : `\`${name}\` — ${w.why}`, at: `${name} = ${w.at}` };
+        return { ...w, why: w.why.startsWith('`') ? w.why : `\`${name}\` — ${w.why}` };
       }
-      if (w.width > best.width || (w.width === best.width && w.trivia)) {
+      if (effective(w) > effective(best) || (effective(w) === effective(best) && w.trivia)) {
         best = w;
       }
     }
     return best;
   }
 
-  function sequenceWidth(call, args) {
+  function sequenceWidth(args) {
     let tokens = 0;
     let gap = false;
     for (const arg of args) {
       const w = width(arg);
       if (w.width === MANY) {
         return w;
+      }
+      if (w.reads && tokens > 0) {
+        return hard('a lookahead after a consuming arm reads another token');
       }
       if (w.trivia) {
         gap ||= tokens > 0;
@@ -577,7 +710,7 @@ function createWidth(ts, defs, baseDefs) {
       tokens += w.width;
     }
     if (tokens > 1) {
-      return gap ? hard('a sequence of more than one token', textOf(call)) : soft('a sequence of more than one token', textOf(call));
+      return gap ? hard('a sequence of more than one token') : soft('a sequence of more than one token');
     }
     return tokens === 0 ? ZERO : ONE;
   }
@@ -589,15 +722,17 @@ function createWidth(ts, defs, baseDefs) {
       if (w.width === MANY) {
         return w;
       }
-      if (w.width > best.width || (w.width === best.width && w.trivia)) {
+      if (effective(w) > effective(best) || (effective(w) === effective(best) && w.trivia)) {
         best = w;
       }
     }
     return best;
   }
 
+  const isFunction = arg => ts.isArrowFunction(arg) || ts.isFunctionExpression(arg);
+
   function isCombinatorArgument(arg) {
-    return !ts.isStringLiteralLike(arg) && !ts.isArrowFunction(arg) && !ts.isFunctionExpression(arg)
+    return !ts.isStringLiteralLike(arg) && !isFunction(arg)
       && !ts.isObjectLiteralExpression(arg) && !ts.isArrayLiteralExpression(arg) && !ts.isNumericLiteral(arg);
   }
 
@@ -611,7 +746,15 @@ function createWidth(ts, defs, baseDefs) {
     });
   }
 
-  const isFactoryProduct = name => definitions(name)?.some(init => ts.isCallExpression(init) && MATCHER_FACTORIES.has(calleeName(ts, init)));
+  function isFactoryProduct(call) {
+    const callee = unwrap(ts, call.expression);
+    return ts.isIdentifier(callee) && !isParameter(ts, callee) && definitions(callee.text)?.some(init => ts.isCallExpression(init) && MATCHER_FACTORIES.has(calleeName(ts, init)));
+  }
+
+  function matcherWidth(call, name) {
+    const wide = matcherTexts(ts, call, name).find(text => !textIsOneToken(text));
+    return wide === undefined ? ONE : hard(`its text ${JSON.stringify(wide)} spans more than one token`);
+  }
 
   /* The piece sequences x can match, or `{ problem }`. */
   function shapes(node) {
@@ -643,8 +786,8 @@ function createWidth(ts, defs, baseDefs) {
     };
     if (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node)) {
       const name = ts.isIdentifier(node) ? node.text : node.name.text;
-      const inits = definitions(name);
-      if (!inits) {
+      const inits = ts.isIdentifier(node) ? definitions(name) : memberDefinitions(name);
+      if (!inits || inits.length === 0) {
         return { problem: `\`${name}\` is undefined here` };
       }
       if (inits.some(init => active.has(init))) {
@@ -659,7 +802,7 @@ function createWidth(ts, defs, baseDefs) {
       return union([node.whenTrue, node.whenFalse]);
     }
     if (!ts.isCallExpression(node)) {
-      return { problem: `\`${clip(textOf(node))}\`` };
+      return { problem: `\`${clip(collapse(node.getText()))}\`` };
     }
     const name = calleeName(ts, node);
     const args = [...node.arguments];
@@ -668,10 +811,11 @@ function createWidth(ts, defs, baseDefs) {
       if (text === undefined || /\s/.test(text)) {
         return { problem: 'whitespace' };
       }
-      return [[/[-\w\u0080-￿]/.test(text) ? { kind: 'word' } : punctPiece(text)]];
+      return [[/[-\w\u0080-￿]/.test(text) && !SIGIL_CHARS.test(text) ? { kind: 'word' } : punctPiece(text)]];
     }
-    if (name === 'keywords' || name === 'word' || (name && isFactoryProduct(name))) {
-      return [[{ kind: 'word' }]];
+    if (name === 'keywords' || name === 'word' || isFactoryProduct(node)) {
+      const w = matcherWidth(node, name);
+      return w.width === MANY ? { problem: w.why } : [[{ kind: 'word' }]];
     }
     if (name === 'regex') {
       const w = args[0] && ts.isRegularExpressionLiteral(args[0]) ? regexWidth(args[0].text) : hard('regex() over a non-literal pattern');
@@ -707,7 +851,7 @@ function createWidth(ts, defs, baseDefs) {
     if (REPEATS.has(name)) {
       return { problem: `${name}() repeats` };
     }
-    return { problem: `\`${clip(textOf(node))}\`` };
+    return { problem: `\`${clip(collapse(node.getText()))}\`` };
   }
 
   function tokenWidth(call, args) {
@@ -721,30 +865,35 @@ function createWidth(ts, defs, baseDefs) {
     }
     const s = shapes(call.arguments.length === 1 ? call.arguments[0] : call);
     const problem = s.problem ?? s.map(shapeProblem).find(Boolean);
-    return problem ? hard(`token() cannot make ${problem} one lexical token`, textOf(call)) : ONE;
+    return problem ? { ...hard(`token() cannot make ${problem} one lexical token`), declaredToken: true } : ONE;
   }
 
   function callWidth(call) {
     const name = calleeName(ts, call);
     const args = [...call.arguments];
     if (name === undefined) {
-      return hard('it calls a computed combinator', textOf(call));
+      if (isFactoryProduct(call)) {
+        return matcherWidth(call);
+      }
+      const callee = unwrap(ts, call.expression);
+      return hard(`\`${ts.isIdentifier(callee) ? callee.text : 'a computed callee'}(...)\` is not a parseman combinator this scan can prove one token wide`);
     }
     if (ZERO_WIDTH.has(name)) {
-      return ZERO;
+      const w = args[0] ? width(args[0]) : ZERO;
+      return w.width === MANY ? w : { ...ZERO, reads: effective(w) };
     }
     if (name === 'classifiedTrivia') {
       return TRIVIA;
     }
     if (ONE_TOKEN.has(name)) {
-      return ONE;
+      return matcherWidth(call, name);
     }
     if (name === 'regex') {
-      const pattern = args[0];
-      return pattern && ts.isRegularExpressionLiteral(pattern) ? regexWidth(pattern.text) : hard('regex() over a non-literal pattern', textOf(call));
+      const pattern = args[0] && unwrap(ts, args[0]);
+      return pattern && ts.isRegularExpressionLiteral(pattern) ? regexWidth(pattern.text) : hard('regex() over a non-literal pattern');
     }
     if (name === 'sequence') {
-      return sequenceWidth(call, args);
+      return sequenceWidth(args);
     }
     if (name === 'choice') {
       return widest(choiceArms(args));
@@ -754,15 +903,18 @@ function createWidth(ts, defs, baseDefs) {
     }
     if (TRANSPARENT.has(name)) {
       const inner = args.filter(isCombinatorArgument);
-      return inner.length === 0 ? ONE : widest(inner);
+      if (inner.length === 0) {
+        return args.some(isFunction) ? hard(`${name}() over a function cannot be read`) : ONE;
+      }
+      return widest(inner);
     }
     if (REPEATS.has(name)) {
-      return soft(`${name}() repeats`, textOf(call));
+      return soft(`${name}() repeats`);
     }
     if (SCANS.has(name)) {
-      return hard(`${name}() scans more than one token`, textOf(call));
+      return hard(`${name}() scans more than one token`);
     }
-    return isFactoryProduct(name) ? ONE : hard(`\`${name}(...)\` is not a combinator this scan can prove one token wide`, textOf(call));
+    return hard(`\`${name}(...)\` is not a combinator this scan can prove one token wide`);
   }
 
   function width(node) {
@@ -771,18 +923,50 @@ function createWidth(ts, defs, baseDefs) {
       return callWidth(node);
     }
     if (ts.isIdentifier(node)) {
-      return resolve(node.text);
+      return isParameter(ts, node)
+        ? hard(`\`${node.text}\` is a function parameter, so it cannot be proven one token wide`)
+        : resolveAll(node.text, definitions(node.text));
     }
     if (ts.isPropertyAccessExpression(node)) {
-      return resolve(node.name.text);
+      return isGrammarObject(ts, node.expression)
+        ? resolveAll(node.name.text, memberDefinitions(node.name.text))
+        : hard(`\`${clip(collapse(node.getText()))}\` is not a rule of the grammar parameter, so it cannot be proven one token wide`);
     }
     if (ts.isConditionalExpression(node)) {
       return widest([node.whenTrue, node.whenFalse]);
     }
-    return hard(`\`${node.getText().slice(0, 40)}\` is not a combinator expression`, textOf(node));
+    return hard(`\`${node.getText().slice(0, 40)}\` is not a combinator expression`);
   }
 
-  return width;
+  /*
+   * What a baselined site means: its own text and every definition reachable from
+   * it, comments and formatting stripped, reducers skipped. Any change to what it
+   * reads changes the fingerprint; a comment does not.
+   */
+  const printer = ts.createPrinter({ removeComments: true });
+  const print = node => printer.printNode(ts.EmitHint.Unspecified, node, node.getSourceFile());
+  function fingerprint(site) {
+    const seen = new Map();
+    const visit = (node) => {
+      if (ts.isFunctionLike(node)) {
+        return;
+      }
+      if (ts.isIdentifier(node) && !(ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node)) {
+        const isMember = ts.isPropertyAccessExpression(node.parent) && node.parent.name === node;
+        const inits = isMember ? memberDefinitions(node.text) : definitions(node.text);
+        if (inits?.length && !seen.has(node.text)) {
+          seen.set(node.text, inits.map(print).sort().join('|'));
+          inits.forEach(visit);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(site);
+    const closure = [...seen].sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, text]) => `${name}=${text}`).join('\n');
+    return createHash('sha256').update(`${print(site)}\n${closure}`).digest('hex').slice(0, 16);
+  }
+
+  return { width, fingerprint };
 }
 
 /* Name of the const or rule-map property the node sits in. */
@@ -795,14 +979,15 @@ function ownerName(ts, node) {
   return '(module)';
 }
 
-/* A fingerprint of what a lookahead resolved to: a baselined `not(g.X)` fails again when X widens. */
-const fingerprint = at => createHash('sha256').update(at).digest('hex').slice(0, 12);
-
 const CODEGEN = new Set(['eval', 'Function']);
+const GLOBAL_OBJECTS = new Set(['globalThis', 'window', 'self', 'global']);
+const STRING_TIMERS = new Set(['setTimeout', 'setInterval']);
+const VM_MODULE = /^(?:node:)?vm$/;
+const BARE_MODULE = /^[^./]/;
+const TEST_MODULE = /(?:^|\/)__tests__\/|\.(?:test|spec)(?:\.[^/]+)?$/;
 
 /* Combinators the scan reads by name: bound to anything else, their calls would escape it. */
 const REBIND_WATCHED = new Set([...ZERO_WIDTH, 'attempt', 'regex', 'token']);
-const PARSEMAN_MODULE = /^parseman(?:\/|$)/;
 
 /* Is this identifier a reference to a value, rather than a name being declared, a property key or a type? */
 function isValueReference(ts, id) {
@@ -818,7 +1003,7 @@ function isValueReference(ts, id) {
     return false;
   }
   if ((ts.isVariableDeclaration(p) || ts.isFunctionDeclaration(p) || ts.isParameter(p) || ts.isClassDeclaration(p)
-    || ts.isInterfaceDeclaration(p) || ts.isTypeAliasDeclaration(p) || ts.isBindingElement(p)) && p.name === id) {
+    || ts.isInterfaceDeclaration(p) || ts.isTypeAliasDeclaration(p)) && p.name === id) {
     return false;
   }
   if (ts.isBindingElement(p) && p.initializer !== id) {
@@ -827,55 +1012,28 @@ function isValueReference(ts, id) {
   if (ts.isExportSpecifier(p) && p.parent.parent.moduleSpecifier) {
     return false;
   }
-  if (ts.isImportSpecifier(p) || ts.isImportClause(p) || ts.isNamespaceImport(p) || ts.isTypeReferenceNode(p) || ts.isTypeQueryNode(p)) {
+  if (ts.isImportSpecifier(p) || ts.isImportClause(p) || ts.isNamespaceImport(p) || ts.isImportEqualsDeclaration(p) || ts.isTypeReferenceNode(p) || ts.isTypeQueryNode(p)) {
     return false;
   }
   return !ts.isLabeledStatement(p) && !ts.isBreakOrContinueStatement(p);
 }
 
-/* Names a binding (identifier or destructuring pattern) declares. */
-function boundNames(ts, name, out = []) {
-  if (ts.isIdentifier(name)) {
-    out.push(name.text);
-  } else if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
-    for (const el of name.elements) {
-      if (ts.isBindingElement(el)) {
-        boundNames(ts, el.name, out);
-      }
-    }
-  }
-  return out;
-}
-
-/* Is `id` a local variable or parameter (shadowing an import of the same name)? */
-function declaredLocally(ts, id) {
-  for (let n = id.parent; n && !ts.isSourceFile(n); n = n.parent) {
-    if (ts.isFunctionLike(n) && n.parameters?.some(p => boundNames(ts, p.name).includes(id.text))) {
-      return true;
-    }
-    if ((ts.isForOfStatement(n) || ts.isForInStatement(n) || ts.isForStatement(n)) && n.initializer && ts.isVariableDeclarationList(n.initializer)
-      && n.initializer.declarations.some(d => boundNames(ts, d.name).includes(id.text))) {
-      return true;
-    }
-    const statements = n.statements ?? [];
-    for (const st of statements) {
-      if (ts.isVariableStatement(st) && st.declarationList.declarations.some(d => boundNames(ts, d.name).includes(id.text))) {
-        return true;
-      }
-    }
-  }
-  return false;
+/* A non-empty JSDoc block above the rule (read from the comments: TypeScript attaches none to a map property). */
+function hasJsdoc(ts, node, text) {
+  const host = ts.isVariableDeclaration(node) ? node.parent.parent : node;
+  return (ts.getLeadingCommentRanges(text, host.getFullStart()) ?? []).some(({ pos, end }) => text.startsWith('/**', pos) && text.slice(pos + 3, end - 2).replace(/[\s*]/g, '') !== '');
 }
 
 /**
  * Scan one parser source file. Returns hits shaped
- * `{ rule, file, line, const, construct, why, resolved? }`; `construct` (the
- * whitespace-collapsed source text) and, for a lookahead, `resolved` (a
- * fingerprint of the definitions it resolved through) are the baseline key.
+ * `{ rule, file, line, const, construct, why, resolved? }`. `construct` is the
+ * clipped, whitespace-collapsed source text, for people. `resolved`, on a
+ * lookahead or `attempt`, is a fingerprint of the site and everything it reads.
  */
 export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
   const sourceFile = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, scriptKind(ts, rel));
-  const width = createWidth(ts, grammarDefinitions(ts, rel, text), baseDefs);
+  const defs = grammarDefinitions(ts, rel, text);
+  const { width, fingerprint } = createWidth(ts, defs, baseDefs);
   const hits = [];
   const lineOf = node => sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
   const hit = (rule, node, why, extra = {}) => hits.push({
@@ -887,14 +1045,32 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
     why,
     ...extra
   });
+  const siteHit = (rule, node, why) => hit(rule, node, why, { resolved: fingerprint(node) });
   const checkName = (node, name) => {
     if (DIALECT_PREFIX.test(name)) {
       hit('dialect-prefix', node, `rule name \`${name}\``);
     }
   };
-  const isCombinatorCall = (n) => {
-    const call = n && unwrap(ts, n);
-    return call && ts.isCallExpression(call) && COMBINATORS.has(calleeName(ts, call));
+  const isCombinatorValue = (n) => {
+    const value = n && unwrap(ts, n);
+    if (!value || !ts.isCallExpression(value)) {
+      return false;
+    }
+    const name = calleeName(ts, value);
+    if (name !== undefined) {
+      return !GRAMMAR_BUILDERS.has(name);
+    }
+    const callee = unwrap(ts, value.expression);
+    return ts.isIdentifier(callee) && (defs.get(callee.text) ?? baseDefs.get(callee.text))?.some(init => ts.isCallExpression(init) && MATCHER_FACTORIES.has(calleeName(ts, init)));
+  };
+  const isRuleReference = (n, seen = new Set()) => {
+    const value = n && unwrap(ts, n);
+    if (!value || seen.has(value) || !(ts.isIdentifier(value) || ts.isPropertyAccessExpression(value))) {
+      return false;
+    }
+    seen.add(value);
+    const name = ts.isIdentifier(value) ? value.text : value.name.text;
+    return (defs.get(name) ?? baseDefs.get(name))?.some(init => isCombinatorValue(init) || isRuleReference(init, seen));
   };
   const insideLookahead = (node) => {
     for (let n = node.parent; n; n = n.parent) {
@@ -906,52 +1082,123 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
   };
   const importRule = (node, why) => hit('parseman-import', node, why);
 
+  const visitImport = (node) => {
+    const clause = node.importClause;
+    const module = node.moduleSpecifier.text;
+    if (clause?.isTypeOnly) {
+      return;
+    }
+    if (VM_MODULE.test(module)) {
+      hit('runtime-codegen', node, `\`${module}\` runs code at runtime`);
+    }
+    if (TEST_MODULE.test(module)) {
+      importRule(node, 'a shipping source imports a test file, which the scan does not read');
+    }
+    const named = clause?.namedBindings && ts.isNamedImports(clause.namedBindings) ? clause.namedBindings.elements.filter(s => !s.isTypeOnly) : [];
+    if (!PARSEMAN_MODULE.test(module)) {
+      if (BARE_MODULE.test(module)) {
+        for (const spec of named.filter(s => REBIND_WATCHED.has((s.propertyName ?? s.name).text))) {
+          importRule(spec, `\`${(spec.propertyName ?? spec.name).text}\` imported from \`${module}\`, not from parseman`);
+        }
+      }
+      return;
+    }
+    if (clause?.name) {
+      importRule(node, 'a default import of parseman');
+    }
+    if (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+      importRule(node, 'a namespace import');
+    }
+    for (const spec of named) {
+      const imported = (spec.propertyName ?? spec.name).text;
+      if (imported !== spec.name.text && (COMBINATORS.has(imported) || imported === 'default')) {
+        importRule(spec, `\`${imported}\` imported under another name`);
+      }
+    }
+  };
+
+  const visitCall = (node) => {
+    const name = calleeName(ts, node);
+    if (ZERO_WIDTH.has(name) && node.arguments.length > 0) {
+      const w = width(node.arguments[0]);
+      if (w.width === MANY) {
+        siteHit('lookahead', node, w.why);
+      }
+    } else if (name === 'attempt') {
+      siteHit('attempt', node, 'attempt() tries a parse and rolls it back on failure: backtracking');
+    } else if (name === 'dispatch' && node.arguments[0]) {
+      /* A selector is `token()` around a name built from pieces: parseman reads it as one token. */
+      const w = width(node.arguments[0]);
+      if (w.width === MANY && !w.declaredToken) {
+        hit('lookahead', node, `its selector looks past one token: ${w.why}`, { resolved: fingerprint(node.arguments[0]), construct: clip(collapse(node.arguments[0].getText(sourceFile))) });
+      }
+    } else if (name === 'node' && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
+      checkName(node.arguments[0], node.arguments[0].text);
+    } else if (name === 'regex' && !insideLookahead(node)) {
+      const pattern = node.arguments[0] && unwrap(ts, node.arguments[0]);
+      if (!pattern || !ts.isRegularExpressionLiteral(pattern)) {
+        siteHit('lookahead', node, 'regex() over a non-literal pattern cannot be read, so its lookarounds cannot be checked');
+      } else {
+        const { lookarounds } = regexWidth(pattern.text);
+        if (lookarounds.length > 0) {
+          siteHit('lookahead', node, `its lookaround \`${lookarounds[0]}\` reads past the token it consumes`);
+        }
+      }
+    } else if (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require')) {
+      importRule(node, 'a dynamic import or require()');
+    }
+    if (name === 'word' || name === 'keywords' || name === 'makeWord' || name === 'makeWhen') {
+      const options = name === 'word' || name === 'keywords' ? node.arguments.slice(1) : [...node.arguments];
+      const strings = options.flatMap(arg => (ts.isObjectLiteralExpression(arg) ? arg.properties.map(p => p.initializer).filter(Boolean) : [arg])).filter(arg => ts.isStringLiteralLike(arg));
+      if (strings.some(arg => /[()]/.test(arg.text))) {
+        siteHit('lookahead', node, 'its boundary option carries regex source, which can read past the token');
+      }
+    }
+    const callee = unwrap(ts, node.expression);
+    if (ts.isPropertyAccessExpression(callee) && callee.name.text === 'constructor') {
+      hit('runtime-codegen', node, '`.constructor(...)` reaches the Function constructor');
+    }
+    if (ts.isIdentifier(callee) && STRING_TIMERS.has(callee.text) && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
+      hit('runtime-codegen', node, `a string passed to \`${callee.text}\` is evaluated`);
+    }
+  };
+
   const visit = (node) => {
     if (ts.isCallExpression(node)) {
-      const name = calleeName(ts, node);
-      if (ZERO_WIDTH.has(name) && node.arguments.length > 0) {
-        const w = width(node.arguments[0]);
-        if (w.width === MANY) {
-          hit('lookahead', node, w.why, { resolved: fingerprint(w.at ?? '') });
-        }
-      } else if (name === 'attempt') {
-        hit('attempt', node, 'attempt() tries a parse and rolls it back on failure: backtracking');
-      } else if (name === 'node' && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
-        checkName(node.arguments[0], node.arguments[0].text);
-      } else if (name === 'regex' && !insideLookahead(node)) {
-        const pattern = node.arguments[0] && unwrap(ts, node.arguments[0]);
-        if (!pattern || !ts.isRegularExpressionLiteral(pattern)) {
-          hit('lookahead', node, 'regex() over a non-literal pattern cannot be read, so its lookarounds cannot be checked');
-        } else {
-          const { lookarounds } = regexWidth(pattern.text);
-          if (lookarounds.length > 0) {
-            hit('lookahead', node, `its lookaround \`${lookarounds[0]}\` reads past the token it consumes`);
-          }
-        }
-      } else if (node.expression.kind === ts.SyntaxKind.ImportKeyword || name === 'require') {
-        importRule(node, 'a dynamic import or require()');
-      }
+      visitCall(node);
+    } else if (ts.isImportDeclaration(node)) {
+      visitImport(node);
+    } else if (ts.isImportEqualsDeclaration(node)) {
+      importRule(node, 'an `import = require()`');
     } else if (ts.isIdentifier(node) && CODEGEN.has(node.text) && isValueReference(ts, node)) {
       hit('runtime-codegen', node.parent, `\`${node.text}\` used at runtime`);
     } else if ((ts.isPropertyAccessExpression(node) && CODEGEN.has(node.name.text))
       || (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression) && CODEGEN.has(node.argumentExpression.text))) {
       hit('runtime-codegen', node, 'a global code-generation function reached through an object');
+    } else if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && GLOBAL_OBJECTS.has(node.expression.text) && !ts.isStringLiteralLike(node.argumentExpression)) {
+      hit('runtime-codegen', node, 'a computed member of the global object can reach eval');
     } else if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier && PARSEMAN_MODULE.test(node.moduleSpecifier.text)
       && !(node.exportClause && ts.isNamedExports(node.exportClause) && node.exportClause.elements.every(e => e.isTypeOnly || !COMBINATORS.has((e.propertyName ?? e.name).text)))) {
       importRule(node, 'a re-export of parseman, which hides the combinator names from the importing file');
-    } else if (ts.isNamespaceImport(node)) {
-      importRule(node.parent.parent, 'a namespace import');
-    } else if (ts.isImportSpecifier(node) && node.propertyName && COMBINATORS.has(node.propertyName.text) && node.propertyName.text !== node.name.text) {
-      importRule(node, `\`${node.propertyName.text}\` imported under another name`);
-    } else if (ts.isBindingElement(node) && COMBINATORS.has((node.propertyName ?? node.name).getText(sourceFile))) {
-      importRule(node, 'a combinator taken by destructuring');
-    } else if (ts.isIdentifier(node) && REBIND_WATCHED.has(node.text) && isValueReference(ts, node)
-      && !(ts.isCallExpression(node.parent) && node.parent.expression === node) && !declaredLocally(ts, node)) {
+    } else if (ts.isBindingElement(node)) {
+      const bound = (node.propertyName ?? node.name).getText(sourceFile);
+      if (REBIND_WATCHED.has(bound)) {
+        importRule(node, 'a combinator taken by destructuring');
+      } else if (CODEGEN.has(bound)) {
+        hit('runtime-codegen', node, 'a global code-generation function taken by destructuring');
+      }
+    } else if (ts.isIdentifier(node) && node.text === 'createRequire' && isValueReference(ts, node)) {
+      importRule(node.parent, 'createRequire can load parseman under any name');
+    } else if (ts.isIdentifier(node) && REBIND_WATCHED.has(node.text) && parsemanName(ts, node) && isValueReference(ts, node)
+      && !(ts.isCallExpression(node.parent) && node.parent.expression === node)) {
       importRule(node.parent, `\`${node.text}\` passed or bound as a value, so its calls escape the scan`);
     }
-    if ((ts.isVariableDeclaration(node) || ts.isPropertyAssignment(node)) && ts.isIdentifier(node.name) && isCombinatorCall(node.initializer)) {
-      checkName(node.name, node.name.text);
-      if (ts.isVariableDeclaration(node) && /^[A-Z]/.test(node.name.text) && ts.getJSDocCommentsAndTags(node).length === 0) {
+    if ((ts.isVariableDeclaration(node) || ts.isPropertyAssignment(node)) && ts.isIdentifier(node.name)) {
+      const combinator = isCombinatorValue(node.initializer);
+      if (combinator || isRuleReference(node.initializer)) {
+        checkName(node.name, node.name.text);
+      }
+      if (combinator && /^[A-Z]/.test(node.name.text) && !hasJsdoc(ts, node, text)) {
         hits.push({ rule: 'jsdoc', file: rel, line: lineOf(node), const: node.name.text, construct: node.name.text, why: 'no JSDoc block' });
       }
     }
@@ -983,10 +1230,8 @@ export function parsemanCombinatorImports(text) {
       }
     }
   }
-  for (const m of text.matchAll(/\b(?:import|require)\(\s*['"]([^'"]+)['"]/g)) {
-    if (m[1] === 'parseman') {
-      found.push(`dynamic ${m[1]}`);
-    }
+  for (const m of text.matchAll(/\(\s*['"](parseman)['"]\s*\)/g)) {
+    found.push(`dynamic ${m[1]}`);
   }
   return found;
 }
@@ -994,11 +1239,21 @@ export function parsemanCombinatorImports(text) {
 /*
  * ------------------------------------------------------------------------
  * Baseline.
+ *
+ * A lookahead or `attempt` entry is one SITE, identified by rule, file and owning
+ * const, and carries `resolved`, the fingerprint of what it reads today. A new
+ * site is never allowed. An existing site whose fingerprint changes may land only
+ * if its entry records the new fingerprint and a `changed` note saying why, and
+ * the gate prints every note: a widening can never be silent, and a harmless edit
+ * to a shared definition does not get stuck. Other entries have no fingerprint and
+ * are identified by their construct text.
  * ------------------------------------------------------------------------
  */
 
-/** The identity of a baseline entry: rule, file, construct and, for a lookahead, what it resolved to. */
-export const grammarBaselineKey = e => `${e.rule}\u0000${e.file}\u0000${e.construct}\u0000${e.resolved ?? ''}`;
+const siteKey = e => (e.resolved === undefined ? `${e.rule}\u0000${e.file}\u0000${e.construct}` : `${e.rule}\u0000${e.file}\u0000${e.const}`);
+
+/** The exact identity of a baseline entry: its site and, where it has one, its fingerprint. */
+export const grammarBaselineKey = e => `${siteKey(e)}\u0000${e.resolved ?? ''}`;
 
 /** A baseline file as flat entries: `entries`, plus `undocumentedRules` as `jsdoc` entries. */
 export function grammarBaselineEntries(baseline) {
@@ -1007,51 +1262,62 @@ export function grammarBaselineEntries(baseline) {
   return [...(baseline.entries ?? []), ...undocumented];
 }
 
-/**
- * Baseline keys in `current` beyond those in `base`, counting repeats. The
- * baseline only shrinks: nothing may be added, whatever the scan says about it.
- */
-export function addedBaselineEntries(base, current) {
-  const remaining = new Map();
-  for (const entry of grammarBaselineEntries(base)) {
-    const k = grammarBaselineKey(entry);
-    remaining.set(k, (remaining.get(k) ?? 0) + 1);
+function multimap(entries, key) {
+  const map = new Map();
+  for (const entry of entries) {
+    const k = key(entry);
+    if (!map.has(k)) {
+      map.set(k, []);
+    }
+    map.get(k).push(entry);
   }
-  return grammarBaselineEntries(current).filter((entry) => {
-    const k = grammarBaselineKey(entry);
-    const left = remaining.get(k) ?? 0;
-    remaining.set(k, left - 1);
-    return left <= 0;
-  });
+  return map;
 }
 
 /**
- * Ratchet hits against the baseline's `entries`. Matching is by
- * `grammarBaselineKey` — never by line, so editing above a site does not move
- * it, while widening what a baselined lookahead resolves to does.
- * Returns the hits with no entry (`fresh`) and the entries with no hit
- * (`stale`), plus `kept`: the surviving entries with their lines refreshed.
+ * Ratchet hits against the baseline's entries, never by line, so editing above a
+ * site does not move it. Returns `fresh` (hits at no baselined site), `stale`
+ * (entries with no hit), `changed` (`{ hit, entry }` pairs: the site is baselined
+ * but what it reads is not what the entry records), and `kept`: the matching
+ * entries with their line, const, construct and reason refreshed.
  */
 export function compareGrammarBaseline(hits, entries) {
-  const key = grammarBaselineKey;
-  const open = new Map();
-  for (const entry of entries) {
-    const k = key(entry);
-    if (!open.has(k)) {
-      open.set(k, []);
-    }
-    open.get(k).push(entry);
-  }
-  const fresh = [];
+  const exact = multimap(entries, grammarBaselineKey);
   const kept = [];
+  const pending = [];
   for (const hit of hits) {
-    const match = open.get(key(hit))?.shift();
+    const match = exact.get(grammarBaselineKey(hit))?.shift();
     if (match) {
-      kept.push({ ...match, line: hit.line });
+      const { line, construct, why } = hit;
+      kept.push({ ...match, ...(line === undefined ? {} : { line }), ...(hit.rule === 'jsdoc' ? {} : { construct, why }) });
+    } else {
+      pending.push(hit);
+    }
+  }
+  const sites = multimap([...exact.values()].flat(), siteKey);
+  const fresh = [];
+  const changed = [];
+  for (const hit of pending) {
+    const open = sites.get(siteKey(hit));
+    if (open?.length > 0) {
+      const same = open.findIndex(e => e.construct === hit.construct);
+      changed.push({ hit, entry: open.splice(same === -1 ? 0 : same, 1)[0] });
     } else {
       fresh.push(hit);
     }
   }
-  const stale = [...open.values()].flat();
-  return { fresh, stale, kept };
+  return { fresh, stale: [...sites.values()].flat(), changed, kept };
+}
+
+/**
+ * The baseline against the one on the base branch: `added` entries (counting
+ * repeats), and `unexplained`: sites whose fingerprint moved with no new `changed`
+ * note. A note copied from the base branch explains nothing.
+ */
+export function compareBaselineToBase(base, current) {
+  const { fresh, changed } = compareGrammarBaseline(grammarBaselineEntries(current), grammarBaselineEntries(base));
+  return {
+    added: fresh,
+    unexplained: changed.filter(({ hit, entry }) => !hit.changed?.trim() || hit.changed === entry.changed).map(({ hit }) => hit)
+  };
 }
