@@ -3,7 +3,7 @@
  * the printer stays one reviewable size. The printer lends what it already
  * spells: a value, a `$( … )` boundary, a guard and a string template.
  */
-import { hasCssTest, isIfTestCall, type GuardNode } from './guard-node.js';
+import { hasCssTest, isIfTestCall, withParens, type GuardNode } from './guard-node.js';
 import type { Expression, IfValue, Interpolation, ValueSlot } from './nodes.js';
 
 /** The `.jess` spellings an `if()` is built from. */
@@ -42,7 +42,7 @@ function condition(node: GuardNode, p: IfSpeller): string {
   if (!hasCssTest(node)) {
     return parens(node.g === 'truth' && !Array.isArray(node.value) && 'type' in node.value && node.value.type === 'Expression'
       ? p.expression(node.value)
-      : `$(${p.guard({ ...node, parens: 0 })})`);
+      : `$(${p.guard(withParens(node, 0))})`);
   }
   switch (node.g) {
     case 'css':

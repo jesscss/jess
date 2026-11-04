@@ -21,7 +21,8 @@
  */
 import type { Value } from './value-eval.js';
 import { HEX } from './color.js';
-import { makeColorRgb, makeKeyword } from './value-factory.js';
+import { makeBool, makeColorRgb, makeKeyword } from './value-factory.js';
+import { DimensionValueNode, QuotedValueNode } from './node-ctors.js';
 import { namedColor } from './color-names.js';
 
 /*
@@ -61,7 +62,7 @@ export function parseHex(hex: string): { rgb: [number, number, number]; alpha: n
 function dimensionFromString(str: string): Value {
   const m = NUM_RE.exec(str);
   const unit = m?.[1] ?? '';
-  return { type: 'Dimension', number: Number(str.slice(0, str.length - unit.length)), unit, bytes: str };
+  return new DimensionValueNode(Number(str.slice(0, str.length - unit.length)), unit, str);
 }
 
 /** True when `s` opens and closes with the SAME quote char (`"…"` / `'…'`). */
@@ -72,7 +73,7 @@ function isQuotedBytes(s: string): boolean {
 
 /** A quoted value node from its verbatim bytes (quote char known from the bytes). */
 function quotedFromBytes(str: string): Value {
-  return { type: 'Quoted', value: str.slice(1, -1), quote: str[0]!, escaped: false, bytes: str };
+  return new QuotedValueNode(str.slice(1, -1), str[0]!, false, str);
 }
 
 /* --------------------------------------------------- typed-leaf materializers */
@@ -134,14 +135,14 @@ export function dimensionFromFields(number: number, unit: string, src: string): 
   const numericStart = src.charCodeAt(0) === 0x2d /* - */ ? 1 : 0;
   if (Number.isFinite(number) && src.charCodeAt(numericStart) === 0x2e /* . */) {
     const bytes = numericStart === 0 ? `0${src}` : `-0${src.slice(1)}`;
-    return { type: 'Dimension', number, unit, bytes };
+    return new DimensionValueNode(number, unit, bytes);
   }
-  return { type: 'Dimension', number, unit, bytes: src };
+  return new DimensionValueNode(number, unit, src);
 }
 
 /** A parsed `Quoted` leaf → value `Quoted`, reading its pre-split fields. */
 export function quotedFromFields(value: string, quote: string, escaped: boolean, src: string): Value {
-  return { type: 'Quoted', value, quote, escaped, bytes: src };
+  return new QuotedValueNode(value, quote, escaped, src);
 }
 
 /* --------------------------------------------------------------- sniff path */
@@ -166,7 +167,7 @@ function sniffBuild(text: string): Value {
     }
   }
   if (text === 'true' || text === 'false') {
-    return { type: 'Bool', value: text === 'true', bytes: text };
+    return makeBool(text === 'true');
   }
 
   // A bare identifier that names a CSS color materializes as a Color.

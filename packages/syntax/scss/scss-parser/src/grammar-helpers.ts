@@ -16,7 +16,7 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout, lookupStep } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout, lookupStep, guardCompare, guardLogical, guardNot, guardValue, withWrite, withParens } from '@jesscss/core/ast';
 import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
@@ -556,16 +556,9 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * comparison must not mean one thing in a guard and another in an
    * argument. `!=` is that comparison under `not`.
    */
-  const comparison = {
-    g: 'cmp' as const,
-    op: operator === '==' || operator === '!=' ? 'sass-equal' : operator,
-    left: requireValue(left),
-    right: requireValue(right),
-    implied: false,
-    parens: 0
-  };
+  const comparison = guardCompare('cmp', operator === '==' || operator === '!=' ? 'sass-equal' : operator, requireValue(left), requireValue(right), false);
   return callArg(expression(condition(
-    operator === '!=' ? { g: 'not', inner: comparison, word: 'not', gluedAt: NO_SPAN, parens: 0 } : comparison,
+    operator === '!=' ? guardNot(comparison, 'not', NO_SPAN, 0) : comparison,
     `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
   )));
 }
@@ -881,7 +874,7 @@ function ifCondition(value: ValueSlot): GuardNode {
       }
       case 'Operation':
         if (value.operator === 'and' || value.operator === 'or') {
-          return { g: value.operator, left: ifCondition(value.left), right: ifCondition(value.right), word: value.operator, gluedAt: NO_SPAN, parens: 0 };
+          return guardLogical(value.operator, ifCondition(value.left), ifCondition(value.right), value.operator, NO_SPAN);
         }
         break;
 
@@ -889,14 +882,15 @@ function ifCondition(value: ValueSlot): GuardNode {
       case 'Condition': {
         const { guard } = value;
         if ((guard.g === 'and' || guard.g === 'or') && guard.left.g === 'truth' && guard.right.g === 'truth') {
-          return { ...guard, left: ifCondition(guard.left.value), right: ifCondition(guard.right.value) };
+          const lowered = guardLogical(guard.g, ifCondition(guard.left.value), ifCondition(guard.right.value), guard.word, guard.gluedAt);
+          return guard.parens === 0 ? lowered : withParens(lowered, guard.parens);
         }
         break;
       }
       case 'Expression': {
         const negated = value.value;
         if (value._asCall === null && !isValueSlotArray(negated) && negated.type === 'Condition' && negated.guard.g === 'not' && negated.guard.inner.g === 'truth') {
-          return { g: 'not', inner: ifCondition(negated.guard.inner.value), word: negated.guard.word, gluedAt: NO_SPAN, parens: 0 };
+          return guardNot(ifCondition(negated.guard.inner.value), negated.guard.word, NO_SPAN, 0);
         }
         break;
       }
@@ -909,7 +903,7 @@ function ifCondition(value: ValueSlot): GuardNode {
         break;
     }
   }
-  return { g: 'css', value: isValueSlotArray(value) ? juxtaposedTests(value) : value, parens: 0 };
+  return guardValue('css', isValueSlotArray(value) ? juxtaposedTests(value) : value, 0);
 }
 
 /**
@@ -1019,7 +1013,7 @@ export function mapKeyValue(node: ValueNode): ValueSlot {
  * `.less` is unaffected — `when (@x)` still lowers to `$if($x == true)`.
  */
 export function scssTruth(value: ValueSlot): GuardNode {
-  return { g: 'truth', value, parens: 0 };
+  return guardValue('truth', value, 0);
 }
 
 /**
@@ -1028,7 +1022,7 @@ export function scssTruth(value: ValueSlot): GuardNode {
  * under a `not` wrapper and cannot drift from the positive form.
  */
 export function scssNegation(value: ValueSlot, word: string): GuardNode {
-  return { g: 'not', inner: scssTruth(value), word, gluedAt: NO_SPAN, parens: 0 };
+  return guardNot(scssTruth(value), word, NO_SPAN, 0);
 }
 
 /**
@@ -1113,7 +1107,7 @@ export function foldLogicalOperation(children: readonly unknown[]): ValueNode {
     if (word === 'and' || word === 'or') {
       result = operation(word, result, right, false, cssBaseMathOutsideParens(word));
     } else {
-      const guard: GuardNode = { g: word.toLowerCase() === 'and' ? 'and' : 'or', left: scssTruth(result), right: scssTruth(right), word, gluedAt: NO_SPAN, parens: 0 };
+      const guard: GuardNode = guardLogical(word.toLowerCase() === 'and' ? 'and' : 'or', scssTruth(result), scssTruth(right), word, NO_SPAN);
 
       /* Written from its guard (`word`, ledger J20), so no source text is kept: an operand may be one `scssConditionSource` cannot spell (`#{$a}`). */
       result = condition(guard, '');
@@ -1311,13 +1305,13 @@ export function statementChildren(children: readonly unknown[], allowDeclaration
  * keeps its plain `declare`, so only bare declares are retagged here (`!default` →
  * if-absent and `!global` → reassign pass through) and nested rulesets are opaque:
  * their own declarations were already lowered as `declare` by the ruleset reducer.
- * The source span is preserved by spreading the original node.
+ * The source span is carried over by {@link withWrite}.
  */
 export function controlBlockStatements(statements: Statement[]): Statement[] {
   for (let i = 0; i < statements.length; i++) {
     const statement = statements[i]!;
     if (statement.type === 'VariableDeclaration' && statement.write.mode === 'declare') {
-      statements[i] = { ...statement, write: { mode: 'reassign-or-declare', scope: 'live' } };
+      statements[i] = withWrite(statement, { mode: 'reassign-or-declare', scope: 'live' });
     }
   }
   return statements;

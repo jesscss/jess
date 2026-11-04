@@ -25,11 +25,12 @@
  * holds with zero source-position tracking.
  */
 
-import { AnPlusBNode, AnonymousMixinNode, AnonymousMixinNode2, AnyNode, ApplyNode, BlockNode, BlockNode2, BranchNode, CallArgValue, CollectionEntryNode, CollectionEntryNode2, CollectionNode, CollectionSpreadNode, ColorNode, CommentNode, ComplexSelectorNode, CompoundSelectorNode, ConditionNode, DeclarationNode, DeclarationNode2, DimensionNode, ExpressionNode, ForNode, FunctionCallNode, IfNode, IfValueNode, ImportantNode, InterpolationNode, KeywordNode, ListNode, LookupNode, LookupStepNode, LookupStepNode2, MixinCallNode, MixinDefinitionNode, ModuleImportNode, NestedPropertyBlockNode, OperationNode, PseudoSelectorNode, QuotedNode, RangeNode, ReferenceCallNode, ReferenceNode, RelativeSelectorNode, RulesetExtendGuardNode, RulesetExtendNode, RulesetGuardNode, RulesetNode, SelectorCaptureNode, SelectorListNode, SequenceNode, SimpleSelectorNode, StyleImportNode, StylesheetNode, UrlNode, VariableDeclarationNode, VariableExposeNode, WhileNode } from './node-ctors.js';
+import { AnonymousMixinNode, AnonymousMixinWithParamsNode, AnPlusBNode, AnyNode, ApplyNode, BlockNode, BranchNode, CallArgValue, CollectionEntryNode, CollectionNode, CollectionSpreadNode, ColorNode, CommentNode, ComplexSelectorNode, CompoundSelectorNode, ConditionNode, DeclarationNode, DimensionNode, EscapedBlockNode, ExposedNameNode, ExpressionNode, ForNode, FunctionCallNode, IfNode, IfValueNode, ImportantNode, IndexedLookupStepNode, InterpolationNode, KeywordNode, LeadQuotingInterpolationNode, ListNode, LookupNode, LookupStepNode, MixinCallNode, MixinDefinitionNode, MixinPathSegmentNode, ModuleImportNode, NestedPropertyBlockNode, NullNode, OperationNode, PseudoSelectorNode, QuotedNode, RangeNode, ReferenceCallNode, ReferenceNode, RelativeSelectorNode, RulesetExtendGuardNode, RulesetExtendNode, RulesetGuardNode, RulesetNode, SelectorCaptureNode, SelectorListNode, SequenceNode, SimpleSelectorNode, StyleImportNode, StylesheetNode, UrlNode, ValueOnNewLineCollectionEntryNode, ValueOnNewLineDeclarationNode, VariableDeclarationNode, VariableExposeNode, WhileNode } from './node-ctors.js';
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
 import type { ForgivenSelectorItem } from './forgiving-selector.js';
 import { NO_SPAN, isAuthoredGroupExpression, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
+export { copyNode, withFields } from './node-ctors.js';
 
 /* ------------------------------------------------------------------ values */
 
@@ -1735,7 +1736,7 @@ export const keyword = (src: string): Keyword => (new KeywordNode(src));
 
 /** The `null` literal node — ONE frozen instance; the literal carries no fact
  *  beyond its own identity, so it never allocates. */
-export const NULL_NODE: Null = { type: 'Null', src: 'null' };
+export const NULL_NODE: Null = new NullNode('null');
 export const any = (src: string): Any => (new AnyNode(src, NO_SPAN, NO_SPAN));
 export const url = (value: ValueNode): Url => (new UrlNode(value, NO_SPAN, NO_SPAN));
 export const selectorCapture = (branches: readonly string[], components: readonly (readonly string[])[], src: string): SelectorCapture =>
@@ -1816,6 +1817,9 @@ export const pseudoSelector = (
  */
 export const anPlusB = (text: string): AnPlusB => (new AnPlusBNode(text.replace(/[ \t\n\r\f]+/g, '')));
 export const interpolation = (parts: InterpPart[]): Interpolation => (new InterpolationNode(parts, NO_SPAN, NO_SPAN));
+
+/** An SCSS `+` string whose lead operand was unquoted; it serializes quoted from that lead. */
+export const leadQuotingInterpolation = (parts: InterpPart[]): Interpolation => (new LeadQuotingInterpolationNode(parts, NO_SPAN, NO_SPAN));
 export const anonymousMixin = (
   rules: Statement[],
   params?: Param[],
@@ -1824,7 +1828,7 @@ export const anonymousMixin = (
   const extend = extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined;
   return params === undefined
     ? new AnonymousMixinNode(rules, extend, NO_SPAN, NO_SPAN)
-    : new AnonymousMixinNode2(rules, extend, params, NO_SPAN, NO_SPAN);
+    : new AnonymousMixinWithParamsNode(rules, extend, params, NO_SPAN, NO_SPAN);
 };
 
 /** Less-style `{ … }` blocks are executable anonymous mixins. Jess and Sass
@@ -1851,17 +1855,16 @@ export const range = (
 ): Range => (new RangeNode(start, end, step, includeStart, includeEnd));
 export const reference = (
   base: ValueNode | MixinCall,
-  steps: readonly ReferenceStep[],
+  steps: ReferenceStep[],
   raw: string
-): Reference => (new ReferenceNode(base, steps.slice(), raw, NO_SPAN, NO_SPAN));
+): Reference => (new ReferenceNode(base, steps, raw, NO_SPAN, NO_SPAN));
 
 /** A Less property accessor `$name` — {@link Lookup} of kind `prop`. */
 export const propertyReference = (name: string, raw: string = `$${name}`): Lookup =>
   (new LookupNode('scoped', 'prop', name, raw, NO_SPAN, NO_SPAN));
 
 /** A compound from an already-built list of simple tokens. */
-// Selector factories copy the token lists they keep: a spread copy has no allocation site for V8 to pretenure.
-export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => (new CompoundSelectorNode([...value], NO_SPAN, NO_SPAN));
+export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => (new CompoundSelectorNode(value, NO_SPAN, NO_SPAN));
 
 /** A selector term: a lone simple token stays direct; adjacent tokens form a compound. */
 export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]): SelectorTerm => {
@@ -1884,7 +1887,7 @@ export const complexSelector = (
     head.term,
     ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
   ];
-  return new ComplexSelectorNode([...value], NO_SPAN, NO_SPAN);
+  return new ComplexSelectorNode(value, NO_SPAN, NO_SPAN);
 };
 export const relativeSelector = (
   combinator: Combinator,
@@ -1912,8 +1915,8 @@ export const decl = (
   valueOnNewLine = false
 ): Declaration =>
   valueOnNewLine
-    ? new DeclarationNode(name, value, merge, important, true, NO_SPAN, NO_SPAN)
-    : new DeclarationNode2(name, value, merge, important, NO_SPAN, NO_SPAN);
+    ? new ValueOnNewLineDeclarationNode(name, value, merge, important, true, NO_SPAN, NO_SPAN)
+    : new DeclarationNode(name, value, merge, important, NO_SPAN, NO_SPAN);
 
 export const collectionEntry = (
   key: ValueSlot,
@@ -1923,8 +1926,8 @@ export const collectionEntry = (
   valueOnNewLine = false
 ): CollectionEntry =>
   valueOnNewLine
-    ? new CollectionEntryNode(key, value, merge, important, true)
-    : new CollectionEntryNode2(key, value, merge, important);
+    ? new ValueOnNewLineCollectionEntryNode(key, value, merge, important, true)
+    : new CollectionEntryNode(key, value, merge, important);
 
 /** An ordered shallow-merge item in a data Collection. */
 export const collectionSpread = (value: ValueSlot): CollectionSpread =>
@@ -1954,7 +1957,7 @@ export const parentSelectorReference = (): Lookup =>
 
 /** One lookup step in a {@link Reference} chain (dot or bracket — one node). */
 export const lookupStep = (kind: LookupKind, name: string | ValueNode | number, indexBase?: 0 | 1): LookupStep =>
-  indexBase === undefined ? new LookupStepNode(kind, name) : new LookupStepNode2(kind, name, indexBase);
+  indexBase === undefined ? new LookupStepNode(kind, name) : new IndexedLookupStepNode(kind, name, indexBase);
 export const important = (value: ValueSlot): Important => (new ImportantNode(value));
 
 /**
@@ -2000,8 +2003,8 @@ export const operation = (
 export const callArg = <V extends CallValue>(value: V, name?: string, spread = false, sigil?: string): CallArg<V> =>
   new CallArgValue(value, name, spread, sigil);
 
-/** A call step after a reference or lookup. It owns a copy of its argument list. */
-export const referenceCall = (args: readonly CallArg[]): ReferenceCall => new ReferenceCallNode(args.slice());
+/** A call step after a reference or lookup. */
+export const referenceCall = (args: CallArg[]): ReferenceCall => new ReferenceCallNode(args);
 
 /** Normalize a mixed authored-argument array to {@link CallArg}s. A bare value
  *  slot (node OR nested array) is positional; an already-built `CallArg` passes
@@ -2038,7 +2041,7 @@ export const funcCall = (
   return new FunctionCallNode(name, boxed, modern, NO_SPAN, NO_SPAN, null);
 };
 export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
-  escaped ? new BlockNode(value, delimiter, true, NO_SPAN, NO_SPAN) : new BlockNode2(value, delimiter, NO_SPAN, NO_SPAN);
+  escaped ? new EscapedBlockNode(value, delimiter, true, NO_SPAN, NO_SPAN) : new BlockNode(value, delimiter, NO_SPAN, NO_SPAN);
 export const branch = (condition: ValueSlot, value: ValueSlot): Branch => (new BranchNode(condition, value));
 
 /** The `$( … )` computation boundary — see {@link Expression}. */
@@ -2053,11 +2056,13 @@ export const variableDeclaration = (
   write: VariableWrite
 ): VariableDeclaration =>
   (new VariableDeclarationNode(name, value, write, NO_SPAN, NO_SPAN));
+export const withWrite = (declaration: VariableDeclaration, write: VariableWrite): VariableDeclaration =>
+  (new VariableDeclarationNode(declaration.name, declaration.value, write, declaration._s, declaration._e));
 
 export const variableExpose = (names: readonly ExposedName[]): VariableExpose =>
   (new VariableExposeNode(names, NO_SPAN, NO_SPAN));
 
-export const exposedName = (name: string): ExposedName => ({ name, _s: NO_SPAN, _e: NO_SPAN });
+export const exposedName = (name: string): ExposedName => new ExposedNameNode(name, NO_SPAN, NO_SPAN);
 
 /** The one `MixinDefinition` literal: every field, in one order, so all share one hidden class (V8 invariant 1). */
 const mixinDefinition = (name: string, params: Param[], rules: Statement[], extendInstructions: ExtendInstruction[] | undefined, guard: GuardNode | undefined): MixinDefinition =>
@@ -2076,8 +2081,9 @@ const rulesetMixin = (rule: Ruleset, name: string): MixinDefinition => {
   return def;
 };
 
-/** The empty namespace path. Each call gets its own spread copy: an array literal has an allocation site V8 can pretenure. */
+/** The empty namespace path, shared by every call without one; frozen, since nothing writes a path. */
 const NO_PATH: MixinPathSegment[] = [];
+Object.freeze(NO_PATH);
 
 /** [guards] Args may be bare value nodes (positional) or {@link CallArg}s.
  *  `content` is the assigned block (`$ > m(): @{ … }`), not an argument. */
@@ -2085,15 +2091,26 @@ export const mixinCall = (
   name: string,
   args: readonly (CallValue | CallArg)[] = [],
   content: AnonymousMixin | null = null
-): MixinCall => (new MixinCallNode(name, toCallArgs(args), [...NO_PATH], false, content, NO_SPAN, NO_SPAN));
+): MixinCall => (new MixinCallNode(name, toCallArgs(args), NO_PATH, false, content, NO_SPAN, NO_SPAN));
 
-/** `call` with a namespace `path` (and optionally `!important`). The node owns a copy of the path. */
+/** One segment of a namespaced-call path. */
+export const mixinPathSegment = (combinator: Combinator, selector: string): MixinPathSegment => new MixinPathSegmentNode(combinator, selector);
+
+/** `call` with a namespace `path` (and optionally `!important`). */
 export const withMixinPath = (call: MixinCall, path: MixinCall['path'], important: boolean = call.important): MixinCall =>
-  new MixinCallNode(call.name, call.args, [...path], important, call.content, call._s, call._e);
+  new MixinCallNode(call.name, call.args, path, important, call.content, call._s, call._e);
+
+/** `call` with `args`, every other field kept. */
+const withMixinArgs = (call: MixinCall, args: CallArg[]): MixinCall =>
+  new MixinCallNode(call.name, args, call.path, call.important, call.content, call._s, call._e);
+
+/** `call` placed at a source span. */
+const withMixinSpan = (call: MixinCall, start: number, end: number): MixinCall =>
+  new MixinCallNode(call.name, call.args, call.path, call.important, call.content, start, end);
 
 /** Serializer-only, so the default export, which the public entry's `export *` skips: `syntheticCall` binds `args` to a synthesized definition with no name or source. */
-const syntheticCall = (args: CallArg[]): MixinCall => (new MixinCallNode('', args, [...NO_PATH], false, null, NO_SPAN, NO_SPAN));
-export default { rulesetMixin, syntheticCall, withArgs: (call: MixinCall, args: CallArg[]): MixinCall => (new MixinCallNode(call.name, args, call.path, call.important, call.content, call._s, call._e)) };
+const syntheticCall = (args: CallArg[]): MixinCall => (new MixinCallNode('', args, NO_PATH, false, null, NO_SPAN, NO_SPAN));
+export default { rulesetMixin, syntheticCall, withArgs: withMixinArgs, withSpan: withMixinSpan };
 export const apply = (selectors: readonly SelectorTerm[]): Apply => (new ApplyNode(selectors));
 
 /** A single simple-string selector branch, e.g. `sel('.test')`. */
@@ -2114,15 +2131,13 @@ export const rule = (
         ? selector
         : selist(selector);
 
-  // A ruleset owns its statement list: a copy has no allocation site for V8 to pretenure.
-  const own = rules.slice();
   return extendInstructions === undefined
     ? guard === undefined
-      ? new RulesetNode(list, own, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
-      : new RulesetGuardNode(list, own, guard, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
+      ? new RulesetNode(list, rules, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
+      : new RulesetGuardNode(list, rules, guard, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
     : guard === undefined
-      ? new RulesetExtendNode(list, own, extendInstructions, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
-      : new RulesetExtendGuardNode(list, own, extendInstructions, guard, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN);
+      ? new RulesetExtendNode(list, rules, extendInstructions, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
+      : new RulesetExtendGuardNode(list, rules, extendInstructions, guard, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN);
 };
 
 /**

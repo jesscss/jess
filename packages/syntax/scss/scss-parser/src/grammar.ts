@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { scssSum } from './plus-chain.js';
@@ -3307,15 +3307,8 @@ const scssFactory = (g: ScssInputRules) => {
        * comparison instead, and the primitive dispatches on operand type at
        * eval. `!=` is that same comparison under `not`.
        */
-      const comparison = {
-        g: 'cmp' as const,
-        op: operator === '==' || operator === '!=' ? 'sass-equal' : operator,
-        left,
-        right,
-        implied: false,
-        parens: 0
-      };
-      return operator === '!=' ? { g: 'not', inner: comparison, word: 'not', gluedAt: NO_SPAN, parens: 0 } : comparison;
+      const comparison = guardCompare('cmp', operator === '==' || operator === '!=' ? 'sass-equal' : operator, left, right, false);
+      return operator === '!=' ? guardNot(comparison, 'not', NO_SPAN, 0) : comparison;
     }
   );
   const IfAtom = node<GuardNode>(
@@ -3347,7 +3340,7 @@ const scssFactory = (g: ScssInputRules) => {
       }
       const value = children.find(isScssValue);
       return value === undefined
-        ? { g: 'truth', value: keyword(requireToken(children[0]).value.toLowerCase()), parens: 0 }
+        ? guardValue('truth', keyword(requireToken(children[0]).value.toLowerCase()), 0)
         : scssTruth(value);
     }
   );
@@ -3363,7 +3356,7 @@ const scssFactory = (g: ScssInputRules) => {
         throw new TypeError('SCSS @if term lost its guard.');
       }
       const not = children.find(child => isToken(child) && child.value.toLowerCase() === 'not');
-      return not === undefined ? atom : { g: 'not', inner: atom, word: requireToken(not).value, gluedAt: NO_SPAN, parens: 0 };
+      return not === undefined ? atom : guardNot(atom, requireToken(not).value, NO_SPAN, 0);
     }
   );
   const IfAnd = node<GuardNode>(
@@ -3378,7 +3371,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'and', left: guard, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
+        guard = guardLogical('and', guard, requireGuardNode(children[index]), requireToken(children[index - 1]).value, NO_SPAN);
       }
       return guard;
     }
@@ -3395,7 +3388,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'or', left: guard, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
+        guard = guardLogical('or', guard, requireGuardNode(children[index]), requireToken(children[index - 1]).value, NO_SPAN);
       }
       return guard;
     }

@@ -29,7 +29,7 @@
  * modules (`node`, `nodes`) — never the legacy tree.
  */
 
-import { AtRuleBlockNode, PluginNode, UnknownAtRuleBlockNode } from './node-ctors.js';
+import { AtRuleBlockNode, AtRuleStatementNode, PluginNode, UnknownAtRuleBlockNode } from './node-ctors.js';
 import { NO_SPAN, type BodySpanSlots, type SpanSlots } from './provenance.js';
 import type { ExtendInstruction, Interpolation, Quoted, Statement, Url, ValueNode } from './nodes.js';
 
@@ -125,25 +125,12 @@ export const atRuleBlock = (
   prelude: ValueNode | null,
   rules: Statement[],
   extendInstructions?: readonly ExtendInstruction[]
-): AtRuleBlock => (new AtRuleBlockNode(name, prelude, rules.slice(), extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN));
+): AtRuleBlock => (new AtRuleBlockNode(name, prelude, rules, extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN));
 
 export const atRuleStatement = (
   name: string,
   prelude: ValueNode | null
-): AtRuleStatement => {
-  const statement: AtRuleStatement = {
-    type: 'AtRuleStatement',
-    name,
-    prelude,
-    _s: NO_SPAN,
-    _e: NO_SPAN,
-    [importStartKey]: NO_SPAN,
-    [importEndKey]: NO_SPAN,
-    [importTailStartKey]: NO_SPAN,
-    [diagnosticKey]: false
-  };
-  return statement;
-};
+): AtRuleStatement => new AtRuleStatementNode(name, prelude, NO_SPAN, NO_SPAN);
 
 /**
  * Mark a statement as a Sass compile-time diagnostic (`@debug`/`@warn`/

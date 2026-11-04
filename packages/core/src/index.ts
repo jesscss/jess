@@ -118,6 +118,7 @@ export {
   colorHslClamped,
   colorRawRgb,
   colorRgbRounded,
+  withFields,
   groupItems,
   groupSeparator,
   listValueAt,

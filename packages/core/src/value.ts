@@ -58,7 +58,8 @@ export {
   colorHsl,
   colorHslClamped,
   colorRawRgb,
-  colorRgbRounded
+  colorRgbRounded,
+  withFields
 } from './ast/value-factory.js';
 
 // --- shared typed-list capabilities ---
