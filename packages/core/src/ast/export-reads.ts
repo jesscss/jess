@@ -41,11 +41,15 @@ export interface ExportRuntime {
 
 /**
  * What the runtime module is generated from, as data (`SerializeResult.runtime`):
- * every exported name, the compile-time CSS of each one a derived value reads,
- * and each generated custom property with how it is computed.
+ * every exposed name, its JavaScript key, the compile-time CSS of each one a
+ * derived value reads, and each generated custom property with how it is
+ * computed.
  */
 export interface ExportRuntimeData {
   readonly exports: readonly string[];
+
+  /** Each exposed name by its JavaScript key ({@link exportKey}), the one the clash check uses. */
+  readonly keys: Readonly<Record<string, string>>;
   readonly defaults: Readonly<Record<string, string>>;
   readonly derived: Readonly<Record<string, ExportRecipe>>;
 }
@@ -56,7 +60,7 @@ export function runtimeData(x: ExportState<unknown>): { runtime?: ExportRuntimeD
   const runtime = x.runtime;
   return runtime === undefined
     ? {}
-    : { runtime: { exports: [...runtime.exports], defaults: Object.fromEntries(runtime.defaults), derived: Object.fromEntries(runtime.derived) } };
+    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), derived: Object.fromEntries(runtime.derived) } };
 }
 
 /** A mixin argument as written, in the caller's frame. */
