@@ -662,6 +662,10 @@ export class LessPlugin extends AbstractPlugin {
     return providedModules.owns(absoluteFilePath);
   }
 
+  packageModule(specifier: string): string | undefined {
+    return providedModules.packageOf(specifier);
+  }
+
   import(absoluteFilePath: string): Promise<Record<string, unknown>> {
     return providedModules.import(absoluteFilePath);
   }

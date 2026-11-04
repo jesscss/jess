@@ -35,7 +35,8 @@
 | R8-8 | The statement is `@expose` (`@-expose`). Less has no `@export`; `.jess` `@-export` stays the `@forward`-style re-export (A4). | *"Yeah I think expose is the most no-brainer"* |
 | R8-9 | `@expose @brand: red;` is an error whose fix shows the name-list form. | *"It’s an error, although you can hint what it should be. It’s not “old syntax”"* |
 | R8-10 | An `@expose` in a `(reference)`-imported file does nothing, with no message. | owner picked the option “Ignore it silently” (2026-11-02) |
-| R8-11 | The runtime keys an exposed variable in lowerCamelCase, as CSS modules do; two names with one key, or two bindings exposed under one name, are an error naming both sites. | *"exports, like our CSS module’s implementation, should turn dash-case into lowerCamelCase… so that should flag conflicts"*; owner picked the option “Error naming both” (2026-11-02) |
+| R8-11 | The runtime keys an exposed variable by its name with dash-case turned to camelCase, letter case otherwise kept; two names with one key, or two bindings exposed under one name, are an error naming both sites. | *"exports, like our CSS module’s implementation, should turn dash-case into lowerCamelCase… so that should flag conflicts"*, then *"we don't force lowerCamelCase --- i was just talking about dash-case conversion"*; owner picked the option “Error naming both” (2026-11-02) |
+| R8-12 | Two `@compose`d libraries that expose one name, and two files that each declare and expose one name (two `@import`ed files, or an importer and a file it imports), are an error naming both sites. | asked of each case, 2026-11-02: *"error"* |
 
 Split off on 2026-11-01 as its own task: built-in functions that have a CSS
 counterpart are represented internally as that counterpart (`darken()` as
@@ -49,10 +50,10 @@ or needs JS) to decide what ships in the bundle.
 2. **Dependency tracking.** Built; contract below. A value an imported function
    computes from an exposed variable writes a generated custom property, and the compile
    returns how the runtime computes it. Mixin arguments carry an exposed variable.
-3. **Runtime module.** `@jesscss/fns/runtime`: `vars()`/`set()` over the
-   recipes slice 2 returns, calling the functions they name. It recomputes
-   values and never re-serializes CSS, so it does not need the R7.4 per-kind
-   emit split (rulings below).
+3. **Runtime module.** Built; contract below. `@jesscss/fns/runtime`:
+   `vars()`/`set()` over the recipes slice 2 returns, calling the functions
+   they name. It recomputes values and never re-serializes CSS, so it does not
+   need the R7.4 per-kind emit split (rulings below).
 4. **Bundler output.** `rollup-plugin-jess` / Vite emit the `.css` plus the
    `.js` module when a file has an `@expose`.
 5. **Class-name scoping (R7.3).** Its O-CSSM items stay open.
@@ -152,7 +153,9 @@ or needs JS) to decide what ships in the bundle.
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent
-  when nothing is exposed): `exports` (every exposed name), `defaults` (the
+  when nothing is exposed): `exports` (every exposed name), `keys` (each exposed
+  name by its JavaScript key, R8-11; the generated module reads it rather than
+  re-deriving the key), `defaults` (the
   compile-time value of each exposed variable a recipe reads, as the runtime reads it:
   `emitValue`, not the output modes, so compressed CSS may spell it shorter) and
   `derived` (each generated property's recipe). JSON, so it crosses the sandbox
@@ -160,6 +163,35 @@ or needs JS) to decide what ships in the bundle.
 - **Cost.** A document with no exposed variable pays one check per variable read and per
   computed call, and two calls per mixin argument bound
   (`exportArgumentStart` / `exportArgumentEnd`, each one check).
+
+## Slice 3 contract (as built)
+
+- **`createRuntime({ keys, defaults, derived })`** (`packages/fns/src/runtime.ts`)
+  returns `vars(values)` and `set(values, target?)`. Values are given by
+  JavaScript key (`brandColor` for `@brand-color`); a key the stylesheet does
+  not expose raises. A derived recipe is an
+  export (`{ export }`), an argument's compile-time CSS (a string) or
+  `[fn, args]` with the imported function itself, as the generated module
+  writes it.
+- **`vars(values)`** is pure: `--<name>` for each export given, and each
+  derived property that reads one of them, computed with the function the
+  compile ran on the given values and the compile-time value of every export
+  not given. It is usable as a React or Vue `style` object.
+- **`set(values, target)`** writes `vars(values)` on `target`'s inline style,
+  `document.documentElement` by default. ponytail: no per-frame batching; a
+  caller setting many values in one frame calls `set` once with all of them.
+- **Values are CSS literals** (`#c00`, `8px`, `red`, lists of them); a value
+  written as a function (`hsl(…)`, `calc(…)`) raises, since the runtime has no
+  CSS parser. `<input type="color">` gives hex.
+- **The runtime writes what a compile writes**: for a value `v`, a derived
+  property equals the bytes a compile with `@brand: v` writes
+  (`packages/jess/test/export-runtime.test.ts`).
+- **Modules.** The compiler writes each recipe's module as the runtime module
+  imports it: a plugin's private path through its new `packageModule` hook
+  (`#less` → `@jesscss/fns/less`, `ProvidedModules.packageOf`); a package
+  spelling as written. A relative module is refused with a message, since a
+  `@use` in an imported file resolves against that file, which the recipe does
+  not record (`packages/compiler/src/runtime-modules.ts`).
 
 ## Orchestrator rulings for slices 3–5 (2026-11-01, owner delegated: *"You do not have to wait for my permission for slices. Get all slices done"*)
 
@@ -179,9 +211,13 @@ or needs JS) to decide what ships in the bundle.
   custom property, so they must resolve to one binding (an importer and the file
   it imports may both expose it); two bindings, such as a composed module's
   `@brand` and the importer's own, raise `eval/expose-conflict`, located at one
-  name and naming the other's file, line and column. The JavaScript runtime keys
-  an exposed variable by its name in lowerCamelCase, as CSS modules do (`export-reads.ts`
-  `exportKey`), so two names with one key (`brand-color`, `brandColor`) raise
+  name and naming the other's file, line and column. So do two files that each
+  declare and expose the name, though an `@import` shares one top level and the
+  last declaration wins (R8-12); a file that only redeclares an exposed variable,
+  or only exposes one it imports, does not clash. The JavaScript runtime keys
+  an exposed variable by its name with dash-case turned to camelCase, letter case
+  otherwise kept (`export-reads.ts` `exportKey`: `Brand` stays `Brand`), so two
+  names with one key (`brand-color`, `brandColor`) raise
   `eval/expose-key-conflict`, naming both. An exposed variable name
   is the author's, so it is never numbered. An authored custom property in
   that namespace (`--brand-lightness: 1%`) is the author's own write and is not
@@ -196,7 +232,7 @@ or needs JS) to decide what ships in the bundle.
   (`--x: @brand` is written verbatim, as today.) Should the lone splice be the
   `var()`?
 
-## API direction (proposal for slices 3–4, not built)
+## API direction (proposal; slices 3–4 build `vars`/`set`)
 
 The base layer is a pure function from values to a style object. DOM writing is
 a thin layer on top, so SSR, React `style`, Vue `:style` and `el.style` share

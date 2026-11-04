@@ -72,6 +72,11 @@
       "import": "./lib/sass/string/index.js",
       "require": "./lib/sass/string/index.cjs"
     },
+    "./runtime": {
+      "types": "./lib/runtime.d.ts",
+      "import": "./lib/runtime.js",
+      "require": "./lib/runtime.cjs"
+    },
     "./shared": {
       "types": "./lib/shared/index.d.ts",
       "import": "./lib/shared/index.js",
