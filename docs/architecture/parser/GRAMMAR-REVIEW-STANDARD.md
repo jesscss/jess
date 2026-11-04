@@ -351,10 +351,14 @@ Every written rule must answer:
    better compact. The mechanical floor remains strict where it protects parser
    correctness and reviewability: JSDoc requirements, no multi-line `//`
    comments, blank line before comments, no literal non-ASCII in regexes, no
-   regex outside combinators, no factories or hoisted combinator construction,
-   and no macro hazards.
+   regex outside combinators, no hand-rolled keyword regex, no factories or
+   hoisted combinator construction, and no macro hazards.
 
-5. **Does it have a JSDoc block?**
+5. **Does it have a JSDoc block?** `pnpm check:guardrails` (assertion 8) fails on
+   a new rule — a PascalCase const whose value is a combinator — with no
+   `/** … */` block; a `/* … */` block does not count. Rules that predate the
+   check are listed under `undocumentedRules` in
+   `scripts/check-guardrails.grammar-baseline.json`.
 
 6. **Is this the simplest representation in parseman combinators?**
 
@@ -629,15 +633,17 @@ that shape intentionally and fail with the richer diagnostic.
 18. **Is it a grammar-side workaround for something parseman should handle?**
     Parseman never backtracks, re-parses or pre-scans; a grammar decides on the
     current token. When a rule cannot make its decision on one token — and
-    reaches for a regex pre-scan, a multi-token `not(...)`/`peek(...)`, a
-    hand-rolled scanner, or a second pass — that is a **missing parseman
+    reaches for a regex pre-scan, a multi-token `not(...)`/`peek(...)`, an
+    `attempt(...)` that parses and rolls back (backtracking; orchestrator ruling
+    2026-11-04), a hand-rolled scanner, or a second pass — that is a **missing parseman
     capability**, and the grammar-side workaround is a defect. The fix goes in
     parseman: file a parseman issue naming the decision the grammar cannot make,
     and do not land the workaround. The standing example is Less's
     `rulesetNotDeclaration`, `not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/))`, which
     scans an identifier, whitespace and a colon to choose between a ruleset and a
     declaration. `pnpm check:guardrails` (assertion 8) fails on any lookahead it
-    cannot prove one token wide, and on a dialect-prefixed rule name (item 16);
+    cannot prove one token wide, on `attempt(...)`, and on a dialect-prefixed
+    rule name (item 16);
     the existing sites are baselined in
     `scripts/check-guardrails.grammar-baseline.json` and may only shrink.
 

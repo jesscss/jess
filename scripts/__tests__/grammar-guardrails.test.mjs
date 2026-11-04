@@ -39,6 +39,7 @@ const factory = (g) => {
   const gated = not(choice({ gate: state => state !== undefined, combinator: literal('=') }));
   const name = not(identifier);
   const keyword = not(g.Keyframes);
+  /** A property name and its colon. */
   const Declaration = node('Declaration', sequence(identifier, literal(':')), children => children);
   return { Declaration, Keyframes: atKeyword };
 };
@@ -98,11 +99,23 @@ test('lookahead: token() cannot declare whitespace or a scan to be one token', (
 
 test('dialect-prefix: a prefixed or Ast/Cst rule name is caught; a whole grammar export is not', () => {
   assert.deepEqual(rulesOf(planted(`const lessThing = literal('x');`)), ['dialect-prefix:lessThing']);
-  assert.deepEqual(rulesOf(planted(`const ScssThing = literal('x');`)), ['dialect-prefix:ScssThing']);
+  assert.deepEqual(rulesOf(planted(`/** A thing. */\nconst ScssThing = literal('x');`)), ['dialect-prefix:ScssThing']);
   assert.deepEqual(rulesOf(planted(`const thingCst = literal('x');`)), ['dialect-prefix:thingCst']);
-  assert.deepEqual(rulesOf(planted(`const T = node('JessThing', literal('x'));`)), ['dialect-prefix:T']);
+  assert.deepEqual(rulesOf(planted(`const t = node('JessThing', literal('x'));`)), ['dialect-prefix:t']);
   assert.deepEqual(rulesOf(planted(`const lessGrammar = composeLeaf([rules(factory)]);`)), []);
   assert.deepEqual(rulesOf(planted(`const lessonPlan = literal('x');`)), []);
+});
+
+test('attempt: try-then-rollback is caught wherever it appears', () => {
+  assert.deepEqual(rulesOf(planted(`const probe = attempt(sequence(literal('a'), literal('b')));`)), ['attempt:probe']);
+  assert.deepEqual(rulesOf(planted(`const probe = choice(attempt(literal('a')), literal('b'));`)), ['attempt:probe']);
+});
+
+test('jsdoc: a rule without a JSDoc block is caught; a /** */ block passes, a /* */ block does not', () => {
+  assert.deepEqual(rulesOf(planted(`const Rule = literal('x');`)), ['jsdoc:Rule']);
+  assert.deepEqual(rulesOf(planted(`/* Not JSDoc. */\nconst Rule = literal('x');`)), ['jsdoc:Rule']);
+  assert.deepEqual(rulesOf(planted(`/** Recognizes x. */\nconst Rule = literal('x');`)), []);
+  assert.deepEqual(rulesOf(planted(`const helper = literal('x');`)), []);
 });
 
 test('runtime-codegen: new Function, Function() and eval() are caught', () => {
@@ -155,4 +168,23 @@ test('lint:absolute:parsers: a planted `as any` in a parser package fails; the r
   const script = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts['lint:absolute:parsers'];
   const real = eslint(...[...script.matchAll(/'([^']+)'/g)].map(m => m[1]));
   assert.equal(real.status, 0, `${real.stdout}\n${real.stderr}`);
+});
+
+test('grammar/no-hand-rolled-keyword-regex is enabled for grammar files', () => {
+  const dir = mkdtempSync(join(ROOT, 'packages/syntax/css/css-parser/src/keyword-probe-'));
+  const lint = (body) => {
+    const fixture = join(dir, 'probe.ts');
+    writeFileSync(fixture, `import { regex, word } from 'parseman';\n${body}\n`);
+    return spawnSync(process.execPath, [
+      join(ROOT, 'node_modules/eslint/bin/eslint.js'), '--no-warn-ignored', '--rule', '{"@typescript-eslint/no-unused-vars":"off"}', fixture
+    ], { cwd: ROOT, encoding: 'utf8' });
+  };
+  try {
+    const planted = lint('export const probe = regex(/not(?![-\\w])/i);');
+    assert.match(planted.stdout, /grammar\/no-hand-rolled-keyword-regex/, planted.stdout + planted.stderr);
+    const clean = lint('export const probe = word(\'not\');');
+    assert.doesNotMatch(clean.stdout, /grammar\/no-hand-rolled-keyword-regex/, clean.stdout + clean.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

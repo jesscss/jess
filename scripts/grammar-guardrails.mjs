@@ -18,6 +18,12 @@
  *   runtime-codegen Parser packages never build code at runtime (`new
  *                   Function`, `Function(…)`, `eval(…)`). Codegen belongs to
  *                   parseman's build-time `compile()`.
+ *   attempt         `attempt(...)` tries a parse and rolls it back on failure:
+ *                   backtracking. Orchestrator ruling 2026-11-04: it counts
+ *                   against the owner's zero-backtracking rule, so it is a
+ *                   missing parseman capability, like a pre-scan.
+ *   jsdoc           Every rule — a PascalCase const whose value is a combinator
+ *                   — carries a `/** … *\/` JSDoc block (review items 4 and 5).
  *   productions.ts  No package carries a `productions.ts` (PRODUCTIONS_FILE).
  *
  * WIDTH MODEL. Every combinator expression has a width: 0 (zero-width: a
@@ -83,6 +89,18 @@ export const RULE_MESSAGES = {
     '  name claims the rule accepts a different language than its plain counterpart.',
     '  Use the plain name; where the divergence is real, name the divergence, not the',
     '  dialect. GRAMMAR-REVIEW-STANDARD.md item 16.'
+  ],
+  attempt: [
+    '  Parseman never backtracks: a grammar decides on the CURRENT token. `attempt(...)`',
+    '  tries a parse and rolls it back when it fails, which is backtracking. That is a',
+    '  MISSING PARSEMAN CAPABILITY, not a grammar problem: file a parseman issue',
+    '  (github.com/jesscss/parseman) describing the decision the grammar cannot make on',
+    '  one token, and do NOT land a grammar workaround. GRAMMAR-REVIEW-STANDARD.md item 18.'
+  ],
+  jsdoc: [
+    '  Every grammar rule (a PascalCase const whose value is a combinator) carries a',
+    '  `/** … */` JSDoc block saying what it recognizes (GRAMMAR-REVIEW-STANDARD.md items',
+    '  4 and 5). A `/* … */` block above the rule becomes one by changing its opener.'
   ],
   'runtime-codegen': [
     '  Parser packages never build code at runtime (`new Function`, `Function(...)`,',
@@ -539,10 +557,11 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
   const sourceFile = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const width = createWidth(ts, grammarDefinitions(ts, rel, text), baseDefs);
   const hits = [];
+  const lineOf = node => sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
   const hit = (rule, node, why) => hits.push({
     rule,
     file: rel,
-    line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+    line: lineOf(node),
     const: ownerName(ts, node),
     construct: clip(collapse(node.getText(sourceFile))),
     why
@@ -562,6 +581,8 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
         if (w.width === MANY) {
           hit('lookahead', node, w.why);
         }
+      } else if (name === 'attempt') {
+        hit('attempt', node, 'attempt() tries a parse and rolls it back on failure: backtracking');
       } else if (name === 'node' && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
         checkName(node.arguments[0], node.arguments[0].text);
       } else if (name === 'eval' || name === 'Function') {
@@ -571,6 +592,9 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
       hit('runtime-codegen', node, 'new Function(...) at runtime');
     } else if ((ts.isVariableDeclaration(node) || ts.isPropertyAssignment(node)) && ts.isIdentifier(node.name) && isCombinatorCall(node.initializer)) {
       checkName(node.name, node.name.text);
+      if (ts.isVariableDeclaration(node) && /^[A-Z]/.test(node.name.text) && ts.getJSDocCommentsAndTags(node).length === 0) {
+        hits.push({ rule: 'jsdoc', file: rel, line: lineOf(node), const: node.name.text, construct: node.name.text, why: 'no JSDoc block' });
+      }
     }
     ts.forEachChild(node, visit);
   };

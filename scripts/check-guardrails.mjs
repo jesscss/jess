@@ -55,8 +55,9 @@
  *      only shrink.
  *
  *   8. Grammars decide on the current token: no `not(...)`/`peek(...)` over more
- *      than one token (a pre-scan is a missing parseman capability, never a
- *      grammar workaround), no dialect prefix in a rule name, no runtime code
+ *      than one token and no `attempt(...)` (a pre-scan or a rollback is a
+ *      missing parseman capability, never a grammar workaround), no dialect
+ *      prefix in a rule name, a JSDoc block on every rule, no runtime code
  *      generation in a parser package, and no `productions.ts`. Existing
  *      sites are baselined in `scripts/check-guardrails.grammar-baseline.json`,
  *      each with its tracking issue; the baseline may only shrink. The scan
@@ -1125,6 +1126,9 @@ if (predicates.stale.length > 0) {
  * parseman should handle is a defect whose fix goes in parseman
  * (GRAMMAR-REVIEW-STANDARD items 9 and 18). Plus the naming law (item 16), no
  * runtime codegen in a parser package, and "never create a `productions.ts`".
+ * `attempt(...)` is try-then-rollback: backtracking (orchestrator ruling
+ * 2026-11-04). Every rule carries a JSDoc block (items 4 and 5); rules without
+ * one are baselined compactly, by name, under `undocumentedRules`.
  * The scan and its width model: scripts/grammar-guardrails.mjs. Scope: every
  * parser package's `src/` and `parser-shared/src/`, tests excluded; a dialect
  * resolves inherited `g.Rule` names through the CSS grammar and parser-shared.
@@ -1177,22 +1181,30 @@ const plantedLookaheadProbe = not(regex(/[-\\w]+[ \\t]*:[ \\t\\n\\r\\f]/));
 const plantedNarrowProbe = not(literal('{'));
 const lessPlantedNameProbe = literal('x');
 const plantedCodegenProbe = new Function('return 1');
+const plantedAttemptProbe = attempt(literal('z'));
+const PlantedRuleProbe = literal('y');
 `);
-    const planted = scanGrammarTree(probe).filter(h => h.file === probeFile && /^planted|^lessPlanted/.test(h.const));
+    const planted = scanGrammarTree(probe).filter(h => h.file === probeFile && /^(?:planted|lessPlanted|Planted)/.test(h.const));
     const caught = rule => planted.some(h => h.rule === rule);
-    if (!caught('lookahead') || !caught('dialect-prefix') || !caught('runtime-codegen') || planted.some(h => h.const === 'plantedNarrowProbe')) {
+    if (['lookahead', 'dialect-prefix', 'runtime-codegen', 'attempt', 'jsdoc'].some(rule => !caught(rule)) || planted.some(h => h.const === 'plantedNarrowProbe')) {
       failures.push('Assertion 8 self-test failed: a planted grammar violation was not caught, or a one-token lookahead was. The grammar scan is blind; fix it before trusting its result.');
     }
   }
 
   const baselinePath = join(root, GRAMMAR_BASELINE);
   const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : { entries: [] };
+  const undocumented = Object.entries(baseline.undocumentedRules ?? {})
+    .flatMap(([file, names]) => names.map(name => ({ rule: 'jsdoc', file, construct: name, issue: baseline.issue })));
   if (listGrammar) {
     const issue = baseline.issue ?? '';
     console.log(JSON.stringify(hits.map(h => ({ ...h, issue })), null, 2));
   }
-  const { fresh, stale, kept } = compareGrammarBaseline(hits, baseline.entries);
-  const pruned = `${JSON.stringify({ ...baseline, entries: kept }, null, 2)}\n`;
+  const { fresh, stale, kept } = compareGrammarBaseline(hits, [...baseline.entries, ...undocumented]);
+  const keptUndocumented = {};
+  for (const e of kept.filter(e => e.rule === 'jsdoc')) {
+    (keptUndocumented[e.file] ??= []).push(e.construct);
+  }
+  const pruned = `${JSON.stringify({ ...baseline, entries: kept.filter(e => e.rule !== 'jsdoc'), undocumentedRules: keptUndocumented }, null, 2)}\n`;
   if (pruneBaselines && existsSync(baselinePath) && pruned !== readFileSync(baselinePath, 'utf8')) {
     writeFileSync(baselinePath, pruned);
     console.log(`Pruned ${stale.length} stale entr${stale.length === 1 ? 'y' : 'ies'} from ${GRAMMAR_BASELINE} and refreshed its line numbers.`);
@@ -1226,7 +1238,7 @@ const plantedCodegenProbe = new Function('return 1');
         '  shrinks: `node scripts/check-guardrails.mjs --prune-baselines`. (A rewritten construct',
         '  that is still a violation shows up above as new.)',
         '',
-        ...stale.map(e => `    ${e.file}:${e.line}  ${e.rule}\n      ${e.construct}`)
+        ...stale.map(e => `    ${e.file}${e.line ? `:${e.line}` : ''}  ${e.rule}\n      ${e.construct}`)
       ].join('\n')
     );
   }

@@ -106,6 +106,13 @@ export const grammarSourceRules = {
   'grammar/no-regex-outside-combinator': ['error', { combinators: ['regex', 'matches'] }],
 
   /*
+   * A keyword is recognized with `word()`/`keywords()`, never a hand-rolled
+   * `/word(?![-\w])/` boundary regex: the combinator owns the boundary and
+   * the case-fold class (review items 8 and 11).
+   */
+  'grammar/no-hand-rolled-keyword-regex': 'error',
+
+  /*
    * Keeps the file macro-buildable: no factories, no spreads into
    * combinator argument lists, no patterns assembled from variables.
    * `check-macro-buildable` catches these at build time; catching them at
