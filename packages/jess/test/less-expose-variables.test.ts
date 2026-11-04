@@ -187,12 +187,13 @@ describe('Less @expose variables (A4)', () => {
   it('returns what the runtime is generated from', async () => {
     await expect(runtime('@use "#less";\n@expose brand;\n@brand: #c00;\n@expose gap;\n@gap: 8px;\n.a { color: @brand; v: @less.lightness(@less.multiply(@brand, #888)); }')).resolves.toEqual({
       exports: ['brand', 'gap'],
+      keys: { brand: 'brand', gap: 'gap' },
       defaults: { brand: '#c00' },
       derived: {
         // eslint-disable-next-line @typescript-eslint/naming-convention -- a custom property name
         '--brand-lightness': {
-          fn: { module: '#less', name: 'lightness' },
-          args: [{ fn: { module: '#less', name: 'multiply' }, args: [{ export: 'brand' }, '#888'] }]
+          fn: { module: '@jesscss/fns/less', name: 'lightness' },
+          args: [{ fn: { module: '@jesscss/fns/less', name: 'multiply' }, args: [{ export: 'brand' }, '#888'] }]
         }
       }
     });
