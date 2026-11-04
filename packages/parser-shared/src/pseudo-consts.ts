@@ -7,9 +7,11 @@
  * a composable recognition artifact (the same shape as `cssSyntax` in
  * `recognition.ts` and `unknownAtRuleRecognition`), so a direct-AST grammar
  * fuses them through `composeLeaf([...])` and references each via `g.<name>`.
- * parseman cannot inline a bare cross-module combinator const used inside a
- * rules body; the `rules()` recognition-map shape is the proven cross-package
- * mechanism.
+ * A bare combinator const exported from here and used in a rules body does
+ * inline (parseman 0.59.0), but the consuming artifact keeps a side-effect
+ * import of this module, which `check:compose-fused` rejects, and an exported
+ * array of combinators is not lowered at all. The `rules()` recognition map is
+ * the cross-package shape that passes both gates.
  *
  * These consolidate the previously divergent nth-name boundaries and the
  * `of`/close lookaheads. The An+B leaf `NthExpression` and the

@@ -228,6 +228,9 @@ type ScssSharedSyntax = {
   /* Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list. */
   ForgivingSelectorList: Combinator<SelectorList>;
 
+  /* Inherited from the CSS base: a pseudo's name opener. */
+  identifierOrFunction: Combinator<string>;
+
   /*
    * Converged to the CSS base (inherited via compose): same token rule
    * token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
@@ -4859,8 +4862,7 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const pseudoIdentOrFunction = token(noTrivia(sequence(
     pseudoColon,
-    g.Identifier,
-    optional(literal('('))
+    g.identifierOrFunction
   )));
 
   /*

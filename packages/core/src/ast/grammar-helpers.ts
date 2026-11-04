@@ -15,9 +15,10 @@
  * drift, not a merge candidate: unifying it silently would change parsing.
  * Dialect-specific helpers stay in their own `grammar.ts`.
  */
-import { keyword, NULL_NODE, pseudoHasInterp, selectorBranchCanonical, selectorBranchComponents, selectorBranchHasAmpersand, selectorBranchHasInterp, selectorCapture } from './nodes.js';
+import { any, keyword, NULL_NODE, pseudoHasInterp, selectorBranchCanonical, selectorBranchComponents, selectorBranchHasAmpersand, selectorBranchHasInterp, selectorCapture } from './nodes.js';
 import { NO_SPAN, sourceEndOf, sourceStartOf, withBodySpan } from './provenance.js';
 import type {
+  Any,
   ComplexSelector,
   ForBinding,
   Keyword,
@@ -105,6 +106,19 @@ export function semanticGapText(text: string): string {
     }
   }
   return out;
+}
+
+/**
+ * A `@charset` prelude (css-syntax-3 §3.2): its `charset` field, the quoted
+ * string as authored, which a dialect reduces to text or to a {@link Token}.
+ */
+export function charsetPreludeFrom(fields: Readonly<Record<string, unknown>> | undefined): Any {
+  const capture = fields?.charset;
+  const quoted = typeof capture === 'object' && capture !== null && 'value' in capture ? capture.value : undefined;
+  if (typeof quoted !== 'string' && !isToken(quoted)) {
+    throw new TypeError('A @charset prelude lost its string.');
+  }
+  return any(typeof quoted === 'string' ? quoted : quoted.value);
 }
 
 /**
