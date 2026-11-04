@@ -1,5 +1,5 @@
 {
-  "description": "check:guardrails assertion 8 (scripts/grammar-guardrails.mjs): grammar sites that predate the gate. A lookahead or attempt entry is one site, identified by rule, file and const, and `resolved` is a fingerprint of the site and every definition it reaches in the grammar it is written for, with comments and formatting ignored. Other entries match by rule, file and construct. `line` is refreshed by --prune-baselines. `undocumentedRules` lists, by file, the rules with no JSDoc block. A new site is never allowed. A site whose fingerprint moves fails until its `resolved` is updated and a `changed` note says why; the gate prints every note, and CI fails a pull request that adds a site or moves a fingerprint with no new note. A removed site must be removed here.",
+  "description": "check:guardrails assertion 8 (scripts/grammar-guardrails.mjs): grammar sites that predate the gate. A lookahead or attempt entry is one site, identified by rule, file and const, and `resolved` is a fingerprint of what the site reads, with comments, formatting and reducers ignored: every definition a not, peek or dispatch site reaches, and one level of definitions for an attempt. Other entries match by rule, file and construct. `line` is refreshed by --prune-baselines. `undocumentedRules` lists, by file, the rules with no JSDoc block. A new site is never allowed. A site whose fingerprint moves fails until its `resolved` is updated and a `changed` note says why; the gate prints every note, and CI fails a pull request that adds a site or moves a fingerprint with no new note. A removed site must be removed here.",
   "issue": "jesscss/jess#576",
   "entries": [
     {
@@ -197,12 +197,32 @@
       "issue": "jesscss/jess#576"
     },
     {
+      "rule": "lookahead",
+      "file": "packages/parser-shared/src/unknown-at-rule.ts",
+      "line": 43,
+      "const": "PreprocessorUnknownAtRulePreludeCapture",
+      "construct": "scanTo(choice(literal('$'), literal('{'), literal(';')), { skip: preprocessorSkip })",
+      "resolved": "7d2e28bbf87b14c6",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `scanTo(choice(literal('$'), literal('{'), literal(';')), { skip: preprocessorSkip })`",
+      "issue": "jesscss/jess#576"
+    },
+    {
       "rule": "dialect-prefix",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
       "line": 415,
       "const": "cssValueTrivia",
       "construct": "cssValueTrivia",
       "why": "rule name `cssValueTrivia`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 738,
+      "const": "unknownAtRulePrelude",
+      "construct": "scanTo(choice(literal('{'), literal(';')), { skip: unknownAtRuleSkip })",
+      "resolved": "b1a6e8a53b673fd8",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `scanTo(choice(literal('{'), literal(';')), { skip: unknownAtRuleSkip })`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -297,6 +317,16 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 3057,
+      "const": "ImportTailRaw",
+      "construct": "importTailText",
+      "resolved": "75d6403511149985",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/[^()[\\]\"'\\/; \\t\\n\\r\\f]+/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
       "line": 3544,
       "const": "queryComparedHead",
       "construct": "queryFeatureOpenerHead",
@@ -357,10 +387,20 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 4385,
+      "const": "EnclosedContent",
+      "construct": "EnclosedRaw",
+      "resolved": "b2f5b0be663dcbe7",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:\\\\[\\s\\S]|\\/(?!\\*)|[^\\\\/'\"()[\\]{}]+)+/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
       "line": 4634,
       "const": "styleQueryContents",
       "construct": "ifTestHead",
-      "resolved": "66b5c14a1b543f66",
+      "resolved": "6e859c48acbc4144",
       "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -370,7 +410,7 @@
       "line": 4756,
       "const": "supportsTestOperand",
       "construct": "ifTestHead",
-      "resolved": "66b5c14a1b543f66",
+      "resolved": "6e859c48acbc4144",
       "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -380,7 +420,7 @@
       "line": 4788,
       "const": "supportsTestContents",
       "construct": "ifTestHead",
-      "resolved": "66b5c14a1b543f66",
+      "resolved": "6e859c48acbc4144",
       "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -410,7 +450,7 @@
       "line": 1356,
       "const": "ExpressionLogical",
       "construct": "attempt(g.ExpressionAnd)",
-      "resolved": "3111522052f32e77",
+      "resolved": "c064c7f3a9b75054",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
       "issue": "jesscss/jess#576"
     },
@@ -420,8 +460,28 @@
       "line": 1357,
       "const": "ExpressionLogical",
       "construct": "attempt(g.ExpressionOr)",
-      "resolved": "9ce6a902741a26bf",
+      "resolved": "f1d6c19d15b71213",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 1888,
+      "const": "UrlInterpolatedValue",
+      "construct": "unquotedUrlText",
+      "resolved": "eb1ce83517079291",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\"'()\\\\$ \\t\\n\\r\\f\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\$(?!\\{)|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 1891,
+      "const": "UrlInterpolatedValue",
+      "construct": "unquotedUrlText",
+      "resolved": "eb1ce83517079291",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\"'()\\\\$ \\t\\n\\r\\f\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\$(?!\\{)|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -452,6 +512,36 @@
       "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
       "resolved": "2909708d7099a68a",
       "why": "`a computed callee(...)` is not a parseman combinator this scan can prove one token wide",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 2515,
+      "const": "SelectorCapture",
+      "construct": "InvalidSelectorCaptureArgument",
+      "resolved": "c3ef12e2440071cf",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `scanTo(literal(')'), { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets, balancedBraces] })`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 3345,
+      "const": "InterpolatedValue",
+      "construct": "interpolatedValueTail",
+      "resolved": "d2342dfb65f06e78",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/[-_a-zA-Z0-9\\u0080-\\uffff%]+/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "line": 3882,
+      "const": "DollarBraceValue",
+      "construct": "interpolatedValueTail",
+      "resolved": "d2342dfb65f06e78",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/[-_a-zA-Z0-9\\u0080-\\uffff%]+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -519,7 +609,7 @@
       "line": 6111,
       "const": "IfGuard",
       "construct": "attempt(g.IfGuardCompare)",
-      "resolved": "345b7794a40fc381",
+      "resolved": "dea95e65c8e837f0",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
       "issue": "jesscss/jess#576"
     },
@@ -618,10 +708,60 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 1279,
+      "const": "plainUrlArgument",
+      "construct": "field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))",
+      "resolved": "f5a6bf62178216ad",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 1297,
+      "const": "UrlInterpolation",
+      "construct": "staticUrlText",
+      "resolved": "f5a6bf62178216ad",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 1298,
+      "const": "UrlInterpolation",
+      "construct": "staticUrlText",
+      "resolved": "f5a6bf62178216ad",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 1355,
+      "const": "ImportTailParen",
+      "construct": "staticTailText",
+      "resolved": "1603088d4f4d4166",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/[^()\\[\\]{};@'\"]+/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 1360,
+      "const": "ImportTailText",
+      "construct": "staticTailText",
+      "resolved": "1603088d4f4d4166",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/[^()\\[\\]{};@'\"]+/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
       "line": 1682,
       "const": "inlineJavaScriptFollowingDeclaration",
       "construct": "peek(choice(literal('}'), sequence(choice(variableName, g.PunctuationMapKeyToken, sequence(choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPr…",
-      "resolved": "65b496704f7a4d93",
+      "resolved": "580232a8a375e1ea",
       "why": "`variableNameEscape` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -658,6 +798,16 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 2627,
+      "const": "valueRunEndAhead",
+      "construct": "nestedAtRuleValueStart",
+      "resolved": "605ee11c0115292a",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/@[^;{}()'\"]*\\{/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
       "line": 2630,
       "const": "combinator",
       "construct": "not(syntaxTypeOpen)",
@@ -671,7 +821,7 @@
       "line": 2646,
       "const": "valueTriviaBoundary",
       "construct": "not(valueRunEndAhead)",
-      "resolved": "dee82fb3296ac539",
+      "resolved": "bfe540cf522e14d9",
       "why": "`nestedAtRuleValueStart` — regex /@[^;{}()'\"]*\\{/: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -698,6 +848,26 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 3535,
+      "const": "MixinGuardOperand",
+      "construct": "mixinGuardDefaultOperand",
+      "resolved": "7a94e76a5bdd32bb",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/default[ \\t\\n\\r\\f]*\\([ \\t\\n\\r\\f]*\\)(?![-_a-zA-Z0-9\\u0080-\\uffff\\\\])/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 3576,
+      "const": "unparenthesizedMixinGuard",
+      "construct": "mixinGuardDefaultOperand",
+      "resolved": "7a94e76a5bdd32bb",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/default[ \\t\\n\\r\\f]*\\([ \\t\\n\\r\\f]*\\)(?![-_a-zA-Z0-9\\u0080-\\uffff\\\\])/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
       "line": 3705,
       "const": "rulesetNotDeclaration",
       "construct": "not(regex(/[-\\w]+[ \\t]*:[ \\t\\n\\r\\f]/))",
@@ -711,8 +881,28 @@
       "line": 3833,
       "const": "CallArgumentValue",
       "construct": "attempt(g.FlatMixinCall)",
-      "resolved": "78608c748df024a6",
+      "resolved": "6ee21eb8f22909ca",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 3961,
+      "const": "enclosedRaw",
+      "construct": "enclosedText",
+      "resolved": "eba1639a35c64cde",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:\\\\[\\s\\S]|\\/(?![*/])|@(?!\\{)|[^\\\\/'\"@()[\\]{}]+)+/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 3983,
+      "const": "enclosedContentItems",
+      "construct": "enclosedRaw",
+      "resolved": "eba1639a35c64cde",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:\\\\[\\s\\S]|\\/(?![*/])|@(?!\\{)|[^\\\\/'\"@()[\\]{}]+)+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -721,7 +911,7 @@
       "line": 4257,
       "const": "MediaTypeTerm",
       "construct": "attempt(g.MixinReferenceChain)",
-      "resolved": "fc7928dc66224625",
+      "resolved": "33cd9d2e2b6c1582",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
       "issue": "jesscss/jess#576"
     },
@@ -759,7 +949,7 @@
       "line": 4767,
       "const": "genericAtRuleBlockTail",
       "construct": "attempt(sequence(// The typed header first; interpolation and parenthesized forms fall to // the byte prelude in the arm below. attempt(g.AtRulePreludeValue), …",
-      "resolved": "38a34bbba00d11ee",
+      "resolved": "b5726cdd5a66fa90",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
       "issue": "jesscss/jess#576"
     },
@@ -769,7 +959,7 @@
       "line": 4770,
       "const": "genericAtRuleBlockTail",
       "construct": "attempt(g.AtRulePreludeValue)",
-      "resolved": "4b020452d7e66d72",
+      "resolved": "e0abc396ddbe685d",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
       "issue": "jesscss/jess#576"
     },
@@ -779,8 +969,18 @@
       "line": 4967,
       "const": "AtRuleStatement",
       "construct": "attempt(sequence(g.AtRulePreludeValue, literal(';')))",
-      "resolved": "f0018f3021ae6e7c",
+      "resolved": "8061cb32f134b20e",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 5182,
+      "const": "capturedArgument",
+      "construct": "InvalidSelectorCaptureArgument",
+      "resolved": "d657980a0c4f8283",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `scanTo(literal(')'), { skip: [captureParens, captureBrackets, unknownAtRuleBrace] })`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -839,7 +1039,7 @@
       "line": 5817,
       "const": "RulesetWithExtends",
       "construct": "attempt(selectorListWithExtends, { contain: true })",
-      "resolved": "8e6471ecd682a9e4",
+      "resolved": "6fdfb1e5636c6cf1",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
       "issue": "jesscss/jess#576"
     },
@@ -849,7 +1049,7 @@
       "line": 5846,
       "const": "NestedRulesetWithExtends",
       "construct": "attempt(relativeSelectorListWithExtends, { contain: true })",
-      "resolved": "d011887d50e7599a",
+      "resolved": "156835c69d5fc606",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
       "issue": "jesscss/jess#576"
     },
@@ -859,7 +1059,7 @@
       "line": 5914,
       "const": "MixinStatementTail",
       "construct": "attempt(MixinDefinitionContinuation)",
-      "resolved": "16aeeec890fb7e00",
+      "resolved": "616526270a2683a7",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
       "issue": "jesscss/jess#576"
     },
@@ -902,6 +1102,36 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 791,
+      "const": "InterpolatedUrlValue",
+      "construct": "plainUrlChunk",
+      "resolved": "1946784dcfa864dc",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 794,
+      "const": "InterpolatedUrlValue",
+      "construct": "plainUrlChunk",
+      "resolved": "1946784dcfa864dc",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 1062,
+      "const": "UrlFunction",
+      "construct": "choice(g.Quoted, g.InterpolatedUrlValue, plainUrlChunk)",
+      "resolved": "1946784dcfa864dc",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
       "line": 1476,
       "const": "MathUnary",
       "construct": "regex(/-(?=[ \\t\\n\\r\\f]*[\\$(])/)",
@@ -935,7 +1165,7 @@
       "line": 1918,
       "const": "VariableDeclaration",
       "construct": "not(reservedVarHead)",
-      "resolved": "e7dcf31b625a9a1c",
+      "resolved": "749e090a313564ac",
       "why": "`reservedVarHead` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -945,8 +1175,18 @@
       "line": 2258,
       "const": "directNestedPropertyAhead",
       "construct": "not(regex(/[^{};]*[;}]/))",
-      "resolved": "f9a7bcd5445124fa",
+      "resolved": "33a85b020e687478",
       "why": "regex /[^{};]*[;}]/: its pattern spans more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "line": 2360,
+      "const": "ImportUrl",
+      "construct": "choice(g.Quoted, plainUrlChunk)",
+      "resolved": "1946784dcfa864dc",
+      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -955,7 +1195,7 @@
       "line": 2543,
       "const": "ImportTail",
       "construct": "not(importSupportsOpen)",
-      "resolved": "672ad631ac13d69d",
+      "resolved": "ad61acc0c2035c5d",
       "why": "`importSupportsOpen` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -965,7 +1205,7 @@
       "line": 2543,
       "const": "ImportTail",
       "construct": "not(importLayerOpen)",
-      "resolved": "6b2bc12bedf398d7",
+      "resolved": "58e2cce2e5534ad2",
       "why": "`importLayerOpen` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -1022,7 +1262,7 @@
       "line": 4948,
       "const": "NthPseudo",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
-      "resolved": "c11f27c0b420c0d0",
+      "resolved": "5a6df5fb2151b5c2",
       "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -1032,7 +1272,7 @@
       "line": 4980,
       "const": "NthTypePseudo",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
-      "resolved": "c11f27c0b420c0d0",
+      "resolved": "5a6df5fb2151b5c2",
       "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -1042,7 +1282,7 @@
       "line": 4981,
       "const": "NthTypePseudo",
       "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
-      "resolved": "4b18674255362553",
+      "resolved": "8e5efcf3098b0cee",
       "why": "`nth` — regex /even|odd|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*\\d+)?|[-+]?\\d+/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },

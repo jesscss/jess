@@ -25,7 +25,7 @@ const scan = (source, base = new Map()) => scanGrammarSource(ts, FILE, source, b
 const rulesOf = (source, base) => scan(source, base).map(h => `${h.rule}:${h.const}`);
 
 const CLEAN = String.raw`
-import { attempt, choice, classifiedTrivia, dispatch, keywords, literal, makeWord, many, node, noTrivia, not, optional, parser, peek, regex, rules, sequence, token, word, composeLeaf } from 'parseman' with { type: 'macro' };
+import { attempt, choice, classifiedTrivia, dispatch, keywords, literal, makeWord, many, node, noTrivia, not, optional, parser, peek, regex, rules, scanTo, sequence, token, word, composeLeaf } from 'parseman' with { type: 'macro' };
 const trivia = classifiedTrivia({ whitespace: regex(/[ \t\n\r\f]+/), comment: regex(/\/\*(?:[^*]|\*(?!\/))*\*\//) });
 const identWord = makeWord({ boundary: '-_a-zA-Z0-9' });
 const identifier = regex(/-?(?:[_a-zA-Z\u0080-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
@@ -133,6 +133,23 @@ test('regexWidth: tokens glued in one regex are counted; a real single token pas
     assert.equal(regexWidth(pattern).width, 1, pattern);
   }
   assert.equal(regexWidth(String.raw`/\/\*[^*]*\*\//`).width, 0);
+});
+
+test('lookahead: a consuming arm that starts by scanning past one token is caught, in each form', () => {
+  const WIDE = String.raw`regex(/[-\w]+[ \t]*:/)`;
+  const caught = body => assert.deepEqual(scan(planted(body)).filter(h => h.const === 'probe').map(h => h.rule), ['lookahead'], body);
+  caught(`const probe = choice(sequence(${WIDE}, literal('x')), literal('y'));`);
+  caught(`const probe = optional(sequence(${WIDE}, literal('x')));`);
+  caught(`const probe = choice(sequence(scanTo(literal(':')), literal(':')), literal('y'));`);
+  caught(`const wide = ${WIDE};\nconst probe = choice(sequence(wide, literal('x')), literal('y'));`);
+  caught(`const probe = choice({ gate: s => s, combinator: sequence(${WIDE}, literal('x')) }, literal('y'));`);
+  caught(`const probe = choice(sequence(optional(trivia), ${WIDE}), literal('y'));`);
+  const passes = body => assert.deepEqual(scan(planted(body)).filter(h => h.rule === 'lookahead'), [], body);
+  passes(`const probe = choice(sequence(literal('a'), literal('x')), literal('y'));`);
+  passes(String.raw`const probe = choice(sequence(regex(/[-\w]+/), literal('x')), literal('y'));`);
+  passes(`const probe = choice(literal('y'), ${WIDE});`);
+  passes(`const probe = choice(sequence(literal('a'), ${WIDE}), literal('y'));`);
+  passes(`const probe = choice(sequence(g.Declaration, ${WIDE}), literal('y'));`);
 });
 
 test('literal, keywords and word: text with more than one token in it is not one token', () => {
@@ -381,11 +398,11 @@ test('coverage: every source extension is scanned; a combinator imported elsewhe
 });
 
 test('fingerprint: any change to what a site reads moves it, past any clip; a comment or formatting does not', () => {
-  const site = (regexSource, comment = '') => `${CLEAN}\nconst wide = regex(${regexSource});${comment}\nconst probe = not(choice(literal('a'), wide));\n`;
+  const site = (regexSource, comment = '') => `${CLEAN}\nconst wide = regex(${comment}${regexSource});\nconst probe = not(choice(literal('a'), wide));\n`;
   const fingerprint = source => scan(source).find(h => h.const === 'probe').resolved;
   const base = fingerprint(site(String.raw`/[-\w]+[ \t]*:/`));
   assert.notEqual(fingerprint(site(String.raw`/[^;{}]*[;{]/`)), base);
-  assert.equal(fingerprint(site(String.raw`/[-\w]+[ \t]*:/`, ' /* why */ // and why')), base);
+  assert.equal(fingerprint(site(String.raw`/[-\w]+[ \t]*:/`, '/* why */\n  // and why\n  ')), base);
   const long = 'x'.repeat(400);
   const clipped = end => fingerprint(`${CLEAN}\nconst probe = not(regex(/${long} ${end}/));\n`);
   assert.notEqual(clipped('a'), clipped('b'));
@@ -398,13 +415,34 @@ test('fingerprint: attempt, a consuming regex and a dispatch selector carry one'
   assert.match(hit(String.raw`const probe = dispatch(regex(/[-\w]+[ \t]*:/), a);`).resolved, /^[0-9a-f]{16}$/);
 });
 
-test('fingerprint: it reads the grammar the site is written for, not every dialect', () => {
+test('fingerprint: an inline reducer does not move it; what the rule matches does', () => {
+  const site = (reducer, text = 'b') => `${CLEAN}\nconst inner = node('X', sequence(literal('a'), literal('${text}')), ${reducer});\nconst probe = not(inner);\n`;
+  const hash = source => scan(source).find(h => h.const === 'probe').resolved;
+  assert.equal(hash(site('c => c[0]')), hash(site('c => c[1]')));
+  assert.equal(hash(site('function (c) { return c[0]; }')), hash(site('(c) => c.length')));
+  assert.notEqual(hash(site('c => c[0]')), hash(site('c => c[0]', 'z')));
+});
+
+test('fingerprint: an attempt reads its own expression and one level of definitions; a not or peek reads them all', () => {
+  const site = (top, middle, deep) => `${CLEAN}\nconst deep = literal('${deep}');\nconst middle = sequence(literal('${middle}'), deep);\nconst probe = ${top}(sequence(literal('a'), middle));\n`;
+  const hash = source => scan(source).find(h => h.const === 'probe').resolved;
+  for (const [top, deepMoves] of [['attempt', false], ['not', true], ['peek', true]]) {
+    assert.notEqual(hash(site(top, 'm', 'd')), hash(site(top, 'x', 'd')), `${top} direct body`);
+    assert.equal(hash(site(top, 'm', 'd')) !== hash(site(top, 'm', 'x')), deepMoves, `${top} deep`);
+  }
+});
+
+test('fingerprint: a site in the CSS grammar or parser-shared reads every dialect; other sites read the grammar they compose', () => {
   const definitions = (file, text) => grammarDefinitions(ts, file, `import { literal } from 'parseman'; const map = { Thing: literal('${text}') };`);
-  const hash = base => scan(planted(`const probe = not(sequence(g.Thing, literal('z')));`), base).find(h => h.const === 'probe').resolved;
   const LESS = 'packages/syntax/less/less-parser/src/grammar.ts';
+  const CSS = 'packages/syntax/css/css-parser/src/grammar.ts';
   const SHARED = 'packages/parser-shared/src/recognition.ts';
-  assert.equal(hash(definitions(LESS, 'a')), hash(definitions(LESS, 'b')));
-  assert.notEqual(hash(definitions(SHARED, 'a')), hash(definitions(SHARED, 'b')));
+  const source = planted(`const probe = not(sequence(g.Thing, literal('z')));`);
+  const hash = (file, base) => scanGrammarSource(ts, file, source, base).find(h => h.const === 'probe').resolved;
+  assert.notEqual(hash(CSS, definitions(LESS, 'a')), hash(CSS, definitions(LESS, 'b')));
+  assert.notEqual(hash(SHARED, definitions(LESS, 'a')), hash(SHARED, definitions(LESS, 'b')));
+  assert.equal(hash(FILE, definitions(LESS, 'a')), hash(FILE, definitions(LESS, 'b')));
+  assert.notEqual(hash(FILE, definitions(SHARED, 'a')), hash(FILE, definitions(SHARED, 'b')));
 });
 
 test('ratchet: a site whose fingerprint moved is changed, not fresh; a new site at another const is fresh', () => {
@@ -602,6 +640,10 @@ const plantedCliProbe = not(regex(${regexSource}));
       assert.match(noted.out, new RegExp(NOTE));
 
       addCommit('base with the note');
+      const carried = gate('--shrink-against=HEAD');
+      assert.equal(carried.status, 0, carried.out);
+      assert.doesNotMatch(carried.out, new RegExp(NOTE), 'a note the base already has is not news');
+      assert.match(gate().out, new RegExp(NOTE), 'with no base, every note prints');
       setSite(String.raw`/[-\w]+[ \t]*:[ \t]+y/`);
       saveEntry({ changed: NOTE });
       fails('a note copied from the base', /no new `changed` note/, '--shrink-against=HEAD');

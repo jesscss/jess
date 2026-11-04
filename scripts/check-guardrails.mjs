@@ -1189,6 +1189,8 @@ if (strayGrammars.length > 0) {
  * baseline in the same commit, so on its own it cannot see a baseline entry
  * added along with the violation. Needs git and the JSON only.
  */
+let baseNotes;
+const noteKey = e => `${e.file}\u0000${e.const}\u0000${e.changed}`;
 const shrinkAgainst = process.argv.find(a => a.startsWith('--shrink-against='))?.slice('--shrink-against='.length);
 if (shrinkAgainst) {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -1210,6 +1212,7 @@ if (shrinkAgainst) {
         const base = JSON.parse(git('show', `${baseCommit}:${GRAMMAR_BASELINE}`));
         const current = JSON.parse(readFileSync(join(root, GRAMMAR_BASELINE), 'utf8'));
         const { added, unexplained } = compareBaselineToBase(base, current);
+        baseNotes = new Set((base.entries ?? []).filter(e => e.changed).map(noteKey));
         if (added.length > 0) {
           failures.push(
             [
@@ -1269,6 +1272,7 @@ const lessPlantedNameProbe = literal('x');
 const plantedCodegenProbe = new Function('return 1');
 const plantedAttemptProbe = attempt(literal('z'));
 const plantedRegexProbe = regex(/[-\\w]+(?=[ \\t]*:)/);
+const plantedArmProbe = choice(sequence(regex(/[-\\w]+[ \\t]*:/), literal('x')), literal('y'));
 const plantedAliasProbe = not;
 const PlantedRuleProbe = literal('y');
 `);
@@ -1276,6 +1280,7 @@ const PlantedRuleProbe = literal('y');
     const expected = {
       plantedLookaheadProbe: 'lookahead',
       plantedRegexProbe: 'lookahead',
+      plantedArmProbe: 'lookahead',
       lessPlantedNameProbe: 'dialect-prefix',
       plantedCodegenProbe: 'runtime-codegen',
       plantedAttemptProbe: 'attempt',
@@ -1339,7 +1344,9 @@ const PlantedRuleProbe = literal('y');
       ].join('\n')
     );
   }
-  const notes = baseline.entries.filter(e => e.changed);
+
+  /* Against a base, a note is news only if this change wrote it. */
+  const notes = baseline.entries.filter(e => e.changed && !baseNotes?.has(noteKey(e)));
   if (notes.length > 0 && !listGrammar) {
     console.log(`Baselined grammar sites changed on purpose (${notes.length}):`);
     for (const e of notes) {

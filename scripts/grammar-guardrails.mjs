@@ -12,8 +12,10 @@
  *                   repetition or a production that spans more than one token is
  *                   a pre-scan: a workaround for a missing parseman capability.
  *                   So is a lookaround past one token inside a consuming
- *                   `regex()`, a `regex()` whose pattern is not a literal, and a
- *                   `dispatch` selector wider than one token.
+ *                   `regex()`, a `regex()` whose pattern is not a literal, a
+ *                   `dispatch` selector wider than one token, and a non-last
+ *                   `choice` arm or an `optional` that starts with a wide regex
+ *                   or a `scanTo`.
  *   dialect-prefix  A rule name carries no dialect name (`css…`, `LESS…`,
  *                   `DeclarationScss`, …) and no `Ast`/`Cst`. Exported whole
  *                   grammars (`rules`/`compose`/`composeLeaf` results) are not
@@ -63,12 +65,12 @@
  * glued `(` or `%`. It cannot narrow a HARD width: whitespace between tokens, a
  * scan, or a lookaround past the token are never one token, whatever wraps them.
  *
- * WHAT THIS SCAN DOES NOT SEE. A consuming `choice` arm or `optional` that fails
- * after several tokens and rewinds is backtracking too, and so is `scanTo` in a
- * consuming arm: parseman's backtrack probe measures those (parseman#246). A
- * hand-written `{ parse() }` object and a reducer that reads the input are not
- * combinators, so only a `not`/`peek` directly over one is caught. Regex width
- * counts lexical shapes, not meaning: `=foo` reads as one token.
+ * WHAT THIS SCAN DOES NOT SEE. A consuming `choice` arm or `optional` that starts
+ * with a rule reference and fails several tokens in is backtracking too: parseman's
+ * backtrack probe measures that (parseman#246). A hand-written `{ parse() }` object
+ * and a reducer that reads the input are not combinators, so only a `not`/`peek`
+ * directly over one is caught; `verify:parser-runtime-boundary` covers both in CI.
+ * Regex width counts lexical shapes, not meaning: `=` then a name reads as one token.
  */
 
 import { createHash } from 'node:crypto';
@@ -119,7 +121,8 @@ export const RULE_MESSAGES = {
     '  Parseman never backtracks, re-parses or pre-scans: a grammar decides on the CURRENT',
     '  token. `not(...)` / `peek(...)` over a regex, a multi-token sequence, a repetition or',
     '  a whole production looks past it, and so does a lookaround past one token inside a',
-    '  `regex()`. That is a MISSING PARSEMAN CAPABILITY, not a grammar problem: file a',
+    '  `regex()`, and so does a `choice` arm or `optional` that starts by scanning and then',
+    '  rewinds. That is a MISSING PARSEMAN CAPABILITY, not a grammar problem: file a',
     '  parseman issue (github.com/matthew-dean/parseman) describing the decision the',
     '  grammar cannot make on one token, and do NOT land a grammar workaround. One-token',
     '  lookahead (`not(literal(\'{\'))`, `peek(keywords([...]))`) stays allowed.',
@@ -944,23 +947,38 @@ function createWidth(ts, defs, baseDefs) {
   const composedDefinitions = name => defs.get(name) ?? baseDefs.get(name)?.filter(init => GRAMMAR_BASE.test(init.getSourceFile().fileName));
 
   /*
-   * What a baselined site means: its own text and every definition reachable from
-   * it in the grammar it is written for, comments and formatting stripped, reducers
-   * skipped. Any change to what it reads changes the fingerprint; a comment does not.
+   * What a baselined site means: its own text and the definitions reachable from
+   * it, with comments, formatting and reducers stripped. Any change to what it reads
+   * changes the fingerprint; a comment or a reducer does not. In the CSS grammar or
+   * parser-shared, `g.X` reads every dialect's definition, since a dialect composed
+   * over it can override X and the site then runs that. Elsewhere a site reads the
+   * grammar it is written for.
+   *
+   * `shallow` stops one level down, for `attempt`: its target usually reaches much
+   * of a grammar, so a full closure would move on most edits, and a real widening
+   * would hide among routine notes.
    */
   const printer = ts.createPrinter({ removeComments: true });
-  const print = node => printer.printNode(ts.EmitHint.Unspecified, node, node.getSourceFile());
-  function fingerprint(site) {
+  const stripReducers = node => ts.transform(node, [(ctx) => {
+    const visitor = n => (ts.isFunctionLike(n) ? ts.factory.createIdentifier('reducer') : ts.visitEachChild(n, visitor, ctx));
+    return root => ts.visitNode(root, visitor);
+  }]).transformed[0];
+  const print = node => printer.printNode(ts.EmitHint.Unspecified, stripReducers(node), node.getSourceFile());
+  function fingerprint(site, { shallow = false } = {}) {
+    const readsEveryDialect = GRAMMAR_BASE.test(site.getSourceFile().fileName);
     const seen = new Map();
     const visit = (node) => {
       if (ts.isFunctionLike(node)) {
         return;
       }
       if (ts.isIdentifier(node) && !(ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node)) {
-        const inits = composedDefinitions(node.text);
+        const isMember = ts.isPropertyAccessExpression(node.parent) && node.parent.name === node;
+        const inits = isMember && readsEveryDialect ? memberDefinitions(node.text) : composedDefinitions(node.text);
         if (inits?.length && !seen.has(node.text)) {
           seen.set(node.text, inits.map(print).sort().join('|'));
-          inits.forEach(visit);
+          if (!shallow) {
+            inits.forEach(visit);
+          }
         }
       }
       ts.forEachChild(node, visit);
@@ -1032,7 +1050,7 @@ function hasJsdoc(ts, node, text) {
  * Scan one parser source file. Returns hits shaped
  * `{ rule, file, line, const, construct, why, resolved? }`. `construct` is the
  * clipped, whitespace-collapsed source text, for people. `resolved`, on a
- * lookahead or `attempt`, is a fingerprint of the site and everything it reads.
+ * lookahead or `attempt`, is a fingerprint of the site and what it reads.
  */
 export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
   const sourceFile = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, scriptKind(ts, rel));
@@ -1086,6 +1104,65 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
   };
   const importRule = (node, why) => hit('parseman-import', node, why);
 
+  /*
+   * The wide regex or `scanTo` a consuming arm starts with, read through bare consts
+   * and wrappers. A `g.Rule` is not followed: where a rule fails is not a pre-scan
+   * this can see. A regex with a wide lookaround is already reported as itself.
+   */
+  const leadingScan = (arm, depth = 0) => {
+    const n = arm && unwrap(ts, arm);
+    if (!n || depth > 6) {
+      return null;
+    }
+    const firstOf = list => list.map(a => leadingScan(a, depth + 1)).find(Boolean) ?? null;
+    if (ts.isIdentifier(n)) {
+      return isParameter(ts, n) ? null : firstOf(defs.get(n.text) ?? baseDefs.get(n.text) ?? []);
+    }
+    if (ts.isObjectLiteralExpression(n)) {
+      return firstOf(n.properties.filter(p => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'combinator').map(p => p.initializer));
+    }
+    if (!ts.isCallExpression(n)) {
+      return null;
+    }
+    const name = calleeName(ts, n);
+    const args = [...n.arguments];
+    if (name === 'scanTo') {
+      return n;
+    }
+    if (name === 'regex') {
+      const pattern = args[0] && unwrap(ts, args[0]);
+      const w = pattern && ts.isRegularExpressionLiteral(pattern) ? regexWidth(pattern.text) : undefined;
+      return w?.width === MANY && w.lookarounds.length === 0 ? n : null;
+    }
+    if (name === 'sequence') {
+      for (const arg of args) {
+        const lead = leadingScan(arg, depth + 1);
+        if (lead || width(arg).width !== 0) {
+          return lead;
+        }
+      }
+      return null;
+    }
+    if (name === 'choice') {
+      return firstOf(args);
+    }
+    return TRANSPARENT.has(name) || REPEATS.has(name) || name === 'token'
+      ? firstOf(args.filter(a => !ts.isStringLiteralLike(a) && !ts.isFunctionLike(a)).slice(0, 1))
+      : null;
+  };
+  const checkConsumingArms = (node, name) => {
+    if ((name !== 'choice' && name !== 'optional') || insideLookahead(node)) {
+      return;
+    }
+    const arms = name === 'optional' ? node.arguments.slice(0, 1) : node.arguments.slice(0, -1);
+    for (const arm of arms) {
+      const lead = leadingScan(arm);
+      if (lead) {
+        hit('lookahead', arm, `this arm starts by scanning past one token, then rewinds if it fails: \`${clip(collapse(lead.getText(lead.getSourceFile())))}\``, { resolved: fingerprint(lead) });
+      }
+    }
+  };
+
   const visitImport = (node) => {
     const clause = node.importClause;
     const module = node.moduleSpecifier.text;
@@ -1123,13 +1200,14 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
 
   const visitCall = (node) => {
     const name = calleeName(ts, node);
+    checkConsumingArms(node, name);
     if (ZERO_WIDTH.has(name) && node.arguments.length > 0) {
       const w = width(node.arguments[0]);
       if (w.width === MANY) {
         siteHit('lookahead', node, w.why);
       }
     } else if (name === 'attempt') {
-      siteHit('attempt', node, 'attempt() tries a parse and rolls it back on failure: backtracking');
+      hit('attempt', node, 'attempt() tries a parse and rolls it back on failure: backtracking', { resolved: fingerprint(node, { shallow: true }) });
     } else if (name === 'dispatch' && node.arguments[0]) {
       /* A selector is `token()` around a name built from pieces: parseman reads it as one token. */
       const w = width(node.arguments[0]);
