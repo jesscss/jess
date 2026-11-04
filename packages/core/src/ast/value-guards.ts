@@ -13,6 +13,7 @@ import {
   type ValueGroup,
   type Value
 } from './value-eval.js';
+import { DimensionValueNode } from './node-ctors.js';
 import { unify, unitMultisetKey } from './value-units.js';
 import { namedColor } from './color-names.js';
 import type { UnitMode } from '../types/modes.js';
@@ -252,7 +253,7 @@ const noGround = (): Compared => NO_GROUND;
  * {@link dimensionCompare} and inherits its unit rules unchanged — `null = 0` is
  * true, and `null = 0px` answers whatever `1 = 1px` answers.
  */
-const NULL_AS_ZERO: Dimension = { type: 'Dimension', number: 0, unit: '', bytes: '0' };
+const NULL_AS_ZERO: Dimension = new DimensionValueNode(0, '', '0');
 
 /**
  * §4.1's `null` row, taken by the PAIR before any typed dispatch.

@@ -2,7 +2,7 @@
  * The `.scss` sum reducer: a `+` chain with a string literal is the
  * interpolated string it builds (ledger V36, owner 2026-10-23).
  */
-import { appendInterpolationLiteral, authoredSource, expression, interpolation, isToken, isMathOperator, isValueSlotArray, quoted } from '@jesscss/core/ast';
+import { appendInterpolationLiteral, authoredSource, expression, interpolation, leadQuotingInterpolation, isToken, isMathOperator, isValueSlotArray, quoted } from '@jesscss/core/ast';
 import type { AstSourceSpan, Interpolation, ValueNode } from '@jesscss/core/ast';
 import { isInCalculation, isScssValue, scssFoldOperation } from './grammar-helpers.js';
 
@@ -67,7 +67,7 @@ export function scssSum(children: readonly unknown[], span: AstSourceSpan, state
       }
     }
   }
-  const template = interpolation(parts);
   const leadQuoting = first === 1 && lead.type !== 'Keyword' && lead.type !== 'Interpolation' && lead.type !== 'Dimension' && lead.type !== 'Color' && lead.type !== 'Null';
-  return quoted(authoredSource(span, state, 'An SCSS string built with +'), texts.join(''), head.quote, unquoted, leadQuoting ? { ...template, leadQuoting: true } : template);
+  const template = leadQuoting ? leadQuotingInterpolation(parts) : interpolation(parts);
+  return quoted(authoredSource(span, state, 'An SCSS string built with +'), texts.join(''), head.quote, unquoted, template);
 }

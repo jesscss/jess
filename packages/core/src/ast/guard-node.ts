@@ -1,9 +1,11 @@
 /*
- * The guard condition node and its one constructor, with no runtime import, so the
- * parsers that build guards through `@jesscss/core/ast` do not load the guard
+ * The guard condition node and its factories. It imports only the node constructors,
+ * so the parsers that build guards through `@jesscss/core/ast` do not load the guard
  * evaluator (`guard.ts`) and its value domain.
  */
+import { GuardCallNode, GuardCompareNode, GuardDefaultNode, GuardLogicalNode, GuardNotNode, GuardValueNode } from './node-ctors.js';
 import type { FunctionCall, ValueSlot } from './nodes.js';
+import { NO_SPAN } from './provenance.js';
 
 /**
  * A guard condition tree, evaluated to a boolean; one that nothing consumes is
@@ -59,8 +61,44 @@ export type GuardNode =
   | { readonly g: 'call'; readonly name: string; readonly args: ValueSlot[]; readonly parens: number }
   | { readonly g: 'default'; readonly parens: number };
 
+/*
+ * Every guard is built here, through its shape's constructor (V8 invariant 12): a literal or
+ * a spread of a guard would give its kind a second hidden class.
+ */
+export const guardCompare = <G extends 'cmp' | 'match'>(g: G, op: string, left: ValueSlot, right: ValueSlot, implied = false): Extract<GuardNode, { readonly g: G }> =>
+  new GuardCompareNode(g, op, left, right, implied, 0);
+export const guardLogical = <G extends 'and' | 'or'>(g: G, left: GuardNode, right: GuardNode, word: string, gluedAt = NO_SPAN): Extract<GuardNode, { readonly g: G }> =>
+  new GuardLogicalNode(g, left, right, word, gluedAt, 0);
+export const guardNot = (inner: GuardNode, word: string, gluedAt = NO_SPAN, parens = 0): GuardNode =>
+  new GuardNotNode(inner, word, gluedAt, parens);
+export const guardValue = <G extends 'truth' | 'css'>(g: G, value: ValueSlot, parens = 0): Extract<GuardNode, { readonly g: G }> =>
+  new GuardValueNode(g, value, parens);
+export const guardCall = (name: string, args: ValueSlot[], parens = 0): GuardNode => new GuardCallNode(name, args, parens);
+export const guardDefault = (parens = 0): GuardNode => new GuardDefaultNode(parens);
+
+/** `guard` with `parens` paren groups around it, through its constructor. */
+export function withParens(guard: GuardNode, parens: number): GuardNode {
+  switch (guard.g) {
+    case 'cmp':
+    case 'match':
+      return new GuardCompareNode(guard.g, guard.op, guard.left, guard.right, guard.implied, parens);
+    case 'and':
+    case 'or':
+      return new GuardLogicalNode(guard.g, guard.left, guard.right, guard.word, guard.gluedAt, parens);
+    case 'not':
+      return new GuardNotNode(guard.inner, guard.word, guard.gluedAt, parens);
+    case 'truth':
+    case 'css':
+      return new GuardValueNode(guard.g, guard.value, parens);
+    case 'call':
+      return new GuardCallNode(guard.name, guard.args, parens);
+    case 'default':
+      return new GuardDefaultNode(parens);
+  }
+}
+
 /** `guard` inside one more paren group the author wrote around it (same shape, so the same hidden class). */
-export const inParens = (guard: GuardNode): GuardNode => ({ ...guard, parens: guard.parens + 1 });
+export const inParens = (guard: GuardNode): GuardNode => withParens(guard, guard.parens + 1);
 
 /** Whether a guard tree is CSS `if()` tests alone, joined by `and`, `or` and `not`: nothing in it is decided at compile time. */
 export function onlyCssTests(node: GuardNode): boolean {

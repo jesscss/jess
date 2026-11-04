@@ -170,6 +170,6 @@ export { componentRun } from './ast/component-run.js';
 export { parenGroupContent } from './ast/paren-group.js';
 export { queryFeatureNameFrom, queryFeatureNameValue } from './ast/query-feature-name.js';
 export type { GuardNode } from './ast/guard-node.js';
-export { hasCssTest, inParens, isIfTestCall } from './ast/guard-node.js';
+export { guardCall, guardCompare, guardDefault, guardLogical, guardNot, guardValue, hasCssTest, inParens, isIfTestCall, withParens } from './ast/guard-node.js';
 export type { CallArg } from './ast/mixin-dispatch.js';
 export type { BareVariableRejection, NthArgument } from './ast/css-grammar-helpers.js';
