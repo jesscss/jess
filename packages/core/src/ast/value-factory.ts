@@ -13,11 +13,19 @@ import { colorRgb, colorSourceRgb, hslToRgb, rgbToHsl, serializeColor } from './
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 import {
   AnyValueNode, BlockValueNode, BoolValueNode, CollectionValueNode, ColorValueNode, CompoundDimensionValueNode, DimensionValueNode,
-  HslColorValueNode, KeywordValueNode, ListValueNode, NullValueNode, QuotedValueNode, UrlValueNode, copyNode, withFields
+  HslColorValueNode, KeywordValueNode, ListValueNode, NullValueNode, QuotedValueNode, UrlValueNode, copyNode as copyNodeOf, withFields as withFieldsOf
 } from './node-ctors.js';
 
-/** `{ ...value, ...patch }` that keeps the value's constructor-built class (V8 invariant 12). */
-export { withFields };
+/*
+ * Typed here, not re-exported, because `node-ctors.d.ts` is source-only: an
+ * `export … from './node-ctors.js'` would leave the published declarations
+ * pointing at a file the package does not ship.
+ */
+/** A copy of a node rebuilt through its shape's constructor: `{ ...node }` without a literal's class (V8 invariant 12). */
+export const copyNode: <T extends { readonly type: string }>(node: T) => T = copyNodeOf;
+
+/** `{ ...node, ...patch }` that keeps the node's constructor-built class (V8 invariant 12). */
+export const withFields: <T extends { readonly type: string }>(node: T, patch: { readonly [K in keyof T]?: T[K] }) => T = withFieldsOf;
 
 /** A writable view of a value object, so a constructor can stamp `bytes` in place. */
 type Mutable<T> = { -readonly [P in keyof T]: T[P] };

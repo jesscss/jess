@@ -30,7 +30,7 @@ import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
 import type { ForgivenSelectorItem } from './forgiving-selector.js';
 import { NO_SPAN, isAuthoredGroupExpression, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
-export { copyNode, withFields } from './node-ctors.js';
+export { copyNode, withFields } from './value-factory.js';
 
 /* ------------------------------------------------------------------ values */
 
