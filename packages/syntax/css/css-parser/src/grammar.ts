@@ -121,6 +121,7 @@ type GrammarRuleName =
   | 'AttributeNamespace'
   | 'AttributeOperator'
   | 'AttributeSelector'
+  | 'AttributeValue'
   | 'BasicSelector'
   | 'BlockCommentToken'
   | 'CalcCall'
@@ -1138,6 +1139,18 @@ const cssFactory = (g: GrammarSelf) => {
     )),
     children => simpleSelector(children.map(tokenText).join(''))
   );
+
+  /*
+   * The value an attribute selector compares against: a `<string-token>` or
+   * an `<ident-token>` (selectors-4 §6). A slot, so a dialect whose strings
+   * differ in this position overrides the value alone, not the selector:
+   * `.jess` reads a string that does not interpolate here, where its `Quoted`
+   * does.
+   */
+  const AttributeValue = choice(
+    g.Quoted,
+    g.Identifier
+  );
   const AttributeSelector = node(
     'AttributeSelector',
     sequence(
@@ -1146,10 +1159,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.Identifier,
       optional(sequence(
         g.AttributeOperator,
-        choice(
-          g.Quoted,
-          g.Identifier
-        ),
+        g.AttributeValue,
         optional(g.AttributeModifier)
       )),
       literal(']')
@@ -5364,6 +5374,7 @@ const cssFactory = (g: GrammarSelf) => {
     BasicSelector,
     AttributeNamespace,
     NamespaceTypeSelector,
+    AttributeValue,
     AttributeSelector,
     PseudoSelector,
     RelativeSelector,
