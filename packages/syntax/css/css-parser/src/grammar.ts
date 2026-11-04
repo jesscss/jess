@@ -205,6 +205,7 @@ type GrammarRuleName =
   | 'EnclosedGroup'
   | 'EnclosedQuoted'
   | 'ImportStatement'
+  | 'ImportTarget'
   | 'ImportTail'
   | 'ImportTailBody'
   | 'ImportTailRaw'
@@ -3083,14 +3084,21 @@ const cssFactory = (g: GrammarSelf) => {
     )),
     children => any(sourceText(children[children.length - 1]!))
   );
+
+  /*
+   * What `@import` names: a `<string>` or a `<url>` (css-cascade-5 §2). A
+   * slot, so a dialect that widens the target or takes a list of them
+   * overrides it rather than restating `ImportStatement`.
+   */
+  const ImportTarget = choice(
+    g.Quoted,
+    g.ImportUrl
+  );
   const ImportStatement = node(
     'ImportStatement',
     sequence(
       importAtKeyword,
-      choice(
-        g.Quoted,
-        g.ImportUrl
-      ),
+      g.ImportTarget,
       optional(g.ImportTail),
       literal(';')
     ),
@@ -5441,6 +5449,7 @@ const cssFactory = (g: GrammarSelf) => {
     Important,
     Declaration,
     ImportStatement,
+    ImportTarget,
     ImportUrl,
     ImportUrlUnquoted,
     ImportTailRaw,
