@@ -150,6 +150,8 @@ test('lookahead: a consuming arm that starts by scanning past one token is caugh
   passes(`const probe = choice(literal('y'), ${WIDE});`);
   passes(`const probe = choice(sequence(literal('a'), ${WIDE}), literal('y'));`);
   passes(`const probe = choice(sequence(g.Declaration, ${WIDE}), literal('y'));`);
+  const base = grammarDefinitions(ts, 'base.ts', `import { regex } from 'parseman'; const map = { WideRule: ${WIDE} };`);
+  assert.deepEqual(scan(planted(`const probe = choice(sequence(g.WideRule, literal('x')), literal('y'));`), base).filter(h => h.rule === 'lookahead'), [], 'a rule reference stays with the backtrack probe');
 });
 
 test('literal, keywords and word: text with more than one token in it is not one token', () => {
@@ -603,6 +605,11 @@ const plantedCliFresh = not(regex(/[-\w]+[ \t]*:[ \t]/));
     scenario(['scripts/grammar-guardrails.mjs'], () => {
       writeFileSync(at('scripts/grammar-guardrails.mjs'), read('scripts/grammar-guardrails.mjs').replace(`new Set(['not', 'peek'])`, 'new Set()'));
       fails('blinded scanner', /self-test/);
+    });
+
+    scenario(['scripts/grammar-guardrails.mjs'], () => {
+      writeFileSync(at('scripts/grammar-guardrails.mjs'), read('scripts/grammar-guardrails.mjs').replace('    checkConsumingArms(node, name);\n', ''));
+      fails('scanner blind to consuming arms', /self-test/);
     });
 
     /* A site planted and baselined together: the shrink comparison sees a new site. */
