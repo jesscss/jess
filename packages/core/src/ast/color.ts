@@ -112,7 +112,7 @@ export function colorRgb(c: Color): [number, number, number] {
 }
 
 /** Serialize a color to hex — `#rrggbb`, with a trailing `aa` byte when alpha < 1. */
-function toHex(c: Color): string {
+export function toHex(c: Color): string {
   const values = colorRgb(c) as number[];
   const alpha = clamp(c.alpha, 1);
   if (alpha < 1) {

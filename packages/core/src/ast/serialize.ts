@@ -75,7 +75,6 @@ import serializerNodes, {
   simpleTokenHasInterp,
   textHoldsParentRef,
   branchTextIsPlaceholder,
-  hasGroupedChannel,
   isCssColorCall,
   isCssColorFunction,
   isConditionOperand,
@@ -9026,7 +9025,7 @@ function evalCall(
    * functionMode policy instead of leaking authored invalid output.
    */
   const lessDocument = e.s.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true;
-  if ((!demanded || hasGroupedChannel(node)) && shouldPreserveCssAuthoredCall(node, lessDocument)) {
+  if (!demanded && shouldPreserveCssAuthoredCall(node, lessDocument)) {
     return preserveCall(node, frame, e);
   }
   const ev = e.ev;

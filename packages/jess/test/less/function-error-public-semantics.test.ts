@@ -18,26 +18,24 @@ const invalidCalls = [
 
 describe('a colour call with a channel written in parens of its own', () => {
   const printed = async (value: string): Promise<string> =>
-    new Compiler({}).renderString(`.a { x: ${value}; }`, { filePath: 'entry.less', extension: '.less' });
+    new Compiler({}).renderString(`@h: 10;\n.a { x: ${value}; }`, { filePath: 'entry.less', extension: '.less' });
 
   it.each([
-    'fade(rgb((10) 20 30), 50%)',
-    'fade(rgb(10 (20) 30), 50%)',
-    'fade(hsl((120) 50% 50%), 50%)',
-    'fade(rgb(from #336699 (r) g b), 50%)',
-    'lightness(hsl(120 (50%) 50%))',
-    'red(rgb((10) 20 30))'
-  ])('computes none of %s, whose channel CSS does not read', async (value) => {
-    await expect(printed(value)).resolves.toContain(`x: ${value};`);
+    ['fade(hsl((@h + 1) 50% 50%), 50%)', 'rgb(191 87 64 / 0.5)'],
+    ['lightness(hsl((@h + 1) 50% 50%))', '50%'],
+    ['iscolor(hsl((@h + 1) 50% 50%))', 'true'],
+    ['alpha(hsl(0 0% 0% / (@h / 20)))', '0.5'],
+    ['fade(rgb((10) 20 30), 50%)', 'rgb(10 20 30 / 0.5)'],
+    ['fade(rgb(calc((10)) 20 30), 50%)', 'rgb(10 20 30 / 0.5)']
+  ])('reads the value inside the group in %s', async (value, css) => {
+    await expect(printed(value)).resolves.toContain(`x: ${css};`);
   });
 
-  it('computes none of an alpha in parens', async () => {
-    await expect(printed('fade(rgb(10 20 30 / (0.5)), 50%)')).resolves.toContain('x: fade(rgb(10 20 30 / (0.5)), 50%);');
-  });
-
-  it('computes a group inside calc(), where CSS reads it', async () => {
-    await expect(printed('fade(rgb(calc((10)) 20 30), 50%)')).resolves.toContain('x: rgb(10 20 30 / 0.5);');
-    await expect(printed('fade(hsl(calc((120)) 50% 50%), 50%)')).resolves.toContain('x: rgb(64 191 64 / 0.5);');
+  it('keeps the same reading through a mixin guard', async () => {
+    await expect(new Compiler({}).renderString(
+      '@h: 10;\n.m(@c) when (iscolor(@c)) { v: fade(@c, 50%); }\n.m(@c) when (default()) { y: @c; }\n.a { .m(hsl((@h + 1) 50% 50%)); }',
+      { filePath: 'entry.less', extension: '.less' }
+    )).resolves.toContain('v: rgb(191 87 64 / 0.5);');
   });
 });
 

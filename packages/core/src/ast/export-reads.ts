@@ -3,8 +3,9 @@ import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import type { Fn } from './functions/types.js';
+import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
+import { toHex } from './color.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { isBrowserColor } from './value-dispatch.js';
@@ -530,7 +531,7 @@ export function exportCall<F>(
     ? dispatch(vals)
     : mapMaybe(dispatch(vals), (computed) => {
         /* Whether the export's own value is one the form takes (§3.6): a wrong one has failed by now, or is written out. */
-        if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed) && takesForm(fn, vals, inputs)) {
+        if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed, vals) && takesForm(fn, vals, inputs)) {
           return dispatch(args(true).map((read, index) => mapMaybe(read, written => typedRead(vals[index], written))));
         }
         markArgument(argument);
@@ -542,8 +543,12 @@ export function exportCall<F>(
           return result;
         }
         for (const read of reads) {
+          const text = runtimeLiteral(read.value);
+          if (text === undefined) {
+            exportNotWritten(node, `${node.name}()`, read.name, e, `with the value \`${emitValue(read.value)}\`, which the runtime cannot read`);
+          }
           if (!x.runtime.defaults.has(read.name)) {
-            x.runtime.defaults.set(read.name, emitValue(read.value));
+            x.runtime.defaults.set(read.name, text);
           }
         }
         if (typeof checks !== 'object' && checks !== 'argument') {
@@ -554,11 +559,16 @@ export function exportCall<F>(
       }));
 }
 
-/** What a built-in's CSS form computes: its colour, or the form itself. A call written out is neither. */
-const isFormResult = (result: EvalValue): boolean =>
-  typeof result !== 'string' && !isValueGroupArray(result) && (result.type === 'Color' || (result.type === 'FunctionCall' && result.computed));
-
 const lone = (v: ValueGroup): ValueGroup => isValueGroupArray(v) && v.length === 1 ? v[0]! : v;
+
+const isCallValue = (v: ValueGroup): boolean => {
+  const value = lone(v);
+  return !isValueGroupArray(value) && value.type === 'FunctionCall';
+};
+
+/** What a built-in's CSS form computes: its colour, the form itself, or a call CSS reads as written over what only the browser knows. */
+const isFormResult = (result: EvalValue, vals: readonly ValueGroup[]): boolean =>
+  typeof result !== 'string' && !isValueGroupArray(result) && (result.type === 'Color' || (result.type === 'FunctionCall' && (result.computed || vals.some(isCallValue))));
 
 /** The type of an export's own value, the one thing a form knows of it. */
 function exportResult(known: ValueGroup | undefined): CallResult {
@@ -583,13 +593,36 @@ function typedRead(known: ValueGroup | undefined, written: ValueGroup): ValueGro
     : written;
 }
 
+/** Whether a slot's CSS form means what a value there computes to: it takes a call, and a dimension of its units. */
+const slotTakes = (param: ParamSpec | undefined, value: ValueGroup): boolean =>
+  param?.type?.includes('FunctionCall') === true
+  && (param.formUnits === undefined || isValueGroupArray(value) || value.type !== 'Dimension' || param.formUnits.includes(value.unit.toLowerCase()));
+
 /** Whether every export a call read is an argument its CSS form takes as what only the browser knows. */
 function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>): boolean {
   if (fn === undefined) {
     return false;
   }
-  const taken = new Set(vals.filter((_, index) => fn.params[index]?.type?.includes('FunctionCall') === true).map(lone));
+  const taken = new Set(vals.filter((val, index) => slotTakes(fn.params[index], lone(val))).map(lone));
   return inputs.every(input => taken.has(input.value));
+}
+
+const holdsCall = (v: ValueGroup): boolean => isValueGroupArray(v)
+  ? v.some(holdsCall)
+  : v.type === 'List' ? v.value.some(holdsCall) : v.type !== 'Quoted' && emitValue(v).includes('(');
+
+/**
+ * A value as the runtime reads it, a CSS literal (`packages/fns/src/runtime.ts`),
+ * or undefined when it holds a call. A known colour written as a call is its hex.
+ * ponytail: hex keeps 8 bits of alpha; a runtime that parses colour calls would keep more.
+ */
+function runtimeLiteral(value: ValueGroup): string | undefined {
+  const v = lone(value);
+  if (!isValueGroupArray(v) && v.type === 'Color') {
+    const text = emitValue(v);
+    return text.includes('(') ? toHex(v) : text;
+  }
+  return holdsCall(v) ? undefined : emitValue(value);
 }
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */
@@ -611,11 +644,9 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
       if (recipe !== undefined) {
         return recipe;
       }
-      const text = emitValue(v);
-
-      /* The runtime reads a fixed argument as a CSS literal, which holds no call (`packages/fns/src/runtime.ts`). */
-      if (text.includes('(')) {
-        exportNotWritten(node, `${node.name}()`, recipeExport(inputs[0]!.recipe), e, `beside \`${text}\`, a fixed argument the runtime cannot read`);
+      const text = runtimeLiteral(v);
+      if (text === undefined) {
+        exportNotWritten(node, `${node.name}()`, recipeExport(inputs[0]!.recipe), e, `beside \`${emitValue(v)}\`, a fixed argument the runtime cannot read`);
       }
       return text;
     })

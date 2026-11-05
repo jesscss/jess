@@ -13,7 +13,7 @@ export const channelAmount = (amount: Dimension): Dimension => makeDimension(amo
 export const alphaAmount = (amount: Dimension): Dimension => makeDimension(percentToFraction(amount.number));
 
 /** A hue, known or only the browser's; written as a call or in degrees. */
-export const HUE_ARG = { type: ['Dimension', 'FunctionCall'] } as const;
+export const HUE_ARG = { type: ['Dimension', 'FunctionCall'], formUnits: ['', 'deg', 'grad', 'rad', 'turn'] } as const;
 
 /** A hue in degrees, which a known unit converts to. What only the browser knows stays as it is. */
 export const hueOf = (hue: ValueGroup): ValueGroup =>

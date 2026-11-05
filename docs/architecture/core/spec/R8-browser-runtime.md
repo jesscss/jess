@@ -165,9 +165,14 @@ or needs JS) to decide what ships in the bundle.
   that task's slice 5). An input of a function on rung 4 stays computed, as the
   runtime reads it: `@less.lightness(@less.darken(@brand, 10%))` is one recipe
   that runs both.
-  A fixed argument the runtime cannot read, because it holds a call
-  (`@less.fade(var(--x), @a)`, `@less.fade(rgb(1 2 3), @a)`), fails at the compile,
-  at the call's span (`eval/expose-not-a-value`), not in the browser.
+  An exposed unit the form does not take keeps its recipe (`@r: 2px` in
+  `@less.rgb(@r, 0, 0)`). A call CSS reads as written over something only the browser
+  knows prints so (`@less.rgb(@r, var(--x), 0)`, `@less.rgb(@c, 0, 0)` with
+  `@c: var(--x)`).
+  A recipe's fixed argument or default that holds a call the runtime cannot read
+  (`@less.fade(var(--x), @a)`, `@less.mix(@a, @b)` with `@a: var(--x)`) fails at the
+  compile, at the call's span (`eval/expose-not-a-value`), not in the browser. A known
+  colour written as a call reads as its hex, and a quoted string may hold parens.
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent

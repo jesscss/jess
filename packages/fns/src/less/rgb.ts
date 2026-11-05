@@ -26,6 +26,9 @@ const pctOf = (d: Dimension | undefined): number | undefined =>
 const isDeferredChannel = (value: ValueGroup): boolean =>
   !isValueGroupArray(value) && value.type === 'FunctionCall' && value.result !== 'color';
 
+/** What CSS takes as an `rgb()` channel or alpha (css-color-4 §5.1). */
+const CHANNEL_UNITS: readonly string[] = ['', '%'];
+
 export function makeRgb(value: ValueGroup): Color {
   const items = groupItems(value);
   const modernSyntax = isModern(value);
@@ -33,7 +36,11 @@ export function makeRgb(value: ValueGroup): Color {
   if (items.length >= 3 && !isColor(first)) {
     /* `rgb(var(--r), 0, 0)` is CSS as written. Every other channel still has to be a number. */
     if (items.some(isDeferredChannel)) {
-      items.forEach(item => isDeferredChannel(item) || requireDimension(item));
+      items.forEach((item) => {
+        if (!isDeferredChannel(item) && !CHANNEL_UNITS.includes(requireDimension(item).unit)) {
+          throw new TypeError('rgb: a channel is a number or a percentage');
+        }
+      });
       throw new FunctionDeclined();
     }
     const r = percentOf(requireDimension(items[0]), 255);
@@ -79,10 +86,17 @@ export const rgbBody = (list: ValueGroup, ctx: FnCtx): ReturnType<Fn> => {
 };
 
 /** What a slot of `rgb()` takes: a list stays a list, and a call is what only the browser knows. */
-export const RGB_SLOT = ['List', 'Color', 'Dimension', 'FunctionCall'] as const;
+const SLOT_TYPES = ['List', 'Color', 'Dimension', 'FunctionCall'] as const;
+
+/* No spread: a bundler keeps a pure call whose argument spreads, and this one reaches the evaluator. */
+const RGB_SLOT = { type: SLOT_TYPES, formUnits: CHANNEL_UNITS } as const;
+const RGB_OPTIONAL_SLOT = { type: SLOT_TYPES, formUnits: CHANNEL_UNITS, optional: true } as const;
+
+/** The slots of `rgb()` and `rgba()`. */
+export const RGB_PARAMS = [RGB_SLOT, RGB_OPTIONAL_SLOT, RGB_OPTIONAL_SLOT, RGB_OPTIONAL_SLOT] as const;
 
 export const rgb: Fn = /* @__PURE__ */ defineFunction('rgb', {
-  params: [{ type: RGB_SLOT }, { type: RGB_SLOT, optional: true }, { type: RGB_SLOT, optional: true }, { type: RGB_SLOT, optional: true }],
+  params: RGB_PARAMS,
   variadic: true,
   body: rgbBody
 });

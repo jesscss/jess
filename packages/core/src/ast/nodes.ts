@@ -357,28 +357,6 @@ export function isCssColorCall(node: FunctionCall): boolean {
  */
 const CSS_COLOR_FUNCTIONS = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color']);
 
-const isSlotList = (slot: ValueSlot): slot is readonly ValueSlot[] => Array.isArray(slot);
-
-const isGroupedSlot = (slot: ValueSlot): boolean =>
-  !isSlotList(slot) && ((slot.type === 'Block' && slot.delimiter === 'paren' && slot.escaped !== true) || (slot.type === 'Expression' && isAuthoredGroupExpression(slot)));
-
-/**
- * Whether a space-separated colour call has a channel written in parens of its
- * own. CSS reads no group there, only inside `calc()` (css-color-4 §5.1,
- * css-values-4 §10.1), so no consumer computes the call.
- */
-export function hasGroupedChannel(node: FunctionCall): boolean {
-  const slot = node.args.length === 1 ? node.args[0]!.value : undefined;
-  if (slot === undefined || !isSlotList(slot)) {
-    return false;
-  }
-  const last = slot[slot.length - 1]!;
-  const alpha = colorAlphaSlash(node);
-  return slot.some(isGroupedSlot)
-    || (!isSlotList(last) && last.type === 'List' && last.sep === '/' && last.value.some(isGroupedSlot))
-    || (alpha !== null && (isGroupedSlot(alpha.left) || isGroupedSlot(alpha.right)));
-}
-
 /** Three or more channel slots, or one modern slot of three or more items (see {@link isCssColorCall}). */
 function hasColorChannels(node: FunctionCall): boolean {
   if (node.args.length >= 3) {

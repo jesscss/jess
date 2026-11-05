@@ -129,7 +129,7 @@ function parseValue(text: string): ValueGroup {
 }
 
 function literal(word: string): ValueGroup {
-  if (word.includes('(')) {
+  if (word.includes('(') && word[0] !== '"' && word[0] !== '\'') {
     throw new TypeError(`The runtime computes from CSS literals (#c00, 8px, red); "${word}" is a function.`);
   }
   return sniffLiteral(word);
