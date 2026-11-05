@@ -32,7 +32,8 @@ describe('SCSS pseudo selector interpolation', () => {
     });
   });
 
-  it('still rejects a malformed An+B', () => {
+  /* PINNED DEFECT, not a requirement: these are balanced and should parse, then be an error (ledger P45; jess#592). */
+  it('PINNED DEFECT: rejects a malformed An+B', () => {
     for (const source of ['a:nth-child(2n+) { b: c; }', 'a:nth-child(2n + x) { b: c; }', 'a:nth-child(1.5) { b: c; }']) {
       expect(() => parse(source)).toThrow();
     }
