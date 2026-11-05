@@ -157,9 +157,11 @@ export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
  * `-n+2`). Text that is not An+B, an `of S` tail, is left as written.
  */
 function unspacedNth(arg: Interpolation): Interpolation {
-  const isAnb = (text: string): boolean => [...text].every(char => '-+0123456789nN \t\n\r\f'.includes(char));
-  const unspaced = (text: string): string => [...text].filter(char => !' \t\n\r\f'.includes(char)).join('');
-  return interpolation(arg.parts.map(part => 'lit' in part && isAnb(part.lit) ? { lit: unspaced(part.lit) } : part));
+  const anb = new Set('-+0123456789nN \t\n\r\f');
+  const gap = new Set(' \t\n\r\f');
+  return interpolation(arg.parts.map(part => 'lit' in part && [...part.lit].every(char => anb.has(char))
+    ? { lit: [...part.lit].filter(char => !gap.has(char)).join('') }
+    : part));
 }
 
 /** A pseudo argument's source text, or its interpolation when a `#{…}` stands in it. */
