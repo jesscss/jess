@@ -68,44 +68,14 @@ const ANCHOR = fileURLToPath(import.meta.url);
  * (docs/architecture/core/spec/R8-browser-runtime.md).
  */
 export default function jessRollupPlugin(options: JessRollupPluginOptions = {}): Plugin & { enforce: 'pre'; configResolved(config: { readonly root: string }): void; handleHotUpdate<M>(context: HotUpdate<M>): M[] } {
-  const compiler = new Compiler();
   const emitCss = options.emitCss ?? true;
   const cssFileName = options.cssFileName ?? ((id: string) => `${path.basename(id, path.extname(id))}.css`);
   const sheets = new Map<string, string>();
-  const renders = new Map<string, { source: string; result: RenderResult }>();
 
   /** Under Vite, the project root its dev server's URLs start from. */
   let viteRoot: string | undefined;
 
-  /** The CSS id a request names (dev URLs are root-relative), carrying the request's query. */
-  const sheetOf = (source: string): string | undefined => {
-    const [request = source] = source.split('?', 1);
-    const id = sheets.has(request) ? request : `${viteRoot}${request}`;
-    return sheets.has(id) ? `${id}${source.slice(request.length)}` : undefined;
-  };
-
-  /** The render of a stylesheet's current source; its module and its CSS share one. */
-  const render = async (context: PluginContext, file: string): Promise<RenderResult> => {
-    context.addWatchFile(file);
-    const source = await readFile(file, 'utf8');
-    let rendered = renders.get(file);
-    if (rendered?.source !== source) {
-      const result = await compiler.renderToResult(
-        { filePath: file, source, language: LANGUAGES.get(path.extname(file))! },
-        { ...options.config, suppressWarnings: true }
-      );
-      rendered = { source, result };
-      renders.set(file, rendered);
-      for (const warning of result.warnings) {
-        context.warn(log(warning, file));
-      }
-    }
-    const [error] = rendered.result.errors;
-    if (error !== undefined) {
-      context.error(log(error, file));
-    }
-    return rendered.result;
-  };
+  const render = makeRender(options.config);
 
   return {
     name: 'jess',
@@ -123,7 +93,7 @@ export default function jessRollupPlugin(options: JessRollupPluginOptions = {}):
     },
 
     async resolveId(source, importer) {
-      const sheet = sheetOf(source);
+      const sheet = sheetOf(sheets, viteRoot, source);
       if (sheet !== undefined) {
         return sheet;
       }
@@ -167,6 +137,40 @@ export default function jessRollupPlugin(options: JessRollupPluginOptions = {}):
       }
       return { code: moduleCode(result.css, result.runtime, cssImport), map: { mappings: '' } };
     }
+  };
+}
+
+/** The CSS id a request names (dev URLs are root-relative), carrying the request's query. */
+function sheetOf(sheets: ReadonlyMap<string, string>, viteRoot: string | undefined, source: string): string | undefined {
+  const [request = source] = source.split('?', 1);
+  const id = sheets.has(request) ? request : `${viteRoot}${request}`;
+  return sheets.has(id) ? `${id}${source.slice(request.length)}` : undefined;
+}
+
+/** A stylesheet's render from its current source; its module and its CSS share one. */
+function makeRender(config: Partial<ConfigOptions> | undefined): (context: PluginContext, file: string) => Promise<RenderResult> {
+  const compiler = new Compiler();
+  const renders = new Map<string, { source: string; result: RenderResult }>();
+  return async (context, file) => {
+    context.addWatchFile(file);
+    const source = await readFile(file, 'utf8');
+    let rendered = renders.get(file);
+    if (rendered?.source !== source) {
+      const result = await compiler.renderToResult(
+        { filePath: file, source, language: LANGUAGES.get(path.extname(file))! },
+        { ...config, suppressWarnings: true }
+      );
+      rendered = { source, result };
+      renders.set(file, rendered);
+      for (const warning of result.warnings) {
+        context.warn(log(warning, file));
+      }
+    }
+    const [error] = rendered.result.errors;
+    if (error !== undefined) {
+      context.error(log(error, file));
+    }
+    return rendered.result;
   };
 }
 
