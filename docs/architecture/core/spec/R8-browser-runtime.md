@@ -256,12 +256,12 @@ or needs JS) to decide what ships in the bundle.
   included. Whether a recipe should reach a form that way, at that size, is the
   owner's call and is not decided here.
   Measured again 2026-11-05 with Vite 6, after `fade` and `hsv` became forms:
-  `lightness(@brand)` is LIGHTNESS; a page of `@less.rgb(@r, 0, 0)` or
-  `@less.rgba(@brand, .5)` has no function in its runtime and is PRINTED; a recipe
+  `lightness(@brand)` is 72.2 KB minified, 20.2 KB gzip; a page of `@less.rgb(@r, 0, 0)` or
+  `@less.rgba(@brand, .5)` has no function in its runtime and is 34.7 KB minified, 10.6 KB gzip; a recipe
   that runs a form, `lightness(spin(@brand, 30))` or `alpha(fade(@brand, 50%))`,
-  is FORM. So is `lightness(rgb(@r, 0, 0))`: `rgb()` nested inside a function with
+  is 501 KB minified, 133.4 KB gzip. So is `lightness(rgb(@r, 0, 0))`: `rgb()` nested inside a function with
   no CSS form runs in the recipe, and its two-slot overload is a form, so it costs
-  the evaluator (NESTED).
+  the evaluator (502.9 KB minified, 133.8 KB gzip).
 - ponytail: imports of a stylesheet are not watched (`loadedUrls` is empty);
   only the stylesheet itself is. Watch the render's loaded files when the
   compiler reports them.

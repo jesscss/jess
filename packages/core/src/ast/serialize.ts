@@ -75,6 +75,7 @@ import serializerNodes, {
   simpleTokenHasInterp,
   textHoldsParentRef,
   branchTextIsPlaceholder,
+  hasGroupedChannel,
   isCssColorCall,
   isCssColorFunction,
   isConditionOperand,
@@ -7880,26 +7881,6 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromis
 
 function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean): boolean {
   return lessDocument && isCssColorCall(node);
-}
-
-/**
- * Whether a space-separated colour call has a channel written in parens of its
- * own. CSS reads no group there, only inside `calc()` (css-color-4 §5.1,
- * css-values-4 §10.1), so no consumer computes the call.
- */
-const isGroupedSlot = (slot: ValueSlot): boolean =>
-  isParenGroup(slot) || (!isValueSlotArray(slot) && slot.type === 'Expression' && isAuthoredGroupExpression(slot));
-
-function hasGroupedChannel(node: FunctionCall): boolean {
-  const slot = node.args.length === 1 ? node.args[0]!.value : undefined;
-  if (slot === undefined || !isValueSlotArray(slot)) {
-    return false;
-  }
-  const last = slot[slot.length - 1]!;
-  const alpha = colorAlphaSlash(node);
-  return slot.some(isGroupedSlot)
-    || (!isValueSlotArray(last) && last.type === 'List' && last.sep === '/' && last.value.some(isGroupedSlot))
-    || (alpha !== null && (isGroupedSlot(alpha.left) || isGroupedSlot(alpha.right)));
 }
 
 /**
