@@ -236,7 +236,7 @@
     "P45 (owner 2026-10-09): .jess parses a comment between two values, `b: x /**/ y`": "58f04c7263b577a7",
     "P45 (owner 2026-10-09): .jess parses `@media (min-width: calc(100px + 1px))`": "218307833883d0e6",
     "P45 (owner 2026-10-09): .jess parses an unknown at-rule statement, `@foo 1 + 2;`": "118767753c9d1200",
-    "P45 (owner 2026-10-09): SCSS parses a line comment inside a call, `max(1px, // c` then `2px)`": "8ee45c4ab03e6a3c",
+    "P45 (owner 2026-10-09): SCSS parses a line comment inside a call, `max(1px, // c` then `2px)`": "d832bc13ed59051c",
     "P45 (owner 2026-10-09): SCSS parses `var(--x, /img)`": "439e53ad52bf4587",
     "P45 (owner 2026-10-09): SCSS parses a comment inside a compound selector, `.e/*y*/.f`": "a50a4be10f9499a9",
     "P45 (owner 2026-10-09): SCSS parses `url( \"a b.png\" )`": "e33c3877c4faad7d",
