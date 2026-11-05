@@ -3057,18 +3057,13 @@ const scssFactory = (g: ScssInputRules) => {
   ));
 
   /*
-   * The ruleset body adds one extra arm (`Extend`) before `Ruleset`.
+   * The ruleset body adds one extra arm (`Extend`) before `Ruleset`. A mixin's body
+   * is the same list (`MixinDefinitionRule`): each call applies its extends to the
+   * rule the call lands in (Foundation `components/_reveal.scss`).
    *
-   * `@extend` is DELIBERATELY not admitted in `nestedBody` (mixin/each/for) or
-   * `IfBody` yet, even though Foundation's `@mixin reveal-modal-width`
-   * (`scss/components/_reveal.scss:108`) needs it and currently fails to parse.
-   * Admitting the arm is a two-line change and was tried; the blocker is one
-   * layer down. An extend written in a mixin body must apply to the rule that
-   * `@include`s the mixin, and extend facts are planned statically — an
-   * authored `@mixin m { & { @extend .b; } }` (no placeholder involved) is
-   * already dropped today, so the arm alone would make the file PARSE and then
-   * silently discard the extend, which is strictly worse than the loud parse
-   * error. See FOUNDATION-CORPUS-REPORT.md blocker #12.
+   * `@extend` stays out of `nestedBody` (`@each`, `@for`, at-rules) and `IfBody`:
+   * nothing carries an extend on those nodes, so the arm would make the file parse
+   * and then silently discard the extend, which is worse than the parse error.
    */
   const ruleBody = many(choice(
     nestedBodyPrefix,
@@ -3128,17 +3123,22 @@ const scssFactory = (g: ScssInputRules) => {
       mixinNameToken,
       optional(g.MixinParameters),
       literal('{'),
-      g.nestedBody,
+      ruleBody,
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(mixinDef(
-      requireToken(children[1]).value,
-      isParamArray(children[2]) ? children[2] : [],
-      statementChildren(
-        children,
-        true
-      )
-    ), rawChildren)
+    (children, _fields, _span, rawChildren) => {
+      const extendInstructions = children.filter(isExtendInstruction);
+      return withBlockBody(mixinDef(
+        requireToken(children[1]).value,
+        isParamArray(children[2]) ? children[2] : [],
+        statementChildren(
+          children.filter(child => !isExtendInstruction(child)),
+          true
+        ),
+        undefined,
+        extendInstructions
+      ), rawChildren);
+    }
   );
 
   /*

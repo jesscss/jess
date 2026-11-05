@@ -424,6 +424,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/components/_pagination.scss',
   'scss/components/_progress-bar.scss',
   'scss/components/_responsive-embed.scss',
+  'scss/components/_reveal.scss',
   'scss/components/_slider.scss',
   'scss/components/_sticky.scss',
   'scss/components/_switch.scss',

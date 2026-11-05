@@ -2007,7 +2007,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-MixinDefinitionRule">
     <h2><a href="#rule-MixinDefinitionRule">§</a> MixinDefinitionRule</h2>
     <div class="diagram" data-rule="MixinDefinitionRule"></div>
-    <div class="ebnf">MixinDefinitionRule ::= IDENT MixinParameters? &quot;{&quot; nestedBody &quot;}&quot;</div>
+    <div class="ebnf">MixinDefinitionRule ::= IDENT MixinParameters? &quot;{&quot; (NestedPropertyDeclaration | Declaration | Comment | ImportStatement | VariableDeclaration | &quot;;&quot; | Extend | NestedRuleset | SassDirective | ReturnRule | NestedConditionalBlock | NestedStartingStyleBlock | NestedLayerBlock | NestedScopeBlock | DocumentBlock | PageBlock | FontFeatureValuesBlock | FontFace | CounterStyle | PropertyAtRule | Keyframes | UnknownAtRuleBlock | AtRuleStatement)* &quot;}&quot;</div>
   </section>
   <section class="rule" id="rule-EachVariableName">
     <h2><a href="#rule-EachVariableName">§</a> EachVariableName</h2>
@@ -3013,7 +3013,7 @@ svg.railroad-diagram rect {
   { name: "MixinContentBlock", dsl: function(){ return Diagram(Sequence(Optional(Sequence(Terminal("using"), NonTerminal("MixinParameters"))), Terminal("{"), NonTerminal("nestedBody"), Terminal("}"))); } },
   { name: "MixinCallRule", dsl: function(){ return Diagram(Sequence(Terminal("IDENT"), Optional(Sequence(Terminal("("), Optional(Sequence(NonTerminal("MixinCallArgument"), ZeroOrMore(Sequence(Terminal(","), NonTerminal("MixinCallArgument"))), Optional(Terminal(",")))), Terminal(")"))), Optional(NonTerminal("MixinContentBlock")), Optional(Terminal(";")))); } },
   { name: "ContentRule", dsl: function(){ return Diagram(Sequence(Optional(Sequence(Terminal("("), Optional(Sequence(NonTerminal("MixinCallArgument"), ZeroOrMore(Sequence(Terminal(","), NonTerminal("MixinCallArgument"))), Optional(Terminal(",")))), Terminal(")"))), Optional(Terminal(";")))); } },
-  { name: "MixinDefinitionRule", dsl: function(){ return Diagram(Sequence(Terminal("IDENT"), Optional(NonTerminal("MixinParameters")), Terminal("{"), NonTerminal("nestedBody"), Terminal("}"))); } },
+  { name: "MixinDefinitionRule", dsl: function(){ return Diagram(Sequence(Terminal("IDENT"), Optional(NonTerminal("MixinParameters")), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("NestedPropertyDeclaration"), NonTerminal("Declaration"), NonTerminal("Comment"), NonTerminal("ImportStatement"), NonTerminal("VariableDeclaration"), Terminal(";"), NonTerminal("Extend"), NonTerminal("NestedRuleset"), NonTerminal("SassDirective"), NonTerminal("ReturnRule"), NonTerminal("NestedConditionalBlock"), NonTerminal("NestedStartingStyleBlock"), NonTerminal("NestedLayerBlock"), NonTerminal("NestedScopeBlock"), NonTerminal("DocumentBlock"), NonTerminal("PageBlock"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("FontFace"), NonTerminal("CounterStyle"), NonTerminal("PropertyAtRule"), NonTerminal("Keyframes"), NonTerminal("UnknownAtRuleBlock"), NonTerminal("AtRuleStatement"))), Terminal("}"))); } },
   { name: "EachVariableName", dsl: function(){ return Diagram(Sequence(Terminal("$"), Terminal("IDENT"))); } },
   { name: "EachBinding", dsl: function(){ return Diagram(Sequence(NonTerminal("EachVariableName"), ZeroOrMore(Sequence(Terminal(","), NonTerminal("EachVariableName"))))); } },
   { name: "EachRule", dsl: function(){ return Diagram(Sequence(NonTerminal("EachBinding"), Terminal("in"), NonTerminal("Value"), Terminal("{"), NonTerminal("nestedBody"), Terminal("}"))); } },
