@@ -103,8 +103,6 @@ type ScssRules = {
   IfAtom: Combinator<GuardNode>;
   IfComparison: Combinator<GuardNode>;
   IfBody: Combinator<Statement[]>;
-  IfBodyRule: Combinator<Ruleset>;
-  IfBodyConditionalBlock: Combinator<AtRuleBlock>;
   IfRule: Combinator<If>;
   WhileRule: Combinator<While>;
   DiagnosticDirective: Combinator<AtRuleStatement>;
@@ -2979,6 +2977,7 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const nestedAtStatement = choice(
     g.SassDirective,
+    g.ReturnRule,
     g.NestedConditionalBlock,
     g.NestedStartingStyleBlock,
     g.NestedLayerBlock,
@@ -2986,6 +2985,10 @@ const scssFactory = (g: ScssInputRules) => {
     g.DocumentBlock,
     g.PageBlock,
     g.FontFeatureValuesBlock,
+    g.FontFace,
+    g.CounterStyle,
+    g.PropertyAtRule,
+    g.Keyframes,
     g.UnknownAtRuleBlock,
     g.AtRuleStatement
   );
@@ -3033,17 +3036,9 @@ const scssFactory = (g: ScssInputRules) => {
     literal(';')
   );
 
-  /* Nested body ending in `Ruleset` (mixin/each/for/nested-scope bodies). */
+  /* Nested body ending in `Ruleset` (mixin, control and nested at-rule bodies). */
   const nestedBody = many(choice(
     nestedBodyPrefix,
-    g.NestedRuleset,
-    nestedAtStatement
-  ));
-
-  /* Nested bubbling at-rule bodies additionally accept `@keyframes` before `Ruleset`. */
-  const nestedKeyframesBody = many(choice(
-    nestedBodyPrefix,
-    g.Keyframes,
     g.NestedRuleset,
     nestedAtStatement
   ));
@@ -3077,6 +3072,7 @@ const scssFactory = (g: ScssInputRules) => {
   const conditionalBlockBody = many(choice(
     g.Comment,
     g.ImportStatement,
+    g.VariableDeclaration,
     g.SassNestedDirective,
     g.ConditionalBlock,
     g.StartingStyleBlock,
@@ -3085,6 +3081,9 @@ const scssFactory = (g: ScssInputRules) => {
     g.DocumentBlock,
     g.PageBlock,
     g.FontFeatureValuesBlock,
+    g.FontFace,
+    g.CounterStyle,
+    g.PropertyAtRule,
     g.Keyframes,
     g.UnknownAtRuleBlock,
     g.AtRuleStatement,
@@ -3093,6 +3092,7 @@ const scssFactory = (g: ScssInputRules) => {
   const startingLayerBlockBody = many(choice(
     g.Comment,
     g.ImportStatement,
+    g.VariableDeclaration,
     g.SassNestedDirective,
     g.ConditionalBlock,
     g.StartingStyleBlock,
@@ -3100,6 +3100,9 @@ const scssFactory = (g: ScssInputRules) => {
     g.DocumentBlock,
     g.PageBlock,
     g.FontFeatureValuesBlock,
+    g.FontFace,
+    g.CounterStyle,
+    g.PropertyAtRule,
     g.Keyframes,
     g.UnknownAtRuleBlock,
     g.AtRuleStatement,
@@ -3440,34 +3443,18 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * `@return` is admitted here, not only in the `@function` body. A conditional
-   * return (`@if $b != 0 { @return gcd($b, $a % $b); } @else { @return $a; }`) is
-   * the ordinary way a Sass function is written, and it lowers to exactly the
-   * `result:` declaration `ReturnRule` already builds — one lowering that was
-   * wired into too narrow a position, not a second construct. `@return` opens on
-   * `@return`, an at-keyword no other arm owns, so the placement is
-   * firstMatch-order-preserving. Whether a `result:` is REACHABLE from a given
-   * body is a semantic question the language service owns; the grammar accepts
-   * the shape.
+   * A control block's body is the body any nested block has, so what a block
+   * holds does not depend on which block it is: `@if $a { > .b { … } }`,
+   * `@if $a { @keyframes k { … } }`. `@return` is one of its statements (the
+   * ordinary way a Sass function is written), lowering to the `result:` declaration
+   * `ReturnRule` builds. Whether a `result:` is REACHABLE from a given body is a
+   * semantic question the language service owns; the grammar accepts the shape.
    */
   const IfBody = node<Statement[]>(
     'IfBody',
     sequence(
       literal('{'),
-      many(choice(
-        g.Comment,
-        g.ImportStatement,
-        g.VariableDeclaration,
-        g.NestedPropertyDeclaration,
-        g.Declaration,
-        g.IfBodyConditionalBlock,
-        g.DocumentBlock,
-        g.PageBlock,
-        g.FontFeatureValuesBlock,
-        g.ReturnRule,
-        g.SassNestedDirective,
-        g.IfBodyRule
-      )),
+      g.nestedBody,
       literal('}')
     ),
     children => statementChildren(
@@ -3477,70 +3464,6 @@ const scssFactory = (g: ScssInputRules) => {
       ),
       true
     )
-  );
-  const IfBodyRule = node<Ruleset>(
-    'IfBodyRule',
-    sequence(
-      g.SelectorList,
-      g.IfBody
-    ),
-    children => rule(
-      requireSelectorList(children[0]),
-      requireStatementList(children[1])
-    )
-  );
-  const IfBodyConditionalBlock = node<AtRuleBlock>(
-    'IfBodyConditionalBlock',
-    choice(
-      sequence(
-        g.SupportsAtKeyword,
-        g.SupportsPrelude,
-        g.IfBody
-      ),
-      sequence(
-        g.MediaAtKeyword,
-        g.QueryPrelude,
-        g.IfBody
-      ),
-      sequence(
-        g.ContainerAtKeyword,
-        g.ContainerPrelude,
-        g.IfBody
-      ),
-      sequence(
-        g.StartingStyleAtKeyword,
-        g.AtRulePrelude,
-        g.IfBody
-      ),
-      sequence(
-        g.LayerAtKeyword,
-        g.AtRulePrelude,
-        g.IfBody
-      )
-    ),
-    (children) => {
-      const body = children[2];
-      if (!Array.isArray(body)) {
-        throw new TypeError('SCSS conditional block lost its statement body.');
-      }
-      return atRuleBlock(
-        requireToken(children[0]).value,
-        scssOptionalValue(children[1]),
-
-        /*
-         * `IfBody` collects its children WITH declarations (`@if $a { @media
-         * screen { display: none; } }` — a bubbling at-rule body is a
-         * declaration site), so re-validating them without is a straight
-         * contradiction that raised the internal "non-statement child"
-         * TypeError. The sibling `IfBodyRule` already reads the same array
-         * through `requireStatementList`, which passes `true`.
-         */
-        statements(
-          body,
-          true
-        )
-      );
-    }
   );
   const IfRule = node<If>(
     'IfRule',
@@ -4554,21 +4477,21 @@ const scssFactory = (g: ScssInputRules) => {
         g.SupportsAtKeyword,
         g.SupportsPrelude,
         literal('{'),
-        nestedKeyframesBody,
+        g.nestedBody,
         literal('}')
       ),
       sequence(
         g.MediaAtKeyword,
         g.QueryPrelude,
         literal('{'),
-        nestedKeyframesBody,
+        g.nestedBody,
         literal('}')
       ),
       sequence(
         g.ContainerAtKeyword,
         g.ContainerPrelude,
         literal('{'),
-        nestedKeyframesBody,
+        g.nestedBody,
         literal('}')
       )
     ),
@@ -4590,7 +4513,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.StartingStyleAtKeyword,
       g.AtRulePrelude,
       literal('{'),
-      nestedKeyframesBody,
+      g.nestedBody,
       literal('}')
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
@@ -4611,7 +4534,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.LayerAtKeyword,
       g.AtRulePrelude,
       literal('{'),
-      nestedKeyframesBody,
+      g.nestedBody,
       literal('}')
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
@@ -5537,8 +5460,6 @@ const scssFactory = (g: ScssInputRules) => {
     IfAtom,
     IfComparison,
     IfBody,
-    IfBodyRule,
-    IfBodyConditionalBlock,
     IfRule,
     WhileRule,
     DiagnosticDirective,
