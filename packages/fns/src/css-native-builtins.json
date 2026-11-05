@@ -299,7 +299,7 @@
       "class": "exact-if",
       "css": "round(up, N, 1)",
       "spec": "css-values-4 §10.3",
-      "notes": "N a <number>; a dimension needs B in N's unit, unknown for a deferred N"
+      "notes": "N a <number>; a dimension needs B in N's unit, for a deferred N the unit its structure gives (`var(--x) + 1px`), else a number (Q3)"
     },
     {
       "dialect": "less",
