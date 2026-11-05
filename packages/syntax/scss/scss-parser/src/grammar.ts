@@ -25,10 +25,10 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { RETURN_DIRECTIVE, directivePrelude, lowerFunctionReturns } from './grammar-return.js';
 import { scssSum } from './plus-chain.js';
-import { foldLogicalOperation } from './grammar-logical.js';
+import { foldLogicalOperation, scssSlashGroupedTerm } from './grammar-logical.js';
 import type { ConditionWord, MathOperatorFact, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -1666,13 +1666,13 @@ const scssFactory = (g: ScssInputRules) => {
             combinator: ConditionAnd
           },
           g.LogicalAnd,
-          comparisonOperator
+          field('comparison', comparisonOperator)
         ),
         optional(valueTrivia),
         g.MathTopSum
       ))
     )),
-    children => foldLogicalOperation(children)
+    (children, fields) => foldLogicalOperation(children, fields?.comparison)
   );
   const ValueLogicalOr = node<ValueNode>(
     'ValueLogicalOr',
