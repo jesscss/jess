@@ -393,6 +393,7 @@ type LessRules = {
   SupportsTest: Combinator<ValueNode>;
   SupportsDeclaration: Combinator<ValueNode>;
   functionArgument: Combinator<unknown>;
+  functionArgumentGap: Combinator<unknown>;
 };
 
 /** Macro-fused shared recognition plus this file's recursively defined outputs. */
@@ -589,6 +590,7 @@ const functionTrivia = classifiedTrivia({
   lineComment,
   blockComment
 });
+const lineCommentTrivia = classifiedTrivia({ lineComment });
 // Mixin signatures and guards are invisible definition syntax. Unlike an
 // ordinary declaration value, a block comment at one of their token boundaries
 // is lexical trivia (the legacy MixinArgs production used the same rule). The
@@ -2072,6 +2074,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.DoubledQuoteArgument,
     g.ValueBlock,
     g.FunctionArgument
+  );
+  // CSS's `functionArgumentGap` slot. The gap runs with trivia cleared, so it reads
+  // whitespace and block comments as the padding it keeps, and a `//` line comment,
+  // which CSS has no such thing as, stays trivia and leaves no bytes.
+  const functionArgumentGap = parser(
+    { trivia: lineCommentTrivia },
+    many(choice(whitespaceRun, blockComment))
   );
   // BRANCH arguments (ledger P38): a call whose first argument is followed by a
   // top-level `:` takes CSS's branch-list shape, `condition: value; …` —
@@ -6289,6 +6298,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     FunctionArguments,
     branchLead: functionArgument,
     functionArgument,
+    functionArgumentGap,
     StyleTest,
     StyleFeature,
     MediaTest,
