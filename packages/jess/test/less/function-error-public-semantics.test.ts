@@ -16,6 +16,29 @@ const invalidCalls = [
   ['invalid rgba two-argument numeric call', 'rgba(1, 2)']
 ] as const;
 
+describe('a colour call with a channel written in parens of its own', () => {
+  const printed = async (value: string): Promise<string> =>
+    new Compiler({}).renderString(`@h: 10;\n.a { x: ${value}; }`, { filePath: 'entry.less', extension: '.less' });
+
+  it.each([
+    ['fade(hsl((@h + 1) 50% 50%), 50%)', 'rgb(191 87 64 / 0.5)'],
+    ['lightness(hsl((@h + 1) 50% 50%))', '50%'],
+    ['iscolor(hsl((@h + 1) 50% 50%))', 'true'],
+    ['alpha(hsl(0 0% 0% / (@h / 20)))', '0.5'],
+    ['fade(rgb((10) 20 30), 50%)', 'rgb(10 20 30 / 0.5)'],
+    ['fade(rgb(calc((10)) 20 30), 50%)', 'rgb(10 20 30 / 0.5)']
+  ])('reads the value inside the group in %s', async (value, css) => {
+    await expect(printed(value)).resolves.toContain(`x: ${css};`);
+  });
+
+  it('keeps the same reading through a mixin guard', async () => {
+    await expect(new Compiler({}).renderString(
+      '@h: 10;\n.m(@c) when (iscolor(@c)) { v: fade(@c, 50%); }\n.m(@c) when (default()) { y: @c; }\n.a { .m(hsl((@h + 1) 50% 50%)); }',
+      { filePath: 'entry.less', extension: '.less' }
+    )).resolves.toContain('v: rgb(191 87 64 / 0.5);');
+  });
+});
+
 describe('Less built-in argument errors through the public AST route', () => {
   it('evaluates a multiline final svg-gradient stop as one typed argument', async () => {
     const compiler = new Compiler({
@@ -93,18 +116,24 @@ describe('Less built-in argument errors through the public AST route', () => {
       .resolves.toContain('rgb(from red r g b)');
 
     /*
-     * The inner relative color is demanded by `lighten`, whose form reads it as
-     * what only the browser knows, in every functionMode (§3.6).
+     * The inner relative color is demanded by `lighten`: known, it computes; not
+     * known, its form reads it as what only the browser knows, in every
+     * functionMode (§3.6).
      */
-    const demandedSource = '.entry { color: lighten(rgb(from red r g b), 10%); }';
+    const knownSource = '.entry { color: lighten(rgb(from red r g b), 10%); }';
+    await expect(lenient.renderString(knownSource, { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toContain('color: rgb(255, 51, 51);');
+    await expect(strict.renderString(knownSource, { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toContain('color: rgb(255, 51, 51);');
+    const demandedSource = '.entry { color: lighten(rgb(from var(--c) r g b), 10%); }';
     await expect(lenient.renderString(demandedSource, { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toContain('hsl(from rgb(from red r g b) h s clamp(0, l + 10, 100))');
+      .resolves.toContain('hsl(from rgb(from var(--c) r g b) h s clamp(0, l + 10, 100))');
     await expect(strict.renderString(demandedSource, { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toContain('hsl(from rgb(from red r g b) h s clamp(0, l + 10, 100))');
+      .resolves.toContain('hsl(from rgb(from var(--c) r g b) h s clamp(0, l + 10, 100))');
     await expect(strict.renderString('.entry { color: darken(hsl(var(--h), 1%, 2%), 1%); }', { filePath: 'entry.less', extension: '.less' }))
       .resolves.toContain('hsl(from hsl(var(--h), 1%, 2%) h s clamp(0, l - 1, 100))');
-    await expect(strict.renderString('.entry { color: darken(rgb(10 20 30), 1%); }', { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toContain('hsl(from rgb(10 20 30) h s clamp(0, l - 1, 100))');
+    await expect(strict.renderString('.entry { color: darken(rgb(10 20 30), 5%); }', { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toContain('color: rgb(4, 7, 11);');
     await expect(strict.renderString('.entry { color: darken(10px, 1%); }', { filePath: 'entry.less', extension: '.less' }))
       .rejects.toMatchObject({ code: 'eval/invalid-function' });
     await expect(strict.renderString('.entry { color: lightness(hsl(var(--h), 1%, 2%)); }', { filePath: 'entry.less', extension: '.less' }))

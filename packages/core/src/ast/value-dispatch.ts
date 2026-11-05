@@ -210,6 +210,9 @@ const isListShaped = (value: ValueGroup): boolean =>
 /** css-color-4 §4.4 `currentcolor` and the §6.2 system colours: colours whose value only the browser knows. */
 const BROWSER_COLORS: ReadonlySet<string> = new Set(['currentcolor', 'accentcolor', 'accentcolortext', 'activetext', 'buttonborder', 'buttonface', 'buttontext', 'canvas', 'canvastext', 'field', 'fieldtext', 'graytext', 'highlight', 'highlighttext', 'linktext', 'mark', 'marktext', 'selecteditem', 'selecteditemtext', 'visitedtext']);
 
+/** Whether a keyword names a colour only the browser knows. */
+export const isBrowserColor = (text: string): boolean => BROWSER_COLORS.has(text.toLowerCase());
+
 /**
  * Whether a slot that takes a call (a built-in's CSS form) takes `value`, which
  * only the browser can read: a call of no known type or of the slot's type, or
@@ -219,7 +222,7 @@ const BROWSER_COLORS: ReadonlySet<string> = new Set(['currentcolor', 'accentcolo
 function isDeferred(value: Value, type: readonly Kind[]): boolean {
   return value.type === 'FunctionCall'
     ? value.result === null || type.includes(value.result === 'color' ? 'Color' : 'Dimension')
-    : value.type === 'Keyword' && type.includes('Color') && BROWSER_COLORS.has(value.text.toLowerCase());
+    : value.type === 'Keyword' && type.includes('Color') && isBrowserColor(value.text);
 }
 
 function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown): ValueGroup {
