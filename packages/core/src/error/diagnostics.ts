@@ -1136,6 +1136,15 @@ export const ERR = {
     });
   },
 
+  /** A `@return` no function can read: parsed, then an error where it is reached (ledger P45). */
+  returnPlacement(args: Common = {}) {
+    return makeJessError({
+      code: 'parse/return-placement',
+      phase: 'parse',
+      ...args
+    });
+  },
+
   /** A `.jess` `*` between two numbers or variables outside `$( … )` (ledger P17; P45: parsed, then an error). */
   arithmeticOutsideExpression(args: Common = {}) {
     return makeJessError({
