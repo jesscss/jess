@@ -4800,6 +4800,7 @@ const scssFactory = (g: ScssInputRules) => {
     regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/),
     children => simpleSelector(requireToken(children[0]).value)
   );
+
   /*
    * SCSS placeholder selectors are selector syntax, not declarations or a
    * runtime-only marker, and they are an ordinary `SimpleSelector` -- a
