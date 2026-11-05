@@ -2043,43 +2043,6 @@ function frameRulesets(frame: Frame): Map<string, Ruleset[]> | null {
   return built;
 }
 
-/*
- * [guards] collect every visible same-name def up the scope chain (nearest
- * scope first), so overload resolution sees all candidates. after the
- * `parent` chain, consult the first `fallback` seen (detached-ruleset closure).
- */
-function lookupMixinCandidates(frame: Frame | null, name: string): MixinDefinition[] {
-  let out: MixinDefinition[] | null = null;
-  let fb: Frame | null | undefined;
-  for (let f = frame; f; f = f.parent) {
-    const hit = f.mixins?.get(name);
-    if (hit) {
-      if (!out) {
-        out = hit.slice();
-      } else {
-        out.push(...hit);
-      }
-    }
-    if (f.fallback && !fb) {
-      fb = f.fallback;
-    }
-  }
-  if (fb) {
-    /*
-     * The fallback (caller) chain can rejoin the parent (definition) chain at a
-     * shared ancestor, so a def already collected must NOT be dispatched twice —
-     * merge by identity, first occurrence wins (mirrors `lookupCandidates`).
-     */
-    const more = lookupMixinCandidates(fb, name);
-    for (const d of more) {
-      if (!out?.includes(d)) {
-        (out ??= []).push(d);
-      }
-    }
-  }
-  return out ?? [];
-}
-
 /**
  * [guards] Source-ordered candidate set for `name` within ONE frame: explicit
  * parametric `MixinDefinition`s AND paren-less rulesets callable as zero-arg mixins,
