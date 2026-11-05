@@ -1,5 +1,5 @@
-import { defineFunction } from '@jesscss/core';
-import type { Dimension } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
+import type { Dimension } from '@jesscss/core/value';
 import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString, stringText, type SassString } from './util.js';
 
 /**

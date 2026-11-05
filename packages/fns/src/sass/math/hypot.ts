@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension, type Dimension } from '@jesscss/core';
+import { defineFunction, makeDimension, type Dimension } from '@jesscss/core/value';
 import { convertToMatch } from './units.js';
 
 /**

@@ -179,9 +179,6 @@
   "packages/fns/src/less/escape.ts": [
     "Returns raw text (`Any`), as Less 4.x returns an `Anonymous`, so it is also valid standing alone as a statement, like `e()`."
   ],
-  "packages/fns/src/less/hsl.ts": [
-    "ACHROMATIC canonicalization (Less 4.x/v5 parity): a grey/black/white result (`s === 0 || l === 0 || l === 1`) carries no meaningful hue/saturation, so it round-trips through rgb — hue + saturation collapse to `0` and the authored unit is dropped (`hsl(380deg, 150%, 150%)` → `hsl(0, 0%, 100%)`)."
-  ],
   "packages/fns/src/util/mime.ts": [
     "Mirrors Less 4.x `environment.mimeLookup` + `charsetLookup`."
   ],

@@ -75,6 +75,7 @@ import serializerNodes, {
   textHoldsParentRef,
   branchTextIsPlaceholder,
   isCssColorCall,
+  isCssColorFunction,
   isConditionOperand,
   colorAlphaSlash,
   copyNode,
@@ -208,6 +209,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
+import { channelMath, isModernHsl, rejectChannelMath, resolveHsl, type ColorChannels } from './css-color.js';
 import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
@@ -4266,6 +4268,15 @@ interface Lane {
    */
   keepsMath: boolean;
 
+  /**
+   * The channel keywords of the CSS colour whose channels this lane evaluates,
+   * bound to its origin's values (`l` in `hsl(from C h s calc(l - 10))`); set
+   * by {@link resolveHsl} only for a call a consumer demands. A keyword reads
+   * its binding ({@link materializeNode}) and the math written in a math
+   * function there computes, so the colour resolves.
+   */
+  channels: ColorChannels | undefined;
+
   /*
    * [important] Less `importantScope`: while resolving one declaration's value, an
    * `Important`-wrapped variable reference (`@v: @c !important`) sets `hit`, so the
@@ -4494,6 +4505,8 @@ interface EvalSession {
  *   operand it is not defined on is kept as written (a CSS math function, a
  *   call written out as-is) or rejected
  *   ({@link Lane.keepsMath}).
+ * - `channels`: a CSS colour's channels, with `channels` bound
+ *   ({@link Lane.channels}); a statement resets them.
  * - `guard`: a mixin guard operand, where `default()` is `isDefault`.
  * - `statement`: a condition decided ahead of execution
  *   ({@link preselectControlFlow}). Whatever value is mid-way when that
@@ -4508,9 +4521,10 @@ interface EvalSession {
  */
 function deriveLane(
   e: Lane,
-  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked' | 'keepMath' | 'checkMath' | 'asked' | 'condition',
+  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked' | 'keepMath' | 'checkMath' | 'asked' | 'condition' | 'channels',
   sink?: { elided: boolean },
-  isDefault?: () => boolean
+  isDefault?: () => boolean,
+  channels?: ColorChannels
 ): Lane {
   return change === 'call' && e.parenFrames?.at(-1) !== true
     ? e
@@ -4535,6 +4549,7 @@ function deriveLane(
             : change === 'statement' ? undefined : e.parenFrames,
         exprBoundary: change === 'parenBoundary' || change === 'boundary' || change === 'callBoundary' || (change !== 'statement' && e.exprBoundary),
         keepsMath: change === 'keepMath' || (change !== 'checkMath' && change !== 'statement' && e.keepsMath),
+        channels: change === 'channels' ? channels : change === 'statement' ? undefined : e.channels,
         importantSink: change === 'statement' ? undefined : e.importantSink,
         elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
         mergeImportant: change === 'statement' ? undefined : e.mergeImportant,
@@ -4589,7 +4604,7 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
     return makeKeyword(src);
   }
   switch (node.type) {
-    case 'Keyword': return makeKeyword(node.src);
+    case 'Keyword': return e.channels?.get(node.src.toLowerCase()) ?? makeKeyword(node.src);
     case 'Color': return colorFromSrc(node.src);
     case 'Dimension': return dimensionFromFields(node.number, node.unit, node.src);
     case 'Any': return makeAny(node.src);
@@ -6240,7 +6255,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * exactly as before. It is dominated by the flag, so a `.css`/`.jess`
        * operation never consults it.
        */
-      const shouldOperate = !node.inMathFunction
+      const shouldOperate = (!node.inMathFunction || e.channels !== undefined)
         && ((e.calcDepth ?? 0) > 0
           || node.mathOutsideParens
           || (e.parenFrames?.at(-1) ?? false));
@@ -6283,6 +6298,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * written rather than reject it ({@link Lane.keepsMath}).
            */
           return checkedOperation(node.operator, values[0]!, values[1]!, ev, e.keepsMath || (e.calcDepth ?? 0) > 0 || (node.operator === '/' && node.mathOutsideParens) || isConditionOperand(node.left) || isConditionOperand(node.right))
+            ?? (e.channels !== undefined && !channelMath(node.operator, values[0]!, values[1]!) ? rejectChannelMath(node.operator) : undefined)
             ?? rememberUnitOwner(ev.operate(
               node.operator,
               spelledOperand(node.left, mathOperand(values[0]!, node.operator, ev, e), frame, e),
@@ -7661,7 +7677,7 @@ function evalModuleReferenceCall(
   const written = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(node.base) ? node.base : node;
   call._s = sourceStartOf(written);
   call._e = sourceEndOf(written);
-  return dispatchCall(call, frame, deriveLane(e, 'call'), e.ev, selected.fn, false, true);
+  return dispatchCall(call, frame, deriveLane(e, 'call'), e.ev, selected.fn, 'imported');
 }
 
 /**
@@ -8982,7 +8998,7 @@ function evalCall(
         const result = rawInvoker(selected, args, pluginFnContext(node, frame, e, sourceOwner));
         const settled = isThenable(result)
           ? result.catch((error: unknown) => (error instanceof FunctionDeclined
-              ? dispatchCall(node, frame, e, ev, undefined, false)
+              ? dispatchCall(node, frame, e, ev, undefined, 'local')
               : withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e))))
           : result;
         if (isThenable(settled)) {
@@ -8994,7 +9010,7 @@ function evalCall(
       } catch (error) {
         /* A declined call is written out as-is, as a call to no function is. */
         return error instanceof FunctionDeclined
-          ? dispatchCall(node, frame, e, ev, undefined, false)
+          ? dispatchCall(node, frame, e, ev, undefined, 'local')
           : withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e));
       }
     });
@@ -9006,7 +9022,7 @@ function evalCall(
    * evaluator's unknown-call path, the one `.jess` reaches through its empty
    * registry (P17). The parser attached its document's scope to the node.
    */
-  return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node));
+  return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
 }
 
 /** One `functionMode: 'error'` copy per render's modes, for imported calls (ruling J1). */
@@ -9024,12 +9040,18 @@ function erroringModes(modes: EvalModes): EvalModes {
 /**
  * Materialize a call's arguments TYPED and dispatch it through the evaluator:
  * to `selected` when a scoped function was resolved, else to a built-in when
- * `ambient`, else down the unknown-call path, which writes the call out as-is.
+ * the document's built-ins are in scope (`ambient`), else down the
+ * unknown-call path, which writes the call out as-is.
  *
  * A call through an `imported` binding — a module namespace (`@ns.fn(…)`,
  * `$ns.fn(…)`) or a bare imported function (`$fn()`) — can never be a CSS
  * function, so `functionMode: 'preserve'` has nothing valid to write out: a
  * failure is an eval error whatever the configured mode (ruling J1, jess#280).
+ *
+ * A modern `hsl()` a consumer `demanded` that its callable could not compute,
+ * and so wrote out as-is, is the colour its CSS definition computes when every
+ * input is known ({@link resolveHsl}, Q12), read from the arguments evaluated
+ * here.
  */
 function dispatchCall(
   node: FunctionCall,
@@ -9037,10 +9059,10 @@ function dispatchCall(
   e: Lane,
   ev: ValueEvaluator,
   selected: Fn | undefined,
-  ambient: boolean,
-  imported = false
+  reach: 'ambient' | 'local' | 'imported',
+  demanded = false
 ): MaybePromise<EvalValue> {
-  const modes = imported && e.modes.functionMode !== 'error' ? erroringModes(e.modes) : e.modes;
+  const modes = reach === 'imported' && e.modes.functionMode !== 'error' ? erroringModes(e.modes) : e.modes;
   const sep = node.modern ? ' ' : ',';
 
   /*
@@ -9048,22 +9070,22 @@ function dispatchCall(
    * call with no callable is written out as-is, so its arguments are values
    * (ledger F11) rather than inputs.
    */
-  const argument = selected === undefined && !(ambient && ev.has(node.name)) ? ARG_WRITTEN : ARG_INPUT;
+  const argument = selected === undefined && !(reach === 'ambient' && ev.has(node.name)) ? ARG_WRITTEN : ARG_INPUT;
   const alpha = colorAlphaSlash(node);
 
-  /* An operation the operand rule rejects is kept as written in a CSS math function or a call written out as-is (ledger V36). */
-  const ae = (argument === ARG_WRITTEN || isMathFunctionName(node.name)) === e.keepsMath
-    ? e
-    : deriveLane(e, e.keepsMath ? 'checkMath' : 'keepMath');
+  /*
+   * An operation the operand rule rejects is kept as written in a CSS math
+   * function or a call written out as-is (ledger V36). A colour function
+   * opens channels of its own, so the keywords of one it is written in are
+   * not bound in it ({@link Lane.channels}).
+   */
+  const be = e.channels !== undefined && isCssColorFunction(node) ? deriveLane(e, 'channels') : e;
+  const ae = (argument === ARG_WRITTEN || isMathFunctionName(node.name)) === be.keepsMath
+    ? be
+    : deriveLane(be, be.keepsMath ? 'checkMath' : 'keepMath');
   const dispatch = (vals: ValueGroup[]): MaybePromise<EvalValue> => {
-    let named = false;
-    for (let i = 0; i < node.args.length; i++) {
-      if (node.args[i]!.name !== undefined) {
-        named = true;
-        break;
-      }
-    }
-    const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient) : vals;
+    const named = node.args.some(isNamedArg);
+    const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, reach === 'ambient') : vals;
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
 
     /*
@@ -9078,7 +9100,7 @@ function dispatchCall(
       ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
       : undefined;
     try {
-      const result = ev.call(node.name, args, modes, null, e.s.io, selected, ambient, written, node.args);
+      const result = ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', written, node.args);
       if (isThenable(result)) {
         return result.then((value) => {
           warnConsumedKept(vals, value, node, e);
@@ -9091,12 +9113,20 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   };
+  const call = demanded && selected === undefined && isModernHsl(node)
+    ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'Keyword' || out.call === null
+        ? out
+        : resolveHsl(node, vals[0]!, (slot, channels) => evalTypedSlot(slot, frame, deriveLane(be, 'channels', undefined, undefined, channels), true, ARG_INPUT), out))
+    : dispatch;
 
   /* [A4] A computed call reading an export is recorded for the runtime. */
   return e.s.exports.runtime === undefined || argument !== ARG_INPUT
-    ? combineAll(callArguments(node, alpha, frame, ae, argument), dispatch)
-    : exportCall(e, node, selected, () => callArguments(node, alpha, frame, ae, argument), args => combineAll(args, dispatch));
+    ? combineAll(callArguments(node, alpha, frame, ae, argument), call)
+    : exportCall(e, node, selected, () => callArguments(node, alpha, frame, ae, argument), args => combineAll(args, call));
 }
+
+/** Whether a call argument is written by name (`$lightness: -10%`). */
+const isNamedArg = (arg: CallArg<ValueSlot>): boolean => arg.name !== undefined;
 
 /** A call's arguments, typed: each slot, or a colour call's channels with its alpha ({@link colorAlphaSlash}); a loop, so no closure per call. */
 function callArguments(node: FunctionCall, alpha: Operation | null, frame: Frame | null, e: Lane, argument: ArgumentMode): Array<MaybePromise<ValueGroup>> {
@@ -10975,6 +11005,7 @@ function scratchEmit(e: Lane): Emit {
     parenFrames: undefined,
     exprBoundary: false,
     keepsMath: e.keepsMath,
+    channels: e.channels,
     importantSink: undefined,
     elideSink: undefined,
     mergeImportant: undefined,
@@ -14084,6 +14115,7 @@ function createRenderSession(
     parenFrames: undefined,
     exprBoundary: false,
     keepsMath: false,
+    channels: undefined,
     importantSink: undefined,
     elideSink: undefined,
     mergeImportant: undefined,

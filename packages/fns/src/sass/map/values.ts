@@ -6,7 +6,7 @@
  * @example
  * map.values((a: 1, b: 2)) // 1, 2
  */
-import { defineFunction, makeList } from '@jesscss/core';
+import { defineFunction, makeList } from '@jesscss/core/value';
 
 const values = defineFunction(
   'values',
