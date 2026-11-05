@@ -3,6 +3,7 @@ import { run } from 'parseman';
 
 import { scssGrammar } from '../src/grammar.js';
 import { parseScssCst } from '../src/cst.js';
+import { parseRecovering } from '../src/index.js';
 
 /**
  * Regression guard for the folded SCSS grammar. Importing the public grammar must
@@ -56,7 +57,6 @@ describe('SCSS grammar compose integrity', () => {
       '.a { .mixin(); }',
       '.a { .mixin(1, 2); }',
       '.a { &:extend(.b all); }',
-      '.mixin() { color: red; }',
       '.a { #ns.mixin(); }',
       '@detached: { color: red; };'
     ]) {
@@ -66,6 +66,10 @@ describe('SCSS grammar compose integrity', () => {
       expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
       expect(ast.ok && ast.unconsumedFrom === null, source).toBe(false);
     }
+  });
+
+  it('reports a Less mixin definition as a rule whose prelude no selector reads', () => {
+    expect(parseRecovering('.mixin() { color: red; }').recovered.map(error => error.code)).toEqual(['parse/invalid-rule-prelude']);
   });
 
   it('keeps Less-looking at-rules on the generic at-rule path, not Less routes', () => {
