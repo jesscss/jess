@@ -1371,7 +1371,7 @@ const scssFactory = (g: ScssInputRules) => {
     children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
   );
 
-  /*
+  /**
    * The bare dashed ident a dispatch routed keeps css's `CustomPropertyValue`
    * node, and SCSS adds glued chunks and `#{…}` to it: a hole makes the whole name
    * one interpolation, so `var(--#{$prefix}color)` reads one identifier, as Sass
@@ -1988,7 +1988,7 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const propertyNameChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
-  /*
+  /**
    * The custom-property token, overridden for `#{…}`: a bare `--` is a name only
    * when a hole is written straight after it (`--#{$prefix}x`), because a hole can
    * supply the name the token otherwise has to spell. css-variables-1 §2 reserves
