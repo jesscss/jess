@@ -15,6 +15,7 @@
 export {
   DeprecatedIfFunctionWarning,
   ERR,
+  InvalidRulePreludeError,
   LeadingSeparatorValueError,
   WARN,
   makeJessError,
