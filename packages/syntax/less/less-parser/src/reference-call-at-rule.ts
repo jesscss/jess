@@ -55,10 +55,21 @@ function rejectBareVariableIn(value: unknown): void {
 }
 
 function holdsInterpolation(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
   if (Array.isArray(value)) {
     return value.some(holdsInterpolation);
   }
-  return typeof value === 'object' && value !== null && (isInterpolation(value) || Object.values(value).some(holdsInterpolation));
+  if (isInterpolation(value)) {
+    return true;
+  }
+  for (const key in value) {
+    if (holdsInterpolation(Reflect.get(value, key))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
