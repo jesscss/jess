@@ -3,9 +3,12 @@
  * `src/less/css-forms.generated.ts`, constructor-built, so the package ships the
  * tree and no parser. `pnpm build:forms` writes it; a test keeps it fresh.
  *
- * The forms are the CSS forms of Less's colour built-ins
+ * The forms are the CSS forms of Less's colour and math built-ins
  * (docs/design/CSS-NATIVE-BUILTINS.md §3.3). `$amount` is a number on the
- * channel's scale (css-color-5 §4.4).
+ * channel's scale (css-color-5 §4.4); a `-deferred` form takes what only the
+ * browser knows, a colour's amount as a percentage (Q2), Less's decimal places
+ * as `pow(10, -1 * $places)`. `$step` and `$one` are 1 in the unit of a known
+ * `$value`, and a number otherwise (Q3).
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 

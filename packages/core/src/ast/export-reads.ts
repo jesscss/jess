@@ -572,7 +572,8 @@ function holdsFormSlot(fn: Fn, vals: readonly ValueGroup[], value: ValueGroup): 
     return slot !== undefined;
   }
   const first = lone(vals[0]!);
-  return value.unit === (slot === 'first' && !isValueGroupArray(first) && first.type === 'Dimension' ? first.unit : slot);
+  const unit = slot === 'first' && !isValueGroupArray(first) && first.type === 'Dimension' ? first.unit : slot;
+  return value.unit.toLowerCase() === unit.toLowerCase();
 }
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */

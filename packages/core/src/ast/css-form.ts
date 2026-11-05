@@ -61,7 +61,7 @@ const bound = (value: ValueGroup | undefined): ValueGroup | null =>
 
 /** A form's math over numbers it knows, the channels it reads standing unbound; a number that cannot be spelled fails the call. */
 const computed = (out: ValueGroup): ValueGroup =>
-  isDimension(out) ? makeDimension(out.number, out.unit) : out;
+  isDimension(out) && out.bytes === '' ? makeDimension(out.number, out.unit) : out;
 
 /** What prints a form spells the numbers it read, under `compress` as compressed. */
 function spellCells(cells: readonly BindingCell[], compress: boolean): void {
