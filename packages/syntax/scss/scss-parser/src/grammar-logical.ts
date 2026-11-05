@@ -1,5 +1,6 @@
-import { NO_SPAN, condition, cssBaseMathOutsideParens, expression, guardCompare, guardLogical, guardNot, isSpannedToken, isToken, isValueSlotArray, list, operation, sourceEndOf, sourceStartOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, condition, cssBaseMathOutsideParens, expression, guardCompare, guardLogical, guardNot, isToken, isValueSlotArray, list, operation, sourceEndOf, sourceStartOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AstSourceSpan, GuardNode, ValueNode, ValueSlot } from '@jesscss/core/ast';
+import type { ComparisonWord } from './grammar-helpers.js';
 import { COMPARISON_OPERATORS, isConditionWord, isScssValue, isScssValueTail, requireValue, scssTruth } from './grammar-helpers.js';
 
 const RELATIONAL_OPERATORS: ReadonlySet<string> = new Set(['>=', '<=', '>', '<']);
@@ -7,9 +8,10 @@ const RELATIONAL_OPERATORS: ReadonlySet<string> = new Set(['>=', '<=', '>', '<']
 /** Where a comparison's error points: the run's first operator. */
 type ComparisonSite = AstSourceSpan | undefined;
 
-function comparisonSite(field: unknown): ComparisonSite {
-  const first: unknown = Array.isArray(field) ? field[0] : field;
-  return isSpannedToken(first) ? first.span : undefined;
+const isComparisonWord = (child: unknown): child is ComparisonWord => typeof child === 'object' && child !== null && 'at' in child;
+
+function comparisonSite(children: readonly unknown[]): ComparisonSite {
+  return children.find(isComparisonWord)?.at;
 }
 
 /*
@@ -59,7 +61,7 @@ function foldComparisons(
  * "in CSS it comes out as written"). Its truth is Sass's `and` / `or`'s, so a
  * Sass `if()` that consumes it decides as before.
  */
-export function foldLogicalOperation(children: readonly unknown[], operatorField?: unknown): ValueNode {
+export function foldLogicalOperation(children: readonly unknown[]): ValueNode {
   const only = children[0];
   if (children.length === 1 && isScssValue(only)) {
     return only;
@@ -77,7 +79,7 @@ export function foldLogicalOperation(children: readonly unknown[], operatorField
     }
   }
   const { values, words } = operators.some(operator => COMPARISON_OPERATORS.has(operator))
-    ? foldComparisons(foldComparisons({ values: operands, words: operators }, RELATIONAL_OPERATORS, comparisonSite(operatorField)), COMPARISON_OPERATORS, comparisonSite(operatorField))
+    ? foldComparisons(foldComparisons({ values: operands, words: operators }, RELATIONAL_OPERATORS, comparisonSite(children)), COMPARISON_OPERATORS, comparisonSite(children))
     : { values: operands, words: operators };
   let result = values[0]!;
   for (let index = 1; index < values.length; index += 1) {
