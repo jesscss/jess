@@ -91,7 +91,26 @@ export function withBlockBody<T extends object>(node: T, rawChildren: readonly u
   return span === undefined ? node : withBodySpan(node, span);
 }
 
-/** Collapse every whitespace run to one space, leaving strings, escapes and other characters alone. */
+/** The last code unit of the string, escape or block comment opening at `at`, or `at` when none does. */
+function opaqueRunEnd(text: string, at: number): number {
+  const char = text[at]!;
+  if (isQuote(char)) {
+    return stringEnd(text, at);
+  }
+  if (char === '\\') {
+    return at + 1;
+  }
+  if (char !== '/' || text[at + 1] !== '*') {
+    return at;
+  }
+  let end = at + 3;
+  while (end < text.length && !(text[end - 1] === '*' && text[end] === '/')) {
+    end++;
+  }
+  return end;
+}
+
+/** Collapse every whitespace run to one space, leaving strings, escapes, block comments and other characters alone. */
 export function semanticGapText(text: string): string {
   let out = '';
   let inGap = false;
@@ -106,7 +125,7 @@ export function semanticGapText(text: string): string {
     }
     inGap = false;
     out += char;
-    const end = isQuote(char) ? stringEnd(text, at) : char === '\\' ? at + 1 : at;
+    const end = opaqueRunEnd(text, at);
     while (at < end && at + 1 < text.length) {
       at++;
       out += text[at]!;
@@ -115,57 +134,62 @@ export function semanticGapText(text: string): string {
   return out;
 }
 
-/** The index of the last code unit of the block comment or unquoted `url()` opening at `at`, or `at` when neither does. */
-function opaqueRunEnd(text: string, at: number): number {
-  const char = text[at];
-  const isComment = char === '/' && text[at + 1] === '*';
-  const isUrl = (char === 'u' || char === 'U')
-    && `${text[at]}${text[at + 1]}${text[at + 2]}${text[at + 3]}`.toLowerCase() === 'url('
-    && !isQuote(text[at + 4])
-    && (at === 0 || !isNameCode(text[at - 1]!.charCodeAt(0)));
-  if (!isComment && !isUrl) {
-    return at;
-  }
-  let end = at + (isComment ? 3 : 4);
-  while (end < text.length && !(isComment ? text[end - 1] === '*' && text[end] === '/' : text[end] === ')')) {
-    end += 1;
-  }
-  return end;
-}
-
-/** A `//` right after one of these starts a line comment; right after anything else, as in `http://a`, it is text. */
-function startsLineComment(text: string, at: number): boolean {
-  const before = text[at - 1];
-  return before === undefined || before === ' ' || before === '\t' || before === '\n' || before === '\r' || before === '\f'
-    || before === '(' || before === ')' || before === '[' || before === ']' || before === ',' || isQuote(before);
-}
+/*
+ * The one definition of `//` in at-rule prelude bytes. An unquoted `url(…)` is one token,
+ * as CSS Syntax 3 reads it even after spaces, so a `//` in it is text. Elsewhere a line
+ * comment starts where a token could: after a gap, a `,`, a closer, a string, or a `(` or
+ * `[` with no name glued to it. Anywhere else, as in `http://a`, it is text. Less's prelude
+ * productions in `less-parser/src/grammar.ts` spell these two patterns, because a grammar
+ * regex must be a literal; `prelude-line-comment.test.ts` holds them equal.
+ */
+export const preludeUrlToken = /(?<![-\w\u0080-\uffff\\])[uU][rR][lL]\([^)"']*\)/y;
+export const preludeLineComment = /(?<=^|[ \t\n\r\f,)\]"']|(?<![-\w\u0080-\uffff\\])[([])\/\/[^\n\r]*/y;
+const anyLineComment = /\/\/[^\n\r]*/y;
 
 /**
- * Prelude bytes that were read with no comment grammar around them, such as an
- * opaque group's, with each `//` line comment replaced by a space. `//` in a string,
- * a block comment, an escape or an unquoted `url()` is not a comment, and nor is one
- * glued to text unless `gluedToo`, for bytes whose own grammar has no `//` but a comment.
- * A production that keeps a trivia log does not need this for the gaps it logged.
+ * Prelude bytes with each `//` line comment replaced by a space. Without `gluedToo` a
+ * comment is what {@link preludeLineComment} says. With it, for a call head, whose grammar
+ * has read `//` as trivia, it is any `//` outside a `url()`. A string, an escape or a
+ * block comment holds none.
  */
 export function withoutLineComments(text: string, gluedToo = false): string {
+  const comment = gluedToo ? anyLineComment : preludeLineComment;
   let out = '';
   for (let at = 0; at < text.length; at++) {
     const char = text[at]!;
-    if (char === '/' && text[at + 1] === '/' && (gluedToo || startsLineComment(text, at))) {
-      out += ' ';
-      while (at + 1 < text.length && text[at + 1] !== '\n' && text[at + 1] !== '\r') {
-        at += 1;
+    let end = opaqueRunEnd(text, at);
+    if (char === 'u' || char === 'U') {
+      preludeUrlToken.lastIndex = at;
+      end = preludeUrlToken.test(text) ? preludeUrlToken.lastIndex - 1 : at;
+    } else if (char === '/' && text[at + 1] === '/') {
+      comment.lastIndex = at;
+      if (comment.test(text)) {
+        out += ' ';
+        at = comment.lastIndex - 1;
+        continue;
       }
-      continue;
     }
-    const end = isQuote(char) ? stringEnd(text, at) : char === '\\' ? at + 1 : opaqueRunEnd(text, at);
     out += char;
-    while (at < end && at + 1 < text.length) {
-      at += 1;
+    while (at < end) {
+      at++;
       out += text[at]!;
     }
   }
   return out;
+}
+
+/** Whether these prelude bytes hold a `@{`, outside an escape or a block comment. */
+export function holdsInterpolationOpener(text: string): boolean {
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at];
+    if (char === '@' && text[at + 1] === '{') {
+      return true;
+    }
+    if (char === '\\' || (char === '/' && text[at + 1] === '*')) {
+      at = opaqueRunEnd(text, at);
+    }
+  }
+  return false;
 }
 
 /**

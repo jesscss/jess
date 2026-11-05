@@ -493,7 +493,7 @@ describe('Less parser errors through the public AST route', () => {
   });
 
   it('summarizes semicolon expectations without raw token lists', async () => {
-    const source = '@namespace svg url(http://www.w3.org/2000/svg) .x {}';
+    const source = '@layer a b';
     const result = await new Compiler().renderToResult(
       { source, filePath: 'namespace.less', extension: '.less' },
       { breakOnError: false }
@@ -507,7 +507,7 @@ describe('Less parser errors through the public AST route', () => {
       reason: 'Less expected \';\' before this token.',
       fix: 'Add the missing \';\' or rewrite the statement.',
       line: 1,
-      column: 48,
+      column: 11,
       file: { source }
     });
     expect(result.errors[0]?.message).not.toContain('Expected:');

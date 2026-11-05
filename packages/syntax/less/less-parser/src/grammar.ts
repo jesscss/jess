@@ -272,6 +272,7 @@ type LessRules = {
   MixinReferenceChain: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
   ReferenceCallOrAtRule: Combinator<Reference | AtRuleBlock | UnknownAtRuleBlock | AtRuleStatement>;
+  ReservedAtRuleName: Combinator<string>;
   MixinGuard: Combinator<MixinGuard>;
   MixinGuardTopOr: Combinator<MixinGuard>;
   MixinGuardTopAnd: Combinator<MixinGuard>;
@@ -282,7 +283,7 @@ type LessRules = {
   MixinGuardOperand: Combinator<ValueNode | LessMathRun>;
   EachName: Combinator<string>;
   /** A complete Less statement body, shared by detached rulesets and `each()` callbacks. */
-  BodyStatement: Combinator<Statement | string>;
+  BodyStatement: Combinator<Statement | string | [null, Reference]>;
   EachCallback: Combinator<LessEachCallback>;
   EachFunctionStatement: Combinator<For>;
   IfFunctionStatement: Combinator<FunctionCall | If>;
@@ -607,8 +608,6 @@ const compoundSelectorTrivia = classifiedTrivia({
   lineComment,
   blockComment
 });
-const atPreludeCommentTrivia = classifiedTrivia({ blockComment });
-const atPreludeTrivia = classifiedTrivia({ lineComment, blockComment });
 /*
  * The trivia of a `@supports selector(…)` argument. General-enclosed content
  * is otherwise read with no trivia, its `//` kept as written (F13: a custom
@@ -3662,6 +3661,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.VarDeclaration,
     g.SupportsBlock,
     g.MediaContainerBlock,
+    sequence(peek(g.ReservedAtRuleName), g.ReferenceCall),
     g.ReferenceCallOrAtRule,
     g.Keyframes,
     g.AtRuleBlock,
@@ -4685,16 +4685,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const atPreludeWhitespace = noTrivia(regex(/[ \t\n\r\f]+/));
   const atPreludeComma = noTrivia(literal(','));
+  /*
+   * What a prelude group's bytes may hold past its strings and block comments, as
+   * `preludeUrlToken` and `preludeLineComment` in core define them: a `url(…)`, a line
+   * comment, so its `)` closes nothing, or a `/` or a `u` that opens neither.
+   */
+  const atPreludeGroupBytes = { skip: [regex(/(?<![-\w\u0080-\uffff\\])[uU][rR][lL]\([^)"']*\)|(?<=^|[ \t\n\r\f,)\]"']|(?<![-\w\u0080-\uffff\\])[([])\/\/[^\n\r]*|\/(?!\*)|[uU]/)] };
   const atPreludeGroup = noTrivia(choice(
-    token(balanced(
-      '(',
-      ')'
-    )),
-    token(balanced(
-      '[',
-      ']'
-    ))
+    token(balanced('(', ')', atPreludeGroupBytes)),
+    token(balanced('[', ']', atPreludeGroupBytes))
   ));
+  /* A `url(…)` where a token starts is the whole token, before the group its `(` would open. */
+  const atPreludeUrl = token(noTrivia(sequence(urlFunctionOpen, regex(/[^)"']*\)/))));
   const atPreludeQuoted = noTrivia(choice(
     scanSkipDoubleString,
     scanSkipSingleString
@@ -4704,15 +4706,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * An unknown at-rule's prelude is a permissive token run in which Less
    * evaluates only `@{…}` (ledger P2), so a `@{…}` makes the prelude an
    * interpolation over its bytes. A bare `@name` there is the bare-variable
-   * diagnostic (ledger P7), whose advice is that `@{…}` form.
+   * diagnostic (ledger P7), whose advice is that `@{…}` form. A `//` where a token
+   * could start is a Less line comment; glued inside text, as in `http://a`, it is text.
    */
   const AtRulePrelude = node(
     'AtRulePrelude',
     parser(
-      { trivia: atPreludeCommentTrivia },
+      { trivia: compoundSelectorTrivia },
       many(choice(
         atPreludeWhitespace,
         atPreludeComma,
+        atPreludeUrl,
         atPreludeGroup,
         atPreludeQuoted,
         g.VariableInterpolation,
@@ -4722,36 +4726,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => atRulePreludeFrom(children, triviaLog)
   );
-  /*
-   * The slashes a group after a call head may hold. A `//` where a token could start
-   * is a comment, so its `)` closes nothing; anywhere else, as in `(http://a)`, a slash
-   * is text. `withoutLineComments` draws the same line when the text is built.
-   */
-  const afterCallGroupSlash = { skip: [regex(/(?<=[ \t\n\r\f()[\],"'])(?<![uU][rR][lL]\()\/\/[^\n\r]*|\/(?!\*)/)] };
-  /** The prelude run after a call head, the one with no typed reading in front of it to take a `//` as a comment. */
-  const AtRulePreludeAfterCall = node(
-    'AtRulePrelude',
-    parser(
-      { trivia: atPreludeTrivia },
-      many(choice(
-        atPreludeWhitespace,
-        atPreludeComma,
-        noTrivia(choice(
-          token(balanced('(', ')', afterCallGroupSlash)),
-          token(balanced('[', ']', afterCallGroupSlash))
-        )),
-        atPreludeQuoted,
-        g.VariableInterpolation,
-        g.BareVariableInterpolation,
-        atPreludeText
-      ))
-    ),
-    (children, _fields, _span, _rawChildren, triviaLog) => atRulePreludeFrom(children, triviaLog, true)
-  );
   const lessUnknownAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|@(?!\{)|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
   const lessUnknownAtPreludeCapture = many(choice(
     atPreludeWhitespace,
     atPreludeComma,
+    atPreludeUrl,
     atPreludeGroup,
     atPreludeQuoted,
     g.BareVariableInterpolation,
@@ -4834,11 +4813,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const UnknownAtPrelude = node(
     'UnknownAtPrelude',
     parser(
-      { trivia: atPreludeCommentTrivia },
+      { trivia: compoundSelectorTrivia },
       lessUnknownAtPreludeCapture
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => {
-      const text = children.length === 0 ? '' : staticTextWithTriviaGaps(children, triviaLog).trim();
+      const text = children.length === 0 ? '' : staticTextWithTriviaGaps(children, triviaLog, true).trim();
       return text === '' ? null : text;
     }
   );
@@ -4854,8 +4833,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * STATEMENT spelling: Less's compiler namespace and `@import` own statement
    * productions of their own, and the conditional group at-keywords have no
    * statement spelling in CSS either (`@media screen;` is a reject in
-   * css-parser). One declaration per name, both negatives below read from these
-   * same two consts.
+   * css-parser). One declaration per name; `ReservedAtRuleName` below spells these
+   * same leaves flat, because every at-statement pays for its gate.
    */
   const NonStatementAtKeyword = token(noTrivia(choice(
     lessOwnAtKeyword,
@@ -4888,7 +4867,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * reads it (P39, P40).
    */
   /** The at-rule names with a statement of their own, which never take the generic statement or call-head reading. */
-  const ReservedAtRuleName = token(noTrivia(choice(NonStatementAtKeyword, charsetAtRuleName)));
+  const ReservedAtRuleName = token(noTrivia(choice(lessOwnAtKeyword, charsetAtRuleName, g.ImportAtKeyword, g.ConditionalAtKeyword)));
   const StaticAtRuleStatementName = token(noTrivia(sequence(
     not(ReservedAtRuleName),
     g.AtIdentifier
@@ -4939,8 +4918,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * `;`, `}` or the end of input leaves a call. An at-keyword leaves a call too:
    * a new statement starts there, so `@d()` then `@media (a) { … }` is two
    * statements. A `{` makes the head an at-rule's prelude. Anything else continues
-   * that prelude, which ends at `;`, `{`, `}` or the end of input. A name with a
-   * statement of its own never takes that reading, so `(…)` after it stays a call.
+   * that prelude, which ends at `;`, `{`, `}` or the end of input. A `!` ends the
+   * head too, so `@d() !important;` stays the error it was. A name with a statement of
+   * its own goes to `ReferenceCall` ahead of this rule, so `(…)` after it stays a call.
    *
    * Arguments a call cannot read, as in `@foo (a > b) { … }`, fail the head and
    * reach `AtRuleBlock` as they always did. The node keeps the `VarCall` label a
@@ -4948,19 +4928,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const ReferenceCallOrAtRule = node(
     'VarCall',
-    choice(
-      sequence(peek(ReservedAtRuleName), referenceCallHead, optional(literal(';'))),
-      sequence(
-        referenceCallHead,
-        optional(choice(
-          literal(';'),
-          sequence(
-            not(regex(/@(?!\{)|\}|$/)),
-            AtRulePreludeAfterCall,
-            optional(choice(AtRuleBlockAfterCall, UnknownAtRuleBlockAfterCall, literal(';')))
-          )
-        ))
-      )
+    sequence(
+      referenceCallHead,
+      optional(choice(
+        literal(';'),
+        sequence(
+          not(regex(/@(?!\{)|[}!]|$/)),
+          g.AtRulePrelude,
+          optional(choice(AtRuleBlockAfterCall, UnknownAtRuleBlockAfterCall, literal(';')))
+        )
+      ))
     ),
     (children, _fields, span, rawChildren, _triviaLog, state) => {
       const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
@@ -6193,6 +6170,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     MixinReferenceChain,
     ReferenceCall,
     ReferenceCallOrAtRule,
+    ReservedAtRuleName,
     MixinGuard,
     MixinGuardTopOr,
     MixinGuardTopAnd,

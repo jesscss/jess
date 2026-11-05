@@ -4,13 +4,13 @@
  */
 import type { Span } from 'parseman';
 import type { Any, AtRuleBlock, AtRuleStatement, ExtendInstruction, Interpolation, SourceSpan, Statement, UnknownAtRuleBlock } from '@jesscss/core/ast';
-import { any, atRuleBlock, atRuleStatement, bodySpanFromRaw, interpolation, isInterpolation, isSpannedToken, semanticGapText, sourceEndOf, sourceStartOf, unknownAtRuleBlock, withBodySpan, withoutLineComments, withSourceSpan } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, bodySpanFromRaw, holdsInterpolationOpener, interpolation, isInterpolation, isSpannedToken, semanticGapText, sourceEndOf, sourceStartOf, unknownAtRuleBlock, withBodySpan, withoutLineComments, withSourceSpan } from '@jesscss/core/ast';
 import { bodyExtensionsOf, isAny, isLessTerminalText, isReferenceTailFact, isStatement, isVarRef, staticText, variableNameText } from './grammar-helpers.js';
 import { LessUnresolvedPreludeInterpolationError } from './parse-error.js';
 import { rejectBareVariable, reportRecovered } from './parse-state.js';
 
 type BlockTail = {
-  readonly rules: readonly Statement[];
+  readonly rules: Statement[];
   readonly extensions: readonly ExtendInstruction[];
   readonly bodySpan: SourceSpan | undefined;
 };
@@ -103,9 +103,9 @@ export function atRuleAfterReferenceCall(
   const bytes = parts === null ? src : opener + parts.map(part => 'lit' in part ? part.lit : '').join('');
   const body = children[at + 1];
   const atRule = atRuleWithBody(`@${variableNameText(children[1])}`, parts === null ? any(src) : interpolation([{ lit: opener }, ...parts]), src, body, span);
-  if (head.includes('@{')) {
+  if (holdsInterpolationOpener(head)) {
     reportRecovered(new LessUnresolvedPreludeInterpolationError(span.start, end, atRule), state);
-  } else if (bytes.includes('@{') || (parts !== null && isOpaqueTail(body))) {
+  } else if (holdsInterpolationOpener(bytes) || (parts !== null && isOpaqueTail(body))) {
     reportRecovered(new LessUnresolvedPreludeInterpolationError(raw.span.start, raw.span.end, atRule), state);
   }
   return atRule;
@@ -118,6 +118,6 @@ function atRuleWithBody(name: string, prelude: Any | Interpolation, src: string,
   if (!isBlockTail(body)) {
     return atRuleStatement(name, prelude);
   }
-  const atRule = atRuleBlock(name, prelude, [...body.rules], body.extensions);
+  const atRule = atRuleBlock(name, prelude, body.rules, body.extensions);
   return withSourceSpan(body.bodySpan === undefined ? atRule : withBodySpan(atRule, body.bodySpan), span);
 }
