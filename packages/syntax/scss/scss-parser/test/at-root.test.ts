@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { run } from 'parseman';
 import { parse } from '@jesscss/scss-parser';
+import { scssGrammar } from '../src/grammar.js';
 
 /**
  * Every `@at-root` form parses (ledger P45). Foundation `scss/components/_off-canvas.scss`
@@ -26,6 +28,25 @@ describe('SCSS @at-root', () => {
     expect(parse(source)).toMatchObject({
       rules: [{ rules: [{ type: 'AtRuleBlock', name: '@at-root', prelude, rules: [{ type: 'Declaration', name: 'b' }] }] }]
     });
+  });
+
+  it.each([
+    ['a string', '"{"'],
+    ['a length', '1px'],
+    ['a selector and a length', '.x 1px'],
+    ['a class with no name', '. b'],
+    ['a leading combinator', '> .x'],
+    ['a comment before', '/* c */ .x'],
+    ['a comment after', '.x /* c */']
+  ])('keeps a prelude that holds %s, as written', (_label, prelude) => {
+    expect(parse(`.a { @at-root ${prelude} { b: c; } }`)).toMatchObject({
+      rules: [{ rules: [{ type: 'AtRuleBlock', name: '@at-root', prelude: { type: 'Any', src: prelude } }] }]
+    });
+  });
+
+  it('reads a prelude in a raw grammar run, which has no source to quote', () => {
+    const result = run(scssGrammar.Stylesheet, '.a { @at-root .x { b: c; } }', { trivia: scssGrammar.whitespace });
+    expect(result.ok).toBe(true);
   });
 
   it('reads one in a mixin body', () => {

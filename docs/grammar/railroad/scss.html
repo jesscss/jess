@@ -2131,7 +2131,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-AtRootSelectorPrelude">
     <h2><a href="#rule-AtRootSelectorPrelude">§</a> AtRootSelectorPrelude</h2>
     <div class="diagram" data-rule="AtRootSelectorPrelude"></div>
-    <div class="ebnf">AtRootSelectorPrelude ::= SelectorList</div>
+    <div class="ebnf">AtRootSelectorPrelude ::= SelectorList RulePreludeRest? | RulePreludeRest</div>
   </section>
   <section class="rule" id="rule-SassDirective">
     <h2><a href="#rule-SassDirective">§</a> SassDirective</h2>
@@ -3061,7 +3061,7 @@ svg.railroad-diagram rect {
   { name: "SupportsAndOrKeyword", dsl: function(){ return Diagram(NonTerminal("QueryAndOr")); } },
   { name: "AtRulePreludeAtom", dsl: function(){ return Diagram(Choice(0, NonTerminal("AtRulePreludeGroup"), NonTerminal("AtRulePreludeQuoted"), NonTerminal("BlockCommentToken"), NonTerminal("LineComment"), Terminal("/(?:[^#()\\[\\]{}'\"\\\\/]|\\\\[\\s\\S]|#(?!\\{)|\\/(?!\\*))+/"))); } },
   { name: "AtRootFilterPrelude", dsl: function(){ return Diagram(Terminal("balanced ( … )")); } },
-  { name: "AtRootSelectorPrelude", dsl: function(){ return Diagram(NonTerminal("SelectorList")); } },
+  { name: "AtRootSelectorPrelude", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("SelectorList"), Optional(NonTerminal("RulePreludeRest"))), NonTerminal("RulePreludeRest"))); } },
   { name: "SassDirective", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, NonTerminal("MixinCallRule"), NonTerminal("MixinDefinitionRule"), NonTerminal("FunctionRule"), NonTerminal("IfRule"), NonTerminal("EachRule"), NonTerminal("ForRule"), NonTerminal("ContentRule"), NonTerminal("WhileRule"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective"), NonTerminal("AtRootContinuation")))); } },
   { name: "SassNestedDirective", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, NonTerminal("MixinCallRule"), NonTerminal("MixinDefinitionRule"), NonTerminal("IfRule"), NonTerminal("EachRule"), NonTerminal("ForRule"), NonTerminal("ContentRule"), NonTerminal("WhileRule"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective"), NonTerminal("AtRootContinuation")))); } },
   { name: "SassControlDirective", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, NonTerminal("IfRule"), NonTerminal("EachRule"), NonTerminal("ForRule"), NonTerminal("WhileRule"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective")))); } },

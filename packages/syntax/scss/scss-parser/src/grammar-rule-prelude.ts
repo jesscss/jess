@@ -16,14 +16,17 @@ export class RulePreludeRest {
   }
 }
 
+/** The bytes at a span, for a rule whose node keeps them: a raw-grammar run has no source to quote. */
+export function writtenAt(span: AstSourceSpan, state: unknown, what: string): string {
+  return typeof state === 'object' && state !== null && 'source' in state ? authoredSource(span, state, what) : '';
+}
+
 /**
  * A prelude no selector reads, as written, in one simple selector, and the error
- * at it (ledger P45). A raw-grammar run has no source to quote and keeps no reports.
+ * at it (ledger P45). A raw-grammar run keeps no reports.
  */
 function unreadableRulePrelude({ end, state }: RulePreludeRest, start: number): SelectorList {
-  const written = typeof state === 'object' && state !== null && 'source' in state
-    ? authoredSource({ start, end }, state, 'A rule prelude')
-    : '';
+  const written = writtenAt({ start, end }, state, 'A rule prelude');
   const text = written.trim();
   const offset = start + written.length - written.trimStart().length;
   const selector = simpleSelector(text);
@@ -33,7 +36,7 @@ function unreadableRulePrelude({ end, state }: RulePreludeRest, start: number): 
 
 /** A known pseudo its argument rule cannot read, as written in one simple selector, and the error at it (ledger P45). */
 export function unreadablePseudo(span: AstSourceSpan, state: unknown): SimpleSelector {
-  const selector = simpleSelector(typeof state === 'object' && state !== null && 'source' in state ? authoredSource(span, state, 'A pseudo') : '');
+  const selector = simpleSelector(writtenAt(span, state, 'A pseudo'));
   reportRecovered(new InvalidRulePreludeError(span.start, span.end, selector), state);
   return selector;
 }

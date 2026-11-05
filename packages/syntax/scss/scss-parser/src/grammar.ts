@@ -25,7 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, asScssAtRoot, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { RulePreludeRest as PreludeRest, ruleFromPrelude, unreadablePseudo } from './grammar-rule-prelude.js';
+import { RulePreludeRest as PreludeRest, ruleFromPrelude, unreadablePseudo, writtenAt } from './grammar-rule-prelude.js';
 import { functionalPseudoFrom, nthPseudoFrom, pseudoArgumentFrom } from './grammar-pseudo.js';
 import { conditionWord, gluedTerm, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { RETURN_DIRECTIVE, directivePrelude, lowerFunctionReturns } from './grammar-return.js';
@@ -4151,12 +4151,16 @@ const scssFactory = (g: ScssInputRules) => {
   /**
    * `@at-root .x .y { … }` parses (ledger P45) and has no output carrier (P10):
    * the compile reports `parse/at-root-placement` at the at-rule before anything
-   * reads this prelude, so its text is all it keeps.
+   * reads this prelude, so its text is all it keeps. The rule prelude's rest reads
+   * whatever no selector does, here as there, for the same one error.
    */
   const AtRootSelectorPrelude = node<ValueNode>(
     'AtRootSelectorPrelude',
-    g.SelectorList,
-    (_children, _fields, span, _rawChildren, _triviaLog, state) => any(authoredSource(span, state, 'An @at-root prelude').trim())
+    choice(
+      sequence(g.SelectorList, optional(g.RulePreludeRest)),
+      g.RulePreludeRest
+    ),
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => any(writtenAt(span, state, 'An @at-root prelude').trim())
   );
   const AtRootBlock = node<AtRuleBlock>(
     'AtRootBlock',
@@ -4873,6 +4877,7 @@ const scssFactory = (g: ScssInputRules) => {
    * The shared gate on a broken An+B, where SCSS's `#{` does not break one: the `#`
    * of `:nth-child(-n + #{$num})` (Foundation `util/_mixins.scss`) opens the offset.
    * One character class differs from `parser-shared`'s rule, and nothing else.
+   * TODO(jess#603): share the rule; until then a change to it is made in both.
    */
   const MalformedPseudoSelectorNumericArgument = regex(/(?:[-+]?\d*\.\d|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*(?:\)|[^0-9 \t\n\r\f#]|#(?!\{)|\d+[_a-zA-Z\u0080-\uffff\\]))|[+-][ \t\n\r\f]+(?:\d*n|n)|[-+]?\d+[ \t\n\r\f]+n|[-+]?\d+[ \t\n\r\f]*[+-][ \t\n\r\f]*n)/i);
 
