@@ -17,12 +17,10 @@
  *
  * HARD MODULE BOUNDARY: the value domain and the operand rule only.
  */
-import { cssMath } from './css-math.js';
 import { isMathFunctionName } from './math-functions.js';
 import type { Operation } from './nodes.js';
 import { DivisionByZeroError, InvalidOperandError, emitValue, isValueGroupArray, joinGroup, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { arithmeticOperand, makeDimension, makeKeyword, withFields } from './value-factory.js';
-import { groupItems } from './value-list.js';
 import { convertible } from './value-units.js';
 import { isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
 
@@ -129,7 +127,7 @@ function calcValue(value: EvalValue, ev: Divider): Dimension | undefined {
     case 'Dimension':
       return value.numerator !== undefined && (value.numerator.length > 1 || (value.denominator?.length ?? 0) > 0) ? undefined : value;
     case 'FunctionCall':
-      return value.name === 'calc' ? calcValue(value.args, ev) : mathCallValue(value, ev);
+      return value.name === 'calc' ? calcValue(value.args, ev) : undefined;
     case 'Arithmetic': {
       if (value.kept) {
         return undefined;
@@ -148,12 +146,6 @@ function calcValue(value: EvalValue, ev: Divider): Dimension | undefined {
     default:
       return undefined;
   }
-}
-
-/** A CSS math function over numbers the compile knows (`min(.1, .2)`), which is written out where no built-in of that name is in scope. */
-function mathCallValue(call: FunctionCall, ev: Divider): Dimension | undefined {
-  const out = cssMath(call.name, groupItems(call.args).map(arg => calcValue(arg, ev) ?? arg));
-  return out === null ? undefined : makeDimension(out.number, out.unit);
 }
 
 /**

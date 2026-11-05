@@ -100,18 +100,6 @@ export const asNumber = (value: ValueGroup, unit = knownUnit(value)): ValueGroup
 const keyword = (value: ValueGroup | undefined): string | undefined =>
   value !== undefined && !isValueGroupArray(value) && value.type === 'Keyword' ? value.text : undefined;
 
-/** `min()` or `max()` of numbers in one unit; any other is the browser's. */
-function extreme(name: string, first: Dimension, args: readonly ValueGroup[]): Dimension | null {
-  let best = first.number;
-  for (const arg of args) {
-    if (!isDimension(arg) || arg.unit !== first.unit) {
-      return null;
-    }
-    best = name === 'min' ? Math.min(best, arg.number) : Math.max(best, arg.number);
-  }
-  return formNumber(best, first.unit);
-}
-
 export function cssMath(name: string, args: readonly ValueGroup[]): Dimension | null {
   const [first, second, third] = args;
   if (name === 'round' && isDimension(second) && isDimension(third)) {
@@ -128,8 +116,6 @@ export function cssMath(name: string, args: readonly ValueGroup[]): Dimension | 
     case 'sign': return formNumber(Math.sign(first.number));
     case 'round': return isDimension(second) ? formNumber(round(first.number, -Math.round(Math.log10(second.number))), first.unit) : null;
     case 'rem': return isDimension(second) ? formNumber(first.number % second.number, first.unit) : null;
-    case 'min':
-    case 'max': return extreme(name, first, args);
     default: return null;
   }
 }

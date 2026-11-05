@@ -449,16 +449,25 @@ describe('an export inside a larger argument, by what the slot holds at compile 
   it('a bare dividend beside a divisor of its unit is the form too', async () => {
     await expect(css(exposed('5px', '@less.mod(@a, 3px)'))).resolves.toContain('v: rem(var(--a, 5px), 3px);');
   });
+
+  it('a dividend with no unit beside a divisor with one keeps its recipe', async () => {
+    const result = await new Compiler({}).renderToResult({ ...options, source: exposed('5', '@less.mod(@a, 3px)') });
+    expect(result.css).toContain('v: var(--a-mod, 2);');
+    expect(Object.keys(result.runtime?.derived ?? {})).toEqual(['--a-mod']);
+  });
 });
 
-describe('an export of math over known numbers takes the path of the number', () => {
+describe('known gap: an all-known math function written out under `@use`', () => {
   it.each([
-    ['min(.1, .2)', '@less.rgba(#c00, @a)', 'rgb(from #c00 r g b / var(--a, min(0.1, 0.2)))'],
-    ['min(1, 2)', '@less.hsv(@a, 50%, 50%)', 'hwb(var(--a, min(1, 2)) 25% 50%)'],
-    ['min(1px, 2px)', '@less.tint(#c00, @a)', 'var(--a-tint, #cd0303)'],
-    ['min(1px, 2px)', '@less.ceil(@a)', 'var(--a-ceil, 1px)']
-  ])('@a: %s; %s', async (held, source, written) => {
-    await expect(css(`@use "#less"; @expose a; @a: ${held}; .x { v: ${source}; }`)).resolves.toContain(`v: ${written};`);
+    '@a: min(.1, .2); .x { v: @less.rgba(#c00, @a); }',
+    '@a: min(1, 2); .x { v: @less.hsv(@a, 50%, 50%); }',
+    '@a: min(1px, 2px); .x { v: @less.tint(#c00, @a); }',
+    '@a: min(1px, 2px); .x { v: @less.ceil(@a); }',
+    '.x { v: @less.rgba(#c00, min(.1, .2)); }',
+    '.x { v: @less.rgba(#c00, min(1%, 2vw)); }',
+    '.x { v: @less.darken(#c00, clamp(1%, 2vw, 3%)); }'
+  ])('is neither a number the compile reads nor a value a form takes: %s', async (source) => {
+    await expect(css(`@use "#less"; @expose a; ${source}`)).rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 });
 

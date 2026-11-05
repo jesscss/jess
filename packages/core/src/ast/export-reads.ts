@@ -690,7 +690,7 @@ function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: N
   });
 }
 
-/** What fills a slot at compile time: the number a `calc()` or math over known numbers computes to. */
+/** What fills a slot at compile time: the number a `calc()` computes to. */
 function slotValue(val: ValueGroup, ev: SlotEvaluator | null | undefined): ValueGroup {
   const value = lone(val);
   return ev != null && !isValueGroupArray(value) && value.type === 'FunctionCall' ? calcOperand(value, ev) : value;

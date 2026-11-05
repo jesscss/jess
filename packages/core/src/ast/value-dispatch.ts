@@ -157,7 +157,7 @@ export function numberArguments(fn: Fn, args: ValueGroup, ev: Pick<ValueEvaluato
     if (isValueGroupArray(item)) {
       continue;
     }
-    const isCalc = item.type === 'FunctionCall' && item.result === 'numeric' && ev.sassCalculations !== true;
+    const isCalc = item.type === 'FunctionCall' && item.name === 'calc' && ev.sassCalculations !== true;
     if (!isCalc && (item.type !== 'List' || item.sep !== '/')) {
       continue;
     }
