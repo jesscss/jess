@@ -24,7 +24,7 @@ import { writtenCallValue } from './math-operand.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { dispatchFn, numberArguments } from './value-dispatch.js';
-import { makeFunctionCall } from './value-factory.js';
+import { makeFunctionCall, withFields } from './value-factory.js';
 import { emitCompressed } from './compress.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
@@ -109,7 +109,13 @@ function recoverCallFailure(
   }
 
   /* A declined imported call (`less.rgb`) is the CSS function it names. */
-  return fallbackCall(declined ? name.slice(name.lastIndexOf('.') + 1) : name, args, modes, call);
+  if (!declined) {
+    return fallbackCall(name, args, modes, call);
+  }
+  const written = fallbackCall(name.slice(name.lastIndexOf('.') + 1), args, modes, call);
+
+  /* Of no known type, it is still CSS, which a call written out because it failed is not (`isUnwrittenBuiltin`). */
+  return written.type === 'FunctionCall' && written.result === null ? keepAsWritten(withFields(written, { computed: true })) : written;
 }
 
 /** Attach recovery to an async result; the caller keeps the synchronous path allocation-free. */

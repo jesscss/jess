@@ -1,10 +1,10 @@
 import { asNumber, defineForm, formNumber, knownUnit, type FormCall } from '@jesscss/core/form';
 import { mulExact, percentToFraction, subExact } from '../util/decimal.js';
-import { normalizeHue } from './color-ctor-helper.js';
+import { inUnits, normalizeHue } from './color-ctor-helper.js';
 import { isValueGroupArray, makeDimension, textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 
 /** A colour a form's relative colour reads as its origin, or what only the browser knows of one. */
-export const COLOR_ARG = { type: ['Color', 'FunctionCall'], formUnits: [] } as const;
+export const COLOR_ARG = { type: ['Color', 'FunctionCall'], fits: (value: ValueGroup): boolean => inUnits(value, []) } as const;
 
 /** An amount in a channel, written as a number on that channel's scale, whatever its unit (css-color-5 §4.4). */
 export const channelAmount = (amount: Dimension): Dimension => formNumber(amount.number);
@@ -12,8 +12,12 @@ export const channelAmount = (amount: Dimension): Dimension => formNumber(amount
 /** An amount of alpha, a number on 0–1 whatever its unit: `10%` and `10` alike are 0.1 (css-color-5 §4.1). */
 export const alphaAmount = (amount: Dimension): Dimension => makeDimension(percentToFraction(amount.number));
 
+const HUE_UNITS = ['', 'deg', 'grad', 'rad', 'turn'];
+
+const fitsPercent = (value: ValueGroup): boolean => inUnits(value, ['%']);
+
 /** A hue, known or only the browser's; written as a call or in degrees. */
-export const HUE_ARG = { type: ['Dimension', 'FunctionCall'], formUnits: ['', 'deg', 'grad', 'rad', 'turn'] } as const;
+export const HUE_ARG = { type: ['Dimension', 'FunctionCall'], fits: (value: ValueGroup): boolean => inUnits(value, HUE_UNITS) } as const;
 
 /** A hue in degrees, which a known unit converts to. What only the browser knows stays as it is. */
 export const hueOf = (hue: ValueGroup): ValueGroup =>
@@ -52,7 +56,7 @@ function relativeMethod(name: string, method: Keyword | Quoted | WrittenCall | u
 /* @__NO_SIDE_EFFECTS__ */
 export function defineAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0], absoluteDeferred: FormCall[0], relativeDeferred: FormCall[0]): Fn {
   return defineForm(name, {
-    params: [COLOR_ARG, { type: ['Dimension', 'FunctionCall'], formUnits: ['%'] }, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
+    params: [COLOR_ARG, { type: ['Dimension', 'FunctionCall'], fits: fitsPercent }, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
     form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall => {
       const isRelative = relativeMethod(name, method);
       if (amount.type === 'Dimension') {

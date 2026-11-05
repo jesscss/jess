@@ -450,3 +450,29 @@ describe('@jesscss/css-parser/cst — leftover input is never reported as succes
     }
   });
 });
+
+/*
+ * A rule that spells its own padding keeps it as leaves in the CST: read past as
+ * ambient trivia, it would leave `0auto` in the leaves while the AST still spaced it.
+ */
+describe('CSS CST keeps the padding a value rule spells', () => {
+  const leafText = (node: CssCstChild): string => {
+    if (node._tag === 'leaf') {
+      return node.value;
+    }
+    return node.rules.map(leafText).join('');
+  };
+
+  it.each([
+    'var(--x, 0 auto)',
+    'var(--x, { a, b })',
+    'var(--x, (a /* c */ ; b))',
+    'var(--x, foo(a /* c */ ; b))',
+    'if(a: 1 /* c */, 2; else: 3)',
+    'if(media(print): a /* c */ ; else: b)'
+  ])('%s', (value) => {
+    const { tree, ok } = parseCssCst(`a{b:${value};}`);
+    expect(ok).toBe(true);
+    expect(leafText(tree)).toBe(`a{b:${value};}`);
+  });
+});

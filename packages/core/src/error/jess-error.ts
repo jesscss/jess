@@ -60,6 +60,9 @@ export type JessErrorInit = {
 
   /** Optional one-liner for extra context */
   note?: string;
+
+  /** What a function threw, when this is its failed call */
+  cause?: unknown;
 };
 
 /**
@@ -90,6 +93,9 @@ export class JessError {
   reason = '';
   fix = '';
   note?: string;
+
+  /** What a function threw, when this is its failed call. */
+  cause?: unknown;
 
   constructor(init: JessErrorInit) {
     // Resolve context from ctx/node first, else from explicit fields.
@@ -123,6 +129,7 @@ export class JessError {
     this.reason = init.reason ?? t.reason;
     this.fix = init.fix ?? t.fix;
     this.note = init.note ?? (fileObj === authored ? undefined : INJECTED_TEXT_NOTE);
+    this.cause = init.cause;
   }
 
   /**

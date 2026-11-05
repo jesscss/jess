@@ -76,7 +76,7 @@ export {
 export { CollectionOverlay, isCollection, collectionEntries, collectionEntryIndex, collectionKeyIndex } from './ast/value-collection.js';
 
 // --- value serializer ---
-export { HEX, RGB, HSL, serializeColor, hslToRgb } from './ast/color.js';
+export { HEX, RGB, HSL, holdsNone, serializeColor, hslToRgb } from './ast/color.js';
 export { serializeValue } from './ast/serialize-value.js';
 export { decimalStep, round } from './ast/round.js';
 
@@ -118,5 +118,5 @@ export type {
 } from './ast/functions/types.js';
 
 // --- registry seam ---
-export { createFnRegistry, defineFunction, FunctionDeclined } from './ast/value-dispatch.js';
+export { createFnRegistry, defineFunction, FunctionDeclined, NoCssForm } from './ast/value-dispatch.js';
 export type { FnRegistry } from './ast/value-dispatch.js';

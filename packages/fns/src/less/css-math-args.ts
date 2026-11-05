@@ -1,8 +1,11 @@
 import { formNumber, isDimension, knownUnit } from '@jesscss/core/form';
 import type { ValueGroup } from '@jesscss/core/value';
+import { inUnits } from './color-ctor-helper.js';
+
+export const fitsNumber = (value: ValueGroup): boolean => inUnits(value, ['']);
 
 /** A number a form reads, or what only the browser knows of one, taken to hold a number (Q3). */
-export const NUMBER_ARG = { type: ['Dimension', 'FunctionCall'], formUnits: [''] } as const;
+export const NUMBER_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsNumber } as const;
 
 export { isDimension };
 
