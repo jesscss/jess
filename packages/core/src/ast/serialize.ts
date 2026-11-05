@@ -9052,7 +9052,7 @@ function dispatchCall(
     : deriveLane(be, be.keepsMath ? 'checkMath' : 'keepMath');
   const dispatch = (evaluated: ValueGroup[]): MaybePromise<EvalValue> => {
     const named = node.args.some(isNamedArg);
-    const vals = argument === ARG_INPUT && node.args.some(isSpreadArg)
+    const vals = argument === ARG_INPUT && node.args.some(a => a.spread)
       ? evaluated.flatMap((value, i) => (node.args[i]!.spread ? spreadItems(value) : [value]))
       : evaluated;
     const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, reach === 'ambient') : vals;
@@ -9097,9 +9097,6 @@ function dispatchCall(
 
 /** Whether a call argument is written by name (`$lightness: -10%`). */
 const isNamedArg = (arg: CallArg<ValueSlot>): boolean => arg.name !== undefined;
-
-/** Whether a call argument is a rest argument (`$list...`). */
-const isSpreadArg = (arg: CallArg<ValueSlot>): boolean => arg.spread;
 
 /** The arguments a `$list...` stands for: its items, or itself when it is one value. */
 function spreadItems(value: ValueGroup): readonly ValueGroup[] {
