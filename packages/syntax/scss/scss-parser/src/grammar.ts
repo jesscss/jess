@@ -25,7 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { ruleFromPrelude, rulePreludeRest, type RulePreludeRestEnd } from './grammar-rule-prelude.js';
+import { RulePreludeRest as PreludeRest, ruleFromPrelude } from './grammar-rule-prelude.js';
 import { functionalPseudoFrom, nthPseudoFrom, pseudoArgumentFrom } from './grammar-pseudo.js';
 import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { scssSum } from './plus-chain.js';
@@ -177,7 +177,7 @@ type ScssRules = {
   Extend: Combinator<ExtendInstruction>;
   ScssGenericAtRuleName: Combinator<string>;
   UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
-  RulePreludeRest: Combinator<RulePreludeRestEnd>;
+  RulePreludeRest: Combinator<PreludeRest>;
   Ruleset: Combinator<Ruleset>;
   NestedRuleset: Combinator<Ruleset>;
   rw: Combinator<unknown>;
@@ -5324,44 +5324,44 @@ const scssFactory = (g: ScssInputRules) => {
    * What is left of a rule's prelude when no selector reads the current token:
    * `font:bold 12px serif .title { … }`, `50% { … }`. The block makes this a rule, so
    * it parses, and the error sits on the prelude (ledger P45). It reads component
-   * values up to the `{`, and a `;` or `}` ends it short of a rule.
+   * values up to the `{`, and a `;` or `}` ends it short of a rule. Its lead is a
+   * closed character set without `@`, so a body's choice still dispatches on the first
+   * character and an at-rule never enters here.
    */
-  const RulePreludeRest = node<RulePreludeRestEnd>(
+  const RulePreludeRest = node<PreludeRest>(
     'RulePreludeRest',
     oneOrMore(choice(
       g.SassInterpolation,
       balanced('(', ')'),
       balanced('[', ']'),
-      regex(/(?:[^{};"'()[\]#/\\]|#(?!\{)|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*|\/(?![/*])|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')+/)
+      regex(/(?:[!$%&*+,\-.:<=>?^_`|~0-9A-Za-z\s\u0080-\uffff]|#(?!\{)|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*|\/(?![/*])|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')+/)
     )),
-    (_children, _fields, span) => rulePreludeRest(span)
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => new PreludeRest(span.start, span.end, state)
   );
 
   const Ruleset = node<Ruleset>(
     'Ruleset',
     sequence(
       choice(
-        sequence(g.SelectorList, optional(g.RulePreludeRest)),
-        sequence(not(literal('@')), g.RulePreludeRest)
+        sequence(g.SelectorList, choice(literal('{'), sequence(g.RulePreludeRest, literal('{')))),
+        sequence(g.RulePreludeRest, literal('{'))
       ),
-      literal('{'),
       ruleBody,
       literal('}')
     ),
-    (children, _fields, span, rawChildren, _triviaLog, state) => ruleFromPrelude(children, span, rawChildren, state)
+    (children, _fields, _span, rawChildren) => ruleFromPrelude(children, rawChildren)
   );
   const NestedRuleset = node<Ruleset>(
     'NestedRuleset',
     sequence(
       choice(
-        sequence(g.NestedSelector, optional(g.RulePreludeRest)),
-        sequence(not(literal('@')), g.RulePreludeRest)
+        sequence(g.NestedSelector, choice(literal('{'), sequence(g.RulePreludeRest, literal('{')))),
+        sequence(g.RulePreludeRest, literal('{'))
       ),
-      literal('{'),
       ruleBody,
       literal('}')
     ),
-    (children, _fields, span, rawChildren, _triviaLog, state) => ruleFromPrelude(children, span, rawChildren, state)
+    (children, _fields, _span, rawChildren) => ruleFromPrelude(children, rawChildren)
   );
   const Stylesheet = node<Stylesheet>(
     'Stylesheet',
