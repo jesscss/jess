@@ -212,8 +212,8 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { channelFunction, channelMath, channelOf, formChannels, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
-import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { channelFunction, channelMath, channelOf, formChannels, isComputedColorCall, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
+import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, withoutExportInputs, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -9182,10 +9182,10 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   };
-  const call = demanded && selected === undefined && isCssColorCall(node)
+  const call = demanded && selected === undefined && isComputedColorCall(node)
     ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
-        : resolveColorCall(node, vals, channelBinder(frame, be), out))
+        : withoutExportInputs(e.s.exports, () => resolveColorCall(node, vals, channelBinder(frame, be), out)))
     : e.channels !== undefined && selected === undefined
       ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? dispatch(vals)
       : dispatch;

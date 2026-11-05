@@ -78,7 +78,7 @@
       "css": "color-mix(in srgb, C1 W%, C2)",
       "spec": "css-color-5 §3.3, §3.5",
       "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime)",
-      "extended": "rgb(from C1 clamp(0, r * W + K * (1 - W), 255) ...), K the known C2 channel; or symmetric with C1 known"
+      "extended": "rgb(from C clamp(0, (r * alpha * w + q_r) / (alpha * w + p), 255) ... / calc(alpha * w + p)), w the share of the colour not known, p and q the known colour's opacity and premultiplied channels"
     },
     {
       "dialect": "less",
@@ -86,8 +86,8 @@
       "class": "exact",
       "css": "color-mix(in srgb, white W%, C)",
       "spec": "css-color-5 §3",
-      "notes": "rung 2 color-mix() for 0-100%; rung 3 relative rgb for a known weight outside 0-100% (exact for every weight; translucent C adds the alpha terms color-mix() uses)",
-      "extended": "rgb(from C clamp(0, r + W * (255 - r), 255) clamp(0, g + W * (255 - g), 255) clamp(0, b + W * (255 - b), 255))"
+      "notes": "rung 2 color-mix() for 0-100%; rung 3 relative rgb for a known weight outside 0-100%, exact for every weight, with the alpha terms color-mix() uses",
+      "extended": "rgb(from C clamp(0, (r * alpha * w + q_r) / (alpha * w + p), 255) ... / calc(alpha * w + p)), w the share of the colour not known, p and q the known colour's opacity and premultiplied channels"
     },
     {
       "dialect": "less",
@@ -96,7 +96,7 @@
       "css": "color-mix(in srgb, black W%, C)",
       "spec": "css-color-5 §3",
       "notes": "as tint, toward black",
-      "extended": "rgb(from C clamp(0, r - W * r, 255) clamp(0, g - W * g, 255) clamp(0, b - W * b, 255))"
+      "extended": "rgb(from C clamp(0, (r * alpha * w + q_r) / (alpha * w + p), 255) ... / calc(alpha * w + p)), w the share of the colour not known, p and q the known colour's opacity and premultiplied channels"
     },
     {
       "dialect": "less",
@@ -104,7 +104,7 @@
       "class": "exact",
       "css": "color-mix(in srgb, C1, C2)",
       "spec": "css-color-5 §3",
-      "notes": "ruled 2026-11-01: mix() is color-mix(in srgb), compile-time results included (no legacy weighting); weights outside 0-100% have no CSS form (Q11)"
+      "notes": "ruled 2026-11-01: mix() is color-mix(in srgb), compile-time results included (no legacy weighting); takes no weight"
     },
     {
       "dialect": "less",

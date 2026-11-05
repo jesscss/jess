@@ -35,6 +35,12 @@ interface ParamSpecBase {
 
   /** Hand the body a typed thunk; evaluation and validation happen on invocation. */
   readonly lazy?: boolean;
+
+  /**
+   * Whether the CSS form holds this value where an exposed variable reads it, for
+   * a slot that takes what only the browser knows. Any other runs on the runtime.
+   */
+  readonly fits?: (value: ValueGroup) => boolean;
 }
 
 type ParamTypeSpec = ParamSpecBase & {

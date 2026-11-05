@@ -153,7 +153,10 @@ or needs JS) to decide what ships in the bundle.
   `hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100))`, the browser
   recomputes it, and the function is in no recipe. Built for Less `lighten`
   `darken` `saturate` `desaturate` `spin` `greyscale` `fade` `fadein` `fadeout`,
-  two-slot `rgb` `rgba`, and the hue of `hsv` `hsva`; the one seam is `exportCall`.
+  `mix` `tint` `shade` `average`, two-slot `rgb` `rgba`, and the hue of `hsv`
+  `hsva`; the one seam is `exportCall`. A weight is a form's while its value is one
+  `color-mix()` holds, and a call with no form over what only the browser knows
+  (`@less.mix(@a, @b, 150%)`) takes rung 4.
   `rgb` and `rgba` with an exposed channel are valid CSS as written, and print so:
   `@less.rgb(@r, 0, 0)` is `rgb(var(--r, 10), 0, 0)`; one exposed colour,
   `@less.rgb(@brand)`, is `var(--brand, #c00)`. A wrong exposed value fails at the

@@ -350,6 +350,16 @@ export function isCssColorCall(node: FunctionCall): boolean {
   return CSS_COLOR_CONSTRUCTORS.has(node.name.toLowerCase()) && hasColorChannels(node);
 }
 
+/** `color-mix(in srgb, …)`, in any case, of two colours. */
+export function isSrgbColorMix(node: FunctionCall): boolean {
+  const space = node.args[0]?.value;
+  return node.name.toLowerCase() === 'color-mix' && node.args.length === 3 && space !== undefined && isSlotList(space) && space.length === 2
+    && isKeywordNamed(space[0]!, 'in') && isKeywordNamed(space[1]!, 'srgb');
+}
+
+const isKeywordNamed = (slot: ValueSlot, name: string): boolean =>
+  !isSlotList(slot) && slot.type === 'Keyword' && slot.src.toLowerCase() === name;
+
 /**
  * The CSS colour functions, each of whose modern syntax ends in an optional
  * `/ <alpha-value>` (css-color-4 §5–§10): the F5 constructors and `hwb()`,

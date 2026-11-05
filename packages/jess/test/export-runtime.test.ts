@@ -68,7 +68,17 @@ describe('the export runtime', () => {
     ['@less.rgb(@brand, 0, 0)', '10', 'rgb(var(--brand, 10), 0, 0)'],
     ['@less.rgb(0, @brand, 0)', '10', 'rgb(0, var(--brand, 10), 0)'],
     ['@less.rgba(1, 2, 3, @brand)', '.5', 'rgba(1, 2, 3, var(--brand, 0.5))'],
-    ['@less.fade(@less.rgb(@brand, 0, 0), 50%)', '10', 'rgb(from rgb(var(--brand, 10), 0, 0) r g b / 0.5)']
+    ['@less.fade(@less.rgb(@brand, 0, 0), 50%)', '10', 'rgb(from rgb(var(--brand, 10), 0, 0) r g b / 0.5)'],
+    ['@less.mix(@brand, red)', '#c00', 'color-mix(in srgb, var(--brand, #c00), red)'],
+    ['@less.mix(@brand, red, 25%)', '#c00', 'color-mix(in srgb, var(--brand, #c00) 25%, red)'],
+    ['@less.mix(red, @brand, 25%)', '#c00', 'color-mix(in srgb, red 25%, var(--brand, #c00))'],
+    ['@less.mix(red, blue, @brand)', '25%', 'color-mix(in srgb, red var(--brand, 25%), blue)'],
+    ['@less.average(@brand, red)', '#c00', 'color-mix(in srgb, var(--brand, #c00), red)'],
+    ['@less.tint(@brand, 13%)', '#c00', 'color-mix(in srgb, white 13%, var(--brand, #c00))'],
+    ['@less.tint(red, @brand)', '13%', 'color-mix(in srgb, white var(--brand, 13%), red)'],
+    ['@less.shade(@brand)', '#c00', 'color-mix(in srgb, black 50%, var(--brand, #c00))'],
+    ['@less.tint(@brand, -13%)', '#c00', 'rgb(from var(--brand, #c00) clamp(0, (r * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (g * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (b * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) / calc(alpha * 1.13 + -0.13))'],
+    ['@less.darken(color-mix(in srgb, @brand, red), 10%)', '#c00', 'hsl(from color-mix(in srgb, var(--brand, #c00), red) h s clamp(0, l - 10, 100))']
   ])('prints %s of %s over its var(), with no recipe', async (expression, value, printed) => {
     const exported = await compile(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
@@ -84,6 +94,32 @@ describe('the export runtime', () => {
       .rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 
+  it('fails a recipe beside a fixed colour call, where no form holds the weight', async () => {
+    await expect(new Compiler({}).renderString('@use "#less";\n@expose a;\n@a: 150%;\n.x { v: @less.mix(rgba(1, 2, 3, .5), red, @a); }', { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/expose-not-a-value', line: 4, column: 9 });
+  });
+
+  it.each([
+    ['@less.mix(red, blue, @brand)', '150%', '25%'],
+    ['@less.mix(red, blue, @brand)', '25', '50%'],
+    ['@less.tint(#777, @brand)', '-13%', '13%'],
+    ['@less.lightness(@less.mix(@brand, red))', '#c00', '#08f']
+  ])('runs %s of %s on the runtime, where no form holds it', async (expression, value, later) => {
+    const exported = await compile(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`);
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    const [property] = Object.keys(derived);
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ brand: later });
+    const recompiled = await compile(`@use "#less";\n@brand: ${later};\n.a { v: ${expression}; }`);
+    expect(recompiled.css).toContain(`v: ${vars[property!]};`);
+  });
+
+  it('runs a mix of two exports on the runtime beyond 100%, as no form holds it', async () => {
+    const exported = await compile('@use "#less";\n@expose a, b;\n@a: #336699;\n@b: red;\n.a { v: @less.mix(@a, @b, 150%); }');
+    expect(exported.css).toContain('v: var(--a-mix, #0099e6);');
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '#000', b: '#fff' })['--a-mix']).toBe('#000000');
+  });
+
   it('runs rgb() as a recipe inside a function with no CSS form', async () => {
     const exported = await compile('@use "#less";\n@expose r;\n@r: 200;\n.a { v: @less.lightness(@less.rgb(@r, 0, 0)); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
@@ -97,7 +133,6 @@ describe('the export runtime', () => {
     '@less.fade(hsl(120, 50%, 50%), @a)',
     '@less.hsva(var(--h), 50%, 50%, @a)',
     '@less.hsv(var(--h), 50%, @a)',
-    '@less.mix(rgba(1, 2, 3, .5), red, @a)',
     '@less.darken(var(--x), @a)'
   ])('fails %s at its span, whose fixed argument the runtime cannot read', async (expression) => {
     const source = `@use "#less";\n@expose a;\n@a: 25%;\n.x { v: ${expression}; }`;

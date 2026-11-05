@@ -1,13 +1,12 @@
 /**
  * Shared color kernels the color fns reduce to — the color-domain twin of
  * `math-helper.ts`. Pure functions over the tree2 value `Color`: the Sass-derived
- * `mixColors` weight blend, WCAG `getLuma`, and `toHsv`. Byte-faithful ports of
- * `@jesscss/fns`'s `mix` / `util/get-luma` / `util/to-hsv`.
+ * WCAG `getLuma`, and `toHsv`. Byte-faithful ports of
+ * `@jesscss/fns`'s `util/get-luma` / `util/to-hsv`.
  *
  * HARD MODULE BOUNDARY: value domain only (no `../tree`, no legacy node).
  */
 import { RGB, colorRawRgb, colorRgbRounded, makeColorRgb, serializeColor, withFields, type Color, type Value } from '@jesscss/core/value';
-import { clamp01 } from './color-ctor-helper.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
 export function requireColor(value: Value): Color {
@@ -20,39 +19,11 @@ export function requireColor(value: Value): Color {
 /**
  * Rebuild `c` re-tagged to `format`, recomputing its serialized bytes (mirrors
  * `makeColorRgb`'s self-serialize). The reformat-to-input-format dance the
- * format-preserving fns (`contrast`/`tint`/`shade`) share.
+ * format-preserving fns share.
  */
 export function reformatColor(c: Color, format: number): Color {
   const base = withFields(c, { format, bytes: '' });
   return withFields(base, { bytes: serializeColor(base) });
-}
-
-/** Collapse a hair's-breadth-of-1 alpha (mix float drift) back to exactly 1. */
-export const snapAlpha = (a: number): number => (Math.abs(a - 1) < 1e-12 ? 1 : a);
-
-/**
- * Weighted blend of two colors (`mix`'s kernel; `tint`/`shade` are one-liners over
- * it). `weightPct` is the mix weight as a percentage (0-100). Byte-identical to
- * legacy `less/mix`: rounded-rgb operands, alpha-aware weight, format = RGB when
- * the result is translucent else the first operand's format.
- */
-export function mixColors(c1: Color, c2: Color, weightPct: number): Color {
-  const p = weightPct / 100.0;
-  const w = p * 2 - 1;
-  const a1 = clamp01(c1.alpha);
-  const a2 = clamp01(c2.alpha);
-  const a = a1 - a2;
-  const w1 = ((w * a === -1 ? w : (w + a) / (1 + w * a)) + 1) / 2.0;
-  const w2 = 1 - w1;
-  const r1 = colorRgbRounded(c1);
-  const r2 = colorRgbRounded(c2);
-  const rgb: [number, number, number] = [
-    r1[0] * w1 + r2[0] * w2,
-    r1[1] * w1 + r2[1] * w2,
-    r1[2] * w1 + r2[2] * w2
-  ];
-  const alpha = a1 * p + a2 * (1 - p);
-  return makeColorRgb(rgb, alpha, alpha < 1 ? RGB : c1.format);
 }
 
 /**

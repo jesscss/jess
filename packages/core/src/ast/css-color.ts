@@ -1,7 +1,7 @@
 /**
- * A CSS `rgb()` or `hsl()` that a built-in or an operation consumes, resolved by
- * its CSS definition (css-color-4 §5, §7, css-color-5 §4) when every
- * input is known: `darken(hsl(from #336699 h s calc(l - 10)), 5%)` reads the
+ * A CSS `rgb()`, `hsl()` or `color-mix(in srgb, …)` that a built-in or an
+ * operation consumes, resolved by its CSS definition (css-color-4 §5, §7,
+ * css-color-5 §3, §4) when every input is known: `darken(hsl(from #336699 h s calc(l - 10)), 5%)` reads the
  * colour the browser computes for the `hsl()`. Written on its own the call
  * prints as written (docs/design/CSS-NATIVE-BUILTINS.md §3.4, Q12).
  *
@@ -19,7 +19,7 @@
 import { type MaybePromise, combineAll, isThenable, mapMaybe } from '@jesscss/awaitable-pipe';
 import { trimNumber } from './format-number.js';
 import { DimensionValueNode } from './node-ctors.js';
-import { colorAlphaSlash, isCssColorCall, type FunctionCall, type ValueSlot } from './nodes.js';
+import { colorAlphaSlash, isCssColorCall, isSrgbColorMix, type FunctionCall, type ValueSlot } from './nodes.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import { isValueGroupArray, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
@@ -80,6 +80,9 @@ export type Rgba = readonly [r: number, g: number, b: number, alpha: number];
  * Each level of nesting is evaluated at most twice, never once per enclosing level.
  */
 export function resolveColorCall(node: FunctionCall, vals: readonly ValueGroup[], bind: ChannelBinder, written: WrittenCall): MaybePromise<Color | WrittenCall> {
+  if (isSrgbColorMix(node)) {
+    return resolveColorMix(node, vals, bind, written);
+  }
   const isRgb = node.name.toLowerCase().startsWith('rgb');
   const spelled = (channels: Hsla | Rgba | undefined, modern: boolean): Color | WrittenCall =>
     channels === undefined
@@ -105,11 +108,110 @@ export function resolveColorCall(node: FunctionCall, vals: readonly ValueGroup[]
   if (relative && origin === undefined) {
     /* A colour call as the origin was written out, as it is an argument no callable reads, so this consumer asks for it. */
     const call = nodes[1]!;
-    return !isValueSlotArray(call) && call.type === 'FunctionCall' && isCssColorCall(call)
+    return !isValueSlotArray(call) && call.type === 'FunctionCall' && isComputedColorCall(call)
       ? mapMaybe(bind(UNBOUND)(call), again => !isValueGroupArray(again) && again.type === 'Color' ? computed(again) : written)
       : written;
   }
   return computed(relative ? origin : undefined);
+}
+
+/** A CSS colour call that a consumer computes when it is known. */
+export const isComputedColorCall = (node: FunctionCall): boolean => isCssColorCall(node) || isSrgbColorMix(node);
+
+/**
+ * The colour of a `color-mix(in srgb, …)`. An argument a call written out holds
+ * as written, a colour call or a `calc()`, is evaluated again for this consumer,
+ * as a relative colour's origin is.
+ */
+function resolveColorMix(node: FunctionCall, vals: readonly ValueGroup[], bind: ChannelBinder, written: WrittenCall): MaybePromise<Color | WrittenCall> {
+  const spelled = (out: Rgba | undefined): Color | WrittenCall =>
+    out === undefined ? written : makeColorRgb([out[0], out[1], out[2]], out[3], RGB, { modernSyntax: true, src: written.bytes });
+  const known = authoredMix(vals.slice(1));
+  return known !== undefined ? spelled(known) : mapMaybe(channelsOf([node.args[1]!.value, node.args[2]!.value], bind(UNBOUND), authoredMix), spelled);
+}
+
+/** One argument of a `color-mix()`: a colour, and its percentage if it has one. */
+function mixArgument(value: ValueGroup): { readonly color: OriginColor; readonly weight: number | undefined } | undefined {
+  let color: OriginColor | undefined;
+  let weight: number | undefined;
+  for (const item of groupItems(value)) {
+    if (isDimension(item) && item.unit === '%' && weight === undefined) {
+      weight = item.number;
+    } else if (!isValueGroupArray(item) && item.type === 'Color' && color === undefined) {
+      color = item;
+    } else if (!isValueGroupArray(item) && item.type === 'Keyword' && color === undefined) {
+      color = namedColor(item.text);
+      if (color === undefined) {
+        return undefined;
+      }
+    } else {
+      return undefined;
+    }
+  }
+  return color === undefined ? undefined : { color, weight };
+}
+
+/**
+ * An authored `color-mix(in srgb, …)` (css-color-5 §3.1): each percentage in
+ * 0–100, their sum not 0. Two that do not sum to 100 are scaled to it, and a sum
+ * below 100 is a share of the alpha. Anything else is invalid, so not known.
+ */
+function authoredMix(values: readonly ValueGroup[]): Rgba | undefined {
+  const first = mixArgument(values[0]!);
+  const second = mixArgument(values[1]!);
+  if (first === undefined || second === undefined) {
+    return undefined;
+  }
+  const w1 = first.weight;
+  const w2 = second.weight;
+  if ((w1 !== undefined && (w1 < 0 || w1 > 100)) || (w2 !== undefined && (w2 < 0 || w2 > 100))) {
+    return undefined;
+  }
+  if (w1 === undefined || w2 === undefined) {
+    return mixed(first.color, second.color, w1 ?? (w2 === undefined ? 50 : 100 - w2));
+  }
+  const sum = w1 + w2;
+  if (sum === 0) {
+    return undefined;
+  }
+  const out = mixed(first.color, second.color, sum === 100 ? w1 : w1 * 100 / sum);
+  return sum < 100 ? [out[0], out[1], out[2], out[3] * sum / 100] : out;
+}
+
+/**
+ * Two colours mixed in sRGB (css-color-5 §3.3, §3.5): each counts by its weight
+ * times its opacity. `weight` is the first colour's percentage, the second has
+ * the rest; outside 0–100 it extrapolates, clamped, as a built-in's relative
+ * form does. Two of one opacity need no premultiplying.
+ */
+function mixed(c1: OriginColor, c2: OriginColor, weight: number): Rgba {
+  const rest = 100 - weight;
+  const [r1, g1, b1] = mixOperand(c1);
+  const [r2, g2, b2] = mixOperand(c2);
+  const a1 = clamp(c1.alpha, 1);
+  const a2 = clamp(c2.alpha, 1);
+  if (a1 === a2 && a1 !== 0) {
+    return [clamp((r1 * weight + r2 * rest) / 100, 255), clamp((g1 * weight + g2 * rest) / 100, 255), clamp((b1 * weight + b2 * rest) / 100, 255), a1];
+  }
+  const p1 = a1 * weight;
+  const p2 = a2 * rest;
+  const total = p1 + p2;
+  return total === 0
+    ? [0, 0, 0, 0]
+    : [clamp((r1 * p1 + r2 * p2) / total, 255), clamp((g1 * p1 + g2 * p2) / total, 255), clamp((b1 * p1 + b2 * p2) / total, 255), clamp(total / 100, 1)];
+}
+
+/** An operand's channels, with no binary residue of its own to tip a half-byte tie (`hsl(120, 50%, 40%)` holds 51, V4). */
+function mixOperand(origin: OriginColor): readonly [number, number, number] {
+  const [r, g, b] = originRgb(origin);
+  return Number.isInteger(r) && Number.isInteger(g) && Number.isInteger(b) ? [r, g, b] : [trimNumber(r), trimNumber(g), trimNumber(b)];
+}
+
+/** A built-in's `color-mix()` form over known values: its weight may lie outside 0–100, which no authored call holds. */
+function formMix(values: readonly ValueGroup[]): Rgba | undefined {
+  const first = mixArgument(values[0]!);
+  const second = mixArgument(values[1]!);
+  return first === undefined || second === undefined ? undefined : mixed(first.color, second.color, first.weight ?? 50);
 }
 
 /**
@@ -119,6 +221,9 @@ export function resolveColorCall(node: FunctionCall, vals: readonly ValueGroup[]
  */
 export function formColor(form: FormChannels, input: Color | Dimension, channels: MutableChannels, read: (slot: ValueSlot) => MaybePromise<ValueGroup>): MaybePromise<Hsla | Rgba | undefined> {
   const { kinds, slashed } = form;
+  if (form.space === 'mix') {
+    return channelsOf(form.slots, read, formMix);
+  }
   if (input.type !== 'Color') {
     return channelsOf(form.slots, read, values => hwbOf(values, slashed));
   }
@@ -141,7 +246,7 @@ export function formColor(form: FormChannels, input: Color | Dimension, channels
 
 /** A form's colour, read once for every call: which function it is, and whether it reads an origin. */
 export interface FormChannels {
-  readonly space: 'hsl' | 'rgb' | 'hwb';
+  readonly space: 'hsl' | 'rgb' | 'hwb' | 'mix';
   readonly relative: boolean;
   readonly slots: readonly ValueSlot[];
   readonly kinds: readonly number[];
@@ -151,6 +256,9 @@ export interface FormChannels {
 const FORM_SPACES: Readonly<Record<string, FormChannels['space'] | undefined>> = { hsl: 'hsl', rgb: 'rgb', hwb: 'hwb' };
 
 export function formChannels(node: FunctionCall): FormChannels | undefined {
+  if (isSrgbColorMix(node)) {
+    return { space: 'mix', relative: true, slots: [node.args[1]!.value, node.args[2]!.value], kinds: [], slashed: false };
+  }
   const nodes = node.args[0]!.value;
   const space = FORM_SPACES[node.name];
   if (space === undefined || !isValueSlotArray(nodes)) {
