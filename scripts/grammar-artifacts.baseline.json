@@ -110,42 +110,42 @@
       "sourceBytes": 202811,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 484419,
+          "bytes": 484441,
           "ratio": 2.39,
           "assemblyFunctions": 95
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 351189,
+          "bytes": 351211,
           "ratio": 1.73,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 351980,
+          "bytes": 352002,
           "ratio": 1.74,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 351451,
+          "bytes": 351473,
           "ratio": 1.73,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 143355,
+          "bytes": 143377,
           "ratio": 0.71,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 143438,
+          "bytes": 143460,
           "ratio": 0.71,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 143361,
+          "bytes": 143383,
           "ratio": 0.71,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 143444,
+          "bytes": 143466,
           "ratio": 0.71,
           "assemblyFunctions": null
         }
