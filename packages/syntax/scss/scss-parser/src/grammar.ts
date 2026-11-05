@@ -2162,46 +2162,50 @@ const scssFactory = (g: ScssInputRules) => {
          * any comment authored between the value and the `;`. Less gets the
          * same end for free — its declaration production never contained the
          * terminator.
+         *
+         * The declaration-vs-nested-rule decision is the zero-width guard that
+         * closes each arm, and the colon picks the arm.
+         *
+         * CSS reaches the decision with two facts: `not(literal('{'))` inside
+         * `Declaration` and a required terminator in `declarationListDeclaration`
+         * (`choice(literal(';'), peek(literal('}')))`). SCSS cannot take the
+         * terminator wholesale — it deliberately ADMITS unterminated declarations
+         * (before a nested at-rule, and with a comment between value and `;`).
+         * An unterminated one may not be followed by:
+         *   `{` — that block makes this a nested rule (`color:red { … }`), and
+         *   `,` — the value stopped part-way through a selector list, the reading
+         *         that made `div:hover, .b { … }` match as `div: hover` and
+         *         strand `, .b { … }`.
+         *
+         * A colon before the start of a pseudo's name can also open a selector, so
+         * its value may be the first compound of one: past the same two, a
+         * combinator or the opener of a simple selector ends the declaration
+         * reading too (`li:is(.a) > .b { … }`). Any other colon can never be a
+         * pseudo (`x: a~b`, `x:1px`), so its declaration stands and the rule
+         * after it stays a rule (`.k { x: a~b .n { y: 1 } }`). The two colons
+         * are disjoint: a failed arm never reads the value a second time.
          */
         field('statement', sequence(
           choice(
             g.InterpolatedProperty,
             propertyIdentifier
           ),
-          literal(':'),
-          statementValue,
-          optional(g.Important)
+          choice(
+            sequence(
+              regex(/:(?![-_a-zA-Z\\:\u0080-\uffff]|#\{)/),
+              statementValue,
+              optional(g.Important),
+              not(regex(/[{,]/))
+            ),
+            sequence(
+              regex(/:(?=[-_a-zA-Z\\:\u0080-\uffff]|#\{)/),
+              statementValue,
+              optional(g.Important),
+              not(regex(/[{,>+~.#:[&*%]/))
+            )
+          )
         )),
-
-        /*
-         * The CSS declaration-vs-nested-rule decision, as ONE guard.
-         *
-         * CSS reaches it with two facts: `not(literal('{'))` inside `Declaration`
-         * and a required terminator in `declarationListDeclaration`
-         * (`choice(literal(';'), peek(literal('}')))`). SCSS cannot take the
-         * terminator wholesale — it deliberately ADMITS unterminated declarations
-         * (before a nested at-rule, and with a comment between value and `;`) —
-         * and it must not take the two as separate combinators either: measured
-         * on a declaration-only corpus, each guard alone is free (7.41ms vs a
-         * 7.52ms baseline) but the two together cost 56% (11.72ms), because the
-         * pair pushes this production past the compiler's fusion threshold.
-         *
-         * Folded into one `choice`, the cost returns to baseline and the decision
-         * is unchanged. A terminated declaration is settled by its own `;`. An
-         * UNTERMINATED one may not be followed by:
-         *   `{` — that block makes this a nested rule (`color:red { … }`), and
-         *   `,` — the value stopped part-way through a selector list, the reading
-         *         that made `div:hover, .b { … }` match as `div: hover` and
-         *         strand `, .b { … }`, and
-         *   a combinator or the opener of a simple selector — the same, part-way
-         *         through a complex selector (`li:is(.a) > .b { … }`).
-         * Anything else still ends an unterminated declaration, so the at-rule
-         * and trailing-comment allowances survive.
-         */
-        choice(
-          literal(';'),
-          not(regex(/[{,>+~.#:[&*%]/))
-        )
+        optional(literal(';'))
       )
     ),
     (children, fields) => {
