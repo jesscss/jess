@@ -77,18 +77,21 @@ export function isHslCall(node: FunctionCall): boolean {
 /**
  * The colour an `hsl()` ({@link isHslCall}) computes, or `written` (the call
  * written out as-is, whose bytes the colour is spelled with) when it is not
- * known. `slot` is the call's first argument as the call evaluated it, so a
- * relative colour's origin (a colour, or a keyword naming one) is read from it,
- * never evaluated again; the channels are evaluated again with the origin's
- * values bound, since the call evaluated them unbound. Each level of nesting is
- * evaluated at most twice, never once per enclosing level.
+ * known. `vals` are the call's arguments as the call evaluated them, so a
+ * relative colour's origin (a colour, or a keyword naming one) and a comma
+ * call's computed channels are read from them, never evaluated again; other
+ * channels are evaluated again, with the origin's values bound, since the call
+ * evaluated them unbound. Each level of nesting is evaluated at most twice,
+ * never once per enclosing level.
  */
-export function resolveHsl(node: FunctionCall, slot: ValueGroup, bind: ChannelBinder, written: WrittenCall): MaybePromise<Color | WrittenCall> {
+export function resolveHsl(node: FunctionCall, vals: readonly ValueGroup[], bind: ChannelBinder, written: WrittenCall): MaybePromise<Color | WrittenCall> {
   const spelled = (hsla: Hsla | undefined, modern: boolean): Color | WrittenCall =>
     hsla === undefined ? written : makeColorHsl([hsla[0], hsla[1], hsla[2]], hsla[3], HSL, modern, { src: written.bytes });
   if (node.args.length > 1) {
-    return mapMaybe(channelsOf(node.args.map(arg => arg.value), bind(UNBOUND), legacyHsla), hsla => spelled(hsla, false));
+    const read = bind(UNBOUND);
+    return mapMaybe(channelsOf(node.args.map(arg => arg.value), (arg, i) => isDimension(vals[i]) ? vals[i] : read(arg), legacyHsla), hsla => spelled(hsla, false));
   }
+  const slot = vals[0]!;
   const nodes = node.args[0]!.value;
   if (!isValueSlotArray(nodes)) {
     return written;
@@ -153,7 +156,7 @@ function hslaOf(node: FunctionCall, nodes: readonly ValueSlot[], origin: OriginC
  * A colour's channels read and made one: a channel that fails only bound
  * (`calc(l / 0)`, CSS math the browser rejects) is not known.
  */
-function channelsOf(slots: readonly ValueSlot[], read: (slot: ValueSlot) => MaybePromise<ValueGroup>, of: (values: ValueGroup[]) => Hsla | undefined): MaybePromise<Hsla | undefined> {
+function channelsOf(slots: readonly ValueSlot[], read: (slot: ValueSlot, index: number) => MaybePromise<ValueGroup>, of: (values: ValueGroup[]) => Hsla | undefined): MaybePromise<Hsla | undefined> {
   try {
     const resolved = combineAll(slots.map(read), of);
     return isThenable(resolved) ? resolved.catch(() => undefined) : resolved;
@@ -314,22 +317,18 @@ function hueOf(value: number, origin: number | undefined, kind: number): number 
 }
 
 /**
- * A saturation or lightness on 0–1. A number written in an absolute colour reads
- * as written, above 100 included, a negative as 0 (Chrome 152). In a relative
- * colour, `undefined` when a channel moved it outside the 0–100 this computes; a
- * channel that kept the origin's value keeps it exactly, in range or not.
+ * A saturation or lightness on 0–1, or `undefined` outside the 0–100 this
+ * computes, which the browser gamut-maps, so the call stays printed. A channel
+ * that kept the origin's value keeps it exactly, in range or not.
  */
 function fraction(value: number, origin: number | undefined, kind: number): number | undefined {
-  if (origin === undefined) {
-    return Math.max(value, 0) / 100;
-  }
-  if (value === origin * 100) {
+  if (origin !== undefined && value === origin * 100) {
     return origin;
   }
   if (value < 0 || value > 100) {
     return undefined;
   }
-  return value === 0 || value === 100
+  return origin === undefined || value === 0 || value === 100
     ? value / 100
     : Math.min(Math.max(moved(value, origin, 100, kind), 0), 1);
 }

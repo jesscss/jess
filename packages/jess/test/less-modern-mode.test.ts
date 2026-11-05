@@ -113,7 +113,7 @@ describe('Less modern mode (P36)', () => {
       expect(out).toContain('h: 120;');
       expect(out).toContain('s: hsl(120, 20%, 50%);');
       expect(out).toContain('d: hsl(120, 80%, 50%);');
-      expect(out).toContain('e: hsl(120, 100%, 50%);');
+      expect(out).toContain('e: hsl(from hsl(120 150% 50%) h clamp(0, s - 20, 100) l);');
 
       /* Invalid CSS in the comma spelling (Chrome 152), so not known. */
       await expect(less('@use "#less";\na { h: @less.hue(hsl(120, 50, 50)); }')).rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function' }));

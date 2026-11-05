@@ -19,7 +19,7 @@ export { clamp01, percentOf } from '../shared/color/kernels.js';
 export function normalizeHue(d: Dimension): number {
   const { number, unit } = d;
   let deg: number;
-  switch (unit) {
+  switch (unit.toLowerCase()) {
     case 'turn':
       deg = number * 360;
       break;

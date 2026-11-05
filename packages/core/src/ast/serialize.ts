@@ -9183,7 +9183,7 @@ function dispatchCall(
   const call = demanded && selected === undefined && isHslCall(node)
     ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
-        : resolveHsl(node, vals[0]!, channelBinder(frame, be), out))
+        : resolveHsl(node, vals, channelBinder(frame, be), out))
     : e.channels !== undefined && selected === undefined
       ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? dispatch(vals)
       : dispatch;
