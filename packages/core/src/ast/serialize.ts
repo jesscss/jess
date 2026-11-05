@@ -5563,13 +5563,13 @@ function groupsOneValue(node: Block): boolean {
     && inner.type !== 'Condition' && inner.type !== 'Branch';
 }
 
-/** A paren group around math kept as written or around raw bytes: nothing in it computes. */
 /** A group around one variable: its read is the argument's own, an export's input ({@link exportInput}). */
 function readsOneVariable(slot: ValueSlot): boolean {
   const inner = insideGroups(slot);
   return !isValueSlotArray(inner) && inner.type === 'Lookup' && inner.kind === 'var';
 }
 
+/** A paren group around math kept as written or around raw bytes: nothing in it computes. */
 function isInertGroup(node: Block): boolean {
   const inner = insideGroups(node.value);
   return !isValueSlotArray(inner) && (inner.type === 'Any' || (inner.type === 'Operation' && inner.inMathFunction));

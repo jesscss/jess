@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { ExportRecipe, Fn } from '@jesscss/core';
 import * as less from '@jesscss/fns/less';
 import { createRuntime, type RuntimeRecipe } from '@jesscss/fns/runtime';
@@ -25,11 +28,42 @@ function toRuntime(recipe: ExportRecipe | string): RuntimeRecipe {
   return [fn as Fn, recipe.args.map(toRuntime)];
 }
 
+async function compileWithPartial(partial: string, a = '#c00') {
+  const dir = mkdtempSync(join(tmpdir(), 'jess-export-partial-'));
+  try {
+    writeFileSync(join(dir, 'one.less'), partial);
+    return await new Compiler({}).renderToResult({ filePath: join(dir, 'entry.less'), source: `@expose a, b;\n@a: ${a};\n@b: #00c;\n@import "./one.less";`, language: 'less' });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function compile(source: string) {
   return new Compiler({}).renderToResult({ filePath: 'entry.less', source, language: 'less' });
 }
 
 describe('the export runtime', () => {
+  it.each([
+    'mix(@a, @b, 150%)',
+    'mix(@a, var(--z), 150%)',
+    'mix(var(--y), @a, 150%)',
+    'contrast(@a, #111, #eee, 50%)'
+  ])('does not print a built-in with no form, unimported in a classic partial: %s', async (call) => {
+    expect((await compileWithPartial(`.a { color: ${call}; }`)).errors).toMatchObject([{ code: 'eval/expose-not-a-value', reason: expect.stringContaining('@a is exposed') }]);
+  });
+
+  it.each([
+    ['filter: contrast(@a)', 'filter: contrast(var(--a, var(--x)));'],
+    ['backdrop-filter: blur(2px) contrast(@a) brightness(1.2)', 'backdrop-filter: blur(2px) contrast(var(--a, var(--x))) brightness(1.2);']
+  ])('keeps the filter function over an exposed value only the browser knows, unimported in a classic partial: %s', async (declaration, expected) => {
+    expect((await compileWithPartial(`.a { ${declaration}; }`, 'var(--x)')).css).toContain(expected);
+  });
+
+  it('says why a call failed over an export inside an argument', async () => {
+    await expect(compile('@use "#less";\n@expose a;\n@a: #c00;\n.a { x: @less.mix(foo(@a), bar(1), 150%); }').then(result => result.errors?.[0]?.reason))
+      .resolves.toContain('no CSS form holds a weight of 150%');
+  });
+
   it.each([
     ['@less.lightness(@brand)', '#08f'],
     ['@less.lightness(@brand)', 'rebeccapurple'],

@@ -59,6 +59,9 @@ describe('mix, tint, shade and average are color-mix(in srgb)', () => {
   });
 
   it('fails two colours only the browser knows at a weight no form holds', async () => {
+    expect(await render('mix(rgb(none 0 0), rgb(0 none 0), 150%)')).toContain('x: rgb(0, 0, 0);');
+    expect(await render('mix(var(--a), rgb(none 0 0), 150%)')).toContain('x: rgb(from var(--a)');
+    expect(await render('mix(rgb(none 0 0), var(--b), 150%)')).toContain('x: rgb(from var(--b)');
     expect(await render('mix(var(--a), var(--b), 150%)')).toContain('x: mix(var(--a), var(--b), 150%);');
     await expect(render('mix(var(--a), var(--b), 150%)', { compile: { functionMode: 'error' } })).rejects.toMatchObject({ code: 'eval/invalid-function' });
     await expect(new Compiler({}).renderString('@use "#less";\n.a { x: @less.mix(var(--a), var(--b), 150%); }', { filePath: 'entry.less', extension: '.less' }))

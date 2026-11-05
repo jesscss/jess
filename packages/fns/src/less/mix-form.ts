@@ -15,7 +15,9 @@ export const WEIGHT_ARG = {
 
 export type Weight = Dimension | WrittenCall;
 
-export const isKnown = (value: ValueGroup): value is Color => !isValueGroupArray(value) && value.type === 'Color' && !holdsNone(value);
+const isColor = (value: ValueGroup): value is Color => !isValueGroupArray(value) && value.type === 'Color';
+
+export const isKnown = (value: ValueGroup): value is Color => isColor(value) && !holdsNone(value);
 
 /** A weight as `color-mix()` writes it. */
 export const percentOf = (weight: Weight): Weight =>
@@ -46,10 +48,12 @@ export function mixForm(a: ValueGroup, b: ValueGroup, weight: Weight): FormCall 
   if (weight.type !== 'Dimension' || inRange(weight.number) || (isKnown(a) && isKnown(b))) {
     return [forms.mix, a, percentOf(weight), b];
   }
-  if (isKnown(b)) {
+
+  /* No form keeps `none` beyond the range: it reads as 0, as the browser reads it in the origin. */
+  if (isColor(b)) {
     return mixOver(a, weight.number, b);
   }
-  if (isKnown(a)) {
+  if (isColor(a)) {
     return mixOver(b, subExact(100, weight.number), a);
   }
   throw new NoCssForm(`mix: no CSS form holds a weight of ${weight.number}% between two colours only the browser knows`);

@@ -561,7 +561,7 @@ export function exportCall<F>(
             }
           }
           if (typeof checks !== 'object' && checks !== 'argument') {
-            exportNotWritten(node, `${node.name}()`, recipeExport(recipe), e,
+            exportNotWritten(node, `@${recipeExport(recipe)}`, recipeExport(recipe), e,
               'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
           }
           return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe, node.name)), result], ','), e.modes);
@@ -574,7 +574,10 @@ export function exportCall<F>(
             }
             throw error;
           };
-          return recovering(() => dispatch(args(true).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value)))), noForm);
+          return mapMaybe(
+            recovering(() => dispatch(args(true).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value)))), noForm),
+            form => isUnwrittenBuiltin(form) ? recorded() : form
+          );
         }
         return recorded();
       }));
@@ -584,7 +587,7 @@ export function exportCall<F>(
 function namingExport<F>(e: ExportLane<F>, node: FunctionCall, written: string) {
   return (error: unknown): never => {
     if (isInvalidFunction(error)) {
-      exportNotWritten(node, `@${written}`, written, e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
+      exportNotWritten(node, `@${written}`, written, e, `inside a larger argument of a function Jess computes, which the runtime cannot follow (${error.reason})`);
     }
     throw error;
   };
@@ -599,7 +602,11 @@ function recovering(run: () => MaybePromise<EvalValue>, recover: (error: unknown
   }
 }
 
-const isInvalidFunction = (error: unknown): boolean =>
+/** A built-in's own call written out because it failed, which is no CSS, unlike a call its callable declined. */
+const isUnwrittenBuiltin = (result: EvalValue): boolean =>
+  typeof result !== 'string' && !isValueGroupArray(result) && result.type === 'FunctionCall' && !result.computed && result.result === null;
+
+const isInvalidFunction = (error: unknown): error is JessError =>
   error instanceof JessError && error.code === 'eval/invalid-function';
 
 /** By name: a provided module (`#less`) is loaded by its resolved path, and may run another build of the class. */
@@ -657,12 +664,12 @@ function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: N
 function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>, e: ExportLane<F>): ExportRecipe {
   const origin = fn?.origin;
   if (origin === undefined) {
-    exportNotWritten(node, `${node.name}()`, recipeExport(inputs[0]!.recipe), e, 'as the input of a function the runtime cannot run');
+    exportNotWritten(node, `@${recipeExport(inputs[0]!.recipe)}`, recipeExport(inputs[0]!.recipe), e, 'as the input of a function the runtime cannot run');
   }
   const written = new Set<object>(vals.map(lone));
   const stray = inputs.find(input => !written.has(input.value));
   if (stray !== undefined) {
-    exportNotWritten(node, `${node.name}()`, recipeExport(stray.recipe), e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
+    exportNotWritten(node, `@${recipeExport(stray.recipe)}`, recipeExport(stray.recipe), e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
   }
   const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
   return { fn: origin, args: vals.map(v => recipes.get(lone(v)) ?? emitValue(v)) };
