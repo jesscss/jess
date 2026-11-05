@@ -80,6 +80,39 @@ describe('SCSS custom properties', () => {
     expect(() => parse('$p: q; a { --#{$p}: red; }')).not.toThrow();
   });
 
+  /*
+   * A custom-property name written where a value goes, as Bootstrap writes every
+   * theme variable (`scss/_alert.scss`, `scss/_badge.scss`, `scss/_grid.scss`): the
+   * `#{…}` is part of the one identifier, so it is one interpolation, never two
+   * space-separated values.
+   */
+  for (const [label, source] of [
+    ['a var() name', '.alert { color: var(--#{$prefix}alert-color); }'],
+    ['a var() name with a fallback', '.grid { gap: var(--#{$prefix}gap, #{$grid-gutter-width}); }'],
+    ['a var() name with two holes', '.alert { color: var(--#{$prefix}#{$state}-text-emphasis); }'],
+    ['a var() name inside rgba()', '.mark { color: rgba(var(--#{$prefix}body-color-rgb), .75); }'],
+    ['a var() name inside calc()', '.row { margin: calc(-.5 * var(--#{$prefix}gutter-x)); }'],
+    ['a mixin argument', '.badge { @include rfs($badge-font-size, --#{$prefix}badge-font-size); }'],
+    ['a name that ends in the hole', '.a { color: var(--theme-#{$name}); }'],
+    ['a hole with padding', '.a { color: var(--#{ $prefix }color); }'],
+    ['a variable default', '$kbd-bg: var(--#{$prefix}body-color) !default;'],
+    ['a map value', '$colors: ("emphasis": var(--#{$prefix}text-emphasis));']
+  ] as const) {
+    it(`reads an interpolated custom-property name as ${label}`, () => {
+      expect(() => parse(source)).not.toThrow();
+    });
+  }
+
+  it('keeps an interpolated custom-property name one value', () => {
+    expect(parse('.a { color: --theme-#{$name}-x; }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [{
+        type: 'Declaration',
+        name: 'color',
+        value: { type: 'Interpolation', parts: [{ lit: '--theme-' }, { ref: { type: 'Lookup' } }, { lit: '-x' }] }
+      }] }]
+    });
+  });
+
   it('keeps a custom-property value verbatim rather than evaluating it', () => {
     expect(parse('a { --x: 1px+2px; --y: $notavariable; }')).toMatchObject({
       rules: [{ type: 'Ruleset', rules: [
