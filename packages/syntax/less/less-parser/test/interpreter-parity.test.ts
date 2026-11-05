@@ -12,9 +12,7 @@ import {
   fixtureFiles,
   ENGINES,
   loadEnginePair,
-  outcome,
-  type Pins,
-  type Variant
+  outcome
 } from '../../../css/css-parser/test/engine-parity.js';
 
 /**
@@ -26,22 +24,6 @@ const LIB = fileURLToPath(new URL('../lib', import.meta.url));
 
 /* This package keeps no `.less` files of its own; the repo's live in `packages/jess/test`. */
 const CORPUS = [...CSS_FIXTURES, ...fixtureFiles('packages/jess/test', '.less')];
-
-/*
- * PINNED DEFECT, line-tracking variants only: the COMPILED `trackLines` Less
- * table rejects `!important` preceded by whitespace at offset 0
- * (`a{b:c !important}` fails through `@jesscss/less-parser/positions`). The
- * offsets-only table and the interpreter both accept it.
- */
-const SPACED_IMPORTANT = 'compiled trackLines table rejects whitespace before `!important`';
-const TRACKED_PINS: Pins = new Map([
-  ['packages/syntax/css/css-parser/test/css/important.css', SPACED_IMPORTANT],
-  ['packages/jess/test/less/fixtures/merge-fallback-important.less', SPACED_IMPORTANT]
-]);
-const PINNED = new Map<Variant, Pins>([
-  ['ast/positions', TRACKED_PINS],
-  ['cst/positions', TRACKED_PINS]
-]);
 
 describe('Less grammar: macro-compiled and interpreter bundles agree', () => {
   it('has a corpus', () => {
@@ -56,8 +38,7 @@ describe('Less grammar: macro-compiled and interpreter bundles agree', () => {
     const engines = await loadEnginePair(LIB, variant);
     assertEnginesAgree(
       CORPUS,
-      (engine, source) => outcome(() => parseWith(engines[engine] as LessAstGrammar, source)),
-      PINNED.get(variant)
+      (engine, source) => outcome(() => parseWith(engines[engine] as LessAstGrammar, source))
     );
   });
 
@@ -65,8 +46,7 @@ describe('Less grammar: macro-compiled and interpreter bundles agree', () => {
     const engines = await loadEnginePair(LIB, variant);
     assertEnginesAgree(
       CORPUS,
-      (engine, source) => cstOutcome(engines[engine], source, commentTriviaLabels),
-      PINNED.get(variant)
+      (engine, source) => cstOutcome(engines[engine], source, commentTriviaLabels)
     );
   });
 });
