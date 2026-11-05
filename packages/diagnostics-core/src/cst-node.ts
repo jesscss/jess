@@ -11,6 +11,12 @@ export const DECLARATION_TYPES = new Set(['Declaration']);
 export const CUSTOM_DECLARATION_TYPES = new Set(['CustomDeclaration']);
 export const CUSTOM_PROPERTY_VALUE_TYPES = new Set(['CustomPropertyValue']);
 export const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
+export const ATRULE_TYPES = new Set([
+  'AtRuleBlock',
+  'AtRuleStatement',
+  'UnknownAtRuleBlock',
+  'QueryAtRuleBlock'
+]);
 export function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
 }
@@ -36,4 +42,9 @@ export function dollarBraceVariableNameOf(node: CssCstNode): string | null {
   const leaves = cstChildrenOf(node).filter(child => child._tag === 'leaf');
   const name = leaves[1]?.value === '[' ? (leaves[2]?.value === '$' ? leaves[3] : undefined) : leaves[1];
   return name?._tag === 'leaf' ? name.value : null;
+}
+
+/** A Less `@name (…)` the token after its call head made an at-rule; the node keeps its call label. */
+export function isAtRuleVarCall(node: CssCstNode): boolean {
+  return cstChildrenOf(node).some(child => isCstNode(child) && (child.grammarType === 'AtRulePrelude' || ATRULE_TYPES.has(child.grammarType)));
 }
