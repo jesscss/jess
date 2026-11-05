@@ -678,7 +678,16 @@ function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: N
     return false;
   }
   const known = vals.map(val => slotValue(val, ev));
-  return inputs.every(input => fn.params[vals.findIndex(val => lone(val) === input.value)]?.fits?.(slotValue(input.value, ev), known) === true);
+  const slots = new Map<ValueGroup, number>();
+  vals.forEach((val, index) => {
+    if (!slots.has(lone(val))) {
+      slots.set(lone(val), index);
+    }
+  });
+  return inputs.every((input) => {
+    const slot = slots.get(input.value);
+    return slot !== undefined && fn.params[slot]?.fits?.(slotValue(input.value, ev), known) === true;
+  });
 }
 
 /** What fills a slot at compile time: the number a `calc()` or math over known numbers computes to. */
