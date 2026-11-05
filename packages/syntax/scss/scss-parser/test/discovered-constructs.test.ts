@@ -329,12 +329,11 @@ describe('SCSS constructs discovered outside the parser suites', () => {
   });
 
   it.each([
-    ['@at-root prelude', '@at-root /**/ {}'],
     ['@for bound', '@for $i from /**/ 1 through 10 {}'],
     ['@forward configuration', '@forward "o" with ($a: /**/ b)']
   ])('PINNED DEFECT — does not admit a comment as trivia (%s)', (_label, source) => {
     /*
-     * A comment is trivia everywhere or it is trivia nowhere. These three
+     * A comment is trivia everywhere or it is trivia nowhere. These two
      * at-rule preludes each have a position where the trivia rule is not
      * applied, so an authored comment turns a valid stylesheet into a parse
      * error.
