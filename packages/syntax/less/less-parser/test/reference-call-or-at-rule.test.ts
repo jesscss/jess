@@ -100,11 +100,20 @@ describe('Less `@name (…)` is an at-rule when a block or more prelude follows'
     expect(first('@foo (@b);')).toMatchObject({ type: 'Reference' });
   });
 
-  it('keeps a named argument and a `@{…}` in the head as written (ledger P52)', () => {
+  it('keeps a named argument in the head as written', () => {
     expect(preludeOf(first('@foo (a: @b) { c: d }'))).toMatchObject({ src: '(a: @b)' });
     expect(preludeOf(first('@foo (@a: @b) { c: d }'))).toMatchObject({ src: '(@a: @b)' });
-    expect(preludeOf(first('@foo (@{b}) { c: d }'))).toMatchObject({ src: '(@{b})' });
-    expect(preludeOf(first('@foo ("@{b}") { c: d }'))).toMatchObject({ src: '("@{b}")' });
+  });
+
+  it('carries a `@{…}` in the head as the group it read', () => {
+    expect(preludeOf(first('@foo (@{b}) { c: d }'))).toMatchObject({
+      type: 'Block',
+      value: { type: 'Interpolation', parts: [{ ref: { name: 'b' } }] }
+    });
+    expect(preludeOf(first('@foo ("@{b}") c { d: e }'))).toMatchObject({
+      type: 'Sequence',
+      parts: [{ type: 'Block', value: { type: 'Quoted' } }, { src: 'c' }]
+    });
   });
 
   it('is an at-rule statement when more prelude runs to `;`', () => {
