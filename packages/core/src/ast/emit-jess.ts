@@ -455,7 +455,10 @@ class JessPrinter {
     const name = typeof node.name === 'string'
       ? this.propertyName(node.name)
       : this.template(node.name, 'name');
-    const custom = typeof node.name === 'string' && node.name.startsWith('--');
+    const opening = typeof node.name === 'string' ? node.name : node.name.parts[0];
+    const custom = typeof opening === 'string'
+      ? opening.startsWith('--')
+      : opening !== undefined && 'lit' in opening && opening.lit.startsWith('--');
     if (!custom && !isSlotArray(node.value) && node.value.type === 'Any' && node.value.src === '') {
       gap('Declaration', 'an empty declaration value (`margin: ;`): the `.jess` `Declaration` rule requires a value');
     }
@@ -585,10 +588,10 @@ class JessPrinter {
       if (mixin && isSpaceRun(value)) {
         return gap(owner, 'space-run argument: the `MixinCallArgument` reducer throws on it (parser defect)');
       }
-      if (mixin && arg.name === undefined && !isSlotArray(value) && value.type === 'Quoted') {
+      const printed = this.value(value, At.Value);
+      if (mixin && arg.name === undefined && /^~?["']/u.test(printed)) {
         return gap(owner, 'positional string argument: the `MixinCallArgument` reducer reads its content as a keyword name (parser defect)');
       }
-      const printed = this.value(value, At.Value);
       return arg.name === undefined ? printed : `$${arg.name}: ${printed}`;
     }).join(', ');
   }
