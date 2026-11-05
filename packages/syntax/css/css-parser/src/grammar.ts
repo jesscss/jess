@@ -348,7 +348,6 @@ type GrammarRuleName =
   | 'VarFallbackOpener'
   | 'VarFallbackLead'
   | 'identOrFunction'
-  | 'identifierOrFunction'
   | 'MediaTest'
   | 'MediaTestBody'
   | 'StyleTestBody'
@@ -370,7 +369,7 @@ type GrammarRuleName =
 type GrammarSelf = {
   readonly [K in GrammarRuleName]: K extends keyof typeof cssSyntax
     ? (typeof cssSyntax)[K]
-    : K extends 'identOrFunction' | 'identifierOrFunction'
+    : K extends 'identOrFunction'
       ? Combinator<string>
       : Combinator<unknown>
 };
@@ -653,9 +652,12 @@ const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
  * selector choice it must resolve a concrete first-set (`.`/`#`/`-`/letter/digit/
  * `*`) so the compiler first-char-gates the whole compound choice; a cross-
  * composition reference reads as `any`, entering the simple-selector node frame
- * at every compound-selector boundary (`{`, `,`, whitespace).
+ * at every compound-selector boundary (`{`, `,`, whitespace). A class or id name
+ * may start `--`: `--b` is an ident (css-syntax-3 §4.3.9), so `.--b` is a class
+ * selector and `#--b` an id selector (selectors-4 §3.2). A type selector may not,
+ * so `--x:…` stays a custom property's.
  */
-const simpleSelectorToken = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
+const simpleSelectorToken = regex(/(?:(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))|[.#]--)(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
 
 /*
  * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
@@ -874,19 +876,6 @@ const cssFactory = (g: GrammarSelf) => {
     literal('(')
   )));
 
-  /*
-   * A selector-position identifier, or the same identifier glued to `(` as a
-   * function opener: the `<ident-token>` / `<function-token>` after a pseudo's
-   * colon or double colon (selectors-4 §3.5, §3.6). It reads `Identifier`, the
-   * non-value slot, where `identOrFunction` reads the value-position
-   * `IdentToken`, and the two accept different languages: `Identifier` refuses
-   * a leading `--`, which a value identifier may have. A rule key, so a
-   * dialect routes its own pseudo openers through this one token.
-   */
-  const identifierOrFunction = token(noTrivia(sequence(
-    g.Identifier,
-    optional(literal('('))
-  )));
   const pseudoArgumentContent = scanTo(
     literal(')'),
     {
@@ -1509,13 +1498,17 @@ const cssFactory = (g: GrammarSelf) => {
    * Functional pseudos consume a CSS function-token opener: the name and `(` are
    * adjacent bytes. `:not (.a)` must not become `:not(.a)` through ambient
    * interstitial trivia, even though spacing inside the argument remains valid.
+   *
+   * The name is an `<ident-token>`, so it may start `--`: `:--heading` is a
+   * custom selector's use (css-extensions-1 `<custom-selector>`), `--heading` an ident
+   * (css-syntax-3 §4.3.9).
    */
   const PseudoSelector = node(
     'PseudoSelector',
     sequence(
       pseudoColon,
       dispatch(
-        g.identifierOrFunction,
+        g.identOrFunction,
         cssCase(
           ['nth-child(', 'nth-last-child('],
           sequence(
@@ -2491,8 +2484,8 @@ const cssFactory = (g: GrammarSelf) => {
    * `<dashed-function>` (`--*( <declaration-value>#? )`). Both dispatches route
    * `--f(` to the generic call tail and a bare `--x` (by its `--` prefix) to its
    * `CustomPropertyValue` node. It is a rule key, read through `g` by every
-   * value-position dispatch here, so a dialect reads the same opener and an
-   * override of it reaches all of them.
+   * value-position dispatch here and by a pseudo's name in every dialect, so a
+   * dialect reads the same opener and an override of it reaches all of them.
    */
   const identOrFunction = token(noTrivia(
     sequence(
@@ -5573,7 +5566,6 @@ const cssFactory = (g: GrammarSelf) => {
     VarFallbackOpener,
     VarFallbackLead,
     identOrFunction,
-    identifierOrFunction,
     whitespace,
     rw: whitespace
   };

@@ -1009,8 +1009,9 @@
       "line": 5351,
       "const": "pseudo",
       "construct": "pseudoOpen",
-      "resolved": "b50c0f72e8e5671b",
+      "resolved": "cb60ab284602ba2e",
       "why": "its selector looks past one token: `pseudoOpen` — a lookahead after a consuming arm reads another token",
+      "changed": "`pseudoOpen` reads the CSS base's `identOrFunction` for a pseudo's name, so a name may start `--` (`:--heading`). Still one token at the same place.",
       "issue": "jesscss/jess#576"
     },
     {
@@ -1019,8 +1020,9 @@
       "line": 5374,
       "const": "staticPseudoDispatch",
       "construct": "pseudoOpen",
-      "resolved": "b50c0f72e8e5671b",
+      "resolved": "cb60ab284602ba2e",
       "why": "its selector looks past one token: `pseudoOpen` — a lookahead after a consuming arm reads another token",
+      "changed": "`pseudoOpen` reads the CSS base's `identOrFunction` for a pseudo's name, so a name may start `--` (`:--heading`). Still one token at the same place.",
       "issue": "jesscss/jess#576"
     },
     {
