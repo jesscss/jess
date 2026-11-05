@@ -138,12 +138,12 @@ export function semanticGapText(text: string): string {
  * The one definition of `//` in at-rule prelude bytes. An unquoted `url(…)` is one token,
  * as CSS Syntax 3 reads it even after spaces, so a `//` in it is text. Elsewhere a line
  * comment starts where a token could: after a gap, a `,`, a closer, a string, or a `(` or
- * `[` with no name glued to it. Anywhere else, as in `http://a`, it is text. Less's prelude
+ * `[` with no name glued to it. Anywhere else, as in `http://a` or after a `@{…}`, it is text. Less's prelude
  * productions in `less-parser/src/grammar.ts` spell these two patterns, because a grammar
  * regex must be a literal; `prelude-line-comment.test.ts` holds them equal.
  */
 export const preludeUrlToken = /(?<![-\w\u0080-\uffff\\])[uU][rR][lL]\([^)"']*\)/y;
-export const preludeLineComment = /(?<=^|[ \t\n\r\f,)\]"']|(?<![-\w\u0080-\uffff\\])[([])\/\/[^\n\r]*/y;
+export const preludeLineComment = /(?<=[ \t\n\r\f,)\]"']|(?<![-\w\u0080-\uffff\\])[([])\/\/[^\n\r]*/y;
 const anyLineComment = /\/\/[^\n\r]*/y;
 
 /**

@@ -24,6 +24,25 @@ describe('Less: an at-rule whose prelude opens with a parenthesised group', () =
     expect(await render(source)).toContain(prelude);
   });
 
+  it.each([
+    ['@s: ~"https:"; @foo @{s}//a.b/c;\n.d { e: f }', ['@foo https://a.b/c;', '.d {']],
+    ['@s: ~"https:"; .q { @foo @{s}//a.b/c; g: h }', ['@foo https://a.b/c;', 'g: h;']],
+    ['@s: ~"https:"; @foo x @{s}//a.b/c { e: f }\n.d { g: h }', ['@foo x https://a.b/c {', '.d {']],
+    ['@s: a; @page @{s}//b { c: d }', ['@page a//b {']],
+    ['@x: y; @foo @{x}//c\n d;', ['@foo y//c d;']],
+    ['@x: y; @foo (a) @{x}//c\n d;', ['@foo (a) y//c d;']]
+  ])('keeps a `//` glued to `@{…}` as text: %j', async (source, pieces) => {
+    const css = await render(source);
+    for (const piece of pieces) {
+      expect(css).toContain(piece);
+    }
+  });
+
+  it('reads a `//` where a token starts as a comment to the end of its line', async () => {
+    expect(await render('@foo a: //b/c { d: e }\n.f { g: h }')).toContain('@foo a: .f {');
+    await expect(render('@foo x //a/b { c: d }')).rejects.toMatchObject({ code: expect.stringMatching(/^parse\//) });
+  });
+
   it('evaluates `@{…}` after the group', async () => {
     expect(await render('@x: y; @foo (a) @{x} { c: d; }')).toContain('@foo (a) y');
     expect(await render('@x: y; @foo (a) b-@{x} { c: d; }')).toContain('@foo (a) b-y');

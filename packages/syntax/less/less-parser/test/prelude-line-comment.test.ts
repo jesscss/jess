@@ -35,6 +35,8 @@ const battery: ReadonlyArray<readonly [source: string, text: string]> = [
   ['\\url(//a)', '\\url(//a)'],
   ['(myurl(//a)\n)', '(myurl(//a) )'],
   ['fn(//a)', 'fn(//a)'],
+  ['url("a)b")', 'url("a)b")'],
+  ['url("a//b)")', 'url("a//b)")'],
   ['fn( // )\n a)', 'fn( a)']
 ];
 
@@ -47,10 +49,13 @@ describe('the two readers of `//` in a prelude', () => {
   it('are one pattern', () => {
     const grammar = readFileSync(new URL('../src/grammar.ts', import.meta.url), 'utf8');
     expect(grammar).toContain(`regex(/${preludeUrlToken.source}|${preludeLineComment.source}|`);
+    const [, urlBody] = preludeUrlToken.source.split('\\(');
+    expect(grammar).toContain(`sequence(urlFunctionOpen, regex(/${urlBody}/))`);
   });
 
   it('leaves a run with no comment as it is', () => {
     expect(withoutLineComments('http://a')).toBe('http://a');
+    expect(withoutLineComments('//a b')).toBe('//a b');
     expect(withoutLineComments('"//" //')).toBe('"//"  ');
   });
 });
