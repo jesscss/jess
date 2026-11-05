@@ -10144,14 +10144,16 @@ function resolveCompoundAmp(
 }
 
 /**
- * Whether `sim`, glued after a `&`, continues a name the `&` builds: a plain token that
- * opens with an identifier code point (`.scss` `&__el`, `&-m`, which its grammar reads
- * as `&` then `__el`). Such a `&` is a name concatenation, so it distributes over a
- * parent list (`.a, .b { &__el {} }` → `.a__el, .b__el`), never `:is(.a, .b)__el`,
- * which is no selector.
+ * Whether `sim`, glued after a `&`, continues a name the `&` builds: a token that opens
+ * with an identifier code point (`.scss` `&__el`, `&-m`, `&-#{$x}`, which its grammar
+ * reads as `&` then `__el`) or with an interpolation (`&#{$x}`). Such a `&` is a name
+ * concatenation, so it distributes over a parent list (`.a, .b { &__el {} }` →
+ * `.a__el, .b__el`), never `:is(.a, .b)__el`, which is no selector.
  */
 function continuesName(sim: SimpleToken | undefined): boolean {
-  return sim?.type === 'SimpleSelector' && sim.text !== null && sim.text.length > 0 && isNameCode(sim.text.charCodeAt(0));
+  return sim?.type === 'SimpleSelector' && (sim.text !== null
+    ? sim.text.length > 0 && isNameCode(sim.text.charCodeAt(0))
+    : sim.interp !== null && !('lit' in sim.interp.parts[0]! && !isNameCode(sim.interp.parts[0].lit.charCodeAt(0))));
 }
 
 /** Whether a name is glued after an interpolation: the part of its token that follows it, else the token after it ({@link continuesName}). */
