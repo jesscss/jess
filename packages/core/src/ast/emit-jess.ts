@@ -187,6 +187,12 @@ const isSlotArray = (slot: ValueSlot | CallValue): slot is readonly ValueSlot[] 
 const isSpaceRun = (slot: ValueSlot | CallValue): boolean =>
   isSlotArray(slot) ? slot.length > 1 : slot.type === 'Sequence';
 
+/** Whether a value template opens with `$( … )`; any other prints as an escaped string (`~"…"`). */
+const leadsWithExpression = (node: Interpolation): boolean => {
+  const first = node.parts[0];
+  return first !== undefined && 'ref' in first && first.ref.type === 'Expression';
+};
+
 class JessPrinter {
   readonly gaps: JessSpellingGap[] = [];
   readonly #comments: readonly Trivia[];
@@ -586,10 +592,10 @@ class JessPrinter {
       if (mixin && isSpaceRun(value)) {
         return gap(owner, 'space-run argument: the `MixinCallArgument` reducer throws on it (parser defect)');
       }
-      const printed = this.value(value, At.Value);
-      if (mixin && arg.name === undefined && /^~?["']/u.test(printed)) {
+      if (mixin && arg.name === undefined && !isSlotArray(value) && (value.type === 'Quoted' || (value.type === 'Interpolation' && !leadsWithExpression(value)))) {
         return gap(owner, 'positional string argument: the `MixinCallArgument` reducer reads its content as a keyword name (parser defect)');
       }
+      const printed = this.value(value, At.Value);
       return arg.name === undefined ? printed : `$${arg.name}: ${printed}`;
     }).join(', ');
   }
@@ -1065,8 +1071,7 @@ class JessPrinter {
           ? this.template(node, 'name')
           : gap('Interpolation', 'a template inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}`');
     }
-    const first = node.parts[0];
-    if (first !== undefined && 'ref' in first && first.ref.type === 'Expression') {
+    if (leadsWithExpression(node)) {
       let out = '';
       for (const part of node.parts) {
         if ('lit' in part) {
