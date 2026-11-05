@@ -2189,7 +2189,7 @@ const scssFactory = (g: ScssInputRules) => {
          * its value may be the first compound of one: past the same two, a
          * combinator or the opener of a simple selector ends the declaration
          * reading too (`li:is(.a) > .b { … }`). Any other colon can never be a
-         * pseudo (`x: a~b`, `x:1px`), so its declaration stands and the rule
+         * pseudo (`x: a~b`, `x:1px`, `x:-1px`), so its declaration stands and the rule
          * after it stays a rule (`.k { x: a~b .n { y: 1 } }`). The two colons
          * are disjoint: a failed arm never reads the value a second time.
          */
@@ -2200,13 +2200,13 @@ const scssFactory = (g: ScssInputRules) => {
           ),
           choice(
             sequence(
-              regex(/:(?![-_a-zA-Z\\:\u0080-\uffff]|#\{)/),
+              regex(/:(?!-?[_a-zA-Z\\\u0080-\uffff]|-?#\{|:)/),
               statementValue,
               optional(g.Important),
               not(regex(/[{,]/))
             ),
             sequence(
-              regex(/:(?=[-_a-zA-Z\\:\u0080-\uffff]|#\{)/),
+              regex(/:(?=-?[_a-zA-Z\\\u0080-\uffff]|-?#\{|:)/),
               statementValue,
               optional(g.Important),
               not(regex(/[{,>+~.#:[&*%]/))

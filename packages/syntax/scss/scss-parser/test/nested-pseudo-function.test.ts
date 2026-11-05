@@ -41,6 +41,7 @@ describe('SCSS nested rule that opens with a functional pseudo', () => {
   it.each([
     ['a spaced colon', '.a { x: y .c { d: e; } }'],
     ['a glued number', '.a { x:1px .c { d: e; } }'],
+    ['a glued negative number', '.a { x:-1px .c { d: e; } }'],
     ['a glued variable', '.a { x:$y .c { d: e; } }']
   ])('keeps the rule after %s as a rule', (_label, source) => {
     expect(parse(source)).toMatchObject({
