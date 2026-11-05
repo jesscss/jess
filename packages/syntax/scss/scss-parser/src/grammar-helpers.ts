@@ -154,6 +154,15 @@ export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
 const AN_PLUS_B_TEXT: ReadonlySet<string> = new Set('-+0123456789nN \t\n\r\f');
 const AN_PLUS_B_SPACE: ReadonlySet<string> = new Set(' \t\n\r\f');
 
+function isAnPlusBText(text: string): boolean {
+  for (const char of text) {
+    if (!AN_PLUS_B_TEXT.has(char)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * An An+B with a hole reads as the one without: whitespace in it is not part of
  * its value (css-syntax-3 §6), and An+B is written unspaced (`-n + #{$n}` is
@@ -163,7 +172,7 @@ const AN_PLUS_B_SPACE: ReadonlySet<string> = new Set(' \t\n\r\f');
 function unspacedNth(arg: Interpolation): Interpolation {
   const last = arg.parts.length - 1;
   return interpolation(arg.parts.map((part, index) => {
-    if (!('lit' in part) || [...part.lit].some(char => !AN_PLUS_B_TEXT.has(char)) || (part.lit.trim() === '' && index > 0 && index < last)) {
+    if (!('lit' in part) || !isAnPlusBText(part.lit) || (part.lit.trim() === '' && index > 0 && index < last)) {
       return part;
     }
     return { lit: [...part.lit].filter(char => !AN_PLUS_B_SPACE.has(char)).join('') };
