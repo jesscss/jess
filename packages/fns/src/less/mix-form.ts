@@ -1,4 +1,4 @@
-import { FunctionDeclined, colorRawRgb, isValueGroupArray, makeDimension, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from '@jesscss/core/value';
+import { NoCssForm, colorRawRgb, holdsNone, isValueGroupArray, makeDimension, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from '@jesscss/core/value';
 import type { FormCall } from '@jesscss/core/form';
 import * as forms from './css-forms.generated.js';
 import { mulExact, percentToFraction, subExact } from '../util/decimal.js';
@@ -15,7 +15,7 @@ export const WEIGHT_ARG = {
 
 export type Weight = Dimension | WrittenCall;
 
-export const isKnown = (value: ValueGroup): value is Color => !isValueGroupArray(value) && value.type === 'Color';
+export const isKnown = (value: ValueGroup): value is Color => !isValueGroupArray(value) && value.type === 'Color' && !holdsNone(value);
 
 /** A weight as `color-mix()` writes it. */
 export const percentOf = (weight: Weight): Weight =>
@@ -52,5 +52,5 @@ export function mixForm(a: ValueGroup, b: ValueGroup, weight: Weight): FormCall 
   if (isKnown(a)) {
     return mixOver(b, subExact(100, weight.number), a);
   }
-  throw new FunctionDeclined();
+  throw new NoCssForm(`mix: no CSS form holds a weight of ${weight.number}% between two colours only the browser knows`);
 }

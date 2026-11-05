@@ -31,10 +31,8 @@ describe('contrast() is contrast-color()', () => {
   });
 
   it.each([
-    ['contrast(var(--c))', 'contrast-color(var(--c))'],
     ['contrast(currentcolor)', 'contrast-color(currentcolor)'],
     ['contrast(mix(var(--a), red))', 'contrast-color(color-mix(in srgb, var(--a), red))'],
-    ['darken(contrast(var(--c)), 10%)', 'hsl(from contrast-color(var(--c)) h s clamp(0, l - 10, 100))'],
     ['contrast(var(--c), #111)', 'rgb(from contrast-color(var(--c)) calc(17 + 238 * r / 255) calc(17 + 238 * r / 255) calc(17 + 238 * r / 255) / calc(1 + 0 * r / 255))'],
     ['contrast(var(--c), #eee, #111)', 'rgb(from contrast-color(var(--c)) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) / calc(1 + 0 * r / 255))'],
     ['contrast(var(--c), rgba(1, 2, 3, .5), rgba(250, 251, 252, .25))', 'rgb(from contrast-color(var(--c)) calc(1 + 249 * r / 255) calc(2 + 249 * r / 255) calc(3 + 249 * r / 255) / calc(0.5 + -0.25 * r / 255))']
@@ -48,11 +46,35 @@ describe('contrast() is contrast-color()', () => {
       .toContain('x:rgb(from contrast-color(var(--c)) calc(1 + 237 * r / 255) calc(2 + 236 * r / 255) calc(3 + 235 * r / 255) / calc(.5 + .5 * r / 255))');
   });
 
-  it.each(['contrast(30%)', 'contrast(foo)', 'contrast(#999, 1)', 'contrast(#999, #111, #eee, foo)', 'contrast(#999, var(--d), #eee)', 'contrast(var(--c), #111, #eee, 50%)'])('writes %s as it was', async (call) => {
+  it.each(['contrast(30%)', 'contrast(1.5)', 'contrast(foo)', 'contrast(#999, 1)', 'contrast(#999, #111, #eee, foo)', 'contrast(#999, var(--d), #eee)', 'contrast(var(--c), #111, #eee, 50%)'])('writes %s as it was', async (call) => {
     expect(await render(call)).toContain(`x: ${call};`);
   });
 
   it('rejects a bad argument under functionMode: error', async () => {
     await expect(render('contrast(1)', { compile: { functionMode: 'error' } })).rejects.toMatchObject({ code: 'eval/invalid-function' });
+  });
+
+  it('keeps the CSS filter function: a lone argument only the browser knows may be a number', async () => {
+    const out = await new Compiler({}).renderString(
+      '.a { filter: contrast(var(--amount)); backdrop-filter: blur(2px) contrast(var(--c)) brightness(1.2); color: contrast(var(--bg)); }',
+      { filePath: 'entry.less', extension: '.less' }
+    );
+    expect(out).toContain('filter: contrast(var(--amount));');
+    expect(out).toContain('backdrop-filter: blur(2px) contrast(var(--c)) brightness(1.2);');
+    expect(out).toContain('color: contrast(var(--bg));');
+    expect(await render('contrast(var(--amount))', { compile: { functionMode: 'error' } })).toContain('x: contrast(var(--amount));');
+    expect(await render('darken(contrast(var(--c)), 10%)')).toContain('x: hsl(from contrast(var(--c)) h s clamp(0, l - 10, 100));');
+  });
+
+  it('prints the form where the call says it is a colour', async () => {
+    expect(await render('contrast(var(--c), #000, #fff)')).toContain('rgb(from contrast-color(var(--c)) ');
+    const imported = await new Compiler({}).renderString('@use "#less";\n.a { x: @less.contrast(var(--x)); }', { filePath: 'entry.less', extension: '.less' });
+    expect(imported).toContain('x: contrast-color(var(--x));');
+  });
+
+  it('fails a threshold over a colour only the browser knows', async () => {
+    await expect(render('contrast(var(--c), #111, #eee, 50%)', { compile: { functionMode: 'error' } })).rejects.toMatchObject({ code: 'eval/invalid-function' });
+    await expect(new Compiler({}).renderString('@use "#less";\n.a { x: @less.contrast(var(--c), #111, #eee, 50%); }', { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 });

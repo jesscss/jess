@@ -77,7 +77,7 @@
       "class": "exact",
       "css": "color-mix(in srgb, C1 W%, C2)",
       "spec": "css-color-5 §3.3, §3.5",
-      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime)",
+      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime; naming no export it fails). A colour written with none stays in the form",
       "extended": "rgb(from C clamp(0, (r * alpha * w + q_r) / (alpha * w + p), 255) ... / calc(alpha * w + p)), w the share of the colour not known, p and q the known colour's opacity and premultiplied channels"
     },
     {
@@ -195,7 +195,7 @@
       "css": "contrast-color(C)",
       "withColors": "rgb(from contrast-color(C) calc(Dr + (Lr - Dr) * r / 255) calc(Dg + (Lg - Dg) * r / 255) calc(Db + (Lb - Db) * r / 255) / calc(Da + (La - Da) * r / 255))",
       "spec": "css-color-5 §8",
-      "notes": "built: slice 7. Ruled 2026-11-01 (Q13): a known input picks dark/light by the larger WCAG 2.1 contrast ratio, so contrast(#999) = black; an explicit threshold keeps the luma rule for a known input and has no CSS form for an unknown one (written as it was, or on the runtime). Black and white agree with contrast-color() in Chrome 152 on every origin of the grid; a custom pair can disagree, because the form switches where black and white do. Dark and light must be known for the withColors form"
+      "notes": "built: slice 7. Ruled 2026-11-01 (Q13): a known input picks dark/light by the larger WCAG 2.1 contrast ratio, so contrast(#999) = black; an explicit threshold keeps the luma rule for a known input and has no CSS form for an unknown one (it fails, or runs on the runtime). A lone ambient contrast(<unknown>) stays as written, since a number there is CSS's filter function (coordinator's ruling, open for the owner). Black and white agree with contrast-color() in Chrome 152 on every origin of the grid; a custom pair can disagree, because the form switches where black and white do. Dark and light must be known for the withColors form"
     },
     {
       "dialect": "less",
@@ -500,7 +500,7 @@
       "class": "exact",
       "css": "color-mix(in srgb, C1 W%, C2)",
       "spec": "css-color-5 §3",
-      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime)",
+      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime; naming no export it fails). A colour written with none stays in the form",
       "extended": "rgb(from C1 clamp(0, r * W + K * (1 - W), 255) ...), K the known C2 channel; or symmetric with C1 known"
     },
     {

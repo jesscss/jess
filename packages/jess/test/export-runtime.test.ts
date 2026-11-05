@@ -102,6 +102,10 @@ describe('the export runtime', () => {
     ['@less.tint(#777, @brand)', '-13%', '13%'],
     ['@less.contrast(@brand, #111, #eee, 50%)', '#999', '#222'],
     ['@less.contrast(#999, @brand, #eee)', '#111', '#222'],
+    ['@less.mix(red, blue, (@brand))', '150%', '25%'],
+    ['@less.tint(red, (@brand))', '13', '25%'],
+    ['@less.tint(red, (@brand))', '13px', '25%'],
+    ['@less.rgb((@brand), 0, 0)', '2px', '10'],
     ['@less.lightness(@less.mix(@brand, red))', '#c00', '#08f']
   ])('runs %s of %s on the runtime, where no form holds it', async (expression, value, later) => {
     const exported = await compile(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`);
@@ -110,6 +114,39 @@ describe('the export runtime', () => {
     const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ brand: later });
     const recompiled = await compile(`@use "#less";\n@brand: ${later};\n.a { v: ${expression}; }`);
     expect(recompiled.css).toContain(`v: ${vars[property!]};`);
+  });
+
+  it.each([
+    ['@less.mix((@a), (@b), 150%)', '@a: #c00;\n@b: #08f;'],
+    ['@less.mix(@a, red, (@b))', '@a: #c00;\n@b: 150%;']
+  ])('runs %s on the runtime, as it does with no parens', async (expression, declarations) => {
+    const exported = await compile(`@use "#less";\n@expose a, b;\n${declarations}\n.a { v: ${expression}; }`);
+    expect(Object.keys(exported.runtime!.derived)).toEqual(['--a-mix']);
+    expect(exported.css).toContain('v: var(--a-mix, ');
+  });
+
+  it('fails @less.contrast((@a)) of a number, as it does with no parens', async () => {
+    await expect(new Compiler({}).renderString('@use "#less";\n@expose a;\n@a: 1.5;\n.x { v: @less.contrast((@a)); }', { filePath: 'entry.less', extension: '.less' })).rejects.toMatchObject({ code: 'eval/invalid-function' });
+  });
+
+  it('prints an exposed variable in parens as it prints one without', async () => {
+    const exported = await compile('@use "#less";\n@expose r;\n@r: 10;\n.a { v: @less.rgb((@r), 0, 0); }');
+    expect(exported.css).toContain('v: rgb(var(--r, 10), 0, 0);');
+  });
+
+  it.each([
+    ['@less.contrast(rgb(@o 0 0), #111, #eee, 50%)', '200'],
+    ['@less.mix(color-mix(in srgb, @o, red), var(--b), 150%)', '#c00'],
+    ['@less.lightness(rgb(@o 0 0))', '200'],
+    ['@less.multiply(rgb(@o 0 0), red)', '200']
+  ])('names the exposed variable when %s fails', async (expression, value) => {
+    await expect(new Compiler({}).renderString(`@use "#less";\n@expose o;\n@o: ${value};\n.a { v: ${expression}; }`, { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('@o is exposed') });
+  });
+
+  it('prints a form over a colour call that reads an exposed variable', async () => {
+    const exported = await compile('@use "#less";\n@expose o;\n@o: 200;\n.a { v: @less.darken(rgb(@o 0 0), 10%); }');
+    expect(exported.css).toContain('v: hsl(from rgb(var(--o, 200) 0 0) h s clamp(0, l - 10, 100));');
   });
 
   it('runs a mix of two exports on the runtime beyond 100%, as no form holds it', async () => {

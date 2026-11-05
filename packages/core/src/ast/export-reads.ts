@@ -1,6 +1,7 @@
 import { combineAll, isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
+import { JessError } from '../error/jess-error.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Fn, ParamSpec } from './functions/types.js';
@@ -12,7 +13,7 @@ import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type Eva
 import { writeCall } from './evaluator.js';
 import type { ValueCheckLane } from './invalid-value-syntax.js';
 import { makeKeyword, makeList, withFields } from './value-factory.js';
-import { keepAsWritten } from './value-operate.js';
+import { insideParens, keepAsWritten } from './value-operate.js';
 
 /**
  * Ledger A4: a variable an `@expose` names (A20) publishes a custom property, so a
@@ -136,6 +137,9 @@ export interface ExportState<F> {
    */
   inputs: Array<ExportInput> | undefined;
 
+  /** An export the arguments of the computed call being evaluated read inside a call written out, which names it if that call fails. */
+  writtenRead: string | undefined;
+
   /** The mixin argument being bound, undefined outside one. */
   argument: ExportArgument | undefined;
 
@@ -201,6 +205,9 @@ export interface ExportLane<F> {
   readonly modes: EvalModes;
   readonly s: { readonly context: Context | undefined; readonly exports: ExportState<F> };
 
+  /** A colour's channels being read again for its consumer, where an export is not known. */
+  readonly channels?: unknown;
+
   /** How many `(reference)` imports the render walk is inside, where the lane walks one. */
   readonly referenceImportDepth?: number;
 }
@@ -210,7 +217,7 @@ export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
 export function exportState<F>(): ExportState<F> {
-  return { refs: new Map(), behind: new Map(), inputs: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map() };
+  return { refs: new Map(), behind: new Map(), inputs: undefined, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map() };
 }
 
 /**
@@ -389,6 +396,7 @@ export function exportChecked<F, H extends { value: CallValue; frame: F; evaluat
     exportNotWritten(reader, lookup === 'live' ? `$${name}` : `@${name}`, name, e,
       'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
   }
+  x.writtenRead = name;
   return ref.call === undefined ? hit : { value: ref.call, frame: hit.frame, evaluated: null };
 }
 
@@ -409,7 +417,7 @@ export function exportInput<F, H extends { value: CallValue; frame: F }>(hit: H 
   if (ref === undefined) {
     return hit;
   }
-  if (x?.inputs === undefined) {
+  if (x?.inputs === undefined || e.channels !== undefined) {
     exportNotWritten(reader, `@${name}`, name, e, 'as the input of a function the runtime cannot run');
   }
   if (ref === IN_ARGUMENTS) {
@@ -429,21 +437,6 @@ export function exportInputRead<F, V extends ValueGroup>(e: ExportLane<F>, hit: 
         inputs.push({ recipe: { export: name }, value: read });
         return read;
       });
-}
-
-/**
- * A CSS colour call read again for its consumer, with no call to record an export
- * for: a channel or argument that reads one is not known, and the call stays
- * written over its `var()`.
- */
-export function withoutExportInputs<T>(state: ExportState<unknown>, read: () => T): T {
-  const inputs = state.inputs;
-  state.inputs = undefined;
-  try {
-    return read();
-  } finally {
-    state.inputs = inputs;
-  }
 }
 
 /** Note that the mixin argument being bound reads an export. */
@@ -529,21 +522,45 @@ export function exportCall<F>(
   const inputs: NonNullable<ExportState<F>['inputs']> = [];
   const checks = e.checks;
   const argument = outer === undefined && checks === 'argument' ? x.argument : undefined;
+  const outerWritten = x.writtenRead;
   let typed: Array<MaybePromise<ValueGroup>>;
+  let written: string | undefined;
   x.inputs = inputs;
+  x.writtenRead = undefined;
   try {
     typed = args(false);
   } finally {
     x.inputs = outer;
+    written = x.writtenRead;
+    x.writtenRead = outerWritten ?? written;
   }
+
+  /* A call that failed over an export written inside an argument says which, not only that it failed. */
+  const failed = (error: unknown): never => {
+    if (written !== undefined && isInvalidFunction(error)) {
+      exportNotWritten(node, `@${written}`, written, e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
+    }
+    throw error;
+  };
+  const computedOver = (vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> => {
+    if (written === undefined) {
+      return dispatch(vals);
+    }
+    try {
+      const result = dispatch(vals);
+      return isThenable(result) ? result.catch(failed) : result;
+    } catch (error) {
+      return failed(error);
+    }
+  };
   if (inputs.length === 0 && !typed.some(isThenable)) {
-    return dispatch(typed);
+    return computedOver(typed);
   }
 
   /* An argument still pending reports its exports when it settles. */
   return combineAll(typed, vals => inputs.length === 0
-    ? dispatch(vals)
-    : mapMaybe(dispatch(vals), (computed) => {
+    ? computedOver(vals)
+    : mapMaybe(computedOver(vals), (computed) => {
         /* Whether the export's own value is one the form takes (§3.6): a wrong one has failed by now, or is written out. */
         const recorded = (): EvalValue => {
           markArgument(argument);
@@ -567,15 +584,29 @@ export function exportCall<F>(
         };
         if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed, vals) && takesForm(fn, vals, inputs)) {
           /* A value no form holds over what only the browser knows runs on the runtime (§3.4a, rung 4). */
-          return mapMaybe(dispatch(args(true).map((read, index) => mapMaybe(read, written => typedRead(vals[index], written)))), form => isUnwrittenBuiltin(form) ? recorded() : form);
+          const noForm = (error: unknown): EvalValue => {
+            if (isNoForm(error)) {
+              return recorded();
+            }
+            throw error;
+          };
+          try {
+            const form = dispatch(args(true).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value))));
+            return isThenable(form) ? form.catch(noForm) : form;
+          } catch (error) {
+            return noForm(error);
+          }
         }
         return recorded();
       }));
 }
 
-/** A built-in's own call written out, which is no CSS, unlike a CSS colour call its callable leaves to the browser. */
-const isUnwrittenBuiltin = (result: EvalValue): boolean =>
-  typeof result !== 'string' && !isValueGroupArray(result) && result.type === 'FunctionCall' && !result.computed && result.result === null;
+const isInvalidFunction = (error: unknown): boolean =>
+  error instanceof JessError && error.code === 'eval/invalid-function';
+
+/** By name: a provided module (`#less`) is loaded by its resolved path, and may run another build of the class. */
+const isNoForm = (error: unknown): boolean =>
+  error instanceof JessError && error.cause instanceof Error && error.cause.name === 'NoCssForm';
 
 const lone = (v: ValueGroup): ValueGroup => isValueGroupArray(v) && v.length === 1 ? v[0]! : v;
 
@@ -607,7 +638,7 @@ function exportResult(known: ValueGroup | undefined): CallResult {
 function typedRead(known: ValueGroup | undefined, written: ValueGroup): ValueGroup {
   const call = lone(written);
   return !isValueGroupArray(call) && call.type === 'FunctionCall' && call.name === 'var'
-    ? keepAsWritten(withFields(call, { result: exportResult(known) }))
+    ? keepAsWritten(withFields(insideParens(call), { result: exportResult(known) }))
     : written;
 }
 

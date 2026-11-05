@@ -91,6 +91,9 @@ export class JessError {
   fix = '';
   note?: string;
 
+  /** What a function threw, when this is its failed call. */
+  cause?: unknown;
+
   constructor(init: JessErrorInit) {
     // Resolve context from ctx/node first, else from explicit fields.
     const authored = init.ctx?.file;

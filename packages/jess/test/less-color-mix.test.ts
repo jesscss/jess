@@ -58,6 +58,31 @@ describe('mix, tint, shade and average are color-mix(in srgb)', () => {
     expect(await render(call, { output: { compress: true } })).toContain(`x:${css}`);
   });
 
+  it('fails two colours only the browser knows at a weight no form holds', async () => {
+    expect(await render('mix(var(--a), var(--b), 150%)')).toContain('x: mix(var(--a), var(--b), 150%);');
+    await expect(render('mix(var(--a), var(--b), 150%)', { compile: { functionMode: 'error' } })).rejects.toMatchObject({ code: 'eval/invalid-function' });
+    await expect(new Compiler({}).renderString('@use "#less";\n.a { x: @less.mix(var(--a), var(--b), 150%); }', { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/invalid-function' });
+  });
+
+  it('fails $mix of two colours only the browser knows at a weight no form holds', async () => {
+    await expect(new Compiler({}).renderString('@-from "#less" import (mix);\n.a { x: $mix(var(--a), var(--b), 150%); }', { filePath: 'entry.jess', extension: '.jess' }))
+      .rejects.toMatchObject({ code: 'eval/invalid-function' });
+  });
+
+  it.each([
+    ['mix(rgb(none 0 0), red)', 'color-mix(in srgb, rgb(none 0 0), red)'],
+    ['average(rgb(none none none), red)', 'color-mix(in srgb, rgb(none none none), red)'],
+    ['mix(rgb(10 20 30 / none), red)', 'color-mix(in srgb, rgb(10 20 30 / none), red)'],
+    ['tint(rgb(none 0 0), 10%)', 'color-mix(in srgb, white 10%, rgb(none 0 0))'],
+    ['shade(rgb(0 0 0 / none), 10%)', 'color-mix(in srgb, black 10%, rgb(0 0 0 / none))'],
+    ['darken(color-mix(in srgb, rgb(none 0 0), red), 10%)', 'hsl(from color-mix(in srgb, rgb(none 0 0), red) h s clamp(0, l - 10, 100))'],
+    ['lightness(rgb(none 0 0))', '0%'],
+    ['darken(rgb(none 0 0), 10%)', 'rgb(0, 0, 0)']
+  ])('leaves a mix over a missing channel to the browser, and only a mix: %s', async (call, css) => {
+    expect(await render(call)).toContain(`x: ${css};`);
+  });
+
   it('reads a color-mix() through a variable and a mixin argument, and prints it as written', async () => {
     const out = await new Compiler({}).renderString('@c: color-mix(in srgb, red, blue); .m(@a) { y: darken(@a, 10%); z: @a; } .a { x: darken(@c, 10%); w: @c; .m(color-mix(in srgb, red, blue)); }', { filePath: 'entry.less', extension: '.less' });
     expect(out).toContain('x: rgb(77, 0, 76);');

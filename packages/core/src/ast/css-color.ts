@@ -24,7 +24,7 @@ import { isValueSlotArray } from './css-grammar-helpers.js';
 import { isValueGroupArray, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { makeColorHsl, makeColorRgb } from './value-factory.js';
-import { clamp, HSL, hwbToRgb, RGB, rgbToHsl } from './color.js';
+import { clamp, HSL, hwbToRgb, RGB, rgbToHsl, holdsNone } from './color.js';
 import { namedColor } from './color-names.js';
 import { convertValue, groupOf, UnitGroup } from './value-units.js';
 
@@ -77,7 +77,9 @@ export type Rgba = readonly [r: number, g: number, b: number, alpha: number];
  * call's computed channels are read from them, never evaluated again; other
  * channels are evaluated again, with the origin's values bound, since the call
  * evaluated them unbound, and so is an origin that is a colour call of its own.
- * Each level of nesting is evaluated at most twice, never once per enclosing level.
+ * A level of nesting can be evaluated more than twice: a chain of
+ * `darken(color-mix(in srgb, …, blue), 10%)` grows about x2.85 per doubling of its
+ * depth, harmless at the depths of 1 to 3 authors write.
  */
 export function resolveColorCall(node: FunctionCall, vals: readonly ValueGroup[], bind: ChannelBinder, written: WrittenCall): MaybePromise<Color | WrittenCall> {
   if (isSrgbColorMix(node)) {
@@ -138,6 +140,10 @@ function mixArgument(value: ValueGroup): { readonly color: OriginColor; readonly
     if (isDimension(item) && item.unit === '%' && weight === undefined) {
       weight = item.number;
     } else if (!isValueGroupArray(item) && item.type === 'Color' && color === undefined) {
+      /* A missing channel takes the other colour's value (css-color-4 §12.2), which the browser computes. */
+      if (holdsNone(item)) {
+        return undefined;
+      }
       color = item;
     } else if (!isValueGroupArray(item) && item.type === 'Keyword' && color === undefined) {
       color = namedColor(item.text);

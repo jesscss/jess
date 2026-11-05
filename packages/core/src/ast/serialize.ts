@@ -212,7 +212,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { channelFunction, channelMath, channelOf, formChannels, isComputedColorCall, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
-import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, withoutExportInputs, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -5240,7 +5240,7 @@ function evalTyped(
         frame,
         deriveLane(e, 'paren'),
         projectMixinValues,
-        writtenAsAuthored(argument) ? argument : ARG_NONE
+        writtenAsAuthored(argument) || (argument === ARG_INPUT && e.s.exports.runtime !== undefined && readsOneVariable(node.value)) ? argument : ARG_NONE
       ), v => keepAuthoredGroup(v, e, !isValueSlotArray(node.value) && node.value.type === 'FunctionCall'));
     case 'Collection':
       /*
@@ -5565,6 +5565,10 @@ function groupsOneValue(node: Block): boolean {
 }
 
 /** A paren group around math kept as written or around raw bytes: nothing in it computes. */
+/** A group around one variable: its read is the argument's own, an export's input ({@link exportInput}). */
+const readsOneVariable = (slot: ValueSlot): boolean =>
+  !isValueSlotArray(slot) && ((slot.type === 'Lookup' && slot.kind === 'var') || (isParenGroup(slot) && readsOneVariable(slot.value)));
+
 function isInertGroup(node: Block): boolean {
   let inner: ValueSlot = node.value;
   while (isParenGroup(inner)) {
@@ -9184,7 +9188,7 @@ function dispatchCall(
   const call = demanded && selected === undefined && isComputedColorCall(node)
     ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
-        : withoutExportInputs(e.s.exports, () => resolveColorCall(node, vals, channelBinder(frame, be), out)))
+        : resolveColorCall(node, vals, channelBinder(frame, be), out))
     : e.channels !== undefined && selected === undefined
       ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? dispatch(vals)
       : dispatch;
@@ -9464,11 +9468,13 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: Lane): never
   if (error instanceof JessError) {
     throw error;
   }
-  throw (error instanceof EmptyListValueError ? ERR.emptyListValue : ERR.invalidFunction)({
+  const failure = (error instanceof EmptyListValueError ? ERR.emptyListValue : ERR.invalidFunction)({
     node,
     ...callSiteLocation(node, e.s),
     meta: { name: node.name, reason: error instanceof Error ? error.message : String(error) }
   });
+  failure.cause = error;
+  throw failure;
 }
 
 /**

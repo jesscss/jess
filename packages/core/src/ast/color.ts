@@ -17,6 +17,9 @@ export const HEX = 0;
 export const RGB = 1;
 export const HSL = 2;
 
+/** Whether a colour is written with a `none` channel, which a computed colour reads as 0 and a mix leaves to the browser. */
+export const holdsNone = (color: Pick<Color, 'src'>): boolean => typeof color.src === 'string' && /\bnone\b/i.test(color.src);
+
 export const clamp = (v: number, max: number): number => Math.min(Math.max(v, 0), max);
 
 /** HSL(h deg, s 0-1, l 0-1) -> RGB 0-255, byte-identical to Color._rgb HSL branch. */
