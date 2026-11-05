@@ -1,31 +1,26 @@
 {
-  "generated": "2026-11-05T03:36:36.442Z",
+  "generated": "2026-11-05T04:48:12.630Z",
   "foundation": "6.9.0",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
   "parse": {
     "total": 136,
-    "pass": 135,
+    "pass": 136,
     "blockerCounts": [
-      {
-        "name": "@at-root with a selector prelude",
-        "primary": 1,
-        "files": 1
-      },
       {
         "name": "keyword argument ($name: v) in a function-call argument list",
         "primary": 0,
-        "files": 1
+        "files": 0
       },
       {
         "name": "comparison (== / !=) inside a function-call argument list",
         "primary": 0,
-        "files": 1
+        "files": 0
       },
       {
         "name": "trailing comma in a parenthesized list",
         "primary": 0,
-        "files": 1
+        "files": 0
       },
       {
         "name": "interpolation inside a pseudo-class argument list",
@@ -218,17 +213,7 @@
       },
       {
         "file": "scss/components/_off-canvas.scss",
-        "outcome": "fail",
-        "at": "207:4",
-        "source": "@at-root .#{$maincontent-class} .off-canvas.position-#{$position} {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list",
-          "trailing comma in a parenthesized list",
-          "@at-root with a selector prelude"
-        ],
-        "primaryBlocker": "@at-root with a selector prelude",
-        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_orbit.scss",
@@ -603,27 +588,27 @@
       {
         "file": "assets/foundation.scss",
         "outcome": "fail",
-        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
+        "detail": "Invalid function call"
       },
       {
         "file": "assets/foundation-float.scss",
         "outcome": "fail",
-        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
+        "detail": "Invalid function call"
       },
       {
         "file": "assets/foundation-prototype.scss",
         "outcome": "fail",
-        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
+        "detail": "Invalid function call"
       },
       {
         "file": "assets/foundation-rtl.scss",
         "outcome": "fail",
-        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
+        "detail": "Invalid function call"
       },
       {
         "file": "scss/foundation.scss",
         "outcome": "fail",
-        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
+        "detail": "Invalid function call"
       }
     ]
   }

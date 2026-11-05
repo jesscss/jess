@@ -156,7 +156,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'diagnostics', name: '@warn', src: '@mixin m { @warn "x"; }', supported: true },
   { group: 'diagnostics', name: '@error', src: '@mixin m { @error "x"; }', supported: true },
   { group: 'diagnostics', name: '@debug', src: '@debug "x";', supported: true },
-  { group: 'misc', name: '@at-root', src: '.a { @at-root .b { color: red; } }', supported: false },
+  { group: 'misc', name: '@at-root', src: '.a { @at-root .b { color: red; } }', supported: true, note: 'parses; the compile reports parse/at-root-placement' },
   { group: 'misc', name: 'if() function in a value', src: '.a { w: if($x, 1, 2); }', supported: true },
   { group: 'misc', name: 'interpolation in a media query', src: '@media (min-width: #{$x}) { .a { color: red; } }', supported: true },
   { group: 'misc', name: 'interpolation inside a string', src: '$a: "#{$x}-y";', supported: true }

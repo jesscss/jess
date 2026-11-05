@@ -5,7 +5,19 @@ import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 
 export { checkedSupportsPrelude, checkedImportTarget } from './supports-condition.js';
+import { isScssAtRoot, type AtRuleBlock } from './at-rule.js';
 import type { Any, CallValue, Declaration, ValueSlot } from './nodes.js';
+
+/**
+ * An at-rule's name in lower case, after failing the compile on SCSS's `@at-root`,
+ * which parses and has no output carrier (ledger P10, P45).
+ */
+export function checkedAtRuleName(node: AtRuleBlock, s: { readonly context: Context | undefined }): string {
+  if (isScssAtRoot(node)) {
+    throw ERR.atRootPlacement({ node, ...callSiteLocation(node, s) });
+  }
+  return node.name.toLowerCase();
+}
 
 /**
  * What a declaration value holds that parses as balanced CSS and is then an

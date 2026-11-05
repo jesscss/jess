@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, asScssAtRoot, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { functionalPseudoFrom, nthPseudoFrom, pseudoArgumentFrom } from './grammar-pseudo.js';
 import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
@@ -140,6 +140,7 @@ type ScssRules = {
   StatementAtRuleName: Combinator<string>;
   StatementPrelude: Combinator<ValueNode | null>;
   AtRootFilterPrelude: Combinator<ValueNode>;
+  AtRootSelectorPrelude: Combinator<ValueNode>;
   SassDirective: Combinator<[string, unknown]>;
   SassNestedDirective: Combinator<[string, unknown]>;
   SassControlDirective: Combinator<[string, unknown]>;
@@ -4110,25 +4111,40 @@ const scssFactory = (g: ScssInputRules) => {
     noTrivia(token(balanced('(', ')'))),
     children => any(joinSourceText(children).trim())
   );
+
+  /**
+   * `@at-root .x .y { … }` parses (ledger P45) and has no output carrier (P10):
+   * the compile reports `parse/at-root-placement` at the at-rule before anything
+   * reads this prelude, so its text is all it keeps.
+   */
+  const AtRootSelectorPrelude = node<ValueNode>(
+    'AtRootSelectorPrelude',
+    g.SelectorList,
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => any(authoredSource(span, state, 'An @at-root prelude').trim())
+  );
   const AtRootBlock = node<AtRuleBlock>(
     'AtRootBlock',
     sequence(
       routed(),
+      optional(g.AtRootSelectorPrelude),
       literal('{'),
       g.nestedBody,
       literal('}')
     ),
-    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
-      requireToken(children[0]).value,
-      null,
-      statementChildren(
-        children.slice(
-          2,
-          -1
-        ),
-        true
-      )
-    ), rawChildren), span)
+    (children, _fields, span, rawChildren) => {
+      const prelude = isScssValue(children[1]) ? children[1] : null;
+      return withSourceSpan(withBlockBody(asScssAtRoot(atRuleBlock(
+        requireToken(children[0]).value,
+        prelude,
+        statementChildren(
+          children.slice(
+            prelude === null ? 2 : 3,
+            -1
+          ),
+          true
+        )
+      )), rawChildren), span);
+    }
   );
   const AtRootFilter = node<AtRuleBlock>(
     'AtRootFilter',
@@ -4139,7 +4155,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.nestedBody,
       literal('}')
     ),
-    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(asScssAtRoot(atRuleBlock(
       requireToken(children[0]).value,
       scssOptionalValue(children[1]),
       statementChildren(
@@ -4149,7 +4165,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren), span)
+    )), rawChildren), span)
   );
 
   /*
@@ -5529,6 +5545,7 @@ const scssFactory = (g: ScssInputRules) => {
     StatementAtRuleName,
     StatementPrelude,
     AtRootFilterPrelude,
+    AtRootSelectorPrelude,
     SassDirective,
     SassNestedDirective,
     SassControlDirective,

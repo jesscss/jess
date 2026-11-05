@@ -1171,6 +1171,15 @@ export const ERR = {
     });
   },
 
+  /** `@at-root`, which has no output carrier (ledger P10): parsed, then an error (P45). */
+  atRootPlacement(args: Common = {}) {
+    return makeJessError({
+      code: 'parse/at-root-placement',
+      phase: 'parse',
+      ...args
+    });
+  },
+
   // Plugin
   /**
    * A plugin reached for an API this compiler deliberately does not provide

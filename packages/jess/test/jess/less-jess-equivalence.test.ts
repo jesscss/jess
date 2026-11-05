@@ -1106,6 +1106,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'GuardNode: comparison operator `sass-equal`'
   }],
+  ['foundation-sites@6.9.0:components/_off-canvas.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+4 more)'
+  }],
   ['foundation-sites@6.9.0:components/_progress-bar.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',

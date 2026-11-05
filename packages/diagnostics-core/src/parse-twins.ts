@@ -350,6 +350,9 @@ export function pushParseTwinDiagnostics(
     pushInvalidSupportsConditionTwin(node, source, push);
   } else if (gt === 'ImportStatement') {
     pushInvalidImportSupportsTwin(node, source, push);
+  } else if (gt === 'AtRootBlock' || gt === 'AtRootFilter') {
+    const error = ERR.atRootPlacement();
+    push('parse/at-root-placement', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
   }
 
   /*

@@ -702,13 +702,12 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.value, source).toMatchObject({ type: 'Any', src: expected });
     }
 
-    for (const source of [
-      '@at-root .scope { .item { color: red; } }',
-      '@at-root "{" { .item { color: red; } }'
-    ]) {
-      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null, source).toBe(false);
-    }
+    expect(bare(parse('@at-root .scope { .item { color: red; } }'))).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@at-root', prelude: { type: 'Any', src: '.scope' } }]
+    });
+
+    const string = run(scssGrammar.Stylesheet, '@at-root "{" { .item { color: red; } }', { trivia: scssGrammar.whitespace });
+    expect(string.ok && string.unconsumedFrom === null).toBe(false);
   });
 
   it('constructs canonical SCSS variable declarations and references directly', () => {

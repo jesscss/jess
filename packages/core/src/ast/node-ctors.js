@@ -439,6 +439,8 @@ export function StylesheetNode(rules, _s, _e, _trivia, _extend) {
   this._extend = _extend;
 }
 
+const scssAtRootKey = Symbol.for('jess.ast.scss-at-root');
+
 export function AtRuleBlockNode(name, prelude, rules, extendInstructions, _s, _e, _bs, _be) {
   this.type = 'AtRuleBlock';
   this.name = name;
@@ -449,6 +451,7 @@ export function AtRuleBlockNode(name, prelude, rules, extendInstructions, _s, _e
   this._e = _e;
   this._bs = _bs;
   this._be = _be;
+  this[scssAtRootKey] = false;
 }
 
 export function UnknownAtRuleBlockNode(name, prelude, rawBody, _s, _e) {

@@ -209,7 +209,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
-import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
+import { assertValidValueSyntax, checkedAtRuleName, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
@@ -21954,10 +21954,10 @@ function normalizeQueryPlainRun(s: string, compress = false): string {
  * when nothing in the prelude needs awaiting.
  */
 function atRulePreludeBytes(node: AtRuleBlock, frame: Frame, e: Emit): MaybePromise<string> {
+  const lname = checkedAtRuleName(node, e.s);
   if (node.prelude === null) {
     return '';
   }
-  const lname = node.name.toLowerCase();
   if (lname === '@supports') {
     return mapMaybe(evalSupportsPrelude(checkedSupportsPrelude(node, node.prelude, e.s), frame, e), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
   }

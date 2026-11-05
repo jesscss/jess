@@ -116,9 +116,6 @@ const BLOCKERS: Array<[string, RegExp]> = [
   // `.a:nth-child(#{$i}) { color: red; }`
   ['interpolation inside a pseudo-class argument list', /:{1,2}[\w-]+\([^()]*#\{/],
 
-  // `.a { @at-root .b { color: red; } }` — bare `@at-root { … }` does parse.
-  ['@at-root with a selector prelude', /@at-root\s+[^{\s]/],
-
   /*
    * `@mixin m() { div:hover, .b { color: red; } }` — the leading `div:` is
    * committed to the declaration path, and `.`/`#` cannot follow in a value.
@@ -420,6 +417,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/components/_media-object.scss',
   'scss/components/_menu-icon.scss',
   'scss/components/_menu.scss',
+  'scss/components/_off-canvas.scss',
   'scss/components/_orbit.scss',
   'scss/components/_pagination.scss',
   'scss/components/_progress-bar.scss',
@@ -601,11 +599,11 @@ const STANDING_SECTIONS: readonly string[] = [
   '| 8 | chained unary `not not` | **LANDED.** Sass `not not $x` lowers to `.jess` `not(not($x))`. Falls out of §4.5.4\'s rule that `not` always takes parens — it needed no special case, only the missing `Expression` arm in the condition-source spelling. |',
   '| 9 | nested selector list `type:pseudo, .class` | **A grammar defect, and the rule is fully specified — see below.** |',
   '| 10 | interpolation in a pseudo-class arg | Not yet ruled on. |',
-  '| 11 | `@at-root` with a selector prelude | **Needs a decision.** Bare `@at-root { … }` already parses. |',
+  '| 11 | `@at-root` with a selector prelude | Parses, then the compile reports `parse/at-root-placement`: output placement has no carrier (ledger P10). |',
   '| 12 | `@extend` inside a mixin / control-flow body (NOT `%placeholder`) | **PLACEHOLDERS LANDED; THE REAL BLOCKER IS ELSEWHERE AND HAS NOW BEEN MISLABELLED THREE TIMES.** Ruling: `.jess` spells a placeholder `\\\\name` (two literal backslashes) and SCSS `%name` LOWERS to it, so both dialects reduce to the SAME `SimpleSelector` — zero new AST kinds. Two backslashes because `\\\\` is the CSS escape for a literal `\\` (css-syntax-3 4.3.7), making the selector a well-formed identifier no element type can match (selectors-4 5.1): a placeholder is inert BY CONSTRUCTION, and suppression exists only to match dart-sass output. Suppression is per-BRANCH, not per-rule — `%ph, .a {}` emits `.a` — which is why `Ruleset.reference` could NOT be reused for it (whole-rule flag, import-boundary-confined, and it has no producers at all). `.jess` needed NO grammar arm: `\\\\name` already parses as a plain `SimpleSelector` via the shared escape-aware terminal, and adding a `\\\\`-arm ahead of `Simple` would STEAL every genuine CSS escape (`\\3A hover`, `\\@media`) — do not add one. **What actually blocks `_reveal.scss:108` is neither `%` nor grammar placement.** Admitting `@extend` into `nestedBody`/`IfBody` is a two-line change and was tried: it parses, and then the extend is SILENTLY DROPPED, which is strictly worse than the loud parse error. An extend written in a mixin body must apply to the rule that `@include`s the mixin, but extend facts are planned STATICALLY over the authored tree, so an authored `@mixin m { & { @extend .b; } }` containing no placeholder at all is already dropped today — proving the defect is a pre-existing PLANNER limitation, not a grammar or placeholder gap. The mechanism that would carry it already exists: dynamic plan facts via `byPlacement` / `extendPlacement` (`serialize.ts` `extendProjection`), used today for LOOP placements; mixin expansion needs routing through the same path. Until then the arm stays out on purpose. Also landed here: `!optional` is parsed and recorded on `ExtendInstruction.optional`, and SCSS `@extend` is `partial: true` (Sass has no exact/all distinction). Still OPEN alongside the planner work: a missing target is silent for both spellings where dart-sass errors, and `:is()` compaction can still print a placeholder alternative (`:is(\\\\ph, .a) .c` instead of `.a .c`) — inert, so it matches correctly, but it is a cosmetic divergence. |',
   '',
   '**Sequencing note:** #2, #5 and #6 are LANDED, together — #6 IS the lowering',
-  'target for #2, so neither closes alone. #1 and #9 are defects. #10, #11 and #12',
+  'target for #2, so neither closes alone. #1 and #9 are defects. #10 and #12',
   'are the ones still needing a ruling. Closing #2/#5/#6 surfaced one new entry in',
   'the ranked table above: a trailing comma in a parenthesized list, which files',
   'only reach now that the `@include` content block no longer stops the parse.',

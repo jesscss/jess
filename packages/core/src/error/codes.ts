@@ -23,6 +23,7 @@ export type JessErrorCode =
   | 'parse/unsupported-mixin-name'
   | 'parse/unparenthesized-mixin-guard'
   | 'parse/leading-separator-value'
+  | 'parse/at-root-placement'
   | 'parse/uncalled-mixin-reference'
   | 'parse/important-on-mixin-reference'
   | 'parse/import-postlude-on-compile-time-import'
@@ -638,6 +639,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '`${what}` is not valid in any CSS value',
       reason: 'CSS reads `${what}` as a delim token, and no CSS value accepts it, so a browser drops the declaration.',
       fix: '${fix}'
+    }
+  ],
+  [
+    'parse/at-root-placement',
+    {
+      summary: '`@at-root` is not supported',
+      reason: '`@at-root` moves a rule out of its parent in the output, and the compiler has no way to write that yet. Writing the at-rule as it stands would give CSS that means something else.',
+      fix: 'Write the rule at the top level, outside its parent.'
     }
   ],
   [

@@ -567,8 +567,7 @@ describe('SCSS constructs discovered outside the parser suites', () => {
       /*
        * `Unexpected SCSS syntax.` is the signature of falling off the end of
        * the statement choice with no arm having claimed the at-keyword. A name
-       * that reaches a real production fails differently (`@at-root .y {`
-       * reports `Expected: "(", "{"`), so this message — not merely "it
+       * that reaches a real production fails differently, so this message — not merely "it
        * throws" — is what distinguishes an unrouted name from a diagnosed one.
        */
       expect(() => parse(source)).toThrow(/Unexpected SCSS syntax/);
