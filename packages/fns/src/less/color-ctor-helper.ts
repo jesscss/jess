@@ -6,8 +6,8 @@
  *
  * HARD MODULE BOUNDARY: value domain only.
  */
-import type { Color, Dimension, ValueGroup } from '@jesscss/core';
-import { groupSeparator, isValueGroupArray } from '@jesscss/core';
+import type { Color, Dimension, ValueGroup } from '@jesscss/core/value';
+import { groupSeparator, isValueGroupArray } from '@jesscss/core/value';
 
 export { clamp01, percentOf } from '../shared/color/kernels.js';
 

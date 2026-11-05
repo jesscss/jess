@@ -7,7 +7,7 @@
  * map.has-key((a: 1), a) // true
  * map.has-key((a: 1), b) // false
  */
-import { collectionKeyIndex, defineFunction, makeBool } from '@jesscss/core';
+import { collectionKeyIndex, defineFunction, makeBool } from '@jesscss/core/value';
 import { nestedCollection } from './util.js';
 
 const hasKey = defineFunction(
