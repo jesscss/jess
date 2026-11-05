@@ -17,7 +17,7 @@
  */
 
 import { NO_SPAN, any, block, keyword, interpolation, appendInterpolationLiteral, interpolatedSimpleSelector, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout, lookupStep, guardLogical, guardNot, guardValue, withWrite, withParens } from '@jesscss/core/ast';
-import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { Any, AstSourceSpan, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
@@ -154,6 +154,15 @@ export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
 const AN_PLUS_B_TEXT: ReadonlySet<string> = new Set('-+0123456789nN \t\n\r\f');
 const AN_PLUS_B_SPACE: ReadonlySet<string> = new Set(' \t\n\r\f');
 
+function isAnPlusBText(text: string): boolean {
+  for (const char of text) {
+    if (!AN_PLUS_B_TEXT.has(char)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * An An+B with a hole reads as the one without: whitespace in it is not part of
  * its value (css-syntax-3 §6), and An+B is written unspaced (`-n + #{$n}` is
@@ -163,7 +172,7 @@ const AN_PLUS_B_SPACE: ReadonlySet<string> = new Set(' \t\n\r\f');
 function unspacedNth(arg: Interpolation): Interpolation {
   const last = arg.parts.length - 1;
   return interpolation(arg.parts.map((part, index) => {
-    if (!('lit' in part) || [...part.lit].some(char => !AN_PLUS_B_TEXT.has(char)) || (part.lit.trim() === '' && index > 0 && index < last)) {
+    if (!('lit' in part) || !isAnPlusBText(part.lit) || (part.lit.trim() === '' && index > 0 && index < last)) {
       return part;
     }
     return { lit: [...part.lit].filter(char => !AN_PLUS_B_SPACE.has(char)).join('') };
@@ -1135,6 +1144,11 @@ export function scssConditionSource(value: ValueSlot): string {
 /** An `and` / `or` keyword of a CSS `if()` condition, as authored (`AND`). */
 export interface ConditionWord {
   readonly conditionWord: string;
+}
+
+/** A comparison's operator, and where the error at a comparison that cannot order points. */
+export interface ComparisonWord extends ConditionWord {
+  readonly at: AstSourceSpan;
 }
 
 export function conditionWord(children: readonly unknown[]): ConditionWord {
