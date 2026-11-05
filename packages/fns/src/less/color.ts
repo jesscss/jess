@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { colorRgbRounded, makeColorRgb, defineFunction, HEX, parseHex, namedColor } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { colorRgbRounded, makeColorRgb, defineFunction, HEX, parseHex, namedColor } from '@jesscss/core/value';
 
 const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
 

@@ -1,5 +1,5 @@
-import { coerceNamedColorKeyword, colorRgbRounded, defineFunction, groupItems, isValueGroupArray, makeKeyword } from '@jesscss/core';
-import type { Color, Fn, ValueGroup, Value } from '@jesscss/core';
+import { coerceNamedColorKeyword, colorRgbRounded, defineFunction, groupItems, isValueGroupArray, makeKeyword } from '@jesscss/core/value';
+import type { Color, Fn, ValueGroup, Value } from '@jesscss/core/value';
 
 /**
  * Less `svg-gradient()` — build an inline SVG gradient data URI. Stops are

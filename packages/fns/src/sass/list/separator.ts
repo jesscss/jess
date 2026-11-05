@@ -1,4 +1,4 @@
-import { defineFunction, makeKeyword } from '@jesscss/core';
+import { defineFunction, makeKeyword } from '@jesscss/core/value';
 import { getSassListInfo } from './util.js';
 
 const separator = defineFunction('separator', {

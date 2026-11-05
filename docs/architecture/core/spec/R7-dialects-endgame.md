@@ -315,9 +315,13 @@ that it touches different code (analysis lanes, not the dialect bridges).
 
 ### Open owner-confirm items (R7.3)
 
-- **O-CSSM-1** — the class-name scope-hash scheme (hash input: file path + name?
-  content? length/alphabet?) and the exact export-map format the consuming JS
-  receives. Needs owner confirmation.
+- **O-CSSM-1** — ANSWERED (owner 2026-11-01): Jess does not hash class names.
+  Native `@scope` covers scoping by subtree ("I'm not sure it's a feature we
+  need"), and a `.module.*` stylesheet follows the bundler's CSS Modules, "like
+  other ones do": under Vite, `rollup-plugin-jess` hands its CSS to Vite as
+  `<name>.module.css`, and the module's default export is Vite's class map
+  (R8 slice 4 contract). Plain Rollup has no CSS Modules, so the CSS is not
+  scoped there.
 - **O-CSSM-2** — the "minimum variable exposure" output CONTRACT: is the emitted
   custom-property set a distinct output artifact (a `:root`/`:where` block? a
   scoped block?), and what is the boundary rule that forces a variable to be

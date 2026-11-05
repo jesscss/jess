@@ -1,5 +1,5 @@
-import { defineFunction, makeDimension } from '@jesscss/core';
-import type { Fn, ValueGroup } from '@jesscss/core';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { readImageDimensions } from './image-helper.js';
 

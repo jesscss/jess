@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { defineFunction, makeDimension } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 import { clamp01, noExcess, requireColor } from './kernels.js';
 
 /**

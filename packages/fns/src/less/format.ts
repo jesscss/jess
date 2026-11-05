@@ -1,5 +1,5 @@
-import type { Fn, FnCtx, ValueGroup, Value } from '@jesscss/core';
-import { defineFunction, emitValue, groupItems } from '@jesscss/core';
+import type { Fn, FnCtx, ValueGroup, Value } from '@jesscss/core/value';
+import { defineFunction, emitValue, groupItems } from '@jesscss/core/value';
 import { sameStringKind } from './string-result.js';
 
 /** The selected token's Less string or CSS form, with uppercase URL encoding. */
