@@ -117,7 +117,7 @@
       "file": "packages/parser-shared/src/recognition.ts",
       "line": 519,
       "const": "customOuterContent",
-      "construct": "regex(/(?:(?![ \\t\\n\\r\\f]*!(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*important(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*[;}])(?:\\\\[^\\n\\r\\f]|[ \\t\\n\\r\\f]+(?=[^ \u2026",
+      "construct": "regex(/(?:(?![ \\t\\n\\r\\f]*!(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*important(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*[;}])(?:\\\\[^\\n\\r\\f]|[ \\t\\n\\r\\f]+(?=[^ …",
       "resolved": "7333bbfbee6279ed",
       "why": "its lookaround `(?![ \\t\\n\\r\\f]*!(?:[ \\t\\n\\r\\f]|\\s)*important(?:[ \\t\\n\\r\\f]|\\s)*[;}])` reads past the token it consumes",
       "issue": "jesscss/jess#576"
@@ -154,7 +154,7 @@
       "file": "packages/parser-shared/src/recognition.ts",
       "line": 574,
       "const": "lessCustomOuterContent",
-      "construct": "regex(/(?:(?![ \\t\\n\\r\\f]*!(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*important(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*[;}])(?:\\\\[^\\n]|[ \\t\\n\\r\\f]+(?=[^ \\t\\n\u2026",
+      "construct": "regex(/(?:(?![ \\t\\n\\r\\f]*!(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*important(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*[;}])(?:\\\\[^\\n]|[ \\t\\n\\r\\f]+(?=[^ \\t\\n…",
       "resolved": "cd349de59a51bb64",
       "why": "its lookaround `(?![ \\t\\n\\r\\f]*!(?:[ \\t\\n\\r\\f]|\\s)*important(?:[ \\t\\n\\r\\f]|\\s)*[;}])` reads past the token it consumes",
       "issue": "jesscss/jess#576"
@@ -173,7 +173,7 @@
       "file": "packages/parser-shared/src/recognition.ts",
       "line": 575,
       "const": "lessCustomInnerContent",
-      "construct": "regex(/(?:\\\\[^\\n]|(?!@\\{-?[_a-zA-Z0-9\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*(?:\\[[-_a-zA-Z0-9@$\\u0080-\\uffff]+\\])*\\})(?!@[-_a-zA-Z0-9\\u0080-\\uffff]+)[^(){}[\\\u2026",
+      "construct": "regex(/(?:\\\\[^\\n]|(?!@\\{-?[_a-zA-Z0-9\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*(?:\\[[-_a-zA-Z0-9@$\\u0080-\\uffff]+\\])*\\})(?!@[-_a-zA-Z0-9\\u0080-\\uffff]+)[^(){}[\\…",
       "resolved": "4e8521a6c4b451a8",
       "why": "its lookaround `(?!@\\{-?[_a-zA-Z0-9\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*(?:\\[[-_a-zA-Z0-9@$\\u0080-\\uffff]+\\])*\\})` reads past the token it consumes",
       "issue": "jesscss/jess#576"
@@ -251,7 +251,7 @@
       "const": "LeadingDashRawPseudoArgument",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "758453ff058fbf49",
-      "why": "`malformedPseudoNumericArgument` \u2014 regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
+      "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -261,7 +261,7 @@
       "const": "PseudoArgument",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "758453ff058fbf49",
-      "why": "`malformedPseudoNumericArgument` \u2014 regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
+      "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -271,7 +271,7 @@
       "const": "OfTypePseudoArgument",
       "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
       "resolved": "9ffbdbd4a74b109e",
-      "why": "`nth` \u2014 regex /even|odd|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*\\d+)?|[-+]?\\d+/i: its pattern spans more than one token",
+      "why": "`nth` — regex /even|odd|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*\\d+)?|[-+]?\\d+/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -281,7 +281,7 @@
       "const": "OfTypePseudoArgument",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "758453ff058fbf49",
-      "why": "`malformedPseudoNumericArgument` \u2014 regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
+      "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -291,7 +291,7 @@
       "const": "VarFallbackParen",
       "construct": "not(choice(varFallbackParenCrossBracket, varFallbackParenCrossBrace))",
       "resolved": "e24f7d4e2da5efde",
-      "why": "`varFallbackParenCrossBracket` \u2014 scanTo() scans more than one token",
+      "why": "`varFallbackParenCrossBracket` — scanTo() scans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -301,7 +301,7 @@
       "const": "VarFallbackBracket",
       "construct": "not(choice(varFallbackBracketCrossParen, varFallbackBracketCrossBrace))",
       "resolved": "4644bc5f5882888c",
-      "why": "`varFallbackBracketCrossParen` \u2014 scanTo() scans more than one token",
+      "why": "`varFallbackBracketCrossParen` — scanTo() scans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -311,7 +311,7 @@
       "const": "VarFallbackBrace",
       "construct": "not(choice(varFallbackBraceCrossParen, varFallbackBraceCrossBracket))",
       "resolved": "869880d7af83f056",
-      "why": "`varFallbackBraceCrossParen` \u2014 scanTo() scans more than one token",
+      "why": "`varFallbackBraceCrossParen` — scanTo() scans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -331,7 +331,7 @@
       "const": "queryComparedHead",
       "construct": "queryFeatureOpenerHead",
       "resolved": "4b6774985803593c",
-      "why": "its selector looks past one token: `unicodeRange` \u2014 regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
+      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -341,7 +341,7 @@
       "const": "queryFeatureOpener",
       "construct": "queryFeatureOpenerHead",
       "resolved": "4b6774985803593c",
-      "why": "its selector looks past one token: `unicodeRange` \u2014 regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
+      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -351,7 +351,7 @@
       "const": "mediaFeatureOpener",
       "construct": "queryFeatureOpenerHead",
       "resolved": "4b6774985803593c",
-      "why": "its selector looks past one token: `unicodeRange` \u2014 regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
+      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -361,7 +361,7 @@
       "const": "QueryConnective",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "7f0fa756971955fa",
-      "why": "`queryGluedConnective` \u2014 a sequence of more than one token",
+      "why": "`queryGluedConnective` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -381,7 +381,7 @@
       "const": "queryIdentOrFunctionTerm",
       "construct": "queryIdentOrFunction",
       "resolved": "22694873aac629c0",
-      "why": "its selector looks past one token: `queryIdentOrFunction` \u2014 a lookahead after a consuming arm reads another token",
+      "why": "its selector looks past one token: `queryIdentOrFunction` — a lookahead after a consuming arm reads another token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -401,7 +401,7 @@
       "const": "styleQueryContents",
       "construct": "ifTestHead",
       "resolved": "e17d7e86dc2fd50d",
-      "why": "its selector looks past one token: `unicodeRange` \u2014 regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
+      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576",
       "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan."
     },
@@ -412,7 +412,7 @@
       "const": "supportsTestOperand",
       "construct": "ifTestHead",
       "resolved": "e17d7e86dc2fd50d",
-      "why": "its selector looks past one token: `unicodeRange` \u2014 regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
+      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576",
       "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan."
     },
@@ -423,7 +423,7 @@
       "const": "supportsTestContents",
       "construct": "ifTestHead",
       "resolved": "e17d7e86dc2fd50d",
-      "why": "its selector looks past one token: `unicodeRange` \u2014 regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
+      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576",
       "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan."
     },
@@ -444,7 +444,7 @@
       "const": "ExpressionAtom",
       "construct": "not(typeNamespace)",
       "resolved": "58007c357d727833",
-      "why": "`typeNamespace` \u2014 regex /\\$type\\./: its pattern spans more than one token",
+      "why": "`typeNamespace` — regex /\\$type\\./: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -554,7 +554,7 @@
       "const": "containerName",
       "construct": "not(containerFunctionOpen)",
       "resolved": "72f1388df381a85a",
-      "why": "`Identifier` \u2014 many() repeats",
+      "why": "`Identifier` — many() repeats",
       "issue": "jesscss/jess#576"
     },
     {
@@ -573,7 +573,7 @@
       "const": "combinator",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "7f0fa756971955fa",
-      "why": "`queryGluedConnective` \u2014 a sequence of more than one token",
+      "why": "`queryGluedConnective` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -583,7 +583,7 @@
       "const": "SupportsCondition",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "7f0fa756971955fa",
-      "why": "`queryGluedConnective` \u2014 a sequence of more than one token",
+      "why": "`queryGluedConnective` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -593,7 +593,7 @@
       "const": "assignHead",
       "construct": "not(reservedVarHead)",
       "resolved": "a8e0b11ab12d3968",
-      "why": "`reservedVarHead` \u2014 a sequence of more than one token",
+      "why": "`reservedVarHead` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -715,7 +715,7 @@
       "const": "plainUrlArgument",
       "construct": "field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))",
       "resolved": "5347feb07d71a200",
-      "why": "this arm starts by reading past one token: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\\u2026`",
+      "why": "this arm starts by reading past one token: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -725,7 +725,7 @@
       "const": "UrlInterpolation",
       "construct": "staticUrlText",
       "resolved": "e904a69713183236",
-      "why": "this arm starts by reading past one token: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\\u2026`",
+      "why": "this arm starts by reading past one token: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -735,7 +735,7 @@
       "const": "UrlInterpolation",
       "construct": "staticUrlText",
       "resolved": "e904a69713183236",
-      "why": "this arm starts by reading past one token: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\\u2026`",
+      "why": "this arm starts by reading past one token: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -763,9 +763,9 @@
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
       "line": 1682,
       "const": "inlineJavaScriptFollowingDeclaration",
-      "construct": "peek(choice(literal('}'), sequence(choice(variableName, g.PunctuationMapKeyToken, sequence(choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPr\u2026",
+      "construct": "peek(choice(literal('}'), sequence(choice(variableName, g.PunctuationMapKeyToken, sequence(choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPr…",
       "resolved": "580232a8a375e1ea",
-      "why": "`variableNameEscape` \u2014 a sequence of more than one token",
+      "why": "`variableNameEscape` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -783,7 +783,7 @@
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
       "line": 1984,
       "const": "functionConditionNotAhead",
-      "construct": "peek(choice(parser({ trivia: functionTrivia }, sequence(functionConditionNot, literal('('))), noTrivia(sequence(functionConditionNot, whitespaceRun, regex(/[^,\u2026",
+      "construct": "peek(choice(parser({ trivia: functionTrivia }, sequence(functionConditionNot, literal('('))), noTrivia(sequence(functionConditionNot, whitespaceRun, regex(/[^,…",
       "resolved": "a626decc44fbd3c4",
       "why": "a sequence of more than one token",
       "issue": "jesscss/jess#576"
@@ -805,7 +805,7 @@
       "const": "BacktickJavaScript",
       "construct": "{ gate: state => state === 'less-at-rule-inline-javascript', combinator: atRuleInlineJavaScriptBody }",
       "resolved": "6eec8fb750721a8d",
-      "why": "this arm starts by reading past one token: `scanTo(literal('`'), { recoverAt: inlineJavaScriptRecoveryBoundary, stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration), skip:\u2026`",
+      "why": "this arm starts by reading past one token: `scanTo(literal('`'), { recoverAt: inlineJavaScriptRecoveryBoundary, stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration), skip:…`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -825,7 +825,7 @@
       "const": "combinator",
       "construct": "not(syntaxTypeOpen)",
       "resolved": "157fb6080ac90af4",
-      "why": "`syntaxTypeOpen` \u2014 regex /<(?=-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*>)/: its lookaround `(?=-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*>)` reads past the token",
+      "why": "`syntaxTypeOpen` — regex /<(?=-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*>)/: its lookaround `(?=-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*>)` reads past the token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -835,7 +835,7 @@
       "const": "valueTriviaBoundary",
       "construct": "not(valueRunEndAhead)",
       "resolved": "bfe540cf522e14d9",
-      "why": "`nestedAtRuleValueStart` \u2014 regex /@[^;{}()'\"]*\\{/: its pattern spans more than one token",
+      "why": "`nestedAtRuleValueStart` — regex /@[^;{}()'\"]*\\{/: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -945,7 +945,7 @@
       "const": "ContainerName",
       "construct": "not(g.QueryFunctionOpen)",
       "resolved": "8d6968a1ce5b22eb",
-      "why": "`queryFunctionOpen` \u2014 a sequence of more than one token",
+      "why": "`queryFunctionOpen` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -971,7 +971,7 @@
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
       "line": 4767,
       "const": "genericAtRuleBlockTail",
-      "construct": "attempt(sequence(// The typed header first; interpolation and parenthesized forms fall to // the byte prelude in the arm below. attempt(g.AtRulePreludeValue), \u2026",
+      "construct": "attempt(sequence(// The typed header first; interpolation and parenthesized forms fall to // the byte prelude in the arm below. attempt(g.AtRulePreludeValue), …",
       "resolved": "b5726cdd5a66fa90",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
       "issue": "jesscss/jess#576"
@@ -1013,7 +1013,7 @@
       "const": "pseudo",
       "construct": "pseudoOpen",
       "resolved": "b50c0f72e8e5671b",
-      "why": "its selector looks past one token: `pseudoOpen` \u2014 a lookahead after a consuming arm reads another token",
+      "why": "its selector looks past one token: `pseudoOpen` — a lookahead after a consuming arm reads another token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -1023,7 +1023,7 @@
       "const": "staticPseudoDispatch",
       "construct": "pseudoOpen",
       "resolved": "b50c0f72e8e5671b",
-      "why": "its selector looks past one token: `pseudoOpen` \u2014 a lookahead after a consuming arm reads another token",
+      "why": "its selector looks past one token: `pseudoOpen` — a lookahead after a consuming arm reads another token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -1053,7 +1053,7 @@
       "const": "ExtendTargetComplex",
       "construct": "not(extendAllFlagAhead)",
       "resolved": "09f891154e9019d7",
-      "why": "`extendAllFlagAhead` \u2014 regex /[ \\t\\n\\r\\f]*!?all(?=[ \\t\\n\\r\\f]*(?:,|\\)))/i: its lookaround `(?=[ \\t\\n\\r\\f]*(?:,|\\)))` reads past the token",
+      "why": "`extendAllFlagAhead` — regex /[ \\t\\n\\r\\f]*!?all(?=[ \\t\\n\\r\\f]*(?:,|\\)))/i: its lookaround `(?=[ \\t\\n\\r\\f]*(?:,|\\)))` reads past the token",
       "issue": "jesscss/jess#576"
     },
     {
@@ -1125,7 +1125,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 791,
+      "line": 800,
       "const": "InterpolatedUrlValue",
       "construct": "plainUrlChunk",
       "resolved": "194acb3a8ed37af2",
@@ -1135,7 +1135,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 794,
+      "line": 803,
       "const": "InterpolatedUrlValue",
       "construct": "plainUrlChunk",
       "resolved": "194acb3a8ed37af2",
@@ -1145,7 +1145,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1062,
+      "line": 1072,
       "const": "UrlFunction",
       "construct": "choice(g.Quoted, g.InterpolatedUrlValue, plainUrlChunk)",
       "resolved": "14ce0607885f385c",
@@ -1155,7 +1155,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1476,
+      "line": 1512,
       "const": "MathUnary",
       "construct": "regex(/-(?=[ \\t\\n\\r\\f]*[\\$(])/)",
       "resolved": "d525887e67affab1",
@@ -1165,7 +1165,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1481,
+      "line": 1517,
       "const": "MathUnary",
       "construct": "regex(/\\+(?=[ \\t\\n\\r\\f]*[\\$(])/)",
       "resolved": "97c9f9b5c4cd1ca7",
@@ -1175,7 +1175,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1764,
+      "line": 1800,
       "const": "CallArgument",
       "construct": "regex(/[<>]=?(?=[ \\t\\n\\r\\f]*[),])/)",
       "resolved": "f252fa0bf805d416",
@@ -1185,17 +1185,17 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1918,
+      "line": 1954,
       "const": "VariableDeclaration",
       "construct": "not(reservedVarHead)",
       "resolved": "749e090a313564ac",
-      "why": "`reservedVarHead` \u2014 a sequence of more than one token",
+      "why": "`reservedVarHead` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2258,
+      "line": 2298,
       "const": "directNestedPropertyAhead",
       "construct": "not(regex(/[^{};]*[;}]/))",
       "resolved": "33a85b020e687478",
@@ -1205,7 +1205,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2360,
+      "line": 2400,
       "const": "ImportUrl",
       "construct": "choice(g.Quoted, plainUrlChunk)",
       "resolved": "7807b43093a74197",
@@ -1215,27 +1215,27 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2543,
+      "line": 2583,
       "const": "ImportTail",
       "construct": "not(importSupportsOpen)",
       "resolved": "ad61acc0c2035c5d",
-      "why": "`importSupportsOpen` \u2014 a sequence of more than one token",
+      "why": "`importSupportsOpen` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2543,
+      "line": 2583,
       "const": "ImportTail",
       "construct": "not(importLayerOpen)",
       "resolved": "58e2cce2e5534ad2",
-      "why": "`importLayerOpen` \u2014 a sequence of more than one token",
+      "why": "`importLayerOpen` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 3262,
+      "line": 3307,
       "const": "scssTrueKeyword",
       "construct": "scssTrueKeyword",
       "why": "rule name `scssTrueKeyword`",
@@ -1244,7 +1244,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 3263,
+      "line": 3308,
       "const": "scssFalseKeyword",
       "construct": "scssFalseKeyword",
       "why": "rule name `scssFalseKeyword`",
@@ -1253,27 +1253,27 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4003,
+      "line": 3968,
       "const": "combinator",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "b2aa78a0298b79f8",
-      "why": "`queryGluedConnective` \u2014 a sequence of more than one token",
+      "why": "`queryGluedConnective` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4014,
+      "line": 3979,
       "const": "SupportsCondition",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "b2aa78a0298b79f8",
-      "why": "`queryGluedConnective` \u2014 a sequence of more than one token",
+      "why": "`queryGluedConnective` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4876,
+      "line": 4841,
       "const": "scssRelativeSelectorCombinator",
       "construct": "scssRelativeSelectorCombinator",
       "why": "rule name `scssRelativeSelectorCombinator`",
@@ -1282,37 +1282,37 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4948,
+      "line": 4913,
       "const": "NthPseudo",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "5a6df5fb2151b5c2",
-      "why": "`malformedPseudoNumericArgument` \u2014 regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
+      "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4980,
+      "line": 4945,
       "const": "NthTypePseudo",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "5a6df5fb2151b5c2",
-      "why": "`malformedPseudoNumericArgument` \u2014 regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
+      "why": "`malformedPseudoNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f]|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4981,
+      "line": 4946,
       "const": "NthTypePseudo",
       "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
       "resolved": "8e5efcf3098b0cee",
-      "why": "`nth` \u2014 regex /even|odd|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*\\d+)?|[-+]?\\d+/i: its pattern spans more than one token",
+      "why": "`nth` — regex /even|odd|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*\\d+)?|[-+]?\\d+/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576"
     },
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 5168,
+      "line": 5133,
       "const": "scssCombinator",
       "construct": "scssCombinator",
       "why": "rule name `scssCombinator`",
@@ -1321,7 +1321,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 5303,
+      "line": 5268,
       "const": "ScssGenericAtRuleName",
       "construct": "ScssGenericAtRuleName",
       "why": "rule name `ScssGenericAtRuleName`",
@@ -2012,8 +2012,6 @@
       "IfAnd",
       "IfCondition",
       "IfBody",
-      "IfBodyRule",
-      "IfBodyConditionalBlock",
       "IfRule",
       "WhileRule",
       "DiagnosticDirective",

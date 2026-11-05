@@ -41,7 +41,7 @@ import type {
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
 import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
-import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
+import { isDiagnosticStatement, type AtRuleBlock, type AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
 import { jessCollection, jessCurlyList, type ListSpeller } from './emit-jess-list.js';
@@ -343,6 +343,9 @@ class JessPrinter {
         return;
       case 'AtRuleStatement': {
         const name = node.name.toLowerCase();
+        if (name === '@return' && isDiagnosticStatement(node)) {
+          gap('AtRuleStatement', '`@return` no function reads: it fails the compile and has no `.jess` form');
+        }
         if (name === '@charset' && (where !== 'root' || index !== 0)) {
           gap('AtRuleStatement', '`@charset` after another statement: `Charset` is only the first statement');
         }

@@ -1067,8 +1067,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       '@keyframes fade { from, { opacity: 0; } }',
       '@keyframes fade { 50 { opacity: 0; } }',
       '@keyframes fade { .from { opacity: 0; } }',
-      '@keyframes fade { 50% { .nested { opacity: 0; } } }',
-      '.host { @keyframes fade { from { opacity: 0; } } }'
+      '@keyframes fade { 50% { .nested { opacity: 0; } } }'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }

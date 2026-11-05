@@ -80,7 +80,6 @@ const PER_FILE_TIMEOUT_MS = 30_000;
 const BLOCKERS: Array<[string, RegExp]> = [
   ['bare-truthy @if condition', /@(?:if|else if)\s+(?:not\s+)?[(]?(?:\$[\w-]+\s*[{)]|[a-z-]+\()/],
   ['interpolation as a standalone selector compound', /(?:^|[\s,>+~])#\{/m],
-  ['leading combinator (implicit &)', /^\s*[>+~]\s*\S/m],
   ['interpolated pseudo-element', /::?#\{/],
   ['multiline nested paren list', /\(\s*\n(?:[^()\n]*\n)*?\s*\(/],
   ['line comment inside a paren list', /\(\s*\n\s*\/\//]
@@ -91,10 +90,13 @@ type Outcome = 'pass' | 'fail';
 interface LaneResult {
   file: string;
   outcome: Outcome;
+
   /** `line:col` of the point where the parser gave up. */
   at?: string;
+
   /** Source line at that point, trimmed. */
   source?: string;
+
   /** Every known blocking construct present in the file. */
   blockers?: string[];
   detail?: string;
@@ -132,8 +134,11 @@ const runParse = (file: string): LaneResult => {
   if (result.errors.length === 0 && result.document) {
     return { file, outcome: 'pass' };
   }
-  // The plugin diagnostic flattens the parser's position, so re-run the raw
-  // parser purely to recover the offset for the report.
+
+  /*
+   * The plugin diagnostic flattens the parser's position, so re-run the raw
+   * parser purely to recover the offset for the report.
+   */
   let at: string | undefined;
   let sourceLine: string | undefined;
   try {
@@ -158,8 +163,11 @@ const runParse = (file: string): LaneResult => {
 
 const runEval = async (file: string): Promise<LaneResult> => {
   const full = path.join(scssRoot, file);
-  // collapseNesting mirrors dart-sass `expanded` output, which is the shape the
-  // cross-engine benchmark comparison reads.
+
+  /*
+   * collapseNesting mirrors dart-sass `expanded` output, which is the shape the
+   * cross-engine benchmark comparison reads.
+   */
   const compiler = new Compiler({
     output: { collapseNesting: true },
     compile: { plugins: [scssPlugin()] }
@@ -226,8 +234,12 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   '_breadcrumb.scss',
   '_button-group.scss',
   '_buttons.scss',
+  '_card.scss',
   '_carousel.scss',
+  '_containers.scss',
+  '_dropdown.scss',
   '_forms.scss',
+  '_grid.scss',
   '_helpers.scss',
   '_images.scss',
   '_list-group.scss',
@@ -239,6 +251,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   '_pagination.scss',
   '_placeholders.scss',
   '_popover.scss',
+  '_progress.scss',
   '_reboot.scss',
   '_root.scss',
   '_spinners.scss',

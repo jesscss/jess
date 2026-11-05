@@ -1031,6 +1031,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'GuardNode: comparison operator `sass-equal`'
   }],
+  ['foundation-sites@6.9.0:components/_dropdown-menu.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
   ['foundation-sites@6.9.0:components/_dropdown.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -1055,6 +1060,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'MixinCall: space-run argument: the `MixinCallArgument` reducer throws on it (parser defect)'
+  }],
+  ['foundation-sites@6.9.0:components/_menu.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
   }],
   ['foundation-sites@6.9.0:components/_progress-bar.scss', {
     cause: 'cannot-express',
@@ -1140,6 +1150,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:grid/_classes.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names (+3 more)'
   }],
   ['foundation-sites@6.9.0:grid/_column.scss', {
     cause: 'cannot-express',
@@ -1261,6 +1276,16 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'GuardNode: comparison operator `sass-equal`'
   }],
+  ['foundation-sites@6.9.0:typography/_base.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names (+3 more)'
+  }],
+  ['foundation-sites@6.9.0:typography/_typography.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names [in typography/_base.scss] (+4 more)'
+  }],
   ['foundation-sites@6.9.0:util/_direction.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -1280,6 +1305,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'GuardNode: comparison operator `sass-equal` (+5 more)'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_classes.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Quoted: an `.scss` string built with `+` that takes its quoting from a value known at evaluation: `.jess` strings have their own quotes (+4 more)'
   }],
   ['foundation-sites@6.9.0:xy-grid/_collapse.scss', {
     cause: 'cannot-express',
@@ -1305,6 +1335,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_xy-grid.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Param: space-run default: the `MixinParam` reducer keeps only a single node and silently drops it (parser defect) [in xy-grid/_gutters.scss] (+16 more)'
   }]
 ]);
 
