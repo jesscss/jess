@@ -72,13 +72,14 @@ export function resolveHsl(node: FunctionCall, slot: ValueGroup, evaluate: Chann
   if (relative && origin === undefined) {
     return written;
   }
-  const bound = origin === undefined ? UNBOUND : hslChannels(origin);
+  const hsl = origin === undefined ? undefined : originHsl(origin);
+  const bound = origin === undefined || hsl === undefined ? UNBOUND : hslChannels(hsl, origin.alpha);
   const alpha = colorAlphaSlash(node);
   const items = relative ? nodes.slice(2) : nodes;
   const channels = alpha === null ? items : [...items.slice(0, -1), alpha.left, alpha.right];
   let resolved: MaybePromise<Color | undefined>;
   try {
-    resolved = combineAll(channels.map(channel => evaluate(channel, bound)), values => hslOf(values, bound.get('alpha')?.number ?? 1, alpha !== null, written.bytes));
+    resolved = combineAll(channels.map(channel => evaluate(channel, bound)), values => hslOf(values, hsl, bound.get('alpha')?.number ?? 1, alpha !== null, written.bytes));
   } catch {
     resolved = undefined;
   }
@@ -116,13 +117,37 @@ export function rejectChannelMath(op: string): never {
 }
 
 /**
+ * A math function a form writes in a channel, with its arguments evaluated, or
+ * `undefined` when it does not compute there. `clamp(min, val, max)` is
+ * `max(min, min(val, max))` over arguments of one type (css-values-4 §10.2,
+ * §10.9).
+ */
+export function channelFunction(name: string, args: readonly ValueGroup[]): Dimension | undefined {
+  const [low, value, high] = args;
+  if (name.toLowerCase() !== 'clamp' || args.length !== 3 || !isDimension(low) || !isDimension(value) || !isDimension(high)) {
+    return undefined;
+  }
+  return calcType(low.unit) === calcType(value.unit) && calcType(value.unit) === calcType(high.unit)
+    ? makeDimension(Math.max(low.number, Math.min(value.number, high.number)), value.unit)
+    : undefined;
+}
+
+const isDimension = (value: ValueGroup | undefined): value is Dimension =>
+  value !== undefined && !isValueGroupArray(value) && value.type === 'Dimension';
+
+/**
  * The origin's channels, from its sRGB value as the browser takes them
  * ("after conversion, if required, to sRGB", css-color-5 §4.4): a grey's hue
- * is powerless and reads as 0, whatever hue a built-in carried (Q9).
+ * is powerless and reads as 0, whatever hue a built-in carried (Q9). A chromatic
+ * colour's authored HSL is that conversion's value (V5), exactly.
  */
-function hslChannels(origin: { readonly rgb: readonly number[]; readonly alpha: number }): ColorChannels {
-  const [h, s, l] = rgbToHsl(origin.rgb[0]!, origin.rgb[1]!, origin.rgb[2]!);
-  return new Map([['h', makeDimension(h)], ['s', makeDimension(s * 100)], ['l', makeDimension(l * 100)], ['alpha', makeDimension(origin.alpha)]]);
+function originHsl(origin: { readonly rgb: readonly number[]; readonly hsl?: readonly [number, number, number] | undefined }): readonly number[] {
+  const carried = origin.hsl;
+  return carried !== undefined && carried[1] !== 0 && carried[2] !== 0 && carried[2] !== 1 ? carried : rgbToHsl(origin.rgb[0]!, origin.rgb[1]!, origin.rgb[2]!);
+}
+
+function hslChannels([h, s, l]: readonly number[], alpha: number): ColorChannels {
+  return new Map([['h', makeDimension(h!)], ['s', makeDimension(s! * 100)], ['l', makeDimension(l! * 100)], ['alpha', makeDimension(alpha)]]);
 }
 
 /**
@@ -132,7 +157,7 @@ function hslChannels(origin: { readonly rgb: readonly number[]; readonly alpha: 
  * omitted alpha is `alpha`: the origin's in a relative colour, else 1
  * (css-color-5 §4.1).
  */
-function hslOf(values: readonly ValueGroup[], alpha: number, slashed: boolean, src: string): Color | undefined {
+function hslOf(values: readonly ValueGroup[], origin: readonly number[] | undefined, alpha: number, slashed: boolean, src: string): Color | undefined {
   const last = values[values.length - 1];
   const listed = !slashed && values.length === 3 && last !== undefined && !isValueGroupArray(last) && last.type === 'List' && groupSeparator(last) === '/';
   const channels = listed ? [values[0]!, values[1]!, ...groupItems(last)] : values;
@@ -146,8 +171,17 @@ function hslOf(values: readonly ValueGroup[], alpha: number, slashed: boolean, s
   if (h === undefined || s === undefined || l === undefined || a === undefined || s < 0 || s > 100 || l < 0 || l > 100) {
     return undefined;
   }
-  return makeHslColor([((h % 360) + 360) % 360, s / 100, l / 100], Math.min(Math.max(a, 0), 1), true, { src });
+  const hue = h % 360;
+  return makeHslColor([hue < 0 ? hue + 360 : hue, fraction(s, origin?.[1]), fraction(l, origin?.[2])], Math.min(Math.max(a, 0), 1), true, { src });
 }
+
+/**
+ * A saturation or lightness on 0–1: exactly the origin's when the channel kept
+ * it, which going through the 0–100 scale would round, and 0 for a value within
+ * V4's tolerance of it, which math on the scale can leave.
+ */
+const fraction = (value: number, origin: number | undefined): number =>
+  origin !== undefined && origin * 100 === value ? origin : Math.abs(value) < 1e-10 ? 0 : value / 100;
 
 /**
  * A channel as the number CSS reads (css-color-4 §7, css-color-5 §4): `none`

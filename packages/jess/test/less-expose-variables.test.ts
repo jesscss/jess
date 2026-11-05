@@ -105,7 +105,12 @@ describe('Less @expose variables (A4)', () => {
     ['a rest parameter', '@expose w;\n@w: 8px;\n.m(@rest...) { margin: @rest; }\n.a { .m(@w); }', 'margin: var(--w, 8px);'],
     ['@arguments', '@expose w;\n@w: 8px;\n.m(@a) { margin: @arguments; }\n.a { .m(@w); }', 'margin: var(--w, 8px);'],
     ['a computed function of a rest parameter', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@rest...) { v: @less.lightness(@rest); }\n.a { .m(@brand); }', 'v: var(--brand-lightness, 40%);'],
-    ['a computed function in calc()', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: calc(@less.lightness(@brand) * 2); }', 'v: calc(var(--brand-lightness, 40%) * 2);']
+    ['a computed function in calc()', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: calc(@less.lightness(@brand) * 2); }', 'v: calc(var(--brand-lightness, 40%) * 2);'],
+    ['a function with a CSS form', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.darken(@brand, 10%); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
+    ['nested CSS forms', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lighten(@less.darken(@brand, 10%), 5%); }', 'v: hsl(from hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100)) h s clamp(0, l + 5, 100));'],
+    ['a CSS form as a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @c; }\n.a { .m(@less.darken(@brand, 10%)); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
+    ['a CSS form of a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @less.darken(@c, 10%); }\n.a { .m(@brand); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
+    ['an exposed amount, which a CSS form does not take yet', '@use "#less";\n@expose a;\n@a: 10%;\n.b { v: @less.darken(#c00, @a); }', 'v: var(--a-darken, #990000);']
   ])('follows the exposed variable through %s', async (_what, source, expected) => {
     await expect(render(source)).resolves.toContain(expected);
   });

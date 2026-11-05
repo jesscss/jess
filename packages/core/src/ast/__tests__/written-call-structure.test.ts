@@ -36,7 +36,7 @@ describe('a call written out as-is', () => {
   });
 
   it('includes a built-in that could not compute', () => {
-    expect(value('shape(darken(var(--a), 10%))')).toBe('darken[var[-] -]');
+    expect(value('shape(lightness(var(--a)))')).toBe('lightness[var[-]]');
   });
 
   it('reads a call\'s CSS type from its name', () => {
@@ -73,6 +73,6 @@ describe('a call written out as-is', () => {
 
   it('prints as it did', () => {
     expect(value('color-mix(in srgb, var(--a), red)')).toBe('color-mix(in srgb, var(--a), red)');
-    expect(value('darken(var(--a), 10%)')).toBe('darken(var(--a), 10%)');
+    expect(value('lightness(var(--a))')).toBe('lightness(var(--a))');
   });
 });

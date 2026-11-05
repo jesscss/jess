@@ -922,6 +922,9 @@ export interface ValueEvaluator {
    */
   has(name: string): boolean;
 
+  /** The registered implementation for `name`. */
+  fn(name: string): Fn | undefined;
+
   /** Comparison leaf in VALUE position (`if(@a > 0, …)`) on typed operands -> boolean. */
   compare(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;
 

@@ -779,7 +779,7 @@ export function BlockValueNode(value, delimiter, bytes) {
 for (const f of [
   NullNode, ExposedNameNode, MixinPathSegmentNode, AtRuleStatementNode,
   GuardCompareNode, GuardLogicalNode, GuardNotNode, GuardValueNode, GuardCallNode, GuardDefaultNode,
-  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode,
+  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode, FunctionCallValueNode,
   AnyValueNode, UrlValueNode, BoolValueNode, NullValueNode, ListValueNode, CollectionValueNode, BlockValueNode
 ]) {
   f.prototype = Object.prototype;
@@ -804,7 +804,7 @@ for (const f of [
   ExpressionNode, ConditionNode, IfValueNode, VariableDeclarationNode, VariableExposeNode, MixinDefinitionNode,
   MixinCallNode, ApplyNode, StyleImportNode, ModuleImportNode, StylesheetNode, AtRuleBlockNode, UnknownAtRuleBlockNode,
   PluginNode, RulesetNode, RulesetExtendNode, RulesetGuardNode, RulesetExtendGuardNode, ReferenceCallNode, NullNode, AtRuleStatementNode,
-  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode,
+  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode, FunctionCallValueNode,
   AnyValueNode, UrlValueNode, BoolValueNode, NullValueNode, ListValueNode, CollectionValueNode, BlockValueNode
 ]) {
   const sentinels = Array.from({ length: f.length }, () => ({}));

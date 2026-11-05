@@ -40,6 +40,7 @@ import serializerNodes, {
   keyword,
   list,
   NULL_NODE,
+  stylesheet,
   spaced,
   variableDeclaration,
   variableReference,
@@ -205,12 +206,12 @@ import {
   type WrittenArguments
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
-import { defineFunction, FunctionDeclined } from './value-dispatch.js';
+import { defineFunction, FunctionDeclined, orderKeywordArgs } from './value-dispatch.js';
 import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { channelMath, isModernHsl, rejectChannelMath, resolveHsl, type ColorChannels } from './css-color.js';
+import { channelFunction, channelMath, isModernHsl, rejectChannelMath, resolveHsl, type ColorChannels } from './css-color.js';
 import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
@@ -7162,6 +7163,17 @@ function invokeValueLambda(
       meta: { callee: 'function', expectedCount: lambda.params?.length ?? 0, gotCount: args.length }
     });
   }
+  const activation = makeFrame(defFrame, lambda.rules, collectMixins(lambda.rules), collectDeclIndex(lambda.rules, bindings), cellsForParams(bindings));
+  activation.sourceOwner = defFrame ? definitionOwner(lambda.rules, defFrame, e) : null;
+  if (callerFrame && callerFrame !== defFrame) {
+    activation.fallback = callerFrame;
+    activation.callerFallback = true;
+  }
+  return runValueLambda(lambda, activation, e);
+}
+
+/** A value lambda's body run in its `activation`, and the `result:` it yields ({@link invokeValueLambda}). */
+function runValueLambda(lambda: AnonymousMixin, activation: Frame, e: Lane): { value: ValueSlot; frame: Frame } {
   const result = lambdaResultValue(lambda.rules);
   if (result === undefined) {
     throw ERR.invalidFunction({
@@ -7169,12 +7181,6 @@ function invokeValueLambda(
       ...callSiteLocation(lambda, e.s),
       meta: { name: 'function', reason: 'its body assigns no `result:`, so the call has no value to yield' }
     });
-  }
-  const activation = makeFrame(defFrame, lambda.rules, collectMixins(lambda.rules), collectDeclIndex(lambda.rules, bindings), cellsForParams(bindings));
-  activation.sourceOwner = defFrame ? definitionOwner(lambda.rules, defFrame, e) : null;
-  if (callerFrame && callerFrame !== defFrame) {
-    activation.fallback = callerFrame;
-    activation.callerFallback = true;
   }
 
   /*
@@ -7188,6 +7194,24 @@ function invokeValueLambda(
   body.lambdaBody = true;
   settled(walkBody(lambda.rules, activation, body, scratchEmit(e)), 'value-lambda body', lambda, e);
   return { value: result, frame: activation };
+}
+
+/** The lane a built-in's CSS form is evaluated on ({@link evalForm}): its own, as the form is not in the document that called it. */
+export function formLane(evaluator: ValueEvaluator, compress: boolean): Lane {
+  return createRenderSession(stylesheet([]), { evaluator, compress }, undefined, null, { positions: null, plannedImportDocuments: null, plannedModuleImports: null, pendingPlannedModuleImports: undefined, preparedImportsOwnedByCaller: false });
+}
+
+/**
+ * A built-in's CSS form evaluated over evaluated arguments: an ordinary
+ * stylesheet function ({@link runValueLambda}) with its parameters bound to the
+ * values, so nothing is evaluated twice.
+ */
+export function evalForm(lambda: AnonymousMixin, args: readonly ValueGroup[], e: Lane): MaybePromise<ValueGroup> {
+  const bindings = new Map<string, Binding>(lambda.params?.map(param => [param.name ?? '', NULL_NODE]));
+  const cells = cellsForParams(bindings);
+  [...cells?.values() ?? []].forEach((cell, index) => cell.evaluated = args[index] ?? null);
+  const invoked = runValueLambda(lambda, makeFrame(null, lambda.rules, null, collectDeclIndex(lambda.rules, bindings, cells), cells), e);
+  return evalTypedSlot(invoked.value, invoked.frame, e);
 }
 
 /** `statementCall`: the reference is a statement-position call ({@link rejectComposedMemberCall}). */
@@ -9078,15 +9102,16 @@ function dispatchCall(
    * An operation the operand rule rejects is kept as written in a CSS math
    * function or a call written out as-is (ledger V36). A colour function
    * opens channels of its own, so the keywords of one it is written in are
-   * not bound in it ({@link Lane.channels}).
+   * not bound in it ({@link Lane.channels}). The math in a math function a
+   * channel holds is CSS's, whatever the math policy (css-values-4 §10).
    */
-  const be = e.channels !== undefined && isCssColorFunction(node) ? deriveLane(e, 'channels') : e;
+  const be = e.channels === undefined ? e : isCssColorFunction(node) ? deriveLane(e, 'channels') : isMathFunctionName(node.name) ? deriveLane(e, 'calc') : e;
   const ae = (argument === ARG_WRITTEN || isMathFunctionName(node.name)) === be.keepsMath
     ? be
     : deriveLane(be, be.keepsMath ? 'checkMath' : 'keepMath');
   const dispatch = (vals: ValueGroup[]): MaybePromise<EvalValue> => {
     const named = node.args.some(isNamedArg);
-    const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, reach === 'ambient') : vals;
+    const ordered = named ? orderKeywordArgs(node.args, vals, ev.paramNames(node.name, selected, reach === 'ambient')) : vals;
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
 
     /*
@@ -9118,12 +9143,14 @@ function dispatchCall(
     ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
         : resolveHsl(node, vals[0]!, (slot, channels) => evalTypedSlot(slot, frame, deriveLane(be, 'channels', undefined, undefined, channels), true, ARG_INPUT), out))
-    : dispatch;
+    : e.channels !== undefined && selected === undefined
+      ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? dispatch(vals)
+      : dispatch;
 
   /* [A4] A computed call reading an export is recorded for the runtime. */
   return e.s.exports.runtime === undefined || argument !== ARG_INPUT
     ? combineAll(callArguments(node, alpha, frame, ae, argument), call)
-    : exportCall(e, node, selected, () => callArguments(node, alpha, frame, ae, argument), args => combineAll(args, call));
+    : exportCall(e, node, selected ?? ev.fn(node.name), written => callArguments(node, alpha, frame, ae, written ? ARG_OPERAND : argument), args => combineAll(args, call));
 }
 
 /** Whether a call argument is written by name (`$lightness: -10%`). */
@@ -9336,68 +9363,6 @@ function writtenBlockBody(
     const body = kept.map(piece => piece.bytes).join('');
     return `{${last.declaration ? body.slice(0, -1) : body}}`;
   });
-}
-
-/**
- * Place KEYWORD arguments at the positions their names DECLARE.
- *
- * A keyword argument (`fade(@c, @amount: 50%)`, `color.adjust($c, $lightness: -10%)`)
- * states a BINDING, not a position, and the only place that mapping exists is the
- * callee's own parameter list — so the order comes from the resolved function
- * ({@link ValueEvaluator.paramNames}), never from the call site.
- *
- * Called only for a call that names an argument: the caller's one
- * `name !== undefined` scan keeps an ordinary positional call off this path.
- *
- * It also returns `vals` unchanged when the callee declares no parameter by that
- * name (or is unknown): the call then reaches dispatch with exactly its authored
- * argument vector and fails — or preserves — as an ordinary argument-shape
- * mismatch. Guessing a position for a name the definition never declared is the
- * silent wrong lowering this exists to prevent.
- */
-function orderKeywordArgs(
-  args: readonly CallArg<ValueSlot>[],
-  vals: ValueGroup[],
-  ev: ValueEvaluator,
-  name: string,
-  scopedFn: Fn | undefined,
-  ambient: boolean
-): ValueGroup[] {
-  const params = ev.paramNames(name, scopedFn, ambient);
-  if (params === undefined) {
-    return vals;
-  }
-
-  const slots = new Array<ValueGroup | undefined>(params.length);
-  const positional: ValueGroup[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const argName = args[i]!.name;
-    if (argName === undefined) {
-      positional.push(vals[i]!);
-      continue;
-    }
-    const at = params.indexOf(argName);
-    if (at === -1) {
-      return vals;
-    }
-    slots[at] = vals[i]!;
-  }
-
-  /* Positional arguments keep their authored order and fill the slots the
-   * keywords did not claim — Less and Sass both allow the two forms to mix. A
-   * parameter skipped before the last bound one gets the core-minted absent
-   * value, {@link NULL}, which an optional parameter binds as not passed, so
-   * every keyword stays at its own parameter's position:
-   * `color.adjust($c, $lightness: 10%)` never reads `10%` as `$red`, and
-   * `string.slice("abcd", $end-at: 2)` does not bind `2` to `$start-at`. */
-  let next = 0;
-  for (let at = 0; at < slots.length && next < positional.length; at++) {
-    slots[at] ??= positional[next++];
-  }
-  while (slots.length > 0 && slots[slots.length - 1] === undefined) {
-    slots.pop();
-  }
-  return Array.from(slots, slot => slot ?? NULL).concat(positional.slice(next));
 }
 
 /**

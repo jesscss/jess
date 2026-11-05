@@ -58,27 +58,6 @@ export function withAlpha(color: Color, newAlpha: number): Color {
 }
 
 /**
- * Factory for the four HSL single-channel adjusters (`lighten`/`darken` on `l`,
- * `saturate`/`desaturate` on `s`). `channel` indexes `[h, s, l]`; `sign` adds or
- * subtracts the amount. A `relative` method scales the delta by the current
- * channel value. The written channel remains in HSL's 0-1 domain. Preserves the
- * input's alpha + output format.
- */
-export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: Value[]) => Value {
-  return (c, amt, m) => {
-    const color = requireColor(c);
-    const hsl = colorHsl(color);
-    let adjust = requireDimension(amt).number / 100;
-    if (m !== undefined && (m.type === 'Keyword' || m.type === 'Quoted') && textOf(m) === 'relative') {
-      adjust = hsl[channel] * adjust;
-    }
-    const out: [number, number, number] = [hsl[0], hsl[1], hsl[2]];
-    out[channel] = clamp01(out[channel] + sign * adjust);
-    return makeColorHsl(out, color.alpha, color.format);
-  };
-}
-
-/**
  * Weighted blend of two colors (`mix`'s kernel; `tint`/`shade` are one-liners over
  * it). `weightPct` is the mix weight as a percentage (0-100). Byte-identical to
  * legacy `less/mix`: rounded-rgb operands, alpha-aware weight, format = RGB when

@@ -219,6 +219,7 @@ export function buildEvaluator(
     call,
     paramNames,
     has: name => registry.has(name),
+    fn: name => registry.get(name),
     compare,
     compareMatch,
     typeCheck,

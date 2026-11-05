@@ -1,9 +1,6 @@
-import { defineFunction } from '@jesscss/core';
-import { hslAdjust } from './color-helper.js';
+import { defineAdjuster } from './color-form.js';
+import * as forms from './css-forms.generated.js';
 import type { Fn } from '@jesscss/core';
 
-/** `desaturate(color, amount, method?)` — bump HSL saturation DOWN. Byte-faithful to `less/desaturate`. */
-export const desaturate: Fn = defineFunction('desaturate', {
-  params: [{ type: 'Color' }, { type: 'Dimension' }, { type: ['Keyword', 'Quoted'], optional: true }],
-  body: hslAdjust(1, -1)
-});
+/** `desaturate(color, amount, method?)`: `hsl(from color h clamp(0, s - amount, 100) l)`; `relative` scales the amount by `s`. */
+export const desaturate: Fn = defineAdjuster('desaturate', forms.desaturate, forms.desaturateRelative);
