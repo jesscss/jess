@@ -13,9 +13,10 @@
 
 ## Status
 
-This package has been **refreshed to be a minimal bridge to the modern `jess` compiler**.
-Historically, it relied on a legacy “runtime module” architecture; today it compiles `.jess`
-files using `jess`’s `Compiler` and **emits CSS as an asset**.
+A rewrite for the current `jess` compiler: it compiles `.jess` and `.less`
+imports, emits their CSS, and gives a stylesheet that exposes variables a small
+runtime (below). The 1.x runtime-module architecture is gone. For Vite, use
+[`vite-plugin-jess`](../vite-plugin-jess), which is this plugin.
 
 ## Install
 
@@ -48,6 +49,45 @@ export default {
 ```
 
 Then call `rollup` either via the [CLI](https://www.rollupjs.org/guide/en/#command-line-reference) or the [API](https://www.rollupjs.org/guide/en/#javascript-api).
+
+It compiles `.jess` and `.less` imports. The module's default export is the
+CSS. Under Rollup the CSS is also emitted as an asset (`<name>.css`); under
+Vite (see `vite-plugin-jess`) the module imports its CSS, so Vite injects it in
+dev and bundles it in a build, and a `.module.*` stylesheet goes through Vite's
+CSS Modules. Rollup has no CSS Modules, so there its CSS is not scoped.
+
+## Exposed variables
+
+A stylesheet that exposes a variable writes each value that reads it as a
+custom property, and its module exports `vars` and `set`:
+
+```less
+// theme.less
+@use "#less";
+@expose brand;
+@brand: #c00;
+
+.button { border-color: @less.darken(@brand, 10%); }
+// .button { border-color: var(--brand-darken, #990000); }
+```
+
+```js
+import { vars, set } from './theme.less';
+
+set({ brand: '#08f' });            // on :root
+set({ brand: '#08f' }, element);   // on one element
+vars({ brand: '#08f' });           // { '--brand': '#08f', '--brand-darken': '#006dcc' }, e.g. as a React style
+```
+
+Each value is keyed by the variable's name with dash-case turned to camelCase:
+`@brand-color` is `brandColor`.
+
+Values are CSS literals (`#08f`, `8px`, `red`). The runtime recomputes each
+derived value with the same function the compile ran.
+
+The module imports the runtime from `@jesscss/fns`, so a Rollup build of such a
+stylesheet needs [`@rollup/plugin-node-resolve`](https://github.com/rollup/plugins/tree/master/packages/node-resolve)
+to bundle it. Vite resolves it on its own.
 
 ## Options
 

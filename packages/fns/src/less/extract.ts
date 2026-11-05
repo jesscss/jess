@@ -1,4 +1,4 @@
-import { defineFunction, groupItems, isValueGroupArray, listValueAt } from '@jesscss/core';
+import { defineFunction, groupItems, isValueGroupArray, listValueAt } from '@jesscss/core/value';
 
 /**
  * Less `extract()` — the item at a 1-based `index` in a list. AST-v2 values

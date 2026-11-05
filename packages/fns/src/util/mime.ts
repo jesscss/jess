@@ -3,9 +3,9 @@
  * charset decision, with NO file-system or compiler-`Context` dependency, so every
  * dialect fn set can share one source of truth. `ascii: true` means the format is text (US-ASCII / UTF-8),
  * so `data-uri` percent-encodes it; `ascii: false` means binary → base64. Mirrors
- * Less 4.x `environment.mimeLookup` + `charsetLookup`.
+ * Less 4.x `environment.mimeLookup` + `charsetLookup`. No `node:path`, so the
+ * module loads in a browser (the export runtime imports the same chunk).
  */
-import path from 'node:path';
 
 export interface MimeInfo {
   /** The mimetype string (e.g. `image/jpeg`). */
@@ -33,6 +33,6 @@ const MIME_BY_EXT = new Map<string, MimeInfo>([
 
 /** Guess a file's `{ type, ascii }` from its extension; unknown → binary octet-stream. */
 export function lookupMime(filePath: string): MimeInfo {
-  const ext = path.extname(filePath).toLowerCase();
+  const ext = /[^\\/.]\.[^.\\/]*$/.exec(filePath)?.[0].slice(1).toLowerCase() ?? '';
   return MIME_BY_EXT.get(ext) ?? { type: 'application/octet-stream', ascii: false };
 }

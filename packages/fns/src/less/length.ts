@@ -1,4 +1,4 @@
-import { defineFunction, groupItems, groupSeparator, makeDimension } from '@jesscss/core';
+import { defineFunction, groupItems, groupSeparator, makeDimension } from '@jesscss/core/value';
 
 /**
  * Less `length()` — the number of items in a list (or `1` for a single value).

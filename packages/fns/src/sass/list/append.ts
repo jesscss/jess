@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
 import { createSassListResult, getSassListInfo, resolveSassSeparator } from './util.js';
 
 const append = defineFunction('append', {

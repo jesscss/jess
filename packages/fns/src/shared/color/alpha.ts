@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 
 /** Less/Sass `alpha()` over the canonical value domain. */
 const alpha = defineFunction('alpha', {
