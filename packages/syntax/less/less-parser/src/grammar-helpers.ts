@@ -2866,7 +2866,7 @@ const LESS_SUM_OPERATORS: ReadonlySet<string> = new Set(['+', '-']);
  * enclosing math context, so the evaluator never reads that policy from ambient
  * config (§12.6b). With `kept`, no pair computes: the run is kept as written.
  */
-function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown, kept: boolean): ValueNode {
+function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown, kept: boolean, grouped = false): ValueNode {
   if (from === to) {
     return run.operands[from]!;
   }
@@ -2888,7 +2888,7 @@ function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown
       const left = nextOperands.pop()!;
       const leftSpan = nextSpans.pop();
       const rightSpan = spans[index + 1];
-      const folded = operation(operator, left, operands[index + 1]!, false, !kept && lessMathOutsideParens(state, operator));
+      const folded = operation(operator, left, operands[index + 1]!, false, !kept && !(grouped && operator === '/') && lessMathOutsideParens(state, operator));
       const span = leftSpan === undefined || rightSpan === undefined
         ? undefined
         : { start: leftSpan.start, end: rightSpan.end };
@@ -2905,10 +2905,11 @@ function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown
 /**
  * A run inside a math context — a parenthesized group or `calc(…)`. Every
  * operator is arithmetic there, the slash included, so the run folds with plain
- * product-before-sum precedence.
+ * product-before-sum precedence. The group is what makes its slash math, under
+ * any math policy, so the slash is not one that computes outside parens.
  */
 function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueNode {
-  return isLessMathRun(value) ? foldLessMath(value, 0, value.operands.length - 1, state, false) : value;
+  return isLessMathRun(value) ? foldLessMath(value, 0, value.operands.length - 1, state, false, true) : value;
 }
 
 /**

@@ -3,6 +3,9 @@
  * their CSS forms (docs/design/CSS-NATIVE-BUILTINS.md §2, §3.2, §4 slice 5, Q2,
  * Q3, Q4, Q8; ledger V38). Known inputs compute as they did.
  */
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
@@ -73,7 +76,7 @@ describe('a math built-in or operator over what only the browser knows is its CS
     await expect(value('var(--a) * 2', { mathMode: 'always' })).resolves.toBe('calc(var(--a) * 2)');
     await expect(value('var(--a) * 2', { mathMode: 'parens-division' })).resolves.toBe('calc(var(--a) * 2)');
     await expect(value('var(--a) * 2', { mathMode: 'parens' })).resolves.toBe('var(--a) * 2');
-    await expect(value('var(--a) / 2', { mathMode: 'always' })).resolves.toBe('calc(var(--a) / 2)');
+    await expect(value('var(--a) / 2', { mathMode: 'always' })).resolves.toBe('var(--a) / 2');
     await expect(value('var(--a) / 2', { mathMode: 'parens-division' })).resolves.toBe('var(--a) / 2');
   });
 
@@ -343,8 +346,14 @@ describe('a bare slash under `math: always`', () => {
     ['grid-column: var(--a) / span 2;', 'grid-column: var(--a) / span 2;'],
     ['grid: @x / auto-flow;', 'grid: var(--x) / auto-flow;'],
     ['content: "a" / @x;', 'content: "a" / var(--x);'],
-    ['grid-row: 1 / var(--x);', 'grid-row: calc(1 / var(--x));'],
-    ['grid-row: var(--y) / var(--x);', 'grid-row: calc(var(--y) / var(--x));']
+    ['font: 12px / var(--lh) Arial;', 'font: 12px / var(--lh) Arial;'],
+    ['border-radius: var(--a) / var(--b);', 'border-radius: var(--a) / var(--b);'],
+    ['border-image: url(a.png) 30 / var(--w);', 'border-image: url(a.png) 30 / var(--w);'],
+    ['grid-template: 100px / var(--c);', 'grid-template: 100px / var(--c);'],
+    ['grid-row: 1 / var(--x);', 'grid-row: 1 / var(--x);'],
+    ['grid-row: var(--y) / var(--x);', 'grid-row: var(--y) / var(--x);'],
+    ['width: 1 / -var(--x);', 'width: 1 / -var(--x);'],
+    ['width: attr(a) / 2;', 'width: attr(a) / 2;']
   ])('%s', async (source, written) => {
     await expect(css(`@x: var(--x); .a { ${source} }`, { mathMode: 'always' })).resolves.toContain(written);
   });
@@ -450,6 +459,62 @@ describe('an export inside a larger argument, by what the slot holds at compile 
     await expect(css(exposed('5px', '@less.mod(@a, 3px)'))).resolves.toContain('v: rem(var(--a, 5px), 3px);');
   });
 
+  it.each([
+    ['@a: 5px; @b: 3px;', '@less.mod((@a * 2), @b)', 'rem((var(--a, 5px) * 2), var(--b, 3px))'],
+    ['@a: 5px; @b: 3px;', '@less.mod((@a), (@b))', 'rem(var(--a, 5px), var(--b, 3px))']
+  ])('%s %s reads the known value in each slot', async (held, source, form) => {
+    const result = await new Compiler({}).renderToResult({ ...options, source: `@use "#less"; @expose a, b; ${held} .x { v: ${source}; }` });
+    expect(result.css).toContain(`v: ${form};`);
+    expect(result.runtime?.derived).toEqual({});
+  });
+
+  it('a recipe has no fixed argument that holds an export', async () => {
+    await expect(css('@use "#less"; @expose a, b; @a: 5px; @b: 3; .x { v: @less.round(@a, (@b * 2)); }'))
+      .rejects.toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('inside a larger argument') });
+  });
+
+  it('a recipe keeps a plain `var()` as its fixed argument', async () => {
+    const result = await new Compiler({}).renderToResult({ ...options, source: '@use "#less"; @expose b; @b: 3px; .x { v: @less.mod(var(--x), @b); }' });
+    expect(Object.values(result.runtime?.derived ?? {})).toEqual([{ fn: { module: '@jesscss/fns/less', name: 'mod' }, args: ['var(--x)', { export: 'b' }] }]);
+  });
+
+  it.each([
+    ['@less.ceil((@p * 2))'],
+    ['@less.floor((@p * 2))'],
+    ['@less.percentage((@p * 2))'],
+    ['@less.unit((@p * 2), em)'],
+    ['@less.mod((@p * 2), 3)'],
+    ['@less.darken(#c00, (@p * 2))'],
+    ['@less.mix(#c00, #fff, (@p * 2))']
+  ])('a mixin parameter holding the export is read for its value: %s', async (body) => {
+    await expect(css(`@use "#less"; @expose a; @a: 5px; .m(@p) { v: ${body}; } .x { .m(@a); }`)).rejects.toMatchObject({ code: 'eval/expose-not-a-value' });
+  });
+
+  it.each([
+    ['5', '@less.ceil((@p * 2))', 'round(up, (var(--a, 5) * 2), 1)'],
+    ['5px', '@less.mod((@p * 2), 3px)', 'rem((var(--a, 5px) * 2), 3px)'],
+    ['5%', '@less.darken(#c00, (@p * 2))', 'hsl(from #c00 h s clamp(0, l - (var(--a, 5%) * 2) / 1%, 100))'],
+    ['5%', '@less.mix(#c00, #fff, (@p * 2))', 'color-mix(in srgb, #c00 calc(var(--a, 5%) * 2), #fff)']
+  ])('a mixin parameter holding `@a: %s` that fits: %s', async (held, body, form) => {
+    await expect(css(`@use "#less"; @expose a; @a: ${held}; .m(@p) { v: ${body}; } .x { .m(@a); }`)).resolves.toContain(`v: ${form};`);
+  });
+
+  it.each([
+    ['5', '@less.mod(@a, @theme.nx())', 'rem(var(--a, 5), 5)'],
+    ['5', '@less.mod(@theme.nx(), @a)', 'rem(5, var(--a, 5))'],
+    ['#c00', '@less.darken(@a, @theme.pct() * 1%)', 'hsl(from var(--a, #c00) h s clamp(0, l - 10, 100))']
+  ])('beside a plugin value still pending, `@a: %s` in %s is its form', async (held, source, form) => {
+    const dir = mkdtempSync(join(tmpdir(), 'jess-form-plugin-'));
+    try {
+      writeFileSync(join(dir, 'theme.js'), 'export const nx = () => 5; export const pct = () => 10;');
+      const result = await new Compiler({ output: { collapseNesting: true } }).renderToResult({ ...options, filePath: join(dir, 'entry.less'), source: `@use "./theme.js"; @use "#less"; @expose a; @a: ${held}; .x { v: ${source}; }` });
+      expect(result.errors ?? []).toEqual([]);
+      expect(result.css).toContain(`v: ${form};`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('a dividend with no unit beside a divisor with one keeps its recipe', async () => {
     const result = await new Compiler({}).renderToResult({ ...options, source: exposed('5', '@less.mod(@a, 3px)') });
     expect(result.css).toContain('v: var(--a-mod, 2);');
@@ -471,31 +536,13 @@ describe('known gap: an all-known math function written out under `@use`', () =>
   });
 });
 
-describe('a slash under `math: always` is math only over numbers', () => {
-  it.each([
-    '1 / var(--c) / span 2 / span 3',
-    'var(--r) / var(--c) / span 2 / span 3',
-    'var(--a) / 2 / span 2',
-    'repeat(2, 1fr) / var(--x)',
-    'var(--x) / repeat(2, 1fr)',
-    'minmax(1px, 2px) / var(--x)',
-    'fit-content(10px) / var(--x)',
-    'linear-gradient(red, blue) / var(--x)'
-  ])('%s stays as written', async (source) => {
-    await expect(value(source, { mathMode: 'always' })).resolves.toBe(source);
-  });
-
-  it('two known numbers beside a chain still divide, as in `span 2 / 3`', async () => {
+describe('a slash under `math: always` with an operand only the browser knows', () => {
+  it('stays as written, known numbers beside it still dividing', async () => {
     await expect(value('1 / var(--c) / span 2 / 3', { mathMode: 'always' })).resolves.toBe('1 / var(--c) / span 0.6666666667');
   });
 
-  it.each([
-    ['1 / var(--x) / 2', 'calc(1 / var(--x) / 2)'],
-    ['var(--x) / env(--y)', 'calc(var(--x) / env(--y))'],
-    ['attr(a) / 2', 'calc(attr(a) / 2)'],
-    ['ceil(var(--x)) / 2', 'calc(round(up, var(--x), 1) / 2)']
-  ])('%s is math', async (source, math) => {
-    await expect(value(source, { mathMode: 'always' })).resolves.toBe(math);
+  it('is math in a group', async () => {
+    await expect(value('(1 / var(--x))', { mathMode: 'always' })).resolves.toBe('calc(1 / var(--x))');
   });
 });
 
@@ -503,5 +550,27 @@ describe('a `%` in a math function under compress', () => {
   it('writes its numbers as `%` anywhere does', async () => {
     await expect(css('.a{b:calc(var(--x) % 0.5)}', { compress: true })).resolves.toContain('calc(rem(var(--x),.5))');
     await expect(css('.a{b:max(var(--x) % 0.5,0.25)}', { compress: true })).resolves.toContain('max(rem(var(--x),.5),.25)');
+  });
+});
+
+describe('a `%` over a list', () => {
+  it.each(['always', 'parens-division', 'parens', 'strict'])('a math function keeps its own math under %s', async (mathMode) => {
+    await expect(value('max(var(--a) % (1, 2), 1)', { mathMode })).resolves.toBe('max(var(--a) % (1, 2), 1)');
+  });
+
+  it('a group still fails', async () => {
+    await expect(value('(var(--a) % (1, 2))')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+});
+
+describe('a glued minus on what only the browser knows', () => {
+  it.each([
+    ['(-env(safe-area-inset-top) + 1px)', 'calc(-1 * env(safe-area-inset-top) + 1px)'],
+    ['ceil(-env(a))', 'round(up, -1 * env(a), 1)'],
+    ['percentage(-env(a))', 'calc(-1 * env(a) * 100%)'],
+    ['(-attr(a) + 1)', 'calc(-1 * attr(a) + 1)'],
+    ['ceil(-attr(a))', 'round(up, -1 * attr(a), 1)']
+  ])('%s', async (source, form) => {
+    await expect(value(source)).resolves.toBe(form);
   });
 });

@@ -18,7 +18,6 @@
  * HARD MODULE BOUNDARY: the value domain and the operand rule only.
  */
 import { isMathFunctionName } from './math-functions.js';
-import type { Operation } from './nodes.js';
 import { DivisionByZeroError, InvalidOperandError, emitValue, isValueGroupArray, joinGroup, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { arithmeticOperand, makeDimension, makeKeyword, withFields } from './value-factory.js';
 import { convertible } from './value-units.js';
@@ -164,7 +163,7 @@ export function negated(v: Value): Value {
     return v;
   }
   const name = v.name.slice(1);
-  return name === 'var' || isMathFunctionName(name) ? negatedMath(withFields(v, { name, bytes: v.bytes.slice(1) })) : v;
+  return name === 'var' || name === 'env' || name === 'attr' || isMathFunctionName(name) ? negatedMath(withFields(v, { name, bytes: v.bytes.slice(1) })) : v;
 }
 
 const negatedMath = (v: Value): Value => mathOnDeferred('*', MINUS_ONE, v);
@@ -172,25 +171,6 @@ const negatedMath = (v: Value): Value => mathOnDeferred('*', MINUS_ONE, v);
 /** The result of a built-in written with a glued minus (`-percentage(var(--x))`), negated when it is a form of a number only the browser knows; otherwise `undefined`, and the call is written out as before. */
 export const negatedCall = (value: EvalValue): Value | undefined =>
   typeof value === 'object' && !isValueGroupArray(value) && value.type === 'FunctionCall' && value.computed && value.result === 'numeric' ? negatedMath(value) : undefined;
-
-/** What only the browser knows by name, whatever it holds; a glued minus is the same value negated. */
-const RUNTIME_VALUE: ReadonlySet<string> = new Set(['var', '-var', 'env', '-env', 'attr', '-attr']);
-
-/** What a `/` no group asked to divide reads as math: a number, or a function of one. */
-const isSlashMath = (v: Value): boolean =>
-  v.type === 'Dimension' || v.type === 'Arithmetic' || (v.type === 'FunctionCall' && (v.result === 'numeric' || RUNTIME_VALUE.has(v.name.toLowerCase())));
-
-/**
- * A `/` no group asked to divide (Less `math: always`) beside anything else is
- * CSS's separator (`url(a.png) center / var(--s)`, `repeat(2, 1fr) / var(--x)`).
- * So is every `/` before it in the chain, and the math they made is as written
- * (`1 / var(--c) / span`), a keyword never being in a `calc()`.
- */
-export function slashOperated(node: Pick<Operation, 'operator' | 'left' | 'mathOutsideParens'>, left: Value, right: Value, modes: EvalModes, keeps: boolean): Value {
-  const separates = node.operator === '/' && node.mathOutsideParens && !(isSlashMath(left) && isSlashMath(right));
-  const inner = separates && node.left.type === 'Operation' && node.left.operator === '/' && node.left.mathOutsideParens ? writtenCalcInner(left) : null;
-  return operated(node.operator, inner === null ? left : makeKeyword(inner), right, modes, keeps || separates);
-}
 
 /**
  * A value in a call written out: a group of math on what only the browser knows
@@ -227,15 +207,15 @@ export function operated(op: string, left: Value, right: Value, modes: EvalModes
   validateFinalUnits(right, modes);
   const l = keptSpelling(left, modes);
   const r = keptSpelling(right, modes);
-  if (op === '%') {
+  if (op === '%' && !(keeps && (l.type === 'List' || r.type === 'List'))) {
     return remOn(l, r, modes);
   }
   return !deferred || keeps ? operate(op, l, r, modes) : mathOnDeferred(op, l, r);
 }
 
-/** Arithmetic a math function holds as written, unless it is a `%` over what only the browser knows, which CSS math has no operator for ({@link remOn}). */
+/** Arithmetic a math function holds as written, unless it is a `%` over what only the browser knows and one value on each side, which CSS math has no operator for ({@link remOn}). */
 export function writtenPercent(op: string, [left, right]: readonly EvalValue[], modes: EvalModes, ev: Pick<ValueEvaluator, 'sassCalculations'>): Value | undefined {
-  return op === '%' && ev.sassCalculations !== true && typeof left === 'object' && typeof right === 'object' && !isValueGroupArray(left) && !isValueGroupArray(right) && isMathOnDeferred(left, right)
+  return op === '%' && ev.sassCalculations !== true && typeof left === 'object' && typeof right === 'object' && !isValueGroupArray(left) && !isValueGroupArray(right) && left.type !== 'List' && right.type !== 'List' && isMathOnDeferred(left, right)
     ? remOn(keptSpelling(left, modes), keptSpelling(right, modes), modes)
     : undefined;
 }
