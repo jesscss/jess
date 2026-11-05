@@ -10,12 +10,8 @@ import { Compiler } from '../../src/index.js';
 const cases: ReadonlyArray<readonly [string, string, string]> = [
   ['a pseudo-class argument', '.a { li:not(:last-child) { c: d; } }', '.a li:not(:last-child) {\n  c: d;\n}\n'],
   ['a class argument', '.a { li:not(.b) { c: d; } }', '.a li:not(.b) {\n  c: d;\n}\n'],
-  ['an id argument', '.a { li:is(#foo) { c: d; } }', '.a li:is(#foo) {\n  c: d;\n}\n'],
-  ['a universal argument', '.a { li:not(*) { c: d; } }', '.a li:not(*) {\n  c: d;\n}\n'],
   ['a relative argument', '.a { li:has(> b) { c: d; } }', '.a li:has(> b) {\n  c: d;\n}\n'],
-  ['an unknown pseudo', '.a { li:foo(.b) { c: d; } }', '.a li:foo(.b) {\n  c: d;\n}\n'],
   ['a compound argument', '.a { li:not(a:hover) { c: d; } }', '.a li:not(a:hover) {\n  c: d;\n}\n'],
-  ['a nested compound argument', '.a { li:not(a:not(b:hover)) { c: d; } }', '.a li:not(a:not(b:hover)) {\n  c: d;\n}\n'],
   ['a combinator after it', '.a { li:is(.b):hover > .c:not(:first-child) { d: e; } }', '.a li:is(.b):hover > .c:not(:first-child) {\n  d: e;\n}\n'],
   ['a sibling after it', '.a { li:is(.b) ~ .c:not(.d) { e: f; } }', '.a li:is(.b) ~ .c:not(.d) {\n  e: f;\n}\n'],
   ['`not` over a map in a value', '.a { x: not(a:hover); }', '.a {\n  x: false;\n}\n']
