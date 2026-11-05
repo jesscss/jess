@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
 import { STRING_KINDS, asciiCase, reString, stringText, type SassString } from './util.js';
 
 /**

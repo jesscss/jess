@@ -1,5 +1,5 @@
-import type { FnCtx, ValueGroup } from '@jesscss/core';
-import { defineFunction, groupItems, isValueGroupArray, selectorValue } from '@jesscss/core';
+import type { FnCtx, ValueGroup } from '@jesscss/core/value';
+import { defineFunction, groupItems, isValueGroupArray, selectorValue } from '@jesscss/core/value';
 
 /**
  * The text Sass reads a `$selector` argument as: a string, a space list of

@@ -1,5 +1,5 @@
-import { makeBool, defineFunction, isValueGroupArray, namedColor } from '@jesscss/core';
-import type { Fn, ValueGroup } from '@jesscss/core';
+import { makeBool, defineFunction, isValueGroupArray, namedColor } from '@jesscss/core/value';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
 
 /**
  * A materialized value counts as a color for a type predicate when it is a

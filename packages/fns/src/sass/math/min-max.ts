@@ -1,5 +1,5 @@
-import type { Dimension, ValueGroup, Value } from '@jesscss/core';
-import { emitValue, groupItems, isValueGroupArray } from '@jesscss/core';
+import type { Dimension, ValueGroup, Value } from '@jesscss/core/value';
+import { emitValue, groupItems, isValueGroupArray } from '@jesscss/core/value';
 import { compareSassNumbers } from './compare.js';
 
 const isDimension = (value: ValueGroup): value is Dimension =>
