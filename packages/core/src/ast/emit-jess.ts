@@ -41,7 +41,7 @@ import type {
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
 import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
-import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
+import { isDiagnosticStatement, type AtRuleBlock, type AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
 import { jessCollection, jessCurlyList, type ListSpeller } from './emit-jess-list.js';
@@ -186,6 +186,12 @@ const isSlotArray = (slot: ValueSlot | CallValue): slot is readonly ValueSlot[] 
 /** A space-adjacency run: a raw multi-part `ValueSlot[]` or a `Sequence`. */
 const isSpaceRun = (slot: ValueSlot | CallValue): boolean =>
   isSlotArray(slot) ? slot.length > 1 : slot.type === 'Sequence';
+
+/** Whether a value template opens with `$( … )`; any other prints as an escaped string (`~"…"`). */
+const leadsWithExpression = (node: Interpolation): boolean => {
+  const first = node.parts[0];
+  return first !== undefined && 'ref' in first && first.ref.type === 'Expression';
+};
 
 class JessPrinter {
   readonly gaps: JessSpellingGap[] = [];
@@ -337,6 +343,9 @@ class JessPrinter {
         return;
       case 'AtRuleStatement': {
         const name = node.name.toLowerCase();
+        if (name === '@return' && isDiagnosticStatement(node)) {
+          gap('AtRuleStatement', '`@return` no function reads: it fails the compile and has no `.jess` form');
+        }
         if (name === '@charset' && (where !== 'root' || index !== 0)) {
           gap('AtRuleStatement', '`@charset` after another statement: `Charset` is only the first statement');
         }
@@ -586,10 +595,10 @@ class JessPrinter {
       if (mixin && isSpaceRun(value)) {
         return gap(owner, 'space-run argument: the `MixinCallArgument` reducer throws on it (parser defect)');
       }
-      const printed = this.value(value, At.Value);
-      if (mixin && arg.name === undefined && /^~?["']/u.test(printed)) {
+      if (mixin && arg.name === undefined && !isSlotArray(value) && (value.type === 'Quoted' || (value.type === 'Interpolation' && !leadsWithExpression(value)))) {
         return gap(owner, 'positional string argument: the `MixinCallArgument` reducer reads its content as a keyword name (parser defect)');
       }
+      const printed = this.value(value, At.Value);
       return arg.name === undefined ? printed : `$${arg.name}: ${printed}`;
     }).join(', ');
   }
@@ -1065,8 +1074,7 @@ class JessPrinter {
           ? this.template(node, 'name')
           : gap('Interpolation', 'a template inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}`');
     }
-    const first = node.parts[0];
-    if (first !== undefined && 'ref' in first && first.ref.type === 'Expression') {
+    if (leadsWithExpression(node)) {
       let out = '';
       for (const part of node.parts) {
         if ('lit' in part) {
@@ -1166,10 +1174,13 @@ class JessPrinter {
         if ((node.g === 'match') !== mixin) {
           return gap('GuardNode', `a \`${node.g}\` comparison where \`.jess\` builds \`${mixin ? 'match' : 'cmp'}\``);
         }
-        if (!COMPARE_OPS.has(node.op)) {
+
+        /* `.scss`'s relational (`sass<`) orders numbers; on those it is `.jess`'s. */
+        const op = node.op.startsWith('sass') ? node.op.slice(4) : node.op;
+        if (!COMPARE_OPS.has(op)) {
           return gap('GuardNode', `comparison operator \`${node.op}\``);
         }
-        return wrap(`${this.value(node.left, At.Expr)} ${node.op} ${this.value(node.right, At.Expr)}`);
+        return wrap(`${this.value(node.left, At.Expr)} ${op} ${this.value(node.right, At.Expr)}`);
       }
       case 'and':
       case 'or':

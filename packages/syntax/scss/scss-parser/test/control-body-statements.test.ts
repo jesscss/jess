@@ -20,13 +20,22 @@ const ACCEPTED: ReadonlyArray<readonly [string, string]> = [
   ['@keyframes in a mixin', '@mixin fade { @keyframes fade { from { opacity: 0; } } }'],
   ['@keyframes in a rule', '.host { @keyframes fade { from { opacity: 0; } } }'],
   ['@font-face in @media', '@media screen { @font-face { font-family: a; } }'],
-  ['a variable in @media', '@media screen { $gap: 1px; .a { gap: $gap; } }'],
-  ['@return in an @each in a function', '@function first($list) { @each $item in $list { @return $item; } }']
+  ['a variable in @media', '@media screen { $gap: 1px; .a { gap: $gap; } }']
 ];
 
 describe('SCSS statement bodies', () => {
   it.each(ACCEPTED)('accepts %s', (_label, source) => {
     expect(() => parse(source)).not.toThrow();
+  });
+
+  it('keeps a @return in an @each in a function a statement, not a `result` declaration', () => {
+    expect(parse('@function first($list) { @each $item in $list { @return $item; } @if $list { @return 1; } @return 2; }')).toMatchObject({
+      rules: [{ value: { rules: [
+        { type: 'For', rules: [{ type: 'AtRuleStatement', name: '@return' }] },
+        { type: 'If', branches: [{ rules: [{ type: 'Declaration', name: 'result' }] }] },
+        { type: 'Declaration', name: 'result' }
+      ] } }]
+    });
   });
 
   it('builds a rule with a leading combinator in an @if', () => {
