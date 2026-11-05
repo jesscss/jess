@@ -14,8 +14,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
  * Deno looks for one above the engine script. These tests run the CLIs from
  * such a tree, copied from the built workspace, and read what a `@plugin`
  * script gets there (`docs/design/DENO-SANDBOX-COMPILE.md` §5). `less` lives in
- * its own repository, so `fixtures/global-install/less` stands in for it with
- * the same compiler and imports.
+ * its own repository, so `fixtures/global-install/less` stands in for it: a
+ * compiler subclass with the same imports and module identity. It proves that
+ * route through the engine, not `bin/lessc`, `lib/options` or the real manifest.
  */
 const JESS = fileURLToPath(new URL('..', import.meta.url));
 const LESS = fileURLToPath(new URL('./fixtures/global-install/less', import.meta.url));
@@ -26,7 +27,7 @@ const globals = path.join(prefix, 'node_modules');
 const home = path.join(root, 'home');
 const denoDir = path.join(root, 'deno-dir');
 
-const LESSC = path.join(globals, 'less/lessc.mjs');
+const LESS_STAND_IN = path.join(globals, 'less/lessc.mjs');
 const JESS_CLI = path.join(globals, 'jess/bin/cli.mjs');
 const OUTPUT = path.join(root, 'output.css');
 
@@ -234,7 +235,7 @@ const REFUSED = [
 describe('a script is held to the same permissions wherever the packages are installed', () => {
   const cases: [string, string, Config, ScriptKind][] = [];
   for (const kind of ['plugin', 'use'] as const) {
-    for (const [name, cli] of [['lessc', LESSC], ['jess', JESS_CLI]] as const) {
+    for (const [name, cli] of [['a stand-in for the less compiler', LESS_STAND_IN], ['jess', JESS_CLI]] as const) {
       cases.push(
         [`@${kind} script, ${name} from a global install`, cli, [], kind],
         [`@${kind} script, ${name} from a local install with a package.json above it`, cli, [PACKAGE], kind]
@@ -293,8 +294,35 @@ describe('a script\'s npm: import', () => {
     expect(printed(css)).toBe('refused TypeError');
   }, 60_000);
 
-  it.each(CONFIGS)('from @plugin is refused and fetches nothing, with %s above the install', async (_name, config) => {
-    const { code, css, said } = await withNothingFetched(config, projectWith('plugin', DYNAMIC));
+  /* The Less loader refuses a plain `import('npm:…')` itself, but a `data:` module or a worker goes to Deno's loader. */
+  const THROUGH_DATA_MODULE = `async () => {
+    try {
+      return 'loaded ' + (await import('data:text/javascript,import probe from "npm:jess-probe@1.0.0"; export default probe;')).default;
+    } catch (error) {
+      return 'refused ' + error.name;
+    }
+  }`;
+  const THROUGH_WORKER = `() => new Promise((resolve) => {
+    const worker = new Worker('data:text/javascript,import("npm:jess-probe@1.0.0").then(m => postMessage("loaded " + m.default), e => postMessage("refused " + e.name));', { type: 'module' });
+    worker.onmessage = (event) => {
+      worker.terminate();
+      resolve(event.data);
+    };
+    worker.onerror = (event) => {
+      event.preventDefault();
+      worker.terminate();
+      resolve('refused worker');
+    };
+  })`;
+
+  it.each(CONFIGS)('from a data: module in @plugin is refused and fetches nothing, with %s above the install', async (_name, config) => {
+    const { code, css, said } = await withNothingFetched(config, projectWith('plugin', THROUGH_DATA_MODULE));
+    expect(code, said).toBe(0);
+    expect(printed(css)).toBe('refused TypeError');
+  }, 60_000);
+
+  it.each(CONFIGS)('from a worker in @plugin is refused and fetches nothing, with %s above the install', async (_name, config) => {
+    const { code, css, said } = await withNothingFetched(config, projectWith('plugin', THROUGH_WORKER));
     expect(code, said).toBe(0);
     expect(printed(css)).toBe('refused TypeError');
   }, 60_000);

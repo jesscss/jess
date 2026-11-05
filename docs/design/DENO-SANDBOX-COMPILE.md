@@ -227,10 +227,17 @@ with `DENO_CACHE_DB_MODE=memory` in the engine's environment.
   `nodeModulesDir: "auto"` above the install had Deno fetch a script's `npm:`
   import with no `--allow-net`, run it, and write `deno.lock` and
   `node_modules/.deno` with no `--allow-write`, and a `package.json` beside that
-  `deno.json` had its dependencies fetched before the engine started. With this
-  flag a bare import reads the `node_modules` folders above the importing file,
-  and an `npm:` import of a package not in them is refused. A `package.json`
-  alone behaves the same with or without the flag.
+  `deno.json` had the dependencies it lists fetched before the engine started.
+  With this flag a bare import reads the `node_modules` folders above the
+  importing file, and an `npm:` import of a package not in them is refused. A
+  `package.json` alone resolves imports the same with or without the flag.
+
+  The flag covers npm packages only, and Deno still reads the other settings in
+  those configs. A `deno.json` `imports` map above the install still applies to
+  `@use` scripts, within the read set. Under `allowHttp`, which is opt-in, a
+  remote import still has Deno write `deno.lock` beside a `package.json` or
+  `deno.json` above the install, and `vendor/` if the `deno.json` asks for it,
+  with no `--allow-write`. That holds with or without this flag.
 - **The web Cache API's index is kept in memory.** Deno stores `caches` on disk
   by default, needing no write permission, keyed by the main module, which
   every engine shares; a script could leave data there for a later render of
