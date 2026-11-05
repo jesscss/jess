@@ -1082,6 +1082,11 @@ export interface ConditionWord {
   readonly conditionWord: string;
 }
 
+/** A comparison's operator, and where the error at a comparison that cannot order points. */
+export interface ComparisonWord extends ConditionWord {
+  readonly at: AstSourceSpan;
+}
+
 export function conditionWord(children: readonly unknown[]): ConditionWord {
   return { conditionWord: requireToken(children[0]).value.trim() };
 }
