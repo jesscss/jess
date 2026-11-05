@@ -731,13 +731,14 @@ export function FunctionCallValueNode(name, args, result, computed, bytes) {
   this.bytes = bytes;
 }
 
-export function ArithmeticValueNode(op, left, right, kept, bytes) {
+export function ArithmeticValueNode(op, left, right, kept, bytes, written) {
   this.type = 'Arithmetic';
   this.op = op;
   this.left = left;
   this.right = right;
   this.kept = kept;
   this.bytes = bytes;
+  this.written = written;
 }
 
 export function AnyValueNode(bytes, escapedQuote, groups) {

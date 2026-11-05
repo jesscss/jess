@@ -10,6 +10,7 @@ import type {
   Any, Arithmetic, Block, Bool, CallResult, Collection, CollectionEntry, Color, Dimension, EvalValue, FunctionCall, Keyword, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
 } from './value-eval.js';
 import { isMathFunctionName } from './math-functions.js';
+import type { Operation } from './nodes.js';
 import { colorRgb, colorSourceRgb, HSL, hslToRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 import {
@@ -191,7 +192,17 @@ export const callKeyword = (call: FunctionCall | Arithmetic): Keyword => new Key
 
 /** Arithmetic spelled `bytes` ({@link Arithmetic}). */
 export const makeArithmetic = (op: string, left: EvalValue, right: EvalValue, kept: boolean, bytes: string): Arithmetic =>
-  new ArithmeticValueNode(op, left, right, kept, bytes);
+  new ArithmeticValueNode(op, left, right, kept, bytes, null);
+
+/** Arithmetic written in a math function, its numbers still the operation's ({@link arithmeticOperand}). */
+export const makeWrittenMath = (written: Operation, left: EvalValue, right: EvalValue, bytes: string): Arithmetic =>
+  new ArithmeticValueNode(written.operator, left, right, false, bytes, written);
+
+/** One side of arithmetic as a value: a number written in a math function is the number it is, its text never read. */
+export function arithmeticOperand(math: Arithmetic, side: 'left' | 'right'): EvalValue {
+  const node = math.written?.[side];
+  return node?.type === 'Dimension' ? new DimensionValueNode(node.number, node.unit, node.src) : math[side];
+}
 
 /** A `calc()` over what it holds, spelled `bytes` ({@link FunctionCall}). */
 export const makeCalc = (args: ValueGroup, bytes: string): FunctionCall =>

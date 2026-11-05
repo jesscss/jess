@@ -201,6 +201,7 @@ describe('an authored calc() a built-in takes', () => {
 
   it('stays what it is where the compile cannot compute it', async () => {
     await expect(value('percentage(calc(1px + 1em))')).resolves.toBe('percentage(calc(1px + 1em))');
+    await expect(value('percentage(calc(1 + 1px))')).resolves.toBe('percentage(calc(1 + 1px))');
     await expect(value('percentage(calc(1 / 0))')).resolves.toBe('percentage(calc(1 / 0))');
     await expect(value('percentage(calc(var(--a) + 1))')).resolves.toBe('calc(calc(var(--a) + 1) * 100%)');
   });

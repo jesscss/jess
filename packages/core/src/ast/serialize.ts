@@ -219,7 +219,7 @@ import { callSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, isMathOnDeferred, keptInString, keptMathOf, mathOnDeferred, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
-import { makeAny, makeArithmetic, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
+import { makeAny, makeWrittenMath, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
@@ -6285,18 +6285,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * back a bare string sends it through `force`, which reads
            * `8px / 2` as a slash LIST — and a List is not a calc argument, so
            * `calc($val / 2)` came back as `8px / 2` with the wrapper dropped.
-           * It is arithmetic, what the `calc()` around it holds, a number written
-           * there the number it is, so what reads the arithmetic reads no bytes.
+           * It is arithmetic, what the `calc()` around it holds.
            */
-          return node.inMathFunction
-            ? carryKeptClash(makeArithmetic(
-                node.operator,
-                node.left.type === 'Dimension' ? materializeNode(node.left, e) : values[0]!,
-                node.right.type === 'Dimension' ? materializeNode(node.right, e) : values[1]!,
-                false,
-                bytes
-              ), values[0]!, values[1]!)
-            : literal(bytes);
+          return node.inMathFunction ? carryKeptClash(makeWrittenMath(node, values[0]!, values[1]!, bytes), values[0]!, values[1]!) : literal(bytes);
         });
       }
       const ev = e.ev;

@@ -12,7 +12,7 @@
 import { DimensionValueNode } from './node-ctors.js';
 import { round } from './round.js';
 import { isValueGroupArray, type Dimension, type EvalValue, type ValueGroup } from './value-eval.js';
-import { makeDimension } from './value-factory.js';
+import { arithmeticOperand, makeDimension } from './value-factory.js';
 import { groupItems } from './value-list.js';
 import { mathOnDeferred } from './value-operate.js';
 
@@ -39,11 +39,11 @@ export function knownUnit(value: EvalValue): string | undefined {
     case 'Dimension':
       return value.unit;
     case 'Arithmetic': {
-      const left = knownUnit(value.left);
+      const left = knownUnit(arithmeticOperand(value, 'left'));
       if (value.op === '') {
         return left;
       }
-      const right = knownUnit(value.right);
+      const right = knownUnit(arithmeticOperand(value, 'right'));
       if (value.op === '/') {
         return right === undefined || right === '' ? left : '';
       }

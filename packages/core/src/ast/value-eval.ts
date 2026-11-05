@@ -30,6 +30,7 @@
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { FunctionMode, MathMode, UnitMode } from '../types/modes.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js';
+import type { Operation } from './nodes.js';
 
 /* --------------------------------------------------------- value domain */
 
@@ -202,6 +203,9 @@ export interface Arithmetic {
   readonly right: EvalValue;
   readonly kept: boolean;
   readonly bytes: string;
+
+  /** The operation written in a math function, whose number operands {@link arithmeticOperand} reads only if something asks. */
+  readonly written: Operation | null;
 }
 
 /**

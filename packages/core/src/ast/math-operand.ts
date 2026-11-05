@@ -18,6 +18,8 @@
  * HARD MODULE BOUNDARY: the value domain and the operand rule only.
  */
 import { DivisionByZeroError, InvalidOperandError, UnitArithmeticError, emitValue, isValueGroupArray, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
+import { arithmeticOperand } from './value-factory.js';
+import { convertible } from './value-units.js';
 import { operandRule } from './value-operate.js';
 
 type Divider = Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>;
@@ -93,7 +95,7 @@ export function numberOperand(value: ValueGroup, ev: Divider, modes: EvalModes):
   }
 }
 
-/** CSS's own rule for the units in a `calc()`: two that do not convert have no value the compile knows. */
+/** CSS's own rule for the units in a `calc()`: two that do not convert have no value the compile knows, and are no error to find out. */
 const CSS_UNITS: EvalModes = { unitMode: 'strict' };
 
 /** What a `calc()`'s math computes to, or `undefined` when a leaf of it is not a number. */
@@ -107,13 +109,16 @@ function calcValue(value: EvalValue, ev: Divider): Dimension | undefined {
     case 'FunctionCall':
       return value.name === 'calc' ? calcValue(value.args, ev) : undefined;
     case 'Arithmetic': {
-      const left = calcValue(value.left, ev);
+      const left = calcValue(arithmeticOperand(value, 'left'), ev);
       if (value.op === '') {
         return left;
       }
-      const right = left && calcValue(value.right, ev);
-      const out = right && left && ev.operate(value.op, left, right, CSS_UNITS);
-      return out?.type === 'Dimension' ? out : undefined;
+      const right = left && calcValue(arithmeticOperand(value, 'right'), ev);
+      if (left === undefined || right === undefined || ((value.op === '+' || value.op === '-') && !convertible(left.unit, right.unit))) {
+        return undefined;
+      }
+      const out = ev.operate(value.op, left, right, CSS_UNITS);
+      return out.type === 'Dimension' ? out : undefined;
     }
     default:
       return undefined;
