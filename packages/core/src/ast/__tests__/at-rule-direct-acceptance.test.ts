@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { atRuleBlock, atRuleStatement } from '../at-rule.js';
+import { asScssAtRoot, atRuleBlock, atRuleStatement, isScssAtRoot } from '../at-rule.js';
 import { buildEvaluator } from '../evaluator.js';
 import { cssBaseMathOutsideParens,
   block, collection, collectionEntry, decl, dimension, funcCall, interpolation, keyword, operation, reference, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
@@ -129,5 +129,16 @@ describe('At-rule canonical AST emission', () => {
     ]);
 
     expect(render(document)).toContain('@supports selector(:is(.card))');
+  });
+
+  it('keeps an at-rule block\'s own keys and their order when it is marked as @at-root', () => {
+    const marked = atRuleBlock('@at-root', keyword(''), []);
+    const before = Reflect.ownKeys(marked);
+
+    asScssAtRoot(marked);
+
+    expect(Reflect.ownKeys(marked)).toEqual(before);
+    expect(Reflect.ownKeys(marked)).toEqual(Reflect.ownKeys(atRuleBlock('@media', keyword('x'), [])));
+    expect(isScssAtRoot(marked)).toBe(true);
   });
 });
