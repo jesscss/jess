@@ -436,7 +436,7 @@ type SharedSyntax = {
   SupportsCondition: Combinator<ValueNode>;
   // Inherited from the CSS base: the comma list of supports conditions an @supports prelude reads.
   SupportsPrelude: Combinator<ValueNode>;
-  // Inherited from the CSS base: the value-position `<ident-token>` / `<function-token>` opener.
+  // Inherited from the CSS base: the `<ident-token>` / `<function-token>` opener of a value and of a pseudo's name.
   identOrFunction: Combinator<string>;
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
@@ -633,7 +633,12 @@ const outerSelectorTrivia = classifiedTrivia({
   lineComment,
   blockComment
 });
-const staticSimpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
+/*
+ * A class or id name may start `--`: `--b` is an ident (css-syntax-3 §4.3.9), so
+ * `.--b` is a class selector and `#--b` an id selector (selectors-4 §3.2). A type
+ * selector may not, so `--x:…` stays a custom property's.
+ */
+const staticSimpleSelector = regex(/(?:(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))|[.#]--)(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
 const staticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 // A selector simple that contains Less interpolation stays one selector atom.
 // Its literal runs deliberately exclude `.`, `#`, `[`, `:`, whitespace, and
@@ -955,8 +960,11 @@ const lessOwnAtKeyword = keywords(
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 /* `staticAtRuleStatementName` is now the composed `g.StaticAtRuleStatementName` rule. */
-/** A `.` / `#` name: a mixin's, and a class or id simple selector's. */
-const mixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+/**
+ * A `.` / `#` name: a mixin's, and a class or id simple selector's. It may start
+ * `--`, as `staticSimpleSelector` says.
+ */
+const mixinName = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))|--)(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const mixinPathCombinator = regex(/>/);
 const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
 /*
@@ -5258,8 +5266,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     regex(/::?(?![ \t\n\r\f])/),
     not(extendPseudoNameOpen),
     not(g.NthPseudoSelectorName),
-    g.LessIdentifier,
-    optional(literal('('))
+    // The CSS base's opener, so a name may start `--`: `:--heading` (css-extensions-1 `<custom-selector>`).
+    g.identOrFunction
   )));
   /*
    * The padding before the `)` is the argument's (`:is( .b )`), not a
