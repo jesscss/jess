@@ -1770,6 +1770,16 @@ const scssFactory = (g: ScssInputRules) => {
     scssSlashGroupedTerm
   );
 
+  /*
+   * What may open an argument and is no value: a comparison with nothing before it
+   * (`type(<length>)`), or the opener of a selector (`.a`, `:b`, `::c`, `*`, `%d`,
+   * `#foo`, `> e`). The bytes after a glued `li:` read as a value before they read as
+   * a selector (`li:not(.a) { … }`), and a call that cannot hold them commits the
+   * parse. Dart Sass stops on these in a value that is one; here it parses and the
+   * compile reports the punctuation (ledger P48).
+   */
+  const argumentDelim = regex(/[<>+~]=?|::?|\.(?![0-9])|\*|%|#[-_a-zA-Z0-9]*[g-zG-Z_-][-_a-zA-Z0-9]*/);
+
   /**
    * A call argument: an operand, then a comparison or a keyword argument's
    * `:` and the operand after it. A comparison operator with no operand on
@@ -1782,8 +1792,14 @@ const scssFactory = (g: ScssInputRules) => {
   const CallArgument = node<ScssCallArg>(
     'CallArgument',
     noTrivia(sequence(
-      optional(regex(/[<>]=?/)),
-      g.ValueTerm,
+      choice(
+        sequence(
+          argumentDelim,
+          optional(valueTrivia),
+          optional(g.ValueTerm)
+        ),
+        g.ValueTerm
+      ),
       optional(regex(/[<>]=?(?=[ \t\n\r\f]*[),])/)),
       optional(sequence(
         optional(valueTrivia),
@@ -2173,16 +2189,15 @@ const scssFactory = (g: ScssInputRules) => {
          *   `{` — that block makes this a nested rule (`color:red { … }`), and
          *   `,` — the value stopped part-way through a selector list, the reading
          *         that made `div:hover, .b { … }` match as `div: hover` and
-         *         strand `, .b { … }`.
+         *         strand `, .b { … }`, and
+         *   a combinator or the opener of a simple selector — the same, part-way
+         *         through a complex selector (`li:is(.a) > .b { … }`).
          * Anything else still ends an unterminated declaration, so the at-rule
          * and trailing-comment allowances survive.
          */
         choice(
           literal(';'),
-          not(choice(
-            literal('{'),
-            literal(',')
-          ))
+          not(regex(/[{,>+~.#:[&*%]/))
         )
       )
     ),

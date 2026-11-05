@@ -184,8 +184,18 @@ describe('a delim run before a nested rule', () => {
     expect(await errorCodes('scss', 'y\n ~ b { c: d }')).toEqual([CODE]);
   });
 
-  it.each(['scss', 'jess'] as const)('%s: a glued run before a rule keeps the rule', async (dialect) => {
-    const parsed = PLUGINS[dialect].safeParse!(`/proj/delim-run.${dialect}`, '.k { x: a~b .n { y: 1 } }');
+  /*
+   * SCSS needs the `;` here: dart-sass 1.101.7 rejects this source with `expected ";"`,
+   * and a value that reaches a simple selector is how `li:is(.a) .b { … }` is told from
+   * `li: is(.a)`.
+   */
+  it('scss: a glued run before a rule needs its `;`', () => {
+    expect(PLUGINS.scss.safeParse!('/proj/delim-run.scss', '.k { x: a~b .n { y: 1 } }').errors).not.toEqual([]);
+    expect(PLUGINS.scss.safeParse!('/proj/delim-run.scss', '.k { x: a~b; .n { y: 1 } }').errors).toEqual([]);
+  });
+
+  it('jess: a glued run before a rule keeps the rule', () => {
+    const parsed = PLUGINS.jess.safeParse!('/proj/delim-run.jess', '.k { x: a~b .n { y: 1 } }');
     expect(parsed.errors).toEqual([]);
     expect(parsed.document!.rules[0]).toMatchObject({
       rules: [
