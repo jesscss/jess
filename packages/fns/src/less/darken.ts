@@ -1,6 +1,6 @@
-import { defineFunction } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
 import { hslAdjust } from './color-helper.js';
-import type { Fn } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
 
 /** `darken(color, amount, method?)` — bump HSL lightness DOWN. Byte-faithful to `less/darken`. */
 export const darken: Fn = defineFunction('darken', {

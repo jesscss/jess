@@ -1,5 +1,5 @@
-import type { Dimension } from '@jesscss/core';
-import { compareOrder } from '@jesscss/core';
+import type { Dimension } from '@jesscss/core/value';
+import { compareOrder } from '@jesscss/core/value';
 
 /**
  * Sass's numeric COMPARISON rule — what `min`/`max` fold with.

@@ -4,7 +4,7 @@
  * Recurses only when both colliding values are maps. Every other collision uses
  * the second map's value, while the first map owns established key order.
  */
-import { CollectionOverlay, defineFunction, isCollection, makeCollection, type Collection } from '@jesscss/core';
+import { CollectionOverlay, defineFunction, isCollection, makeCollection, type Collection } from '@jesscss/core/value';
 
 type Entry = Collection['entries'][number];
 
