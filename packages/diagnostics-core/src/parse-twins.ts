@@ -400,6 +400,9 @@ export function pushParseTwinDiagnostics(
     const error = ERR.leadingSeparatorValue(lead?._tag === 'leaf' && lead.value === '/' ? '/' : '*');
     push('parse/leading-separator-value', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
   }
+  if (language === 'scss' && (gt === 'Ruleset' || gt === 'NestedRuleset')) {
+    pushInvalidRulePreludeTwin(node, source, push);
+  }
   if (language === 'jess' && gt === 'Stylesheet') {
     pushBareArithmeticTwins(node, source, push);
   }
@@ -500,6 +503,16 @@ function strayIdentifierInCondition(condition: CssCstNode, source: string): stri
     connective = name;
   }
   return (terms.length - first) % 2 === 0 ? childText(terms[terms.length - 1]!, source) : undefined;
+}
+
+/* The editor twin of `parse/invalid-rule-prelude`, at the prelude as written. */
+function pushInvalidRulePreludeTwin(node: CssCstNode, source: string, push: ParseTwinPusher): void {
+  const rest = cstChildrenOf(node).find(child => child._tag === 'node' && child.grammarType === 'RulePreludeRest');
+  if (rest !== undefined) {
+    const error = ERR.invalidRulePrelude();
+    const end = node.span.start + source.slice(node.span.start, rest.span.end).trimEnd().length;
+    push('parse/invalid-rule-prelude', 'error', error.message, { ...node.span, end, endLine: rest.span.endLine, endColumn: rest.span.endColumn }, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
 }
 
 /* The editor twin of `css/invalid-supports-condition`, at the at-rule, where the compiler reports it. */

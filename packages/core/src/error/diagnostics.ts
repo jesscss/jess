@@ -618,6 +618,32 @@ export class LeadingSeparatorValueError extends SyntaxError {
 }
 
 /**
+ * A rule whose prelude no selector reads: its block makes it a rule, so it parses
+ * and the error sits on the prelude (ledger P45).
+ */
+export class InvalidRulePreludeError extends SyntaxError {
+  readonly code = 'parse/invalid-rule-prelude' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason: string;
+  readonly fix: string;
+
+  /** The selector the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, recoveredValue: object) {
+    const text = ERR.invalidRulePrelude();
+    super(text.message);
+    this.name = 'InvalidRulePreludeError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.reason = text.reason ?? '';
+    this.fix = text.fix ?? '';
+    this.recoveredValue = recoveredValue;
+  }
+}
+
+/**
  * Sass's `if($condition, $if-true, $if-false)`, which Dart Sass deprecates in
  * favor of CSS `if()` (its deprecation `if-function`). A parse WARNING: the
  * call is still evaluated, as Dart Sass evaluates it.
@@ -1118,6 +1144,15 @@ export const ERR = {
   selectorCaptureArgument(args: Common = {}) {
     return makeJessError({
       code: 'parse/selector-capture-argument',
+      phase: 'parse',
+      ...args
+    });
+  },
+
+  /** A rule whose prelude no selector reads (`InvalidRulePreludeError`). */
+  invalidRulePrelude(args: Common = {}) {
+    return makeJessError({
+      code: 'parse/invalid-rule-prelude',
       phase: 'parse',
       ...args
     });
