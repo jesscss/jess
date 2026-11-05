@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { colorHslClamped, makeDimension, defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { colorHslClamped, makeDimension, defineFunction } from '@jesscss/core/value';
 import { requireColor } from './color-helper.js';
 
 /** `hue(color)` — the hsl hue in degrees (0-360). Byte-faithful to `less/hue`. */

@@ -1,0 +1,171 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { build, createServer } from 'vite';
+import jess from '../src/index.js';
+
+type Runtime = { css: string; vars: (values: Record<string, string>) => Record<string, string> };
+
+type Module = Runtime & { classes: Record<string, string>; card: string };
+
+/** The bundled module of a `.module.less`, once it is known to export its classes. */
+function isModule(module: unknown): module is Module {
+  return isRuntime(module) && 'classes' in module && typeof module.classes === 'object' && 'card' in module;
+}
+
+/** The bundled module, once it is known to export the runtime. */
+function isRuntime(module: unknown): module is Runtime {
+  return typeof module === 'object' && module !== null && 'vars' in module && typeof module.vars === 'function';
+}
+
+describe('vite-plugin-jess', () => {
+  it('bundles the CSS and the runtime of a stylesheet that exposes variables', async () => {
+    const result = await build({
+      root: __dirname,
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [jess()],
+      build: { write: false, lib: { entry: path.resolve(__dirname, 'main.js'), formats: ['es'], fileName: 'main' } }
+    });
+    const first = [result].flat()[0];
+    const output = first !== undefined && 'output' in first ? first.output : [];
+    const css = output.find(item => item.type === 'asset' && item.fileName.endsWith('.css'));
+    expect(css?.type === 'asset' ? String(css.source) : '').toContain('var(--brand-darken,');
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vite-plugin-jess-'));
+    try {
+      const file = path.join(directory, 'main.mjs');
+      fs.writeFileSync(file, output[0]?.code ?? '');
+      const module: unknown = await import(file);
+      expect(isRuntime(module)).toBe(true);
+      if (isRuntime(module)) {
+        expect(module.css).toContain('var(--brand,');
+        // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+        expect(module.vars({ brand: '#08f' })).toEqual({ '--brand': '#08f', '--brand-darken': '#006dcc' });
+      }
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  /** A throwaway project: `files` written to a directory under the OS temp dir, passed to `run`, then removed. */
+  async function inProject(files: ReadonlyArray<readonly [string, string]>, run: (root: string) => Promise<void>): Promise<void> {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'vite-plugin-jess-')));
+    try {
+      for (const [name, text] of files) {
+        fs.writeFileSync(path.join(root, name), text);
+      }
+      await run(root);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  /** The CSS and JS of a build of `main.js` in `root`. */
+  async function built(root: string): Promise<{ css: string; js: string }> {
+    const result = await build({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [jess()],
+      build: { write: false, lib: { entry: path.join(root, 'main.js'), formats: ['es'], fileName: 'main' } }
+    });
+    const first = [result].flat()[0];
+    const output = first !== undefined && 'output' in first ? first.output : [];
+    const css = output.find(item => item.type === 'asset' && item.fileName.endsWith('.css'));
+    return { css: css?.type === 'asset' ? String(css.source) : '', js: output[0]?.code ?? '' };
+  }
+
+  it('resolves a relative `@import` and `url()` from the stylesheet\'s directory', async () => {
+    await inProject([
+      ['main.js', `import './theme.less';\n`],
+      ['theme.less', `@import url(./other.css);\n.a { background: url(./img.png); }\n`],
+      ['other.css', `.other { color: red; }\n`],
+      ['img.png', 'png']
+    ], async (root) => {
+      const { css } = await built(root);
+      expect(css).toContain('.other');
+      expect(css).toContain('url(data:image/png;base64,');
+    });
+  });
+
+  it('keeps `a.module.less` and `a.module.jess` in one directory as two stylesheets', async () => {
+    await inProject([
+      ['main.js', `import less from './a.module.less';\nimport jess from './a.module.jess';\nexport { less, jess };\n`],
+      ['a.module.less', `.fromless { color: red; }\n`],
+      ['a.module.jess', `.fromjess { color: blue; }\n`]
+    ], async (root) => {
+      const { css } = await built(root);
+      expect(css).toContain('fromless');
+      expect(css).toContain('fromjess');
+    });
+  });
+
+  it('compiles `?inline` with Jess, to the CSS as a string', async () => {
+    await inProject([
+      ['main.js', `export { default } from './theme.less?inline';\n`],
+      ['theme.less', `@use "#less";\n.a { color: @less.darken(#c00, 10%); }\n`]
+    ], async (root) => {
+      const { css, js } = await built(root);
+      expect(css).toBe('');
+      expect(js).toContain('.a{color:#900}');
+    });
+  });
+
+  it('serves the edited CSS of a stylesheet in dev', async () => {
+    await inProject([
+      ['theme.less', `.before { color: red; }\n`]
+    ], async (root) => {
+      const server = await createServer({ root, configFile: false, logLevel: 'silent', plugins: [jess()], server: { middlewareMode: true }, appType: 'custom' });
+      try {
+        await server.transformRequest('/theme.less');
+        const css = async (): Promise<string> => (await server.transformRequest('/theme.less.css'))?.code ?? '';
+        expect(await css()).toContain('.before');
+
+        /* The dev server's watcher reports the edit; rewriting covers a watcher still starting up. */
+        let edited = '';
+        for (let tries = 0; tries < 50 && !edited.includes('.after'); tries++) {
+          fs.writeFileSync(path.join(root, 'theme.less'), `.after { color: red; }\n`);
+          await new Promise(resolve => setTimeout(resolve, 100));
+          edited = await css();
+        }
+        expect(edited).toContain('.after');
+        expect(edited).not.toContain('.before');
+      } finally {
+        await server.close();
+      }
+    });
+  });
+
+  it('scopes a `.module.less` through Vite\'s CSS Modules, the class map as its default export', async () => {
+    const result = await build({
+      root: __dirname,
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [jess()],
+      build: { write: false, lib: { entry: path.resolve(__dirname, 'module.js'), formats: ['es'], fileName: 'module' } }
+    });
+    const first = [result].flat()[0];
+    const output = first !== undefined && 'output' in first ? first.output : [];
+    const css = output.find(item => item.type === 'asset' && item.fileName.endsWith('.css'));
+    const text = css?.type === 'asset' ? String(css.source) : '';
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vite-plugin-jess-'));
+    try {
+      const file = path.join(directory, 'module.mjs');
+      fs.writeFileSync(file, output[0]?.code ?? '');
+      const module: unknown = await import(file);
+      expect(isModule(module)).toBe(true);
+      if (isModule(module)) {
+        expect(Object.keys(module.classes)).toEqual(['card', 'card__title']);
+        expect(module.card).toBe(module.classes.card);
+        expect(module.classes.card).not.toBe('card');
+        expect(text).toContain(`.${module.classes.card}{color:var(--brand, #c00)}`);
+        expect(text).toContain(`.${module.classes.card__title}{border-color:var(--brand-darken, #990000)}`);
+        expect(module.vars({ brand: '#08f' })['--brand-darken']).toBe('#006dcc');
+      }
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

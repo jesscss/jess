@@ -1,5 +1,5 @@
-import { defineFunction } from '@jesscss/core';
-import type { Fn } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 import { colorBlend, requireColor } from './color-helper.js';
 
 /** per-channel `difference` blend (W3C compositing-1). */
