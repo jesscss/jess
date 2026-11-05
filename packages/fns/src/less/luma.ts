@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { makeDimension, defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { makeDimension, defineFunction } from '@jesscss/core/value';
 import { getLuma, requireColor } from './color-helper.js';
 
 /** `luma(color)` — WCAG luma × alpha as a percentage. Byte-faithful to `less/luma`. */

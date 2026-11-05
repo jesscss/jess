@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { makeColorRgb, defineFunction, RGB } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { makeColorRgb, defineFunction, RGB } from '@jesscss/core/value';
 import { alphaToNumber, hsvToRgb, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
