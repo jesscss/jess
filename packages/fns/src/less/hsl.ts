@@ -1,5 +1,5 @@
 import type { Color, ValueGroup, Fn } from '@jesscss/core';
-import { colorHsl, defineFunction, groupItems, makeColorHsl, makeColorRgb, hslToRgb, HSL } from '@jesscss/core';
+import { colorHsl, defineFunction, groupItems, makeColorHsl, makeHslColor, HSL } from '@jesscss/core';
 import { clamp01, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
@@ -29,27 +29,15 @@ export function makeHsl(value: ValueGroup): Color {
     const alphaPct = alphaD?.unit === '%' ? alphaD.number : undefined;
 
     /*
-     * ACHROMATIC canonicalization (Less 4.x/v5 parity): a grey/black/white result
-     * (`s === 0 || l === 0 || l === 1`) carries no meaningful hue/saturation, so it
-     * round-trips through rgb — hue + saturation collapse to `0` and the authored
-     * unit is dropped (`hsl(380deg, 150%, 150%)` → `hsl(0, 0%, 100%)`). The rgb is
-     * kept UNROUNDED so the derived lightness is lossless (`hsl(50, 0%, 33%)` →
-     * `hsl(0, 0%, 33%)`, not `33.…%`).
-     */
-    if (s === 0 || l === 0 || l === 1) {
-      return makeColorRgb(hslToRgb(h, s, l), a, HSL, {
-        modernSyntax,
-        ...(alphaPct !== undefined ? { alphaPct } : {})
-      });
-    }
-
-    /*
-     * SOURCE-FORMAT preservation (verbatim rule): keep the authored hue unit
-     * (`0deg` → `deg`) + a `%` alpha spelling; an operated result drops them.
+     * ACHROMATIC canonicalization: a grey, black or white has no hue to carry
+     * (css-color-4 §4.4.1), so hue + saturation collapse to `0` and the
+     * authored unit is dropped (`hsl(380deg, 150%, 150%)` → `hsl(0, 0%, 100%)`;
+     * {@link makeHslColor}). Otherwise the authored hue unit (`0deg` → `deg`)
+     * and a `%` alpha spelling are kept (verbatim rule); an operated result
+     * drops them.
      */
     const hueUnit = requireDimension(items[0]).unit || undefined;
-    const fmtOpts = { ...(hueUnit ? { hueUnit } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) };
-    return makeColorHsl([h, s, l], a, HSL, modernSyntax, fmtOpts);
+    return makeHslColor([h, s, l], a, modernSyntax, { ...(hueUnit ? { hueUnit } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) });
   }
   if (isColor(first)) {
     const c = first;
