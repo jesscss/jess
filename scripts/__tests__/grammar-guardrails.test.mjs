@@ -179,7 +179,13 @@ test('lookahead: a repeat or balanced that starts a scan counts only when a requ
     `const probe = oneOrMoreSep(${SEQ}, literal(','));`,
     `const probe = sepBy(${SEQ}, literal(','));`,
     `const probe = choice(sequence(balanced('(', ')'), literal('{')), literal('y'));`,
-    `const probe = optional(sequence(balanced('(', ')'), literal('{')));`
+    `const probe = optional(sequence(balanced('(', ')'), literal('{')));`,
+    `const head = sequence(balanced('(', ')'), literal('{'));\nconst probe = many(head);`,
+    `const probe = many(choice(literal('y'), sequence(balanced('(', ')'), literal('{'))));`,
+    `const probe = many(field('a', sequence(balanced('(', ')'), literal('{'))));`,
+    `const probe = choice({ gate: g, combinator: sequence(balanced('(', ')'), literal('{')) }, literal('y'));`,
+    `const probe = choice({ gate: g, combinator: ${WIDE} }, literal('y'));`,
+    `const probe = not(many(${SEQ}));`
   ]) {
     assert.equal(hits(body), 1, body);
   }
@@ -189,7 +195,10 @@ test('lookahead: a repeat or balanced that starts a scan counts only when a requ
     `const probe = sepBy(sequence(literal('a'), literal('x')), literal(','));`,
     `const probe = choice(balanced('(', ')'), literal('y'));`,
     `const probe = choice(sequence(balanced('(', ')'), optional(literal('{'))), literal('y'));`,
-    `const probe = sequence(balanced('(', ')'), literal('{'));`
+    `const probe = sequence(balanced('(', ')'), literal('{'));`,
+    `const probe = many(sequence(${WIDE}, many(literal('x'))));`,
+    `const probe = many(sequence(${WIDE}, sepBy(literal('x'), literal(','))));`,
+    `const probe = choice(sepBy(literal('a'), ${SEQ}), literal('y'));`
   ]) {
     assert.equal(hits(body), 0, body);
   }
@@ -211,6 +220,8 @@ test('fingerprint: a baselined arm cannot grow a required tail with nothing movi
   assert.match(hash('text'), /^[0-9a-f]{16}$/);
   const lead = source => scan(`${CLEAN}\nconst text = regex(${source});\nconst probe = choice(sequence(text, literal('x')), literal('y'));\n`).find(h => h.const === 'probe').resolved;
   assert.notEqual(lead(String.raw`/[-\w]+[ \t]*:/`), lead(String.raw`/[^;]*;/`));
+  const deep = source => scan(`${CLEAN}\nconst inner = regex(${source});\nconst text = sequence(inner);\nconst head = sequence(text);\nconst probe = choice(sequence(head, literal('x')), literal('y'));\n`).find(h => h.const === 'probe').resolved;
+  assert.notEqual(deep(String.raw`/[-\w]+[ \t]*:/`), deep(String.raw`/[^;]*;/`));
 });
 
 test('literal, keywords and word: text with more than one token in it is not one token', () => {

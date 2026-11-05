@@ -110,6 +110,9 @@ const SCANS = new Set(['scanTo', 'balanced', 'dispatch']);
 /* Zero-width checks whose width the scan does not model; a consuming arm can start with one. */
 const GUARDS = new Set(['gate', 'adjacent', 'notAdjacent']);
 
+/* Repeats that can match nothing, so a failure after them is not a failed required term. */
+const MAY_BE_EMPTY = new Set(['many', 'sepBy']);
+
 /* `rules`/`compose`/`composeLeaf` build whole grammars, not rules. */
 const GRAMMAR_BUILDERS = new Set(['rules', 'compose', 'composeLeaf']);
 
@@ -1109,12 +1112,11 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
   const importRule = (node, why) => hit('parseman-import', node, why);
 
   /* What can come before the first token of a consuming arm: a guard, an optional, or anything zero-width. */
-  const canPrecedeLead = (arg) => {
+  const calleeOf = (arg) => {
     const call = unwrap(ts, arg);
-    const name = ts.isCallExpression(call) ? calleeName(ts, call) : undefined;
-    return name === 'optional' || GUARDS.has(name) || width(arg).width === 0;
+    return ts.isCallExpression(call) ? calleeName(ts, call) : undefined;
   };
-  const wrappedArguments = call => [...call.arguments].filter(a => !ts.isStringLiteralLike(a) && !ts.isFunctionLike(a));
+  const canPrecedeLead = arg => calleeOf(arg) === 'optional' || GUARDS.has(calleeOf(arg)) || width(arg).width === 0;
 
   /*
    * The wide regex or `scanTo` a consuming arm starts with, read through bare consts
@@ -1158,7 +1160,10 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
     if (name === 'choice') {
       return firstOf(args);
     }
-    return TRANSPARENT.has(name) || REPEATS.has(name) || name === 'token' ? firstOf(wrappedArguments(n)) : null;
+    if (REPEATS.has(name)) {
+      return leadingScan(args[0], depth + 1);
+    }
+    return TRANSPARENT.has(name) || name === 'token' ? firstOf(args) : null;
   };
 
   /* The scan or `balanced` an arm starts with, when a required term follows it, so that a failure rewinds. */
@@ -1182,21 +1187,16 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
       return firstOf([...n.arguments]);
     }
     if (TRANSPARENT.has(name) || name === 'token') {
-      return firstOf(wrappedArguments(n));
+      return firstOf([...n.arguments]);
     }
     if (name !== 'sequence') {
       return null;
     }
     const args = [...n.arguments];
     for (const [i, arg] of args.entries()) {
-      const call = unwrap(ts, arg);
-      const scan = leadingScan(arg) ?? (ts.isCallExpression(call) && calleeName(ts, call) === 'balanced' ? call : null);
+      const scan = leadingScan(arg) ?? (calleeOf(arg) === 'balanced' ? unwrap(ts, arg) : null);
       if (scan) {
-        const isOptional = (a) => {
-          const c = unwrap(ts, a);
-          return ts.isCallExpression(c) && (calleeName(ts, c) === 'optional' || calleeName(ts, c) === 'many');
-        };
-        return args.slice(i + 1).some(a => !isOptional(a) && !canPrecedeLead(a)) ? scan : null;
+        return args.slice(i + 1).some(a => !MAY_BE_EMPTY.has(calleeOf(a)) && !canPrecedeLead(a)) ? scan : null;
       }
       if (!canPrecedeLead(arg)) {
         return null;
