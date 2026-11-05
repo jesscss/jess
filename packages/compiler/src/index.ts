@@ -522,7 +522,9 @@ export class Compiler {
    * The module and export of this compiler class. A render that reaches a
    * stylesheet script runs whole in the `@jesscss/plugin-js` sandbox, which
    * makes the same compiler from this. A subclass that declares its own runs
-   * there as itself; one that does not keeps per-call script execution.
+   * there as itself. This base class declares none, because its hooks are
+   * functions the sandbox cannot make again: a render by it, or by a subclass
+   * that declares none, is refused when it reaches a script.
    */
   static readonly moduleIdentity: CompilerModuleIdentity | undefined = undefined;
 

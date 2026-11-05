@@ -301,7 +301,7 @@ export const encodeEngineValue = (value: unknown, where: string): unknown => {
   }
   const ctor: unknown = Reflect.get(value, 'constructor');
   const name = typeof ctor === 'function' && ctor.name !== '' ? ctor.name : 'an object';
-  throw new EngineOptionError(where, `is an instance of ${name} that does not record the factory that made it. A plugin factory records it with \`recordPluginModule\` from @jesscss/core.`);
+  throw new EngineOptionError(where, `is an instance of ${name}, which the sandbox cannot make again. Pass a plain object, or a plugin from a factory that records itself with \`recordPluginModule\` from @jesscss/core.`);
 };
 
 /** The `styles.config` settings the host resolved for a render (the compiler's `HostConfigs`). */
