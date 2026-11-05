@@ -23,6 +23,10 @@ describe('SCSS rule whose prelude no selector reads', () => {
     });
   });
 
+  it('reports at a pseudo no argument rule reads, when its statement then stops', () => {
+    expect(() => parseRecovering('a { b:not(1) .c; }')).toThrow(expect.objectContaining({ code: 'parse/invalid-rule-prelude', offset: 5 }));
+  });
+
   it('holds at the root', () => {
     expect(parseRecovering('1px .title { color: red; }').recovered.map(error => error.code)).toEqual(['parse/invalid-rule-prelude']);
   });

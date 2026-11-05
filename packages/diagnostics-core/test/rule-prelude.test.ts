@@ -13,3 +13,9 @@ it.each([
     { phase: 'parse', defaultSeverity: 'error', message: 'This rule\'s prelude is not a selector', line, column }
   ]);
 });
+
+it('scss: one report for a prelude that also holds a pseudo no argument rule reads, as the compile gives', () => {
+  const reported = collectTolerantDiagnostics({ source: 'x:not(1) 1px { e: f; }', language: 'scss' }).diagnostics
+    .filter(diagnostic => diagnostic.code === 'parse/invalid-rule-prelude');
+  expect(reported.map(({ line, column }) => [line, column])).toEqual([[1, 1]]);
+});
