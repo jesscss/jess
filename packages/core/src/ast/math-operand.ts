@@ -216,7 +216,8 @@ export function operated(op: string, left: Value, right: Value, modes: EvalModes
 }
 
 /** Arithmetic a math function holds as written, unless it is a `%` over what only the browser knows, which CSS math has no operator for ({@link remOn}). */
-export const writtenPercent = (op: string, left: EvalValue, right: EvalValue, modes: EvalModes, ev: Pick<ValueEvaluator, 'sassCalculations'>): Value | undefined =>
-  op === '%' && ev.sassCalculations !== true && typeof left === 'object' && typeof right === 'object' && !isValueGroupArray(left) && !isValueGroupArray(right) && isMathOnDeferred(left, right)
+export function writtenPercent(op: string, [left, right]: readonly EvalValue[], modes: EvalModes, ev: Pick<ValueEvaluator, 'sassCalculations'>): Value | undefined {
+  return op === '%' && ev.sassCalculations !== true && typeof left === 'object' && typeof right === 'object' && !isValueGroupArray(left) && !isValueGroupArray(right) && isMathOnDeferred(left, right)
     ? remOn(left, right, modes)
     : undefined;
+}
