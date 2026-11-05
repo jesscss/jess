@@ -24,6 +24,22 @@ async function runtime(source: string): Promise<unknown> {
 }
 
 describe('Less @expose variables (A4)', () => {
+  it.each([
+    ['@r: 10; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(var(--r, 10), 0, 0);'],
+    ['@r: 10%; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(var(--r, 10%), 0, 0);'],
+    ['@r: 2px; .x { v: @less.rgb(@r, 0, 0); }', 'v: var(--r-rgb, rgb(2, 0, 0));'],
+    ['@h: 30; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30) 37.5% 25%);'],
+    ['@h: 30deg; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30deg) 37.5% 25%);'],
+    ['@h: 30px; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: var(--h-hsv, #bf8f60);'],
+    ['@a: 50%; .x { v: @less.rgba(#c00, @a); }', 'v: rgb(from #c00 r g b / var(--a, 50%));'],
+    ['@a: 2px; .x { v: @less.rgba(#c00, @a); }', 'v: var(--a-rgba, rgb(204, 0, 0));'],
+    ['@b: 5px; .x { v: @less.mod(10px, @b); }', 'v: rem(10px, var(--b, 5px));'],
+    ['@b: 5px; .x { v: @less.mod(10em, @b); }', 'v: var(--b-mod, 0em);']
+  ])('one slot field answers whether a form holds the value: %s', async (source, written) => {
+    const name = /@(\w+):/.exec(source)?.[1];
+    await expect(render(`@use "#less";\n@expose ${name};\n${source}`)).resolves.toContain(written);
+  });
+
   it('a built-in reading an exposed slash list keeps its recipe', async () => {
     const css = await render('@use "#less";\n@expose a;\n@a: 1/2;\n.x { b: @less.percentage(@a); c: @less.ceil(@a); }');
     expect(css).toContain('b: var(--a-percentage, 50%);');

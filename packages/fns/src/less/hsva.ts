@@ -1,20 +1,12 @@
-import type { Fn } from '@jesscss/core/value';
-import { makeColorRgb, defineFunction, RGB } from '@jesscss/core/value';
-import { alphaToNumber, hsvToRgb, normalizeHue, percentOf } from './color-ctor-helper.js';
-import { requireDimension } from '../shared/math/math-helper.js';
+import { defineForm, type FormCall } from '@jesscss/core/form';
+import { makeDimension, RGB, type Dimension, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { fractionOf, HUE_ARG, hueOf, whiteBlack } from './color-form.js';
+import { clamp01 } from './color-ctor-helper.js';
+import { hsva as form } from './css-forms.generated.js';
 
-/**
- * `hsva(h, s, v, a)` — construct an RGB-format color from HSV + alpha. Byte-faithful
- * to `less/hsva`: hue via `normalizeHue`, s/v via `percentOf(1)`, alpha via
- * `alphaToNumber` (clamped 0-1). Positional (no context needed).
- */
-export const hsva: Fn = defineFunction('hsva', {
-  params: [{ type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }],
-  body: (hD, sD, vD, aD) => {
-    const h = normalizeHue(requireDimension(hD));
-    const s = percentOf(requireDimension(sD), 1);
-    const v = percentOf(requireDimension(vD), 1);
-    const a = alphaToNumber(requireDimension(aD));
-    return makeColorRgb(hsvToRgb(h, s, v), a, RGB);
-  }
+/** `hsva(h, s, v, a)`: `hwb(h w b / a)` with white `(1 - s)v` and black `1 - v`, resolved in `rgb()`. */
+export const hsva: Fn = /* @__PURE__ */ defineForm('hsva', {
+  params: [HUE_ARG, { type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }],
+  format: RGB,
+  form: (h: ValueGroup, s: Dimension, v: Dimension, a: Dimension): FormCall => [form, hueOf(h), ...whiteBlack(s, v), makeDimension(clamp01(fractionOf(a)))]
 });

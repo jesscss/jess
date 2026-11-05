@@ -33,15 +33,16 @@ interface ParamSpecBase {
   /** Collect all remaining positional arguments in this final slot. */
   readonly rest?: boolean;
 
+  /**
+   * The units a dimension may have for a built-in's CSS form to hold what it computes
+   * to (`''` a number; docs/design/CSS-NATIVE-BUILTINS.md Q2, Q3), or `first`, the
+   * first argument's unit. Another unit keeps the call's runtime recipe, as does a
+   * slot without this field, which has no form.
+   */
+  readonly formUnits?: readonly string[] | 'first';
+
   /** Hand the body a typed thunk; evaluation and validation happen on invocation. */
   readonly lazy?: boolean;
-
-  /**
-   * What a built-in's CSS form takes this slot's value to hold when only the browser
-   * knows it: a unit (`''` a number, `%` a percentage; docs/design/CSS-NATIVE-BUILTINS.md
-   * Q2, Q3), or `first`, the first argument's unit, or `color`. A slot without it has no form.
-   */
-  readonly formSlot?: string;
 }
 
 type ParamTypeSpec = ParamSpecBase & {

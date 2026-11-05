@@ -1,18 +1,6 @@
+import { defineAlphaAdjuster } from './color-form.js';
+import * as forms from './css-forms.generated.js';
 import type { Fn } from '@jesscss/core/value';
-import { textOf, defineFunction } from '@jesscss/core/value';
-import { requireColor, withAlpha } from './color-helper.js';
-import { requireDimension } from '../shared/math/math-helper.js';
-import { addExact, mulExact, percentToFraction } from '../util/decimal.js';
 
-/** `fadein(color, amount, method?)` — increase alpha. Byte-faithful to `less/fadein`. */
-export const fadein: Fn = defineFunction('fadein', {
-  params: [{ type: 'Color' }, { type: 'Dimension' }, { type: ['Keyword', 'Quoted'], optional: true }],
-  body: (c, amt, m) => {
-    const color = requireColor(c);
-    let adjust = percentToFraction(requireDimension(amt).number);
-    if (m !== undefined && (m.type === 'Keyword' || m.type === 'Quoted') && textOf(m) === 'relative') {
-      adjust = mulExact(color.alpha, adjust);
-    }
-    return withAlpha(color, addExact(color.alpha, adjust));
-  }
-});
+/** `fadein(color, amount, method?)`: `rgb(from color r g b / calc(alpha + amount))`; `relative` scales the amount by `alpha`. */
+export const fadein: Fn = /* @__PURE__ */ defineAlphaAdjuster('fadein', forms.fadein, forms.fadeinRelative);

@@ -224,12 +224,15 @@ function holdsDeferred(value: EvalValue): boolean {
     return value.some(holdsDeferred);
   }
   switch (value.type) {
-    case 'FunctionCall': return value.result === null || holdsDeferred(value.args);
+    case 'FunctionCall': return value.result === null || value.name === 'var' || holdsDeferred(value.args);
     case 'Arithmetic': return holdsDeferred(value.left) || holdsDeferred(value.right);
     case 'List': return holdsDeferred(value.value);
     default: return false;
   }
 }
+
+/** Whether a keyword names a colour only the browser knows. */
+export const isBrowserColor = (text: string): boolean => BROWSER_COLORS.has(text.toLowerCase());
 
 /**
  * Whether a slot that takes a call (a built-in's CSS form) takes `value`, which
@@ -242,11 +245,11 @@ function holdsDeferred(value: EvalValue): boolean {
 function isDeferred(value: Value, type: readonly Kind[]): boolean {
   switch (value.type) {
     case 'FunctionCall':
-      return value.result === null || (value.result === 'color' ? type.includes('Color') : type.includes('Dimension') && holdsDeferred(value.args));
+      return value.result === null || (value.result === 'color' ? type.includes('Color') : type.includes('Dimension') && holdsDeferred(value));
     case 'Arithmetic':
       return type.includes('Dimension') && holdsDeferred(value);
     case 'Keyword':
-      return type.includes('Color') && BROWSER_COLORS.has(value.text.toLowerCase());
+      return type.includes('Color') && isBrowserColor(value.text);
     default:
       return false;
   }

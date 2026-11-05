@@ -25,3 +25,10 @@ $round: @($value, $step) > { result: calc(sign($value) * round(abs($value), $ste
 $round-deferred: @($value, $places) > { result: calc(sign($value) * round(abs($value), pow(10, -1 * $places))); }
 $round-deferred-unit: @($value, $places, $one) > { result: calc(sign($value) * round(abs($value), pow(10, -1 * $places) * $one)); }
 $mod: @($value, $divisor) > { result: rem($value, $divisor); }
+$fade: @($color, $amount) > { result: rgb(from $color r g b / $amount); }
+$fadein: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha + $amount)); }
+$fadein-relative: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha + alpha * $amount)); }
+$fadeout: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - $amount)); }
+$fadeout-relative: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - alpha * $amount)); }
+$hsv: @($h, $w, $b) > { result: hwb($h $w $b); }
+$hsva: @($h, $w, $b, $a) > { result: hwb($h $w $b / $a); }

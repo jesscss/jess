@@ -211,7 +211,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { channelFunction, channelMath, channelOf, formChannels, isHslCall, rejectChannelMath, resolveHsl, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
+import { channelFunction, channelMath, channelOf, formChannels, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
 import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
@@ -4275,7 +4275,7 @@ interface Lane {
   /**
    * The channel keywords of the CSS colour whose channels this lane evaluates,
    * bound to its origin's values (`l` in `hsl(from C h s calc(l - 10))`); set
-   * by {@link resolveHsl} only for a call a consumer demands. A keyword reads
+   * by {@link resolveColorCall} only for a call a consumer demands. A keyword reads
    * its binding ({@link materializeNode}) and the math written in a math
    * function there computes, so the colour resolves.
    */
@@ -5226,12 +5226,13 @@ function evalTyped(
        * what it holds computes on this lane, a comparison included
        * ({@link slotComputation}). Such an argument keeps
        * the written-out policy inside a group that computes, so an F5 color
-       * call there is still written as authored.
+       * call there is still written as authored. In a colour's channel, math in
+       * a group computes: the channel is read as a number.
        */
       if (e.reached && groupsOneValue(node)) {
         return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => reachedGroup(v, e, !isValueSlotArray(node.value) && node.value.type === 'FunctionCall'));
       }
-      if (isInertGroup(node) || (writtenAsAuthored(argument) && slotComputation(node.value, frame, e, true, true) === null)) {
+      if ((isInertGroup(node) && e.channels === undefined) || (writtenAsAuthored(argument) && slotComputation(node.value, frame, e, true, true) === null)) {
         return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), writtenGroup);
       }
       return mapMaybe(evalTypedSlot(
@@ -7228,7 +7229,7 @@ export function formActivation(lambda: AnonymousMixin): FormActivation {
     frame: makeFrame(null, lambda.rules, null, collectDeclIndex(lambda.rules, bindings, cells), cells),
     cells: [...cells.values()],
     result,
-    channels: !isValueSlotArray(result) && result.type === 'FunctionCall' && isHslCall(result) ? formChannels(result) : undefined
+    channels: !isValueSlotArray(result) && result.type === 'FunctionCall' ? formChannels(result) : undefined
   };
 }
 
@@ -9116,10 +9117,10 @@ function otherFunctionMode(modes: EvalModes): EvalModes {
  * function, so `functionMode: 'preserve'` has nothing valid to write out: a
  * failure is an eval error whatever the configured mode (ruling J1, jess#280).
  *
- * A modern `hsl()` a consumer `demanded` that its callable could not compute,
- * and so wrote out as-is, is the colour its CSS definition computes when every
- * input is known ({@link resolveHsl}, Q12), read from the arguments evaluated
- * here.
+ * A CSS `rgb()` or `hsl()` a consumer `demanded` that its callable could not
+ * compute, and so wrote out as-is, is the colour its CSS definition computes when
+ * every input is known ({@link resolveColorCall}, Q12), read from the arguments
+ * evaluated here.
  */
 function dispatchCall(
   node: FunctionCall,
@@ -9189,10 +9190,10 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   };
-  const call = demanded && selected === undefined && isHslCall(node)
+  const call = demanded && selected === undefined && isCssColorCall(node)
     ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
-        : resolveHsl(node, vals, channelBinder(frame, be), out))
+        : resolveColorCall(node, vals, channelBinder(frame, be), out))
     : e.channels !== undefined && selected === undefined
       ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? ev.cssMath?.(node.name, vals) ?? dispatch(vals)
       : dispatch;

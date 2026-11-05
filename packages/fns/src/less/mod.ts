@@ -5,7 +5,7 @@ import { mod as form } from './css-forms.generated.js';
 
 /** `mod(a, b)`: `rem(a, b)`, the dividend's sign and, known, its unit. */
 export const mod: Fn = /* @__PURE__ */ defineForm('mod', {
-  params: [NUMBER_ARG, { type: ['Dimension', 'FunctionCall'], formSlot: 'first' }],
+  params: [NUMBER_ARG, { type: ['Dimension', 'FunctionCall'], formUnits: 'first' }],
   form: (a: ValueGroup, b: ValueGroup): FormCall =>
     [form, plain(a), isDimension(b) && knownUnit(a) !== undefined ? formNumber(b.number, unitBeside(a)) : b]
 });

@@ -13,8 +13,8 @@ import { round as form, roundDeferred, roundDeferredUnit } from './css-forms.gen
  */
 const round: Fn = /* @__PURE__ */ defineForm('round', {
   params: [
-    { name: 'value', type: ['Dimension', 'FunctionCall'], formSlot: '' },
-    { name: 'precision', type: ['Dimension', 'FunctionCall'], formSlot: '', optional: true }
+    { name: 'value', type: ['Dimension', 'FunctionCall'], formUnits: [''] },
+    { name: 'precision', type: ['Dimension', 'FunctionCall'], formUnits: [''], optional: true }
   ],
   form: (value: ValueGroup, precision?: Dimension | FunctionCall | Arithmetic): FormCall => {
     const unit = unitBeside(value);

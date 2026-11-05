@@ -12,7 +12,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const FACTORIES = ['anonymousMixin', 'callArg', 'decl', 'dimension', 'funcCall', 'keyword', 'operation', 'variableReference'];
+const FACTORIES = ['anonymousMixin', 'block', 'callArg', 'decl', 'dimension', 'funcCall', 'keyword', 'list', 'operation', 'variableReference'];
 
 const text = value => JSON.stringify(value).replaceAll('"', '\'');
 
@@ -28,6 +28,10 @@ function node(value) {
       return `dimension(${value.number}, ${text(value.unit)}, ${text(value.src)})`;
     case 'Lookup':
       return `variableReference(${text(value.name)}, ${text(value.scope)})`;
+    case 'List':
+      return `list([${value.value.map(slot).join(', ')}], ${text(value.sep)})`;
+    case 'Block':
+      return `block(${slot(value.value)})`;
     case 'Operation':
       return `operation(${text(value.operator)}, ${node(value.left)}, ${node(value.right)}, ${value.inMathFunction}, ${value.mathOutsideParens})`;
     case 'FunctionCall':
@@ -51,7 +55,8 @@ export function generate(parse, source) {
     const params = value.params.map(param => `{ name: ${text(param.name)} }`).join(', ');
     return `export const ${camel(name)} = /* @__PURE__ */ anonymousMixin([${value.rules.map(node).join(', ')}], [${params}]);`;
   });
-  return `// Generated from css-forms.jess by scripts/build-css-forms.mjs. Do not edit.\nimport { ${FACTORIES.join(', ')} } from '@jesscss/core/ast';\n\n${lines.join('\n')}\n`;
+  const factories = FACTORIES.filter(name => lines.some(line => line.includes(`${name}(`)));
+  return `// Generated from css-forms.jess by scripts/build-css-forms.mjs. Do not edit.\nimport { ${factories.join(', ')} } from '@jesscss/core/ast';\n\n${lines.join('\n')}\n`;
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {

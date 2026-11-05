@@ -52,6 +52,21 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
   return [r * 255, g * 255, b * 255];
 }
 
+/**
+ * `hwb()` to sRGB on 0–255 (css-color-4 §8): the hue's full colour scaled between
+ * the whiteness and the blackness, whose sum at or above 1 is a grey.
+ */
+export function hwbToRgb(h: number, w: number, b: number): [number, number, number] {
+  const sum = w + b;
+  if (sum >= 1) {
+    const grey = (w / sum) * 255;
+    return [grey, grey, grey];
+  }
+  const [r, g, bl] = hslToRgb(h, 1, 0.5);
+  const scale = 1 - sum;
+  return [r * scale + w * 255, g * scale + w * 255, bl * scale + w * 255];
+}
+
 /** RGB 0-255 -> HSL(h deg, s 0-1, l 0-1), byte-identical to Color._hsl RGB branch. */
 export function rgbToHsl(r0: number, g0: number, b0: number): [number, number, number] {
   const r = r0 / 255, g = g0 / 255, b = b0 / 255;

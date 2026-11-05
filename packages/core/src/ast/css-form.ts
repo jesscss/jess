@@ -2,7 +2,7 @@
  * A built-in whose definition is its CSS form: an ordinary stylesheet function
  * parsed once at the build of the package that ships it, evaluated on arguments
  * the call evaluated. Known inputs compute through the one evaluator
- * ({@link resolveHsl}), a value only the browser knows leaves the form printed,
+ * ({@link formColor}), a value only the browser knows leaves the form printed,
  * so a call and its form are one value (docs/design/CSS-NATIVE-BUILTINS.md §2,
  * §3.3).
  *
@@ -11,21 +11,22 @@
  */
 import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { compressDimensionBytes } from './compress.js';
-import { formChannelValues, relativeHsla, type Hsla, type MutableChannels } from './css-color.js';
+import { formChannelValues, formColor, type FormChannels, type Hsla, type MutableChannels, type Rgba } from './css-color.js';
 import { cssMath, isDimension } from './css-math.js';
 import { buildEvaluator } from './evaluator.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { AnonymousMixin } from './nodes.js';
 import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type BindingCell, type FormActivation } from './serialize.js';
 import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
-import { isValueGroupArray, type Color, type ValueGroup } from './value-eval.js';
+import { HEX, RGB } from './color.js';
+import { isValueGroupArray, type Color, type Dimension, type Value, type ValueGroup } from './value-eval.js';
 import { DimensionValueNode } from './node-ctors.js';
-import { makeColorHsl, makeDimension, withFields } from './value-factory.js';
+import { makeColorHsl, makeColorRgb, makeDimension, withFields } from './value-factory.js';
 import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
 
 /** A form and the values its parameters bind to, the first of them the one its result's format follows. */
-export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, amount?: ValueGroup, one?: ValueGroup];
+export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, second?: ValueGroup, third?: ValueGroup, fourth?: ValueGroup];
 
 type Lane = ReturnType<typeof formLane>;
 
@@ -45,12 +46,28 @@ function newLane(compress: boolean): FormLane {
 }
 
 /**
- * The one place a resolved form's result takes its spelling: a colour keeps its
- * input's format (V10), in legacy syntax whatever its input's (Q14, not yet
- * ruled).
+ * The one place a resolved form's result takes its spelling (V10). A relative
+ * `hsl()` keeps its input's format, in legacy syntax whatever its input's (Q14,
+ * not yet ruled). A built-in that names a format has it, in legacy syntax. Any
+ * other keeps its input's format and syntax until the result is translucent,
+ * when a hex that had no alpha digit of its own turns to `rgb()`.
  */
-const spelled = (hsla: Hsla, input: Color): Color =>
-  makeColorHsl([hsla[0], hsla[1], hsla[2]], hsla[3], input.format);
+function spelled(channels: FormChannels, out: Hsla | Rgba, input: Color | Dimension, format: number | undefined): Color {
+  if (channels.space === 'hsl' && input.type === 'Color') {
+    return makeColorHsl([out[0], out[1], out[2]], out[3], input.format);
+  }
+  if (format !== undefined || input.type !== 'Color') {
+    return makeColorRgb([out[0], out[1], out[2]], out[3], format ?? RGB);
+  }
+  const { src } = input;
+  const hexDigits = typeof src === 'string' && src.startsWith('#') ? src.length - 1 : 0;
+  const translucent = input.format === HEX && (hexDigits === 4 || hexDigits === 8) ? HEX : RGB;
+  return makeColorRgb([out[0], out[1], out[2]], out[3], out[3] < 1 ? translucent : input.format, { modernSyntax: input.modernSyntax === true });
+}
+
+/** The input a form computes from: the colour a relative form reads, or the first channel of an absolute one. */
+const knownInput = (channels: FormChannels, input: Value): Color | Dimension | undefined =>
+  input.type === 'Color' ? (channels.relative ? input : undefined) : input.type === 'Dimension' && !channels.relative ? input : undefined;
 
 /** A form still unknown is a built-in's result, read by its type (Q10). */
 const deferred = (out: ValueGroup): ValueGroup =>
@@ -93,26 +110,30 @@ function spellCells(cells: readonly BindingCell[], compress: boolean): void {
  * compute it first: they need no written-out call, which is what anything not
  * known prints.
  */
-function evalForm(form: FormActivation, call: FormCall, lanes: FormLane): MaybePromise<ValueGroup> {
+function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format: number | undefined): MaybePromise<ValueGroup> {
   const { frame, cells, channels, result } = form;
   cells[0]!.evaluated = bound(call[1]);
   if (cells.length > 1) {
     cells[1]!.evaluated = bound(call[2]);
-    if (cells.length > 2) {
-      cells[2]!.evaluated = bound(call[3]);
-    }
+  }
+  if (cells.length > 2) {
+    cells[2]!.evaluated = bound(call[3]);
+  }
+  if (cells.length > 3) {
+    cells[3]!.evaluated = bound(call[4]);
   }
   const input = call[1];
   const amount = call[2];
   const known = amount === undefined || isDimension(amount);
   const { channelLane, lane } = lanes;
-  if (known && isDimension(input)) {
+  if (known && channels === undefined && isDimension(input)) {
     return mapMaybe(evalFormChannel(result, frame, channelLane), computed);
   }
-  if (known && channels !== undefined && !isValueGroupArray(input) && input.type === 'Color') {
-    const hsla = relativeHsla(channels, input, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
-    if (hsla !== undefined && !isThenable(hsla)) {
-      return spelled(hsla, input);
+  const origin = !known || channels === undefined || isValueGroupArray(input) ? undefined : knownInput(channels, input);
+  if (channels !== undefined && origin !== undefined) {
+    const out = formColor(channels, origin, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
+    if (out !== undefined && !isThenable(out)) {
+      return spelled(channels, out, origin, format);
     }
   }
   spellCells(cells, lane.compress === true);
@@ -124,7 +145,7 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane): MaybeP
  * from the bound parameters. A parameter takes what only the browser knows when
  * its type includes `FunctionCall`; any other reads a call as it always has.
  */
-export function defineForm(name: string, spec: { readonly params: readonly ParamSpec[]; readonly form: (...args: never[]) => FormCall }): Fn {
+export function defineForm(name: string, spec: { readonly params: readonly ParamSpec[]; readonly form: (...args: never[]) => FormCall; readonly format?: number }): Fn {
   const activations = new Map<AnonymousMixin, FormActivation>();
   return defineFunction(name, {
     params: spec.params,
@@ -139,7 +160,7 @@ export function defineForm(name: string, spec: { readonly params: readonly Param
         activation = formActivation(form);
         activations.set(form, activation);
       }
-      return evalForm(activation, call, lane);
+      return evalForm(activation, call, lane, spec.format);
     }
   });
 }

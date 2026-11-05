@@ -118,17 +118,17 @@
       "dialect": "less",
       "name": "hsv",
       "class": "exact-if",
-      "css": "hwb(H calc((1 - S) * V * 100%) calc((1 - V) * 100%))",
+      "css": "hwb(H W B)",
       "spec": "css-color-4 §8",
-      "notes": "exact when S and V are known, or deferred as 0-1 numbers; a deferred percentage (50%) makes (1 - S) invalid. hwb white = (1 - s)v, black = 1 - v, so white + black <= 100% always"
+      "notes": "exact for S and V in 0-100%, where white + black <= 100%: W = (1 - s)v and B = 1 - v, computed from a known S and V. Outside it a known input computes what hwb() does: a negative reads 0 and a sum over 100% normalizes to grey. A deferred S or V stays written, since the browser cannot compute W and B from a value that may be a percentage"
     },
     {
       "dialect": "less",
       "name": "hsva",
       "class": "exact-if",
-      "css": "hwb(H calc((1 - S) * V * 100%) calc((1 - V) * 100%) / A)",
+      "css": "hwb(H W B / A)",
       "spec": "css-color-4 §8",
-      "notes": "exact when S and V are known, or deferred as 0-1 numbers; a deferred percentage (50%) makes (1 - S) invalid. hwb white = (1 - s)v, black = 1 - v, so white + black <= 100% always"
+      "notes": "exact for S and V in 0-100%, where white + black <= 100%: W = (1 - s)v and B = 1 - v, computed from a known S and V. Outside it a known input computes what hwb() does: a negative reads 0 and a sum over 100% normalizes to grey. A deferred S or V stays written, since the browser cannot compute W and B from a value that may be a percentage"
     },
     {
       "dialect": "less",
@@ -142,8 +142,7 @@
       "dialect": "less",
       "name": "rgb",
       "class": "already-css",
-      "spec": "css-color-4 §5"
-    },
+      "spec": "css-color-4 §5", "notes": "3+ slots and one colour; its 2-slot overload is as Less rgba. An exposed variable in a channel prints over its var() as written; an exposed colour is that var()" },
     {
       "dialect": "less",
       "name": "hsl",

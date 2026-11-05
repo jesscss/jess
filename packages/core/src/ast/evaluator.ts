@@ -23,7 +23,7 @@ import { isMathFunctionName } from './math-functions.js';
 import { writtenCallValue } from './math-operand.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry } from './value-dispatch.js';
-import { dispatchFn, FunctionDeclined, numberArguments } from './value-dispatch.js';
+import { dispatchFn, numberArguments } from './value-dispatch.js';
 import { makeFunctionCall } from './value-factory.js';
 import { emitCompressed } from './compress.js';
 
@@ -102,10 +102,14 @@ function recoverCallFailure(
   modes: EvalModes,
   call: WrittenCall
 ): Value {
-  if (modes.functionMode === 'error' && !(error instanceof FunctionDeclined)) {
+  /* By name: a provided module (`#less`) is loaded by its resolved path, and may run another build of the class. */
+  const declined = error instanceof Error && error.name === 'FunctionDeclined';
+  if (modes.functionMode === 'error' && !declined) {
     throw error;
   }
-  return fallbackCall(name, args, modes, call);
+
+  /* A declined imported call (`less.rgb`) is the CSS function it names. */
+  return fallbackCall(declined ? name.slice(name.lastIndexOf('.') + 1) : name, args, modes, call);
 }
 
 /** Attach recovery to an async result; the caller keeps the synchronous path allocation-free. */

@@ -374,6 +374,15 @@ describe('a group of math in a call written out', () => {
     await expect(css(`@use "#less"; @expose h; @h: 10; .x { v: @less.${name}(hsl((@h + 1) 50% 50%)${rest}); }`)).resolves.toContain(`v: ${form};`);
   });
 
+  it('in a colour channel `fade` reads', async () => {
+    await expect(css('@use "#less"; @expose h; @h: 10; .x { v: @less.fade(hsl((@h + 1) 50% 50%), 50%); }')).resolves.toContain('v: rgb(from hsl(calc(var(--h, 10) + 1) 50% 50%) r g b / 0.5);');
+    await expect(css('@use "#less"; .x { v: @less.fade(hsl((var(--h) + 1) 50% 50%), 50%); }')).resolves.toContain('v: rgb(from hsl(calc(var(--h) + 1) 50% 50%) r g b / 0.5);');
+  });
+
+  it('an alpha amount only the browser knows has no form yet', async () => {
+    await expect(value('fade(#333, var(--a))')).resolves.toBe('fade(#333, var(--a))');
+  });
+
   it('math the author wrote bare, or in a prefixed `calc()`, stays as written', async () => {
     await expect(value('foo(var(--a) * 2)')).resolves.toBe('foo(var(--a) * 2)');
     await expect(value('-webkit-calc((var(--x) + 1) * 2)')).resolves.toBe('-webkit-calc((var(--x) + 1) * 2)');
