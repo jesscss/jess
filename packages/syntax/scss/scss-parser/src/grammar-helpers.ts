@@ -576,6 +576,11 @@ function isComparisonToken(child: unknown): boolean {
  * A call argument read as the css run of its components: each operator a
  * delim, each operand spliced in, with the padding written before it.
  */
+/** One term from what is glued together: a hole makes it an interpolation (`scr#{$s}`). */
+export function gluedTerm(children: readonly unknown[]): Interpolation {
+  return interpolation(children.flatMap(child => isInterpolation(child) ? child.parts : [{ lit: isScssValue(child) ? scssConditionSource(child) : scssSourceText(child) }]));
+}
+
 /** The padding a call argument holds between its parts, by its node, so no delim reads as one. */
 export interface ScssArgumentGap {
   readonly gap: string;

@@ -27,7 +27,7 @@ import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFe
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { RulePreludeRest as PreludeRest, ruleFromPrelude, unreadablePseudo } from './grammar-rule-prelude.js';
 import { functionalPseudoFrom, nthPseudoFrom, pseudoArgumentFrom } from './grammar-pseudo.js';
-import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { conditionWord, gluedTerm, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { RETURN_DIRECTIVE, directivePrelude, lowerFunctionReturns } from './grammar-return.js';
 import { scssSum } from './plus-chain.js';
 import { foldLogicalOperation, scssSlashGroupedTerm } from './grammar-logical.js';
@@ -116,6 +116,7 @@ type ScssRules = {
   QueryValue: Combinator<ValueNode>;
   QueryFeatureName: Combinator<string | Interpolation>;
   MediaFeatureOpener: Combinator<unknown>;
+  MediaTypeTerm: Combinator<ValueNode>;
   QueryComparedHead: Combinator<unknown>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
@@ -331,7 +332,8 @@ type ScssInputRules =
   & ScssSharedSyntax
   & typeof cssSyntax
   & typeof cssPseudoSyntax
-  & typeof unknownAtRuleRecognition;
+  & typeof unknownAtRuleRecognition
+  & { QueryIdentOrFunctionTerm: Combinator<ValueNode> };
 
 /*
  * Sass `//` comments are trivia, not CSS comments: they must be recognized
@@ -3697,6 +3699,27 @@ const scssFactory = (g: ScssInputRules) => {
     g.queryFeatureName
   );
 
+  /**
+   * A `#{…}` is a media term as well (Foundation `util/_breakpoint.scss`,
+   * `@media print, screen and #{$str}`), and may be the whole query. What is glued
+   * to one is the same term (`scr#{$s}`, `#{$a}-only`). css's term stays the first
+   * thing a term that opens with no hole reads.
+   */
+  const MediaTypeTerm = node<ValueNode>(
+    'MediaTypeTerm',
+    noTrivia(sequence(
+      choice(
+        g.InterpolatedValue,
+        g.QueryIdentOrFunctionTerm
+      ),
+      many(choice(
+        regex(/[-_a-zA-Z0-9\u0080-\uffff]+/),
+        g.SassInterpolation
+      ))
+    )),
+    children => children.length === 1 ? requireValue(children[0]) : gluedTerm(children)
+  );
+
   /*
    * css's compared-head dispatch, then a range name it cannot read: one an
    * interpolation opens (`400px <= #{$d}`), read once as the name.
@@ -5533,6 +5556,7 @@ const scssFactory = (g: ScssInputRules) => {
     QueryValue,
     QueryFeatureName,
     MediaFeatureOpener,
+    MediaTypeTerm,
     QueryComparedHead,
     QueryFeature,
     QueryFunction,

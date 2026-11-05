@@ -1036,6 +1036,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'GuardNode: comparison operator `sass-equal` (+4 more)'
   }],
+  ['foundation-sites@6.9.0:_global.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+36 more)'
+  }],
   ['foundation-sites@6.9.0:components/_badge.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -1341,6 +1346,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'For: tuple binding: `ForBinding` spells at most three comma names [in typography/_base.scss] (+4 more)'
   }],
+  ['foundation-sites@6.9.0:util/_breakpoint.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+5 more)'
+  }],
   ['foundation-sites@6.9.0:util/_color.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -1375,6 +1385,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed) (+9 more)'
+  }],
+  ['foundation-sites@6.9.0:util/_util.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed) [in util/_math.scss] (+33 more)'
   }],
   ['foundation-sites@6.9.0:util/_value.scss', {
     cause: 'cannot-express',

@@ -483,6 +483,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/typography/_helpers.scss',
   'scss/typography/_print.scss',
   'scss/typography/_typography.scss',
+  'scss/util/_breakpoint.scss',
   'scss/util/_color.scss',
   'scss/util/_direction.scss',
   'scss/util/_flex.scss',
