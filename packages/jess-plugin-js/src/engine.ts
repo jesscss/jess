@@ -301,7 +301,7 @@ export const encodeEngineValue = (value: unknown, where: string): unknown => {
   }
   const ctor: unknown = Reflect.get(value, 'constructor');
   const name = typeof ctor === 'function' && ctor.name !== '' ? ctor.name : 'an object';
-  throw new EngineOptionError(where, `is an instance of ${name} that does not record the factory that made it. A plugin factory records it with \`recordPluginModule\` from @jesscss/core.`);
+  throw new EngineOptionError(where, `is an instance of ${name}, which the sandbox cannot make again. Pass a plain object, or a plugin from a factory that records itself with \`recordPluginModule\` from @jesscss/core.`);
 };
 
 /** The `styles.config` settings the host resolved for a render (the compiler's `HostConfigs`). */
@@ -443,6 +443,16 @@ export const denoRunArgs = (
     '--no-prompt',
     `--allow-read=${list(readSet)}`,
     '--ignore-read',
+
+    /*
+     * Bare imports read the `node_modules` above the importing file and nothing
+     * else, wherever the packages are installed. Left to itself, Deno picks a
+     * mode from the configs above this script: a global install has none and
+     * cannot find its own packages, and a `deno.json` asking for npm packages
+     * has it fetch and write them. An `npm:` import of a package not installed
+     * is refused, with or without `allowHttp`.
+     */
+    '--node-modules-dir=manual',
     ...net,
     ...imports,
     '--unstable-bare-node-builtins',

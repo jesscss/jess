@@ -15,6 +15,7 @@
  * drift, not a merge candidate: unifying it silently would change parsing.
  * Dialect-specific helpers stay in their own `grammar.ts`.
  */
+import { isNameCode, isQuote, stringEnd } from './css-syntax.js';
 import { any, keyword, NULL_NODE, pseudoHasInterp, selectorBranchCanonical, selectorBranchComponents, selectorBranchHasAmpersand, selectorBranchHasInterp, selectorCapture } from './nodes.js';
 import { NO_SPAN, sourceEndOf, sourceStartOf, withBodySpan } from './provenance.js';
 import type {
@@ -90,22 +91,105 @@ export function withBlockBody<T extends object>(node: T, rawChildren: readonly u
   return span === undefined ? node : withBodySpan(node, span);
 }
 
-/** Collapse every whitespace run to one space, leaving other characters alone. */
+/** The last code unit of the string, escape or block comment opening at `at`, or `at` when none does. */
+function opaqueRunEnd(text: string, at: number): number {
+  const char = text[at]!;
+  if (isQuote(char)) {
+    return stringEnd(text, at);
+  }
+  if (char === '\\') {
+    return at + 1;
+  }
+  if (char !== '/' || text[at + 1] !== '*') {
+    return at;
+  }
+  let end = at + 3;
+  while (end < text.length && !(text[end - 1] === '*' && text[end] === '/')) {
+    end++;
+  }
+  return end;
+}
+
+/** Collapse every whitespace run to one space, leaving strings, escapes, block comments and other characters alone. */
 export function semanticGapText(text: string): string {
   let out = '';
   let inGap = false;
-  for (const char of text) {
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at]!;
     if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === '\f') {
       if (!inGap) {
         out += ' ';
         inGap = true;
       }
-    } else {
-      out += char;
-      inGap = false;
+      continue;
+    }
+    inGap = false;
+    out += char;
+    const end = opaqueRunEnd(text, at);
+    while (at < end && at + 1 < text.length) {
+      at++;
+      out += text[at]!;
     }
   }
   return out;
+}
+
+/*
+ * The one definition of `//` in at-rule prelude bytes. An unquoted `url(…)` is one token,
+ * as CSS Syntax 3 reads it even after spaces, so a `//` in it is text. Elsewhere a line
+ * comment starts where a token could: after a gap, a `,`, a closer, a string, or a `(` or
+ * `[` with no name glued to it. Anywhere else, as in `http://a` or after a `@{…}`, it is text. Less's prelude
+ * productions in `less-parser/src/grammar.ts` spell these two patterns, because a grammar
+ * regex must be a literal; `prelude-line-comment.test.ts` holds them equal.
+ */
+export const preludeUrlToken = /(?<![-\w\u0080-\uffff\\])[uU][rR][lL]\([^)"']*\)/y;
+export const preludeLineComment = /(?<=[ \t\n\r\f,)\]"']|(?<![-\w\u0080-\uffff\\])[([])\/\/[^\n\r]*/y;
+const anyLineComment = /\/\/[^\n\r]*/y;
+
+/**
+ * Prelude bytes with each `//` line comment replaced by a space. Without `gluedToo` a
+ * comment is what {@link preludeLineComment} says. With it, for a call head, whose grammar
+ * has read `//` as trivia, it is any `//` outside a `url()`. A string, an escape or a
+ * block comment holds none.
+ */
+export function withoutLineComments(text: string, gluedToo = false): string {
+  const comment = gluedToo ? anyLineComment : preludeLineComment;
+  let out = '';
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at]!;
+    let end = opaqueRunEnd(text, at);
+    if (char === 'u' || char === 'U') {
+      preludeUrlToken.lastIndex = at;
+      end = preludeUrlToken.test(text) ? preludeUrlToken.lastIndex - 1 : at;
+    } else if (char === '/' && text[at + 1] === '/') {
+      comment.lastIndex = at;
+      if (comment.test(text)) {
+        out += ' ';
+        at = comment.lastIndex - 1;
+        continue;
+      }
+    }
+    out += char;
+    while (at < end) {
+      at++;
+      out += text[at]!;
+    }
+  }
+  return out;
+}
+
+/** Whether these prelude bytes hold a `@{`, outside an escape or a block comment. */
+export function holdsInterpolationOpener(text: string): boolean {
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at];
+    if (char === '@' && text[at + 1] === '{') {
+      return true;
+    }
+    if (char === '\\' || (char === '/' && text[at + 1] === '*')) {
+      at = opaqueRunEnd(text, at);
+    }
+  }
+  return false;
 }
 
 /**

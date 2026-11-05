@@ -171,6 +171,7 @@ type ScssRules = {
   NestedStartingStyleBlock: Combinator<AtRuleBlock>;
   NestedLayerBlock: Combinator<AtRuleBlock>;
   InterpolatedSimple: Combinator<SimpleSelector>;
+  NestingSelector: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
   PseudoArgument: Combinator<string | Interpolation>;
   PseudoArgumentGroup: Combinator<string | Interpolation>;
@@ -239,7 +240,7 @@ type ScssSharedSyntax = {
   ForgivingSelectorList: Combinator<SelectorList>;
 
   /* Inherited from the CSS base: a pseudo's name opener. */
-  identifierOrFunction: Combinator<string>;
+  identOrFunction: Combinator<string>;
 
   /*
    * Converged to the CSS base (inherited via compose): same token rule
@@ -299,7 +300,6 @@ type ScssSharedSyntax = {
   UnicodeRange: Combinator<ValueNode>;
   Keyword: Combinator<Keyword>;
   Important: Combinator<true>;
-  NestingSelector: Combinator<SimpleSelector>;
 
   /*
    * Converged to the CSS base (inherited via compose): CSS already spells
@@ -511,9 +511,10 @@ const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
 
 /*
- * The trivia of a `:is()` / `:where()` argument: whitespace and both comment
- * forms, so a comment between items or after an item's selector is trivia
- * there as CSS reads it, not the start of a kept item.
+ * The trivia of a selector pseudo's argument: whitespace and both comment
+ * forms. It reaches what the argument's own rules leave: a comment before the
+ * `)`, or between `:is()` items. Inside a selector, and before `:not()`'s `,`,
+ * those rules read whitespace only, so `:not(.a /*c*\/, .e)` stops.
  */
 const forgivingListTrivia = classifiedTrivia({
   whitespace: whitespaceRun,
@@ -2205,7 +2206,7 @@ const scssFactory = (g: ScssInputRules) => {
    * what may stand after the value. A colon before the start of a pseudo's name
    * (`x:f() .b { … }`) may open a selector, so a value followed by a combinator or the
    * start of a simple selector leaves this rule and the statement reads as a rule, as
-   * Sass reads it; any other colon only gives way to a block or a comma (ledger P53).
+   * Sass reads it; any other colon only gives way to a block or a comma (ledger P54).
    */
   const Declaration = node<Declaration>(
     'Declaration',
@@ -4885,6 +4886,18 @@ const scssFactory = (g: ScssInputRules) => {
     }
   );
 
+  /**
+   * `&` with a `--` suffix (Sass "Adding Suffixes": `&--b` in `.a` is `.a--b`). A
+   * suffix that starts with one dash reaches the compound as a type selector
+   * (`&-b`); `--b` cannot, so `--x:…` stays a custom property's, and this token
+   * reads it. `&--#{$x}` is this token, then the interpolation.
+   */
+  const NestingSelector = node<SimpleSelector>(
+    'SimpleSelector',
+    regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/),
+    children => simpleSelector(requireToken(children[0]).value)
+  );
+
   /*
    * SCSS placeholder selectors are selector syntax, not declarations or a
    * runtime-only marker, and they are an ordinary `SimpleSelector` -- a
@@ -4969,11 +4982,13 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * Pseudos share a glued `:name` / `:name(` opener. Route it once, then let the
    * selected branch own that opener through `routed()` so the public
-   * semantic pseudo CST labels keep their source span.
+   * semantic pseudo CST labels keep their source span. The name is the CSS
+   * base's opener, so it may start `--` (`:--heading`, css-extensions-1
+   * `<custom-selector>`); the local `identOrFunction` is the value position's.
    */
   const pseudoIdentOrFunction = token(noTrivia(sequence(
     pseudoColon,
-    g.identifierOrFunction
+    g.identOrFunction
   )));
 
   /*
@@ -5138,17 +5153,21 @@ const scssFactory = (g: ScssInputRules) => {
        * (`pseudoCanonical`). `SelectorOnlyPseudoArgument` is the one parse of
        * the static argument; an interpolated argument fails there and, with no
        * text fallback for these names, rejects exactly as before.
-       * Insignificant whitespace surrounding the argument inside the parens
-       * (`:not( .b )`) is consumed here; it is trivia, so the structured arg
-       * normalizes it away (`:not(.b)`) via `pseudoCanonical`, matching the other
-       * dialects (Selectors-4; the residual SCSS surrounding-whitespace divergence).
+       * Whitespace around the argument and a comment before the `)` are trivia
+       * here, so the structured arg normalizes them away (`:not( .b )` is
+       * `:not(.b)`) via `pseudoCanonical`, matching the other dialects
+       * (Selectors-4; the residual SCSS surrounding-whitespace divergence). A
+       * comment before the argument is not: `:not( /*x*\/ .a)` stops.
        */
     sequence(
       routed(),
-      optional(space),
-      SelectorOnlyPseudoArgument,
-      optional(space),
-      literal(')')
+      parser(
+        { trivia: forgivingListTrivia },
+        sequence(
+          SelectorOnlyPseudoArgument,
+          literal(')')
+        )
+      )
     ),
     children => pseudoSelector(
       scssPseudoName(requireToken(children[0]).value),
@@ -5180,13 +5199,13 @@ const scssFactory = (g: ScssInputRules) => {
     'StructuredPseudo',
     sequence(
       routed(),
-      optional(space),
       parser(
         { trivia: forgivingListTrivia },
-        g.ForgivingSelectorList
-      ),
-      optional(space),
-      literal(')')
+        sequence(
+          g.ForgivingSelectorList,
+          literal(')')
+        )
+      )
     ),
     children => pseudoSelector(
       scssPseudoName(requireToken(children[0]).value),
@@ -5685,6 +5704,7 @@ const scssFactory = (g: ScssInputRules) => {
     ScssGenericAtRuleName,
     UnknownAtRuleBlock,
     InterpolatedSimple,
+    NestingSelector,
     Placeholder,
     MalformedPseudoSelectorNumericArgument,
     PseudoArgument,

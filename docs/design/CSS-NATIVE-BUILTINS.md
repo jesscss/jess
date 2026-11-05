@@ -104,14 +104,18 @@ Where the Less meaning and a naive CSS form disagree, and how each is handled:
 | Case | Difference | Handling |
 | --- | --- | --- |
 | **Clamping** (V14) | Relative-colour channels are *not* clamped (css-color-5 §4.1): `hsl(from C h s calc(l + 50))` can leave the sRGB gamut and the browser gamut-maps it (css-color-4 §11.2, §14). Less clamps the written channel to `[0, 1]`. | The CSS form writes the clamp: `clamp(0, l + A, 100)`. Alpha *is* clamped by CSS (§4.1), so the alpha family needs none. Every result stays in gamut. |
-| **HSL vs sRGB round trip** | The browser takes `h s l` from the origin "after conversion, if required, to sRGB" (§4.4), and an `hsl()` colour resolves to sRGB (css-color-4 §2). Jess carries the authored HSL exactly (`Color.hsl`, V5). | For a chromatic origin, both sides use the same formulas (`rgbToHsl`/`hslToRgb`, `color.ts`): float ulps, below V4's 1e-10 tolerance and the byte rounding. **A grey a built-in computed keeps its hue in Jess:** `desaturate`/`greyscale` write `s = 0` and Jess carries the hue to the next call (`Color.hsl`), so `saturate(desaturate(#33cc33, 100%), 50%)` is `#40bf40` (green) today. In the browser each relative colour resolves to sRGB, a grey's hue is powerless (css-color-4 §4.4.1) and reads as 0, so the same chain is `#bf4040` (red). An authored grey `hsl(120, 0%, 50%)` already loses its hue in Jess (`saturate(hsl(120, 0%, 50%), 20%)` is `hsl(0, 20%, 50%)` today). Q9. |
+| **HSL vs sRGB round trip** | The browser takes `h s l` from the origin "after conversion, if required, to sRGB" (§4.4), and an `hsl()` colour resolves to sRGB (css-color-4 §2). Jess carries the authored HSL exactly (`Color.hsl`, V5). | Measured in Chrome 152, the only browser measured: an origin that resolves in HSL keeps its own `h`, `s` and `l` when a relative `hsl()` reads it, a grey's, black's and white's included (`hsl()`, a relative `hsl()`, `color-mix(in hsl, …)`), and an origin that resolves in sRGB reads through sRGB, a grey's hue being 0 (hex, a named colour, `rgb()`, `rgb(from …)`, `color-mix(in srgb, …)`). Jess does the same for what it computes: `saturate(desaturate(#33cc33, 100%), 50%)` is `#40bf40`, `hue(desaturate(#33cc33, 100%))` is `120`, and `saturate(hsl(120, 0%, 50%), 20%)` is `hsl(120, 20%, 50%)`, while `saturate(#808080, 50%)` is red. `Q9`. Math on the 0–100 scale leaves rounding in a channel, which would move a colour that lands on a half byte, so a channel's change applies to the origin's exact value on 0–1 (`moved`, `css-color.ts`), V4's tolerance trimming the rounding; for that, a form has the kernel's bytes. A channel written with `*` or `/` changes by a percentage of the origin's channel, and any other by an absolute amount (`scalesChannel`). |
+| **Out-of-range channels** | A colour can hold channels outside sRGB (`rgb(300, 0, 0)`, `#7249ff + #111`), and prints them clamped. | A known origin reads the channels it prints, so a call and its form are one value: clamped sRGB. Measured in Chrome 152: `darken(rgb(300, 0, 0), 10%)` is `rgb(204, 0, 0)`, `saturate(rgb(300, 0, 0), 10%)` stays `rgb(255, 0, 0)`, and `darken(#7249ff + #111, 25%)` equals `darken(#835aff, 25%)`. An in-range fraction a computed colour holds is not rounded first. |
+| **Out-of-range `hsl()`** | The spelling decides what a channel reads. | Measured in Chrome 152: comma `hsl(120, 150%, 50%)` clamps, so `s` reads 100, and space-separated `hsl(120 150% 50%)` keeps it, so `s` reads 150; either spelling reads a negative as 0. Comma `hsl(120, 50, 50)` and `hsl(none, 50%, 50%)` are invalid, so not known. A consumer computes a comma channel, clamped (`isCssColorCall`, §3.4). A space-separated one outside 0–100 is out of the sRGB gamut, which the browser gamut-maps, so the call stays printed (slice 2a): `darken(hsl(120 150% 50%), 10%)` is `hsl(from hsl(120 150% 50%) h s clamp(0, l - 10, 100))`, and `fade(hsl(120 150% 50%), 50%)` is `rgb(from hsl(120 150% 50%) r g b / 0.5)`, whose `r g b` read outside sRGB (`color(srgb -0.25 1.25 -0.25 / 0.5)`). |
+| **Out-of-range `rgb()`** | The spelling decides nothing. | Measured in Chrome 152: `rgb(300 0 0)`, `rgb(300, 0, 0)`, `rgb(150% 0% 0%)` and `rgb(150%, 0%, 0%)` compute `rgb(255, 0, 0)`, and a relative colour reads them clamped (`rgb(from rgb(300 0 0) calc(r - 100) g b)` has `r` 155 of 255); a negative reads 0 in either spelling. So both stay in gamut, and a consumer computes both. Comma `rgb(50%, 20, 30)` and `rgb(none, 20, 30)` are invalid, so not known to a consumer; space-separated `rgb(50% 20 30)` and `rgb(none 20 30)` are valid. `rgb(10 20 30 40)` is invalid. A relative `rgb()` is not clamped: `rgb(from #336699 calc(r + 300) g b)` is `color(srgb 1.37647 0.4 0.6)`, so it stays printed. Alpha clamps in every spelling. |
+| **Out-of-range `hwb()`** | White and black outside 0–100%. | Measured in Chrome 152: there is no comma `hwb()`, and it is always in gamut. A negative reads 0 (`hwb(90 -25% 50%)` is `rgb(64, 128, 0)`), a sum over 100% normalizes to a grey (`hwb(90 80% 80%)` is `rgb(128, 128, 128)`), and neither is clamped above (`hwb(90 150% 50%)` is `rgb(191, 191, 191)`). So the `hsv` form always computes. |
 | **`method: relative`** | Less scales the delta by the current channel. | Written into the form: `clamp(0, l - l * A / 100, 100)`; alpha: `calc(alpha - alpha * A)`. Exact. |
 | **Precision** | The browser computes in floats. Jess runs `+ - *` in exact base 10 (V6). | A form resolves only when every operand is a resolved number (channel keywords replaced by the origin's channel values), and then runs through the same operation evaluator as Less math (`value-operate.ts` `operate`), so V6 applies and V36's operand rule never sees a keyword. An unresolved form is never operated: it is written out, as math inside a math function always is (F8). Differences stay below the output policy, except at decimal ties (the `round` row). |
 | **Amount scale** | Less reads `10%` and `10` alike as 0.1. A relative `l` is a number on 0–100, so `l - 10%` is invalid (a number and a percentage don't add), and so is `alpha + 10%`. | A known amount is written as a number (`l - 10`, `alpha + 0.1`). A **deferred** amount needs typed arithmetic, `l - var(--a) / 1%` and `alpha + var(--a) / 100%`, which assumes the variable holds a percentage (Q2). |
 | **`mix` alpha** | Less/Sass weight with `((w + a)/(1 + w·a) + 1)/2`, `a = a1 - a2`; `color-mix()` interpolates premultiplied (§3.5). Equal when the alphas are equal (and in some other cases); `mix(red, rgba(0,0,255,.5), 25%)` gives `[128,0,128]` vs `[102,0,153]`. Less also mixes **rounded** 0–255 operands (`colorRgbRounded`), ±1 byte for fractional channels. | Q1. |
 | **`round` tie** | CSS `nearest` breaks ties toward +∞ (`round(-0.5, 1)` = 0); V8: half away from zero (−1). And decimal ties: the compile rounds `round(1.005, 2)` in base 10 to `1.01`, while a browser's float `1.005` sits just below the tie and rounds to `1`. | `calc(sign(N) * round(abs(N), B))` fixes the sign. The decimal tie stays a divergence (V8's open sub-question), so `round` is exact-if "N is not a decimal tie". `sign()`/`abs()` are Baseline 2025 (MDN). Q4. |
 | **Nested `calc()`** | `calc(percentage(var(--p)))` would write `calc(calc(var(--p) * 100%))`. | Inside a math function a form's own `calc()` wrapper is not written: `calc(var(--p) * 100%)`. This is how V27 already writes kept math inside a math function. |
-| **Result format** (V10) | The alpha kernel `withAlpha` (`color-helper.ts:52`) owns the rule that a translucent result retags hex to `rgba()` unless the source hex had an alpha digit. | When that kernel is deleted, the rule moves with it into the one function that picks a resolved form's output format. That function is shared by every colour form and is the only owner. Spelling only, unchanged bytes. |
+| **Result format** (V10) | A translucent result retags hex to `rgba()` unless the source hex had an alpha digit. | The one function that picks a resolved form's output format owns the rule, `spelled` (`css-form.ts`), shared by every colour form. A relative `hsl()` keeps its input's format, in legacy syntax. A built-in that names a format has it, in legacy syntax: `hsv` hex, `hsva` and two-slot `rgba` `rgb()`. Any other, the alpha family, keeps its input's format and syntax until the result is translucent. Q14 is open: this is spelling only, and no byte moved for it. |
 | **`mod` sign** | Less `mod` is JS `%` (sign of the dividend). CSS `mod()` takes the divisor's sign, `rem()` the dividend's (§10.3). | `rem()`. Q4. |
 | **Types CSS rejects** | CSS `sqrt`/`pow` take numbers only (§10.5); `round(A, B)` needs A and B of one type, B optional only for a number (§10.3); `rem` needs one type. Less keeps a unit (`sqrt(4px)` = `2px`, `mod(5px, 2)` = `1px`). | A *known* input still resolves as today. A deferred input of unknown type gets the number form, which is valid exactly when the variable holds a number (Q3). |
 | **`asin`/`acos`/`atan`** | Less writes `rad`; CSS returns an `<angle>`. | Same quantity; already-css. |
@@ -143,28 +147,28 @@ The evaluated value keeps the parse tree's two calculation kinds as
 structure:
 
 - **A call written out as-is** (`fallbackCall`: a CSS or unknown function, a
-  built-in that could not compute) stays the `Keyword` that spells it, and
-  carries `call: { name, args }`: its name and its evaluated arguments as
-  written, a `ValueGroup` whose members may carry a `call` in turn
-  (`value-eval.ts` `KeywordCall`; `null` on every other keyword, so `Keyword`
-  stays one hidden class). It is not a new value kind because every consumer reads
-  this value as a keyword today, and each would change: a parameter typed
-  `Keyword` accepts it, `iskeyword()` is true of it, Sass `type-of()` calls it
-  a string, and an argument error names `Keyword`. The slices that change one
-  of those readings change it on purpose. Its CSS type (`color` for
-  `hsl()`/`rgb()`/`hwb()`/`color-mix()`/`contrast-color()`/`light-dark()`;
-  for `calc()`/`clamp()`/`round()`/`rem()`/`abs()`/`sign()` the type
-  css-values-4 §10.9 gives its arguments) follows from the name and is read
-  where slice 2 first needs it. Built in slice 1.
-
-  Slice 2 replaces it with a value kind of its own, `FunctionCall`: the
-  evaluated twin of the parse tree's `FunctionCall`, as the value `Color`,
-  `Dimension`, `Keyword`, `Quoted` and `List` are of theirs (owner,
-  2026-11-01, asked whether the call is "like a FunctionCall": *"yeah do that
-  i think"*). It holds the name, the evaluated arguments, the CSS type the
-  call produces and its bytes, and `KeywordCall` goes. Slice 2 is where the
-  keyword readings above must change anyway: a deferred colour has to satisfy
-  a colour parameter and `iscolor()`.
+  built-in that could not compute, a built-in's CSS form) is the value kind
+  `FunctionCall` (`value-eval.ts`): the evaluated twin of the parse tree's
+  `FunctionCall`, as the value `Color`, `Dimension`, `Keyword`, `Quoted` and
+  `List` are of theirs (owner, 2026-11-01, asked whether the call is "like a
+  FunctionCall": *"yeah do that i think"*). It holds the name, the evaluated
+  arguments as written (members may be calls in turn), the CSS type the call
+  produces and its bytes. The type follows from the name: `color` for
+  `hsl()`/`rgb()`/`hwb()`/`color-mix()`/`contrast-color()`/`light-dark()` and
+  the other colour functions; `numeric` for a css-values-4 §10 math function,
+  whose exact type §10.9 gives its arguments; unknown for `var()` and an
+  unknown function. Anything that does not ask for the structure reads it as
+  the keyword that spells it: a parameter typed `Keyword` accepts it,
+  `iskeyword()` is true of it, Sass `type-of()` calls it a string, and an
+  argument error names `Keyword`. A parameter whose type includes
+  `FunctionCall` takes it, when its type is unknown or the parameter's
+  (`value-dispatch.ts`); a call of a known, wrong type fails the parameter
+  (§3.6). A built-in's deferred result is marked `computed`, so `iscolor()`
+  of it is true and `iskeyword()` false (Q10), while an authored
+  `iscolor(hsl(from var(--c) h s l))` stays as it was. A paren group around a
+  call is that call, its parens in its spelling until a callable reads the call
+  inside them (J16). Built in slice 2b, replacing the `KeywordCall` slice 1 hung
+  on the keyword.
 - **Kept math**: arithmetic that has not computed, `op`, `left`, `right`, in
   place of `keptMath`'s bytes. Preserved math (`calc(1px + 1em)`, V18) becomes
   that structure in a `calc` call, the same value an authored
@@ -194,6 +198,21 @@ runtime and no code is generated at runtime. Calling the built-in binds the
 parameters to the evaluated arguments and evaluates the template, which
 yields a `Call`. One definition per built-in: the JS kernel it replaces
 (`hslAdjust`, the alpha arithmetic in `withAlpha`, `mixColors`) is deleted.
+
+As built: the source is `packages/fns/src/less/css-forms.jess`, an ordinary
+stylesheet function per form (`$darken: @($color, $amount) > { result: …; }`),
+a `relative` form beside each absolute one. `pnpm build:forms` writes the parse
+tree as `css-forms.generated.ts`, committed, built by `@jesscss/core/ast`'s
+constructors (V8 invariant 12), and a test keeps it equal to the parse of the
+source. `defineForm` (`packages/core/src/ast/css-form.ts`, on the subpath
+`@jesscss/core/form`, as a form needs the evaluator and `@jesscss/core/value`
+stays without it) binds the arguments and evaluates the form's `result:` as a
+stylesheet function's (`evalForm`), on a lane of its own with no function
+registered: every call in a form is CSS, and the form is not in the document that
+called it. A form is one `result:`; the build rejects any other body, since one
+activation serves every call. A known origin decides first, reading the same
+channels `resolveColorCall` does, and an unknown input prints the form; the one function
+that spells a resolved form's result is `spelled`.
 
 ### 3.4 Resolving: an operated value computes, an authored one prints as written
 
@@ -255,12 +274,14 @@ rung 3); a row whose class is `none` has only rungs 1 and 4.
 A call's bytes are written once, when the call is made, compressed under
 `compress`: a call written out as-is by `verbatimArgs`, a CSS-shaped colour
 call kept as authored by `preserveCall`, a kept `calc()` by `evalCalc`. So it
-prints the same in a declaration, an interpolation (`evalInterp`), a selector,
-a mixin argument and a guard operand (SEMANTIC-INVARIANTS 2), and compressed
-output spells it with the compressed number and separator rules. Inside a math
+prints the same in a declaration, a selector, a mixin argument and a guard
+operand (SEMANTIC-INVARIANTS 2), and compressed output spells it with the
+compressed number and separator rules. An interpolation (`evalInterp`) spells a
+call written out as-is its own way, which predates this design and is unchanged;
+it has not been brought under this rule. Inside a math
 function a `calc` `Call` drops its own wrapper (`calc(calc(x))` is never
 written; V27). A paren group around a `Call` keeps its parens, as around any
-call written out (J16). Structure travels with the value, so the eager
+call written out (V38); a callable reads the call inside them, so a form's slot prints it bare (J16). Structure travels with the value, so the eager
 mixin-argument snapshot (`snapshotValues`, V3) keeps it without a side table.
 The type predicates read the call's CSS type (`iscolor()` of a colour call: Q10).
 
@@ -298,7 +319,22 @@ two-slot `rgba(C, a)` takes the relative form only for a deferred colour that
 is not a substitution function (`rgba(currentcolor, .5)` →
 `rgb(from currentcolor r g b / 0.5)`). The same holds for every already-css
 name: a `var()` may expand to several arguments, and the call as written is
-already right.
+already right. An exposed variable is not that `var()`: the compile knows its
+value's type, so `@less.rgba(@brand, .5)` with `@brand: #c00` takes the relative
+form over it (R8), and `@less.rgb(@r, 0, 0)` with `@r: 10` is
+`rgb(var(--r, 10), 0, 0)`, which is valid CSS with no form at all. A wrong value
+fails the slot it is in, at the compile.
+
+A channel written in parens of its own is invalid CSS in Chrome 152 in every
+position, as printed. A consumer still reads the value inside the group (J16, F4):
+`fade(hsl((@h + 1) 50% 50%), 50%)` computes, as does `fade(rgb((10) 20 30), 50%)`,
+in every spelling. Parens in Less are how math is written in a space-separated
+channel under `parens` and `strict`.
+
+An export's unit decides whether its slot's form means what it computes to
+(`formUnits`): `@r: 10` in `@less.rgb(@r, 0, 0)` prints the form, and `@r: 2px`
+keeps its recipe, which computes `rgb(2, 0, 0)`. A known channel of a unit CSS does
+not take beside a `var()` fails: `@less.rgb(var(--r), 1px, 0)`.
 
 ## 4. Slice plan
 
@@ -314,9 +350,9 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 | 0 | Move the inventory into `packages/fns` and add a test that every registered colour/math `Fn` has exactly one row (the runtime work reads it). No output change. | — |
 | 1 | The IR for calls: a call written out as-is (`fallbackCall`) carries its `call` (§3.2). No output change, proven on the full corpus. Kept math's structure moves to slice 5. Still text, with `call: null`: a CSS-shaped colour call kept as authored (`preserveCall`), a kept `calc()` (`evalCalc`), CSS `if()` (`pickIfValue`), a call inside a `var()` fallback, and a paren group around a call (`(var(--a))`). Slice 2 gives each the structure its built-ins read, with the Q12 cases. | — |
 | 2a | Resolution of a modern `hsl()` a consumer demands, when its callable wrote it out as-is (`packages/core/src/ast/css-color.ts`): absolute and relative, the channel keywords bound to the origin's sRGB values while the channels evaluate, so the math in them is Less math (§2 Precision), typed as CSS math (`l - 10%` and `h + 30deg` are not CSS, so they stay unresolved). Unresolved, and printed as written, when the origin or a channel is unknown, the alpha has no `/`, a channel fails only bound (`calc(l / 0)`), or the saturation or lightness leaves 0–100 (out of the sRGB gamut, which the browser gamut-maps). A resolved colour keeps the written spelling until an operation consumes it (V1), so a mixin argument prints it as before. A colour function in a channel binds its own channels. A callable that computes the call itself (Sass `hsl()` on an absolute colour) still does. The browser conformance test. The Q12 relative-colour case; no corpus fixture moves. Q14 is open. | — |
-| 2b | Templates: the `.jess` template build step in `@jesscss/fns`, and the `FunctionCall` value kind (§3.2). Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. `clamp()` resolves in a channel. | 2a |
-| 3 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` (relative `rgb()`). | slice 2 |
-| 4 | `hsv` `hsva` → `hwb()`. | slice 2 |
+| 2b | Templates: the `.jess` template build step in `@jesscss/fns`, and the `FunctionCall` value kind (§3.2). Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. `clamp()` resolves in a channel. An exposed variable in the colour slot prints the form over its `var()` (R8). An unknown *amount* (`darken(@c, var(--a))`) stays exactly as it was until slice 5. A callable reads the call inside a paren group, which is also what `@v: (var(--x)); lighten(@v, 5%)` reads (J16): `lighten((var(--x)), 5%)` is `hsl(from var(--x) h s clamp(0, l + 5, 100))`, since `hsl(from (var(--x)) …)` is invalid CSS in Chrome 152. Parens around a written-out form stay (V38). A method only the browser knows cannot pick a form, so `darken(var(--c), 10%, var(--m))` stays written out, as does the same call on a known colour. Still text, so it fails a colour parameter as before: a kept `calc()`. A CSS colour call its callable cannot compute is written out under every `functionMode` when a consumer demands it, so only a known wrong type fails (§3.6). A form over `color-mix(in srgb, red, blue)` prints until slice 6 gives it its evaluation. Sass rows are slice 8. | 2a |
+| 3 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` and `rgb(C, a)` (relative `rgb()`); their kernels deleted, and the format rule in `spelled` (§2). A known origin reads `r`, `g`, `b` and `alpha` on the evaluator path `hsl()` reads its channels on, so a consumer computes `rgb()` in any spelling, `rgb(10 20 30)` and `rgb(from …)` included (`resolveColorCall`). `rgba(var(--rgb), .5)` and `rgba(foo(1), .5)` stay written (§3.8), as do a space-separated `rgba(#f00 .5)`, an unknown alpha (slice 5) and a method only the browser knows. What moved against the old kernels, each read against the form in Chrome 152: a space-separated colour as the input, which was written out; a named or computed colour in two-slot `rgba()`, which was written out and invalid; a chain of the family, where the browser clamps each result and the kernel clamped only the last, so `fadein(fadeout(#336699, 150%), 20%)` is `rgba(51, 102, 153, 0.2)`, not `rgba(51, 102, 153, 0)`, and the in-range `fadeout(fadein(#336699, 10%), 5%)` is `rgba(51, 102, 153, 0.95)`, not `#336699`. An authored alpha out of range clamps first: `fadeout(rgba(1, 2, 3, 1.5), 10%)` was `rgb(1, 2, 3)`, now `rgba(1, 2, 3, 0.9)`. A consumer outside the family reads the alpha the form computes: `multiply(fade(#336699, 150%), #888)` was `#000e36`, now `#1b3652`, and `argb(fade(#336699, 150%))` was `#17f336699`, now `#ff336699` (Chrome 152 reads `rgb(from #336699 r g b / 1.5)` as alpha 1). A channel out of range clamps on the way through: `fade(rgb(300, 0, 0), 50%) - #ff0000` was `#2d0000`, now `#000000`. Compressed, `fadeout(#33669980, 100%)` was `#33669981`, from a negative alpha, and is now `#3690`, alpha 0, as the form reads. An authored `rgb()` is a colour to whatever computes on it: `iscolor(rgb(1 2 3))` was `false`, now `true`; `rgb(1 2 3) + #111` was an error, now `#121314`; `.a when (rgb(1 2 3) = #010203)` did not match, and now does. An absolute call's channels that computed are read from what the call evaluated, so `fade(rgb(next() 2 3), 50%)` calls `next()` once; a relative channel evaluates again with the origin's keywords bound. | slice 2 |
+| 4 | `hsv` `hsva` → `hwb()`, computed through sRGB, so `saturate(hsv(120, 0, .5), 50%)` reads a grey's hue as 0, as `hsl(from hwb(120 50% 50%) …)` does. Only a hue the browser knows prints the form, with white and black computed first: `hsv(var(--h), 50%, 75%)` is `hwb(var(--h) 37.5% 25%)`. An unknown S or V may hold a percentage, which that math cannot read in CSS, so it stays written, with an unknown alpha, until slice 5. The form is `hsv` exactly for S and V in 0–100%. Outside it the kernel's arithmetic was its own, and a known input now computes what the form computes (`hsv(90, 150%, 50%)` was `#208000`, now `#408000`). At half-byte ties a known input moves to Chrome's byte (`hsv(0, 80%, 50%)` was `#801919`, now `#801a1a`). | slice 2 |
 | 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | — |
 | 6 | `mix` `tint` `shade` `average` → `color-mix(in srgb)`, and the longer relative form for weights `color-mix()` cannot hold (§3.4a). | — |
 | 7 | `contrast()` → `contrast-color()`; known inputs pick by the larger WCAG 2.1 contrast ratio. | — (the `contrast()` fixtures that move are listed for the owner) |
@@ -390,6 +426,44 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   fixtures that move. The Less corpus has no direct chain (a hue-reading
   built-in around `desaturate()`/`greyscale()`); a chain through a variable is
   measured in slice 2.
+  **Correction, 2026-11-05: measured, owner to confirm.** The premise above was
+  never measured, and Chrome 152 (the only browser measured, `getComputedStyle`
+  and canvas bytes) contradicts it. An `hsl()`-family origin keeps its own
+  channels when a relative `hsl()` reads it; any other origin reads through sRGB:
+  `hsl(from hsl(from #33cc33 h 0 l) h calc(s + 50) l)`,
+  `hsl(from hsl(120 0% 50%) h calc(s + 50) l)` and
+  `hsl(from hsl(120, 0%, 50%) h calc(s + 50) l)` are `#40bf40`, while
+  `hsl(from #808080 h calc(s + 50) l)` and `hsl(from rgb(128 128 128) h calc(s + 50) l)`
+  are `#bf4040`. Hue and saturation survive black and white:
+  `hsl(from hsl(from #33cc33 h s 100) h s clamp(0, l - 50, 100))` and
+  `hsl(from hsl(from #33cc33 h s 0) h s clamp(0, l + 50, 100))` are `#33cc33`.
+  A reviewer also reports red once the origin is resolved through a registered
+  `<color>` property, `rgb(from …)` or `color-mix()`; measured directly here,
+  `rgb(from hsl(120 0% 50%) r g b)` and `color-mix(in srgb, hsl(120 0% 50%), hsl(120 0% 50%))`
+  read hue 0, while `color-mix(in hsl, hsl(120 0% 50%), hsl(120 0% 50%))` keeps 120, 0, 50.
+  So following the browser keeps what Jess did before slice 2b for a computed grey:
+  `saturate(desaturate(#33cc33, 100%), 50%)` is `#40bf40` and
+  `hue(desaturate(#33cc33, 100%))` is `120`. It moves an authored grey, black or
+  white, for what reads it and for how it prints:
+
+  | Call | Was | Is |
+  | --- | --- | --- |
+  | `hue(hsl(120, 0%, 50%))` | `0` | `120` |
+  | `saturation(hsl(120, 50%, 100%))` | `0%` | `50%` |
+  | `hsl(hsl(120, 0%, 50%))` | `hsl(0, 0%, 50%)` | `hsl(120, 0%, 50%)` |
+  | `hsla(hsl(120, 0%, 50%), .5)` | `hsla(0, 0%, 50%, 0.5)` | `hsla(120, 0%, 50%, 0.5)` |
+  | `darken(hsl(120, 50%, 100%), 20%)` | `hsl(0, 0%, 80%)` | `hsl(120, 50%, 80%)` |
+  | `lighten(hsl(120, 50%, 0%), 20%)` | `hsl(0, 0%, 20%)` | `hsl(120, 50%, 20%)` |
+  | `saturate(hsl(120, 0%, 50%), 20%)` | `hsl(0, 20%, 50%)` | `hsl(120, 20%, 50%)` |
+  | `desaturate(hsl(120, 0%, 50%), 20%)` | `hsl(0, 0%, 50%)` | `hsl(120, 0%, 50%)` |
+  | `spin(hsl(120, 0%, 50%), 20)` | `hsl(20, 0%, 50%)` | `hsl(140, 0%, 50%)` |
+  | `greyscale(hsl(120, 0%, 50%))` | `hsl(0, 0%, 50%)` | `hsl(120, 0%, 50%)` |
+  | `.m(hsl(120, 0%, 50%))` printing its argument | `hsl(0, 0%, 50%)` | `hsl(120, 0%, 50%)` |
+  | `.m(hsl(120, 50%, 100%))` printing its argument | `hsl(0, 0%, 100%)` | `hsl(120, 50%, 100%)` |
+  | `.m(hsl(0.25turn, 0%, 50%))` printing its argument | `hsl(0, 0%, 50%)` | `hsl(0.25turn, 0%, 50%)` |
+
+  An authored value now prints what it reads, so `hsl(from @c h calc(s + 20) l)`
+  and `saturate(@c, 20%)` agree in the browser. Only Chrome was measured.
 - **Q10 — type tests on a deferred colour.** **Ruled as recommended, owner 2026-11-01 (sugar framing, below).** Is `iscolor(darken(var(--x),
   10%))` true (it is a colour the browser computes) or false, as
   `iscolor(var(--x))` is today? Recommendation: true for a deferred built-in
@@ -416,8 +490,8 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   resolve, because their leaves are known; written on their own they still
   print as written. Allow it? Recommendation: yes. It is V1 (a value prints as
   written until an operation consumes it), and it changes output only where a
-  built-in today receives an authored `color-mix()`/relative colour/`calc()`
-  (to be counted in slice 2).
+  built-in today receives an authored `color-mix()`/relative colour/`calc()`.
+  Counted in slice 2b: no corpus fixture.
 - **Q13 — `contrast()` (Less only; Sass has none).** **Ruled as recommended, owner 2026-11-01: a known input picks by the larger WCAG 2.1 contrast ratio** (asked under the E9 principle; the owner answered *"agreed"*). With an explicit threshold argument a known input keeps the luma-threshold rule, and an unknown input with a threshold is a failed call. `contrast(C)` maps to
   `contrast-color(C)` (css-color-5 §8; Baseline 2026). Known dark/light
   colours `D`, `L` are selected without `if()`, by using the black/white
@@ -436,7 +510,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   being the only exception; this moves some of the 19 `contrast()` cases in
   `tests-unit/functions/functions.less` (to be counted).
 
-- **Q14 — the syntax a built-in writes its result in, for an input written in modern syntax.** OPEN. With slice 2a a built-in can receive a colour written in modern syntax (`darken(hsl(120 50% 40%), 5%)`), and the kernels disagree: `darken`, `lighten`, `saturate`, `desaturate` and `spin` write legacy syntax (`hsl(120, 50%, 35%)`), while `fade` keeps the modern syntax (`rgb(51 153 51 / 0.5)`). V10 decides the format (HSL in, HSL out), not the syntax. Recommendation: modern in, modern out, decided in the one function that picks a resolved form's format (§2 Result format), when slice 2b deletes the kernels. The conformance test pins the colour, not this spelling.
+- **Q14 — the syntax a built-in writes its result in, for an input written in modern syntax.** OPEN, not ruled. Slices 2b and 3 change no byte for it on `hsl()`: `darken(hsl(120 50% 40%), 5%)` stays `hsl(120, 50%, 35%)`, legacy syntax, in the one function that spells a resolved form's result (`spelled`, `css-form.ts`), so the answer is a one-line change. Its scope grew with slice 3, which computes a space-separated `rgb()` for the first time: `darken(rgb(10 20 30), 5%)` prints legacy `rgb(4, 7, 11)` and `fade(rgb(10 20 30), 50%)` prints modern `rgb(10 20 30 / 0.5)`, both new bytes where the call was written out before, so the answer also picks these. With slice 2a a built-in can receive a colour written in modern syntax (`darken(hsl(120 50% 40%), 5%)`), and the kernels disagree: `darken`, `lighten`, `saturate`, `desaturate` and `spin` write legacy syntax (`hsl(120, 50%, 35%)`), while `fade` keeps the modern syntax (`rgb(51 153 51 / 0.5)`). V10 decides the format (HSL in, HSL out), not the syntax. Recommendation: modern in, modern out. The conformance test pins the colour, not this spelling.
 
 ### The owner's framing (2026-11-01): built-ins are sugar for CSS
 

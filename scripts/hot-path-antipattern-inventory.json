@@ -157,6 +157,13 @@
       "snippet": "text.charCodeAt(at)"
     },
     {
+      "file": "packages/core/src/ast/extend/dynamic.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "a4a83fcafd3faf3b",
+      "ordinal": 0,
+      "snippet": "rule.selector.selectors.indexOf(inst.subject.selectors[0]!)"
+    },
+    {
       "file": "packages/core/src/ast/extend/emit.ts",
       "rule": "no-rescan-in-loop",
       "fingerprint": "bf7c22d08aa3b2f9",
@@ -505,14 +512,6 @@
       "fingerprint": "bc9f264ef5c5e392",
       "ordinal": 0,
       "snippet": "new WeakMap<EvalModes, EvalModes>()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "4194fde10645db5e",
-      "ordinal": 0,
-      "snippet": "params.indexOf(argName)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -956,14 +955,6 @@
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
-      "file": "packages/core/src/ast/extend/dynamic.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "a4a83fcafd3faf3b",
-      "ordinal": 0,
-      "snippet": "rule.selector.selectors.indexOf(inst.subject.selectors[0]!)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
       "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
       "fingerprint": "722d108585fce322",
@@ -1024,6 +1015,13 @@
       "fingerprint": "fd6143095636c7ae",
       "ordinal": 0,
       "snippet": "sourceText.slice(injected, authoredEnd)"
+    },
+    {
+      "file": "packages/core/src/ast/value-dispatch.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "4194fde10645db5e",
+      "ordinal": 0,
+      "snippet": "params.indexOf(argName)"
     },
     {
       "file": "packages/core/src/ast/value-operate.ts",

@@ -718,12 +718,20 @@ export function QuotedValueNode(value, quote, escaped, bytes) {
   this.bytes = bytes;
 }
 
-export function KeywordValueNode(text, bytes, groups, call) {
+export function KeywordValueNode(text, bytes, groups) {
   this.type = 'Keyword';
   this.text = text;
   this.bytes = bytes;
   this.groups = groups;
-  this.call = call;
+}
+
+export function FunctionCallValueNode(name, args, result, computed, bytes) {
+  this.type = 'FunctionCall';
+  this.name = name;
+  this.args = args;
+  this.result = result;
+  this.computed = computed;
+  this.bytes = bytes;
 }
 
 export function AnyValueNode(bytes, escapedQuote, groups) {
@@ -774,7 +782,7 @@ export function BlockValueNode(value, delimiter, bytes) {
 for (const f of [
   NullNode, ExposedNameNode, MixinPathSegmentNode, AtRuleStatementNode,
   GuardCompareNode, GuardLogicalNode, GuardNotNode, GuardValueNode, GuardCallNode, GuardDefaultNode,
-  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode,
+  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode, FunctionCallValueNode,
   AnyValueNode, UrlValueNode, BoolValueNode, NullValueNode, ListValueNode, CollectionValueNode, BlockValueNode
 ]) {
   f.prototype = Object.prototype;
@@ -799,7 +807,7 @@ for (const f of [
   ExpressionNode, ConditionNode, IfValueNode, VariableDeclarationNode, VariableExposeNode, MixinDefinitionNode,
   MixinCallNode, ApplyNode, StyleImportNode, ModuleImportNode, StylesheetNode, AtRuleBlockNode, UnknownAtRuleBlockNode,
   PluginNode, RulesetNode, RulesetExtendNode, RulesetGuardNode, RulesetExtendGuardNode, ReferenceCallNode, NullNode, AtRuleStatementNode,
-  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode,
+  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode, FunctionCallValueNode,
   AnyValueNode, UrlValueNode, BoolValueNode, NullValueNode, ListValueNode, CollectionValueNode, BlockValueNode
 ]) {
   const sentinels = Array.from({ length: f.length }, () => ({}));

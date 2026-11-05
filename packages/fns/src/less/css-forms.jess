@@ -1,0 +1,17 @@
+$darken: @($color, $amount) > { result: hsl(from $color h s clamp(0, l - $amount, 100)); }
+$darken-relative: @($color, $amount) > { result: hsl(from $color h s clamp(0, l - l * $amount / 100, 100)); }
+$lighten: @($color, $amount) > { result: hsl(from $color h s clamp(0, l + $amount, 100)); }
+$lighten-relative: @($color, $amount) > { result: hsl(from $color h s clamp(0, l + l * $amount / 100, 100)); }
+$saturate: @($color, $amount) > { result: hsl(from $color h clamp(0, s + $amount, 100) l); }
+$saturate-relative: @($color, $amount) > { result: hsl(from $color h clamp(0, s + s * $amount / 100, 100) l); }
+$desaturate: @($color, $amount) > { result: hsl(from $color h clamp(0, s - $amount, 100) l); }
+$desaturate-relative: @($color, $amount) > { result: hsl(from $color h clamp(0, s - s * $amount / 100, 100) l); }
+$spin: @($color, $amount) > { result: hsl(from $color calc(h + $amount) s l); }
+$greyscale: @($color) > { result: hsl(from $color h 0 l); }
+$fade: @($color, $amount) > { result: rgb(from $color r g b / $amount); }
+$fadein: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha + $amount)); }
+$fadein-relative: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha + alpha * $amount)); }
+$fadeout: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - $amount)); }
+$fadeout-relative: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - alpha * $amount)); }
+$hsv: @($h, $w, $b) > { result: hwb($h $w $b); }
+$hsva: @($h, $w, $b, $a) > { result: hwb($h $w $b / $a); }

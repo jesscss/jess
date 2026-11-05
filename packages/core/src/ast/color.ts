@@ -10,13 +10,14 @@
 import type { Color } from './value-eval.js';
 import { round } from './round.js';
 import { formatNumber } from './format-number.js';
+import { convertValue } from './value-units.js';
 
 /* color-format enum, mirrored from the legacy engine's ColorFormat (opaque `number`). */
 export const HEX = 0;
 export const RGB = 1;
 export const HSL = 2;
 
-const clamp = (v: number, max: number): number => Math.min(Math.max(v, 0), max);
+export const clamp = (v: number, max: number): number => Math.min(Math.max(v, 0), max);
 
 /** HSL(h deg, s 0-1, l 0-1) -> RGB 0-255, byte-identical to Color._rgb HSL branch. */
 export function hslToRgb(h: number, s: number, l: number): [number, number, number] {
@@ -49,6 +50,21 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
   const g = hue2rgb(p, q, hue);
   const b = hue2rgb(p, q, hue - 1 / 3);
   return [r * 255, g * 255, b * 255];
+}
+
+/**
+ * `hwb()` to sRGB on 0–255 (css-color-4 §8): the hue's full colour scaled between
+ * the whiteness and the blackness, whose sum at or above 1 is a grey.
+ */
+export function hwbToRgb(h: number, w: number, b: number): [number, number, number] {
+  const sum = w + b;
+  if (sum >= 1) {
+    const grey = (w / sum) * 255;
+    return [grey, grey, grey];
+  }
+  const [r, g, bl] = hslToRgb(h, 1, 0.5);
+  const scale = 1 - sum;
+  return [r * scale + w * 255, g * scale + w * 255, bl * scale + w * 255];
 }
 
 /** RGB 0-255 -> HSL(h deg, s 0-1, l 0-1), byte-identical to Color._hsl RGB branch. */
@@ -152,7 +168,7 @@ export function serializeColor(c: Color, num: (v: number) => string = formatNumb
   if (format === HSL) {
     const [h, s, l] = c.hsl ?? rgbToHsl(c.rgb[0], c.rgb[1], c.rgb[2]);
     const a = clamp(c.alpha, 1);
-    const hue = num(h);
+    const hue = num(c.hueUnit === undefined || c.hueUnit === 'deg' ? h : convertValue(h, 'deg', c.hueUnit));
     const S = num(clamp(s, 1) * 100);
     const L = num(clamp(l, 1) * 100);
     const modern = c.modernSyntax === true;

@@ -96,6 +96,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
+    "build:forms": "node scripts/build-css-forms.mjs",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "cross-env TEST=true vitest",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",

@@ -342,12 +342,12 @@ type GrammarRuleName =
   | 'routedDeclarationListBody'
   | 'calcFunctionArguments'
   | 'functionArgument'
+  | 'functionArgumentGap'
   | 'branchLead'
   | 'varName'
   | 'VarFallbackOpener'
   | 'VarFallbackLead'
   | 'identOrFunction'
-  | 'identifierOrFunction'
   | 'MediaTest'
   | 'MediaTestBody'
   | 'StyleTestBody'
@@ -369,7 +369,7 @@ type GrammarRuleName =
 type GrammarSelf = {
   readonly [K in GrammarRuleName]: K extends keyof typeof cssSyntax
     ? (typeof cssSyntax)[K]
-    : K extends 'identOrFunction' | 'identifierOrFunction'
+    : K extends 'identOrFunction'
       ? Combinator<string>
       : Combinator<unknown>
 };
@@ -378,7 +378,7 @@ type GrammarSelf = {
  * The expected-set atom a refused `@charset` prelude reports, and the one public
  * spelling of it. `CharsetStatement` below is what emits it; the three
  * dialects' `expectedMessage` helpers recognize it by this exact string, the way
- * they already recognize `'")"'` and `'IdentToken'` — those helpers
+ * they already recognize `'")"'` — those helpers
  * deliberately hold no grammar import, and the parseman macro cannot read a
  * cross-module constant inside a combinator argument (it needs a literal), so
  * the less grammar spells the same string rather than importing this one. Each
@@ -426,9 +426,15 @@ const compoundTrivia = classifiedTrivia({ blockComment });
 const commentTrivia = classifiedTrivia({ blockComment });
 
 /*
- * The value ladder runs under `ValueSequence`'s `noTrivia`, and parseman scopes
- * trivia dynamically — clearing it covers every rule reached through a `g.`
- * reference, not just the terms written inside the wrapper. So every interior
+ * The value ladder runs under `ValueSequence`'s `noTrivia`. Clearing trivia reaches
+ * through a reference only to a target with no boundary of its own. A target that
+ * is a multi-term `sequence`, a `many`, `oneOrMore` or `sepBy`, or a `choice` with
+ * such an arm takes its ambient trivia back when it is entered from a cleared
+ * region (parseman's `hasOwnTriviaBoundary`), and the ambient skip then reads the
+ * padding before its own term can. A rule like that which needs its padding as
+ * bytes clears trivia itself, as `CurlyValue`, `BranchValues` and the `var()`
+ * fallback rules do; `ParenValue` and `SquareValue` don't, so the ambient skip can
+ * read theirs first. Every interior
  * that admits authored padding has to spell it, and it must spell `cssValueTrivia`
  * rather than a bare whitespace run: css-syntax-3 §4 makes a comment trivia
  * wherever whitespace is trivia. The `[ \t\n\r\f]+` spellings these replaced are
@@ -646,9 +652,12 @@ const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
  * selector choice it must resolve a concrete first-set (`.`/`#`/`-`/letter/digit/
  * `*`) so the compiler first-char-gates the whole compound choice; a cross-
  * composition reference reads as `any`, entering the simple-selector node frame
- * at every compound-selector boundary (`{`, `,`, whitespace).
+ * at every compound-selector boundary (`{`, `,`, whitespace). A class or id name
+ * may start `--`: `--b` is an ident (css-syntax-3 §4.3.9), so `.--b` is a class
+ * selector and `#--b` an id selector (selectors-4 §3.2). A type selector may not,
+ * so `--x:…` stays a custom property's.
  */
-const simpleSelectorToken = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
+const simpleSelectorToken = regex(/(?:(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))|[.#]--)(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
 
 /*
  * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
@@ -867,19 +876,6 @@ const cssFactory = (g: GrammarSelf) => {
     literal('(')
   )));
 
-  /*
-   * A selector-position identifier, or the same identifier glued to `(` as a
-   * function opener: the `<ident-token>` / `<function-token>` after a pseudo's
-   * colon or double colon (selectors-4 §3.5, §3.6). It reads `Identifier`, the
-   * non-value slot, where `identOrFunction` reads the value-position
-   * `IdentToken`, and the two accept different languages: `Identifier` refuses
-   * a leading `--`, which a value identifier may have. A rule key, so a
-   * dialect routes its own pseudo openers through this one token.
-   */
-  const identifierOrFunction = token(noTrivia(sequence(
-    g.Identifier,
-    optional(literal('('))
-  )));
   const pseudoArgumentContent = scanTo(
     literal(')'),
     {
@@ -956,6 +952,7 @@ const cssFactory = (g: GrammarSelf) => {
    * boundary's authored layout, and needs the `;` among its children to tell an
    * empty group from a full one.
    */
+  /* A slot because Less has `//` comments too, and overrides it to read them. */
   const functionArgumentGap = optional(cssValueTrivia);
   const functionArgumentComma = noTrivia(sequence(
     literal(','),
@@ -970,7 +967,7 @@ const cssFactory = (g: GrammarSelf) => {
   const functionArgumentCommaRest = many(sequence(
     functionArgumentComma,
     g.functionArgument,
-    functionArgumentGap
+    g.functionArgumentGap
   ));
 
   /*
@@ -979,7 +976,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const functionArgumentGroup = optional(sequence(
     g.functionArgument,
-    functionArgumentGap,
+    g.functionArgumentGap,
     functionArgumentCommaRest
   ));
 
@@ -1009,7 +1006,7 @@ const cssFactory = (g: GrammarSelf) => {
   const genericFunctionArguments = optional(choice(
     sequence(
       g.branchLead,
-      functionArgumentGap,
+      g.functionArgumentGap,
       choice(
         g.BranchRest,
         plainArgumentsAfterFirst
@@ -1085,7 +1082,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const branchListGroup = optional(sequence(
     g.branchLead,
-    functionArgumentGap,
+    g.functionArgumentGap,
     choice(
       sequence(
         branchColon,
@@ -1102,13 +1099,13 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const BranchValues = node(
     'BranchValues',
-    sequence(
+    noTrivia(sequence(
       functionArgumentGroup,
       many(sequence(
         functionArgumentSemicolon,
         branchListGroup
       ))
-    ),
+    )),
     children => branchRest(children)
   );
   const BasicSelector = node(
@@ -1501,13 +1498,17 @@ const cssFactory = (g: GrammarSelf) => {
    * Functional pseudos consume a CSS function-token opener: the name and `(` are
    * adjacent bytes. `:not (.a)` must not become `:not(.a)` through ambient
    * interstitial trivia, even though spacing inside the argument remains valid.
+   *
+   * The name is an `<ident-token>`, so it may start `--`: `:--heading` is a
+   * custom selector's use (css-extensions-1 `<custom-selector>`), `--heading` an ident
+   * (css-syntax-3 §4.3.9).
    */
   const PseudoSelector = node(
     'PseudoSelector',
     sequence(
       pseudoColon,
       dispatch(
-        g.identifierOrFunction,
+        g.identOrFunction,
         cssCase(
           ['nth-child(', 'nth-last-child('],
           sequence(
@@ -1998,7 +1999,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackParen = node(
     'VarFallbackParen',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackParenCrossBracket,
         varFallbackParenCrossBrace
@@ -2006,7 +2007,7 @@ const cssFactory = (g: GrammarSelf) => {
       literal('('),
       optional(cssValueTrivia),
       optional(g.VarFallback),
-      functionArgumentGap,
+      g.functionArgumentGap,
       many(sequence(
         functionArgumentSemicolon,
 
@@ -2018,11 +2019,11 @@ const cssFactory = (g: GrammarSelf) => {
         optional(sequence(
           not(literal(')')),
           g.VarFallback,
-          functionArgumentGap
+          g.functionArgumentGap
         ))
       )),
       literal(')')
-    ),
+    )),
     children => parenGroupBlock(children)
   );
 
@@ -2034,7 +2035,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackBracket = node(
     'VarFallbackBracket',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackBracketCrossParen,
         varFallbackBracketCrossBrace
@@ -2047,12 +2048,12 @@ const cssFactory = (g: GrammarSelf) => {
         }
       ),
       literal(']')
-    ),
+    )),
     children => any(children.map(tokenText).join(''))
   );
   const VarFallbackBrace = node(
     'VarFallbackBrace',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackBraceCrossParen,
         varFallbackBraceCrossBracket
@@ -2065,7 +2066,7 @@ const cssFactory = (g: GrammarSelf) => {
         }
       ),
       literal('}')
-    ),
+    )),
     children => any(children.map(tokenText).join(''))
   );
 
@@ -2088,13 +2089,13 @@ const cssFactory = (g: GrammarSelf) => {
 
   const VarFallbackTerm = node(
     'VarFallbackTerm',
-    sequence(
+    noTrivia(sequence(
       varFallbackComponent,
       many(sequence(
         optional(cssValueTrivia),
         varFallbackComponent
       ))
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1 ? values[0]! : values;
@@ -2111,14 +2112,14 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackLead = node(
     'VarFallbackTerm',
-    sequence(
+    noTrivia(sequence(
       varFallbackComponent,
       many(sequence(
         optional(cssValueTrivia),
         not(literal(':')),
         varFallbackComponent
       ))
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1 ? values[0]! : values;
@@ -2146,10 +2147,10 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const VarFallback = node(
     'VarFallback',
-    oneOrMoreSep(
+    noTrivia(oneOrMoreSep(
       g.VarFallbackItem,
       varFallbackComma
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1
@@ -2173,7 +2174,7 @@ const cssFactory = (g: GrammarSelf) => {
   const fallbackItemCommaRest = many(sequence(
     varFallbackComma,
     optional(g.VarFallbackItem),
-    functionArgumentGap
+    g.functionArgumentGap
   ));
 
   /*
@@ -2186,12 +2187,12 @@ const cssFactory = (g: GrammarSelf) => {
   const fallbackGroup = choice(
     sequence(
       g.VarFallbackLead,
-      functionArgumentGap,
+      g.functionArgumentGap,
       choice(
         sequence(
           branchColon,
           optional(g.VarFallbackItem),
-          functionArgumentGap,
+          g.functionArgumentGap,
           fallbackItemCommaRest
         ),
         fallbackItemCommaRest
@@ -2204,7 +2205,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const VarFallbackCall = node(
     'VarFallbackCall',
-    sequence(
+    noTrivia(sequence(
       routed(),
       optional(cssValueTrivia),
       optional(sequence(
@@ -2225,7 +2226,7 @@ const cssFactory = (g: GrammarSelf) => {
         ))
       )),
       literal(')')
-    ),
+    )),
     children => fallbackCall(children)
   );
 
@@ -2483,8 +2484,8 @@ const cssFactory = (g: GrammarSelf) => {
    * `<dashed-function>` (`--*( <declaration-value>#? )`). Both dispatches route
    * `--f(` to the generic call tail and a bare `--x` (by its `--` prefix) to its
    * `CustomPropertyValue` node. It is a rule key, read through `g` by every
-   * value-position dispatch here, so a dialect reads the same opener and an
-   * override of it reaches all of them.
+   * value-position dispatch here and by a pseudo's name in every dialect, so a
+   * dialect reads the same opener and an override of it reaches all of them.
    */
   const identOrFunction = token(noTrivia(
     sequence(
@@ -5560,11 +5561,11 @@ const cssFactory = (g: GrammarSelf) => {
     StyleTest,
     SupportsDeclaration,
     functionArgument,
+    functionArgumentGap,
     branchLead,
     VarFallbackOpener,
     VarFallbackLead,
     identOrFunction,
-    identifierOrFunction,
     whitespace,
     rw: whitespace
   };

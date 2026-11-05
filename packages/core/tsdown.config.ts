@@ -2,7 +2,8 @@ import { defineConfig } from 'tsdown';
 
 /*
  * Public entries include the root, the cold-path diagnostic surface
- * (`./diagnostics`), the narrow value substrate (`./value`), and the
+ * (`./diagnostics`), the narrow value substrate (`./value`), the
+ * evaluator a CSS-form built-in runs on (`./form`), and the
  * dependency-free AST-v2 construction surface (`./ast`). Code splitting is left
  * ON so shared runtime code is emitted once.
  */
@@ -11,6 +12,7 @@ export default defineConfig({
     index: './src/index.ts',
     diagnostics: './src/diagnostics.ts',
     value: './src/value.ts',
+    form: './src/form.ts',
     ast: './src/ast.ts'
   },
   format: ['esm', 'cjs'],

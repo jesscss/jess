@@ -32,6 +32,7 @@ export type JessErrorCode =
   | 'parse/source-import-css-syntax'
   | 'parse/invalid-mixin-argument'
   | 'parse/ambiguous-not'
+  | 'parse/unresolved-prelude-interpolation'
   | 'parse/expose-declaration'
   | 'parse/malformed-expose'
   | 'parse/condition-keyword-case'
@@ -317,6 +318,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '`@return` is outside a place a function can read it',
       reason: 'A function yields a `@return` written directly in its body or in an `@if`/`@else` branch of it. Anywhere else, there is no value to yield and nothing for the compiler to write.',
       fix: 'Write the `@return` directly in the function body or an `@if`/`@else` branch: assign in the loop, and return after it.'
+    }
+  ],
+  [
+    'parse/unresolved-prelude-interpolation',
+    {
+      summary: 'This `@{…}` cannot be resolved in an at-rule prelude that opens with a group.',
+      reason: 'After a parenthesized group opens an at-rule prelude, a `@{…}` resolves only outside strings, functions and further groups.',
+      fix: 'Write the `@{…}` on its own in the prelude, or put it in a variable that holds the whole prelude.'
     }
   ],
   [

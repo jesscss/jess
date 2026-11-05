@@ -21,14 +21,10 @@ const COMPOSE_EXTERNAL = [
 ];
 
 /*
- * Selective assembly: generated code for the sites the static ranking calls
- * hottest. That ranking moves with any change to the grammar's rule graph, so the
- * default budget (0.25 of the source length) left the ordinary path running through
- * the table once control bodies became the one nested body: +3% marginal
- * instructions on `gen-workload` with no control block in it. Measured: 0.33 +2.8%,
- * 0.36 +1.2%, 0.4 +0.6%, for 8.8% more bytes (4.8% gzipped) and +0.5% import.
+ * The budget is a share of the module's code, comments and whitespace aside. This
+ * one keeps SCSS's duplicate count and its bytes at or under parseman 0.61.2's.
  */
-const ASSEMBLY = { assemblyBudget: 0.4 };
+const ASSEMBLY = { assemblyBudget: 0.612 };
 
 export default defineConfig([
   parserEntryBuild({

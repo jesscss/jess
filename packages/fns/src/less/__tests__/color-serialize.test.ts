@@ -45,25 +45,17 @@ describe('color serialization: alpha op format', () => {
   });
 });
 
-describe('color serialization: hsl clamp + canonicalization', () => {
+describe('color serialization: hsl clamp', () => {
   const buildHsl = (h: number, s: number, l: number): Color =>
     call(hsl, makeDimension(h), pct(s), pct(l));
 
-  it('out-of-range hsl clamps and canonicalizes an achromatic result', () => {
-    // hsl(380, 150%, 150%) → white → hsl(0, 0%, 100%)
-    expect(buildHsl(380, 150, 150).bytes).toBe('hsl(0, 0%, 100%)');
+  it('out-of-range hsl clamps, and a grey, black or white prints as written', () => {
+    expect(buildHsl(380, 150, 150).bytes).toBe('hsl(20, 100%, 100%)');
+    expect(buildHsl(50, 0, 33).bytes).toBe('hsl(50, 0%, 33%)');
+    expect(buildHsl(20, 100, 0).bytes).toBe('hsl(20, 100%, 0%)');
   });
 
-  it('s === 0 collapses hue to 0 but preserves authored lightness losslessly', () => {
-    // hsl(50, 0%, 33%) → hsl(0, 0%, 33%)  (NOT 32.94% from a rounded round-trip)
-    expect(buildHsl(50, 0, 33).bytes).toBe('hsl(0, 0%, 33%)');
-  });
-
-  it('l === 0 canonicalizes to black', () => {
-    expect(buildHsl(20, 100, 0).bytes).toBe('hsl(0, 0%, 0%)');
-  });
-
-  it('a normal in-gamut hsl stays verbatim (no canonicalization)', () => {
+  it('a normal in-gamut hsl stays verbatim', () => {
     expect(buildHsl(20, 50, 50).bytes).toBe('hsl(20, 50%, 50%)');
   });
 });

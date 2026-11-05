@@ -822,10 +822,10 @@ export function typeCheck(name: string, args: readonly Value[]): boolean {
      * `iskeyword(red)` is false — matching pre-convergence Less, where `red` was
      * a `Color` node. `asColor` already folds the named-colour table.
      */
-    case 'iscolor': return asColor(a) !== undefined;
+    case 'iscolor': return asColor(a) !== undefined || (a.type === 'FunctionCall' && a.computed && a.result === 'color');
     case 'isnumber': return a.type === 'Dimension';
     case 'isstring': return a.type === 'Quoted';
-    case 'iskeyword': return a.type === 'Keyword' && asColor(a) === undefined;
+    case 'iskeyword': return (a.type === 'FunctionCall' && !(a.computed && a.result === 'color')) || (a.type === 'Keyword' && asColor(a) === undefined);
     case 'isurl': return a.type === 'Url';
     case 'ispixel': return a.type === 'Dimension' && a.unit === 'px';
     case 'ispercentage': return a.type === 'Dimension' && a.unit === '%';
