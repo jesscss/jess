@@ -23,7 +23,7 @@ import { isMathFunctionName } from './math-functions.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { dispatchFn, FunctionDeclined, numberArguments } from './value-dispatch.js';
-import { makeCallKeyword } from './value-factory.js';
+import { makeFunctionCall } from './value-factory.js';
 import { emitCompressed } from './compress.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
@@ -76,7 +76,7 @@ function fallbackCall(name: string, args: ValueGroup, modes: EvalModes | undefin
     throw new EmptyListValueError(`An empty list is an argument of \`${name}()\`, a call written out as-is; an empty list has no CSS spelling.`);
   }
   const written = call.written?.args ?? args;
-  return keepAsWritten(makeCallKeyword(`${name}(${verbatimArgs(written, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name))})`, { name, args: written }));
+  return keepAsWritten(makeFunctionCall(name, written, `${name}(${verbatimArgs(written, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name))})`));
 }
 
 /** `name(args)` written out as-is, as a call with no callable is. */
@@ -219,6 +219,7 @@ export function buildEvaluator(
     call,
     paramNames,
     has: name => registry.has(name),
+    fn: name => registry.get(name),
     compare,
     compareMatch,
     typeCheck,

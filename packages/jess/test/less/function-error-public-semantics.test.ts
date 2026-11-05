@@ -93,13 +93,21 @@ describe('Less built-in argument errors through the public AST route', () => {
       .resolves.toContain('rgb(from red r g b)');
 
     /*
-     * The inner relative color is now demanded by `lighten`, so rejection belongs
-     * to the existing evaluator functionMode boundary—not to bare-call parsing.
+     * The inner relative color is demanded by `lighten`, whose form reads it as
+     * what only the browser knows, in every functionMode (§3.6).
      */
     const demandedSource = '.entry { color: lighten(rgb(from red r g b), 10%); }';
     await expect(lenient.renderString(demandedSource, { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toContain('lighten(rgb(from red r g b), 10%)');
+      .resolves.toContain('hsl(from rgb(from red r g b) h s clamp(0, l + 10, 100))');
     await expect(strict.renderString(demandedSource, { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toContain('hsl(from rgb(from red r g b) h s clamp(0, l + 10, 100))');
+    await expect(strict.renderString('.entry { color: darken(hsl(var(--h), 1%, 2%), 1%); }', { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toContain('hsl(from hsl(var(--h), 1%, 2%) h s clamp(0, l - 1, 100))');
+    await expect(strict.renderString('.entry { color: darken(rgb(10 20 30), 1%); }', { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toContain('hsl(from rgb(10 20 30) h s clamp(0, l - 1, 100))');
+    await expect(strict.renderString('.entry { color: darken(10px, 1%); }', { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/invalid-function' });
+    await expect(strict.renderString('.entry { color: lightness(hsl(var(--h), 1%, 2%)); }', { filePath: 'entry.less', extension: '.less' }))
       .rejects.toMatchObject({ code: 'eval/invalid-function' });
 
     const variableSource = '@h: 198deg; .entry { color: hsl(@h, 28%, 50%); }';

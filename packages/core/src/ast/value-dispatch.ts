@@ -8,11 +8,13 @@
  * HARD MODULE BOUNDARY: value domain + built-in fns only.
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { isValueGroup, isValueGroupArray, type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
+import { isValueGroup, isValueGroupArray, type EvalModes, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
-import { makeCollection, makeList } from './value-factory.js';
+import { callKeyword, makeCollection, makeList, NULL } from './value-factory.js';
+import { keepAsWritten } from './value-operate.js';
+import type { CallArg, ValueSlot } from './nodes.js';
 import type {
   DefinedFunction,
   Fn,
@@ -58,6 +60,7 @@ const VALUE_TYPES: ReadonlySet<string> = new Set([
   'Color',
   'Quoted',
   'Keyword',
+  'FunctionCall',
   'Any',
   'Url',
   'List',
@@ -204,6 +207,21 @@ const EMPTY_COLLECTION = makeCollection([]);
 const isListShaped = (value: ValueGroup): boolean =>
   isValueGroupArray(value) || value.type === 'List' || value.type === 'Block';
 
+/** css-color-4 §4.4 `currentcolor` and the §6.2 system colours: colours whose value only the browser knows. */
+const BROWSER_COLORS: ReadonlySet<string> = new Set(['currentcolor', 'accentcolor', 'accentcolortext', 'activetext', 'buttonborder', 'buttonface', 'buttontext', 'canvas', 'canvastext', 'field', 'fieldtext', 'graytext', 'highlight', 'highlighttext', 'linktext', 'mark', 'marktext', 'selecteditem', 'selecteditemtext', 'visitedtext']);
+
+/**
+ * Whether a slot that takes a call (a built-in's CSS form) takes `value`, which
+ * only the browser can read: a call of no known type or of the slot's type, or
+ * a browser colour in a colour slot. A call whose type is known and wrong fails
+ * the slot, as its spelling does (docs/design/CSS-NATIVE-BUILTINS.md §3.2, §3.6).
+ */
+function isDeferred(value: Value, type: readonly Kind[]): boolean {
+  return value.type === 'FunctionCall'
+    ? value.result === null || type.includes(value.result === 'color' ? 'Color' : 'Dimension')
+    : value.type === 'Keyword' && type.includes('Color') && BROWSER_COLORS.has(value.text.toLowerCase());
+}
+
 function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown): ValueGroup {
   if (!isValueGroup(value)) {
     throw new TypeError(`${name}: direct calls require structural value arguments`);
@@ -214,17 +232,24 @@ function validateValue(name: string, index: number, type: NormalizedParamType, v
    * `Color`-typed parameter by materializing to its `Color` at the bind point —
    * the point of USE — without the un-operated literal ever being reclassified.
    * `lighten(red, 10%)` binds `#ff0000`; a keyword that is not a named color
-   * still fails the `Color` slot as before.
+   * still fails the `Color` slot as before. A call written out as-is is read
+   * as the keyword that spells it, unless the slot asks for the call.
    */
+  const single = isValueGroupArray(value) ? undefined : value;
+  if (single !== undefined && type !== 'any' && type.includes('FunctionCall') && isDeferred(single, type)) {
+    return single;
+  }
   const bound = type === 'any'
     ? value
-    : !isValueGroupArray(value) && value.type === 'Keyword' && type.includes('Color')
-        ? coerceNamedColorKeyword(value)
+    : single?.type === 'FunctionCall'
+      ? keepAsWritten(callKeyword(single))
+      : single?.type === 'Keyword' && type.includes('Color')
+        ? coerceNamedColorKeyword(single)
         : type.includes('Collection') && groupItems(value).length === 0 && isListShaped(value)
           ? EMPTY_COLLECTION
           : value;
   if (!isValueForType(bound, type)) {
-    const expected = type === 'any' ? 'any' : type.join('|');
+    const expected = type === 'any' ? 'any' : type.filter(kind => kind !== 'FunctionCall').join('|');
     throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${isValueGroupArray(bound) ? 'sequence' : bound.type}`);
   }
   return bound;
@@ -258,7 +283,7 @@ function checkedLazy(
 const isAbsent = (input: DirectInput): boolean =>
   typeof input !== 'function' && !isValueGroupArray(input) && input.type === 'Null' && !input.explicit;
 
-function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly (DirectInput | undefined)[]): unknown[] {
+export function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly (DirectInput | undefined)[]): unknown[] {
   const out: unknown[] = [];
   let offset = 0;
   for (let index = 0; index < params.length; index++) {
@@ -432,4 +457,62 @@ export function createFnRegistry(): FnRegistry {
       return dispatchFn(spec, value, ctx);
     }
   };
+}
+
+/**
+ * Place KEYWORD arguments at the positions their names DECLARE.
+ *
+ * A keyword argument (`fade(@c, @amount: 50%)`, `color.adjust($c, $lightness: -10%)`)
+ * states a BINDING, not a position, and the only place that mapping exists is the
+ * callee's own parameter list — so the order comes from the resolved function
+ * ({@link ValueEvaluator.paramNames}), never from the call site.
+ *
+ * Called only for a call that names an argument: the caller's one
+ * `name !== undefined` scan keeps an ordinary positional call off this path.
+ *
+ * It also returns `vals` unchanged when the callee declares no parameter by that
+ * name (or is unknown): the call then reaches dispatch with exactly its authored
+ * argument vector and fails — or preserves — as an ordinary argument-shape
+ * mismatch. Guessing a position for a name the definition never declared is the
+ * silent wrong lowering this exists to prevent.
+ */
+export function orderKeywordArgs(
+  args: readonly CallArg<ValueSlot>[],
+  vals: ValueGroup[],
+  params: readonly (string | undefined)[] | undefined
+): ValueGroup[] {
+  if (params === undefined) {
+    return vals;
+  }
+
+  const slots = new Array<ValueGroup | undefined>(params.length);
+  const positional: ValueGroup[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const argName = args[i]!.name;
+    if (argName === undefined) {
+      positional.push(vals[i]!);
+      continue;
+    }
+    const at = params.indexOf(argName);
+    if (at === -1) {
+      return vals;
+    }
+    slots[at] = vals[i]!;
+  }
+
+  /* Positional arguments keep their authored order and fill the slots the
+   * keywords did not claim — Less and Sass both allow the two forms to mix. A
+   * parameter skipped before the last bound one gets the core-minted absent
+   * value, {@link NULL}, which an optional parameter binds as not passed, so
+   * every keyword stays at its own parameter's position:
+   * `color.adjust($c, $lightness: 10%)` never reads `10%` as `$red`, and
+   * `string.slice("abcd", $end-at: 2)` does not bind `2` to `$start-at`. */
+  let next = 0;
+  for (let at = 0; at < slots.length && next < positional.length; at++) {
+    slots[at] ??= positional[next++];
+  }
+  while (slots.length > 0 && slots[slots.length - 1] === undefined) {
+    slots.pop();
+  }
+  return Array.from(slots, slot => slot ?? NULL).concat(positional.slice(next));
 }

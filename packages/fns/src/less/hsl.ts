@@ -1,5 +1,5 @@
 import type { Color, ValueGroup, Fn } from '@jesscss/core/value';
-import { colorHsl, defineFunction, groupItems, makeColorHsl, makeHslColor, HSL } from '@jesscss/core/value';
+import { colorHsl, defineFunction, groupItems, makeColorHsl, HSL } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
@@ -29,15 +29,12 @@ export function makeHsl(value: ValueGroup): Color {
     const alphaPct = alphaD?.unit === '%' ? alphaD.number : undefined;
 
     /*
-     * ACHROMATIC canonicalization: a grey, black or white has no hue to carry
-     * (css-color-4 §4.4.1), so hue + saturation collapse to `0` and the
-     * authored unit is dropped (`hsl(380deg, 150%, 150%)` → `hsl(0, 0%, 100%)`;
-     * {@link makeHslColor}). Otherwise the authored hue unit (`0deg` → `deg`)
-     * and a `%` alpha spelling are kept (verbatim rule); an operated result
-     * drops them.
+     * The authored hue unit (`0deg` → `deg`) and a `%` alpha spelling are kept
+     * (verbatim rule), a grey's, black's and white's as any other's; an operated
+     * result drops them.
      */
     const hueUnit = requireDimension(items[0]).unit || undefined;
-    return makeHslColor([h, s, l], a, modernSyntax, { ...(hueUnit ? { hueUnit } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) });
+    return makeColorHsl([h, s, l], a, HSL, modernSyntax, { ...(hueUnit ? { hueUnit } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) });
   }
   if (isColor(first)) {
     const c = first;

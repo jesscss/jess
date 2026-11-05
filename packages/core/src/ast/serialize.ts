@@ -40,6 +40,7 @@ import serializerNodes, {
   keyword,
   list,
   NULL_NODE,
+  stylesheet,
   spaced,
   variableDeclaration,
   variableReference,
@@ -200,23 +201,24 @@ import {
   type Value,
   type Any as TextValue,
   type Keyword as KeywordValue,
+  type FunctionCall as ValueFunctionCall,
   type List as EvalList,
   type WrittenArguments
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
-import { defineFunction, FunctionDeclined } from './value-dispatch.js';
+import { defineFunction, FunctionDeclined, orderKeywordArgs } from './value-dispatch.js';
 import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { channelMath, isModernHsl, rejectChannelMath, resolveHsl, type ColorChannels } from './css-color.js';
+import { channelFunction, channelMath, channelOf, formChannels, isHslCall, rejectChannelMath, resolveHsl, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
 import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
@@ -258,8 +260,10 @@ import { type Branch, type Level, branchSharesAtom, collectBranchAtoms, descenda
 import { collectInstructionAtoms, documentExtendClass, documentWalkFacts, heldAnonymousMixin, placingBody, walkAppliedExtends, withRules, type ExtendClass } from './extend/document.js';
 import { leadsWithElement } from './extend/conflict.js';
 import { isPseudoElementName, isUserActionToken, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
-import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
-import { type ModuleConfigRejection, rerouteForPlacedPlugins } from '../plugin.js';
+import type { Context, ResolvedOptions, SourceContext } from '../context.js';
+import { DocumentContext, documentTriviaOf } from '../document-context.js';
+import type { ModuleConfigRejection } from '../plugin.js';
+import { rerouteForPlacedPlugins } from '../plugin-reroute.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { writtenListValue, writtenResult } from './empty-list.js';
@@ -4604,7 +4608,7 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
     return makeKeyword(src);
   }
   switch (node.type) {
-    case 'Keyword': return e.channels?.get(node.src.toLowerCase()) ?? makeKeyword(node.src);
+    case 'Keyword': return (e.channels === undefined ? undefined : channelOf(e.channels, node.src)) ?? makeKeyword(node.src);
     case 'Color': return colorFromSrc(node.src);
     case 'Dimension': return dimensionFromFields(node.number, node.unit, node.src);
     case 'Any': return makeAny(node.src);
@@ -5610,8 +5614,8 @@ function writtenParens(slot: ValueSlot, frame: Frame | null, e: Lane): number {
  * an identifier, so `(foo) * 2` stays `(foo) * 2`. The test is the value's type
  * and the node the group holds, never its bytes.
  */
-const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | KeywordValue =>
-  v.type === 'Any' || (v.type === 'Keyword' && ((e.calcDepth ?? 0) > 0 || call) && e.ev?.sassCalculations === true);
+const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | KeywordValue | ValueFunctionCall =>
+  v.type === 'Any' || ((v.type === 'Keyword' || v.type === 'FunctionCall') && ((e.calcDepth ?? 0) > 0 || call) && e.ev?.sassCalculations === true);
 
 /**
  * A paren group around opaque text ({@link isOpaqueText}): the text, carrying
@@ -5623,7 +5627,7 @@ const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | Keyword
  * alone: `.x-@{a}` with `@a: (~"x")` is `.x-x`, a callable reads `x` from
  * `(e("x"))` ({@link readText}).
  */
-const textGroup = (v: TextValue | KeywordValue): Value => groupText(v);
+const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => groupText(v);
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
@@ -5697,6 +5701,9 @@ function writtenGroup(v: EvalValue): Value {
     return makeKeyword(`(${emitValue(v)})`);
   }
   if (keptMathOf(v) !== undefined) {
+    return groupAsWritten(v);
+  }
+  if (v.type === 'FunctionCall') {
     return groupAsWritten(v);
   }
   return v.type === 'Any' && v.escapedQuote !== '' ? textGroup(v) : makeKeyword(`(${emitValue(v)})`);
@@ -7161,6 +7168,12 @@ function invokeValueLambda(
       meta: { callee: 'function', expectedCount: lambda.params?.length ?? 0, gotCount: args.length }
     });
   }
+  const activation = makeFrame(defFrame, lambda.rules, collectMixins(lambda.rules), collectDeclIndex(lambda.rules, bindings), cellsForParams(bindings));
+  activation.sourceOwner = defFrame ? definitionOwner(lambda.rules, defFrame, e) : null;
+  if (callerFrame && callerFrame !== defFrame) {
+    activation.fallback = callerFrame;
+    activation.callerFallback = true;
+  }
   const result = lambdaResultValue(lambda.rules);
   if (result === undefined) {
     throw ERR.invalidFunction({
@@ -7168,12 +7181,6 @@ function invokeValueLambda(
       ...callSiteLocation(lambda, e.s),
       meta: { name: 'function', reason: 'its body assigns no `result:`, so the call has no value to yield' }
     });
-  }
-  const activation = makeFrame(defFrame, lambda.rules, collectMixins(lambda.rules), collectDeclIndex(lambda.rules, bindings), cellsForParams(bindings));
-  activation.sourceOwner = defFrame ? definitionOwner(lambda.rules, defFrame, e) : null;
-  if (callerFrame && callerFrame !== defFrame) {
-    activation.fallback = callerFrame;
-    activation.callerFallback = true;
   }
 
   /*
@@ -7188,6 +7195,54 @@ function invokeValueLambda(
   settled(walkBody(lambda.rules, activation, body, scratchEmit(e)), 'value-lambda body', lambda, e);
   return { value: result, frame: activation };
 }
+
+/** The lane a built-in's CSS form is evaluated on (`css-form.ts`): its own, as the form is not in the document that called it. */
+export function formLane(evaluator: ValueEvaluator, compress: boolean): Lane {
+  return createRenderSession(stylesheet([]), { evaluator, compress }, undefined, null, { positions: null, plannedImportDocuments: null, plannedModuleImports: null, pendingPlannedModuleImports: undefined, preparedImportsOwnedByCaller: false });
+}
+
+/**
+ * A form's parameters as one frame, its call's binding the cells, and its
+ * `result:` value, whose whole body it is. A form is nothing but that `result:`,
+ * in which no function is called, so one activation serves every call.
+ */
+export interface FormActivation {
+  readonly frame: Frame;
+  readonly cells: BindingCell[];
+  readonly result: ValueSlot;
+  readonly channels: FormChannels | undefined;
+}
+
+export function formActivation(lambda: AnonymousMixin): FormActivation {
+  const bindings = new Map<string, Binding>(lambda.params?.map(param => [param.name ?? '', NULL_NODE]));
+  const cells = cellsForParams(bindings)!;
+  const result = lambdaResultValue(lambda.rules)!;
+  return {
+    frame: makeFrame(null, lambda.rules, null, collectDeclIndex(lambda.rules, bindings, cells), cells),
+    cells: [...cells.values()],
+    result,
+    channels: !isValueSlotArray(result) && result.type === 'FunctionCall' && isHslCall(result) ? formChannels(result) : undefined
+  };
+}
+
+/**
+ * The binder of one call's channels: one lane, however many channels read it. A
+ * form's channels are evaluated as a call's ({@link dispatchCall}).
+ */
+export const channelBinder = (frame: Frame | null, e: Lane): ChannelBinder => (channels) => {
+  const lane = deriveLane(e, 'channels', undefined, undefined, channels);
+  return slot => evalTypedSlot(slot, frame, lane, true, ARG_INPUT);
+};
+
+/** The lane a form's channels read: `channels` bound, already in CSS math, so a math function in a channel derives none. */
+export const formChannelLane = (e: Lane, channels: ColorChannels): Lane =>
+  deriveLane(deriveLane(deriveLane(e, 'channels', undefined, undefined, channels), 'calc'), 'keepMath');
+
+/** One channel of a form, on {@link formChannelLane}. */
+export const evalFormChannel = (slot: ValueSlot, frame: Frame, e: Lane): MaybePromise<ValueGroup> => evalTypedSlot(slot, frame, e, true, ARG_INPUT);
+
+/** A form's `result:` over the values its cells hold. */
+export const evalFormResult = (form: FormActivation, e: Lane): MaybePromise<ValueGroup> => evalTypedSlot(form.result, form.frame, e);
 
 /** `statementCall`: the reference is a statement-position call ({@link rejectComposedMemberCall}). */
 function resolveReferenceResult(
@@ -7791,7 +7846,7 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: Lane): Ev
  * written into a `calc()` keeps the groups it carries ({@link textGroup}).
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromise<EvalValue> {
-  const ce = deriveLane(e, 'calc');
+  const ce = e.channels !== undefined && e.calcDepth > 0 ? e : deriveLane(e, 'calc');
   const arg = node.args[0]!.value;
   const authored = writtenParens(arg, frame, ce);
   return mapMaybe(evalTypedSlot(arg, frame, ce), (v) => {
@@ -7804,8 +7859,8 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromis
       const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
       return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(isValueGroupArray(v) ? emitValue(v) : mathText(v, emitValue(v)), isValueGroupArray(v) || !isOpaqueText(v, ce) ? authored : 0)})`), v, v));
     }
-    if (!isValueGroupArray(v) && v.type === 'Keyword') {
-      return calcInner(v.bytes) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${mathText(v)})`), v, v));
+    if (!isValueGroupArray(v) && (v.type === 'Keyword' || v.type === 'FunctionCall')) {
+      return writtenCalcInner(v) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${mathText(v)})`), v, v));
     }
 
     /*
@@ -7818,7 +7873,7 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromis
     if (isValueGroupArray(v) || v.type !== 'Dimension') {
       return keepAsWritten(makeKeyword(`calc(${isValueGroupArray(v) ? emitValueC(v, e) : mathText(v, emitValueC(v, e))})`));
     }
-    return e.ev?.sassCalculations === true ? v : makeSpelledDimension(v, v.preserved ?? v.bytes);
+    return e.ev?.sassCalculations === true || e.channels !== undefined ? v : makeSpelledDimension(v, v.preserved ?? v.bytes);
   });
 }
 
@@ -9025,16 +9080,20 @@ function evalCall(
   return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
 }
 
-/** One `functionMode: 'error'` copy per render's modes, for imported calls (ruling J1). */
-const erroringModesCache = new WeakMap<EvalModes, EvalModes>();
+/**
+ * One copy per render's modes with its `functionMode` the other way: `error` for
+ * imported calls (ruling J1), `preserve` for a CSS colour call a consumer demands
+ * under `error` (docs/design/CSS-NATIVE-BUILTINS.md §3.6).
+ */
+const otherFunctionModesCache = new WeakMap<EvalModes, EvalModes>();
 
-function erroringModes(modes: EvalModes): EvalModes {
-  let erroring = erroringModesCache.get(modes);
-  if (erroring === undefined) {
-    erroring = { ...modes, functionMode: 'error' };
-    erroringModesCache.set(modes, erroring);
+function otherFunctionMode(modes: EvalModes): EvalModes {
+  let other = otherFunctionModesCache.get(modes);
+  if (other === undefined) {
+    other = { ...modes, functionMode: modes.functionMode === 'error' ? 'preserve' : 'error' };
+    otherFunctionModesCache.set(modes, other);
   }
-  return erroring;
+  return other;
 }
 
 /**
@@ -9062,7 +9121,14 @@ function dispatchCall(
   reach: 'ambient' | 'local' | 'imported',
   demanded = false
 ): MaybePromise<EvalValue> {
-  const modes = reach === 'imported' && e.modes.functionMode !== 'error' ? erroringModes(e.modes) : e.modes;
+  /*
+   * A CSS colour call its callable cannot compute is written out under every
+   * mode, as it is unconsumed: what it means is its consumer's to judge
+   * (docs/design/CSS-NATIVE-BUILTINS.md §3.6).
+   */
+  const modes = reach === 'imported' && e.modes.functionMode !== 'error'
+    ? otherFunctionMode(e.modes)
+    : demanded && e.modes.functionMode === 'error' && isCssColorCall(node) ? otherFunctionMode(e.modes) : e.modes;
   const sep = node.modern ? ' ' : ',';
 
   /*
@@ -9077,15 +9143,16 @@ function dispatchCall(
    * An operation the operand rule rejects is kept as written in a CSS math
    * function or a call written out as-is (ledger V36). A colour function
    * opens channels of its own, so the keywords of one it is written in are
-   * not bound in it ({@link Lane.channels}).
+   * not bound in it ({@link Lane.channels}). The math in a math function a
+   * channel holds is CSS's, whatever the math policy (css-values-4 §10).
    */
-  const be = e.channels !== undefined && isCssColorFunction(node) ? deriveLane(e, 'channels') : e;
+  const be = e.channels === undefined ? e : isCssColorFunction(node) ? deriveLane(e, 'channels') : isMathFunctionName(node.name) && e.calcDepth === 0 ? deriveLane(e, 'calc') : e;
   const ae = (argument === ARG_WRITTEN || isMathFunctionName(node.name)) === be.keepsMath
     ? be
     : deriveLane(be, be.keepsMath ? 'checkMath' : 'keepMath');
   const dispatch = (vals: ValueGroup[]): MaybePromise<EvalValue> => {
     const named = node.args.some(isNamedArg);
-    const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, reach === 'ambient') : vals;
+    const ordered = named ? orderKeywordArgs(node.args, vals, ev.paramNames(node.name, selected, reach === 'ambient')) : vals;
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
 
     /*
@@ -9113,16 +9180,18 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   };
-  const call = demanded && selected === undefined && isModernHsl(node)
-    ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'Keyword' || out.call === null
+  const call = demanded && selected === undefined && isHslCall(node)
+    ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
-        : resolveHsl(node, vals[0]!, (slot, channels) => evalTypedSlot(slot, frame, deriveLane(be, 'channels', undefined, undefined, channels), true, ARG_INPUT), out))
-    : dispatch;
+        : resolveHsl(node, vals, channelBinder(frame, be), out))
+    : e.channels !== undefined && selected === undefined
+      ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? dispatch(vals)
+      : dispatch;
 
   /* [A4] A computed call reading an export is recorded for the runtime. */
   return e.s.exports.runtime === undefined || argument !== ARG_INPUT
     ? combineAll(callArguments(node, alpha, frame, ae, argument), call)
-    : exportCall(e, node, selected, () => callArguments(node, alpha, frame, ae, argument), args => combineAll(args, call));
+    : exportCall(e, node, selected ?? ev.fn(node.name), written => callArguments(node, alpha, frame, ae, written ? ARG_OPERAND : argument), args => combineAll(args, call));
 }
 
 /** Whether a call argument is written by name (`$lightness: -10%`). */
@@ -9335,68 +9404,6 @@ function writtenBlockBody(
     const body = kept.map(piece => piece.bytes).join('');
     return `{${last.declaration ? body.slice(0, -1) : body}}`;
   });
-}
-
-/**
- * Place KEYWORD arguments at the positions their names DECLARE.
- *
- * A keyword argument (`fade(@c, @amount: 50%)`, `color.adjust($c, $lightness: -10%)`)
- * states a BINDING, not a position, and the only place that mapping exists is the
- * callee's own parameter list — so the order comes from the resolved function
- * ({@link ValueEvaluator.paramNames}), never from the call site.
- *
- * Called only for a call that names an argument: the caller's one
- * `name !== undefined` scan keeps an ordinary positional call off this path.
- *
- * It also returns `vals` unchanged when the callee declares no parameter by that
- * name (or is unknown): the call then reaches dispatch with exactly its authored
- * argument vector and fails — or preserves — as an ordinary argument-shape
- * mismatch. Guessing a position for a name the definition never declared is the
- * silent wrong lowering this exists to prevent.
- */
-function orderKeywordArgs(
-  args: readonly CallArg<ValueSlot>[],
-  vals: ValueGroup[],
-  ev: ValueEvaluator,
-  name: string,
-  scopedFn: Fn | undefined,
-  ambient: boolean
-): ValueGroup[] {
-  const params = ev.paramNames(name, scopedFn, ambient);
-  if (params === undefined) {
-    return vals;
-  }
-
-  const slots = new Array<ValueGroup | undefined>(params.length);
-  const positional: ValueGroup[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const argName = args[i]!.name;
-    if (argName === undefined) {
-      positional.push(vals[i]!);
-      continue;
-    }
-    const at = params.indexOf(argName);
-    if (at === -1) {
-      return vals;
-    }
-    slots[at] = vals[i]!;
-  }
-
-  /* Positional arguments keep their authored order and fill the slots the
-   * keywords did not claim — Less and Sass both allow the two forms to mix. A
-   * parameter skipped before the last bound one gets the core-minted absent
-   * value, {@link NULL}, which an optional parameter binds as not passed, so
-   * every keyword stays at its own parameter's position:
-   * `color.adjust($c, $lightness: 10%)` never reads `10%` as `$red`, and
-   * `string.slice("abcd", $end-at: 2)` does not bind `2` to `$start-at`. */
-  let next = 0;
-  for (let at = 0; at < slots.length && next < positional.length; at++) {
-    slots[at] ??= positional[next++];
-  }
-  while (slots.length > 0 && slots[slots.length - 1] === undefined) {
-    slots.pop();
-  }
-  return Array.from(slots, slot => slot ?? NULL).concat(positional.slice(next));
 }
 
 /**
@@ -21332,6 +21339,7 @@ const STATEMENT_RESULT_POSITIONS: Readonly<Record<Value['type'], readonly [root:
   Color: [false, false],
   Dimension: [false, false],
   Keyword: [false, false],
+  FunctionCall: [false, false],
   List: [false, false],
   Null: [false, false],
   Quoted: [false, false],
@@ -21354,7 +21362,7 @@ function evalStatementCall(node: FunctionCall, frame: Frame, e: Emit): MaybeProm
       throw ERR.invalidStatement({
         node,
         ...callSiteLocation(node, e.s),
-        meta: { what: `The result of "${node.name}()", ${isValueGroupArray(value) ? 'a value list' : `a ${value.type}`} \`${emitValue(value)}\`,` }
+        meta: { what: `The result of "${node.name}()", ${isValueGroupArray(value) ? 'a value list' : `a ${value.type === 'FunctionCall' ? 'Keyword' : value.type}`} \`${emitValue(value)}\`,` }
       });
     }
     return value;

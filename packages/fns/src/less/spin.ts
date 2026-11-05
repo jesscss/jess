@@ -1,11 +1,10 @@
-import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
-import { requireColor } from './color-helper.js';
-import { requireDimension } from '../shared/math/math-helper.js';
-import { rotateHue } from '../shared/color/kernels.js';
+import { defineForm, type FormCall } from '@jesscss/core/form';
+import type { Dimension, Fn, ValueGroup } from '@jesscss/core/value';
+import { channelAmount, COLOR_ARG } from './color-form.js';
+import { spin as form } from './css-forms.generated.js';
 
-/** `spin(color, amount)` — rotate hue by `amount` degrees (wrapped 0-360). Byte-faithful to `less/spin`. */
-export const spin: Fn = defineFunction('spin', {
-  params: [{ type: 'Color' }, { type: 'Dimension' }],
-  body: (c, amt) => rotateHue(requireColor(c), requireDimension(amt).number)
+/** `spin(color, amount)`: `hsl(from color calc(h + amount) s l)`. */
+export const spin: Fn = /* @__PURE__ */ defineForm('spin', {
+  params: [COLOR_ARG, { type: 'Dimension' }],
+  form: (color: ValueGroup, amount: Dimension): FormCall => [form, color, channelAmount(amount)]
 });
