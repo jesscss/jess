@@ -3,7 +3,7 @@ import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import type { Fn } from './functions/types.js';
+import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
@@ -565,7 +565,7 @@ export function exportCall<F>(
           }
           return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe, node.name)), result], ','), e.modes);
         };
-        if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed) && takesForm(fn, vals, inputs)) {
+        if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed, vals) && takesForm(fn, vals, inputs)) {
           /* A value no form holds over what only the browser knows runs on the runtime (§3.4a, rung 4). */
           return mapMaybe(dispatch(args(true).map((read, index) => mapMaybe(read, written => typedRead(vals[index], written)))), form => isUnwrittenBuiltin(form) ? recorded() : form);
         }
@@ -573,15 +573,20 @@ export function exportCall<F>(
       }));
 }
 
-/** What a built-in's CSS form computes: its colour, or the form itself. A call written out is neither. */
-const isFormResult = (result: EvalValue): boolean =>
-  typeof result !== 'string' && !isValueGroupArray(result) && (result.type === 'Color' || (result.type === 'FunctionCall' && result.computed));
-
 /** A built-in's own call written out, which is no CSS, unlike a CSS colour call its callable leaves to the browser. */
 const isUnwrittenBuiltin = (result: EvalValue): boolean =>
   typeof result !== 'string' && !isValueGroupArray(result) && result.type === 'FunctionCall' && !result.computed && result.result === null;
 
 const lone = (v: ValueGroup): ValueGroup => isValueGroupArray(v) && v.length === 1 ? v[0]! : v;
+
+const isCallValue = (v: ValueGroup): boolean => {
+  const value = lone(v);
+  return !isValueGroupArray(value) && value.type === 'FunctionCall';
+};
+
+/** What a built-in's CSS form computes: its colour, the form itself, or a call CSS reads as written over what only the browser knows. */
+const isFormResult = (result: EvalValue, vals: readonly ValueGroup[]): boolean =>
+  typeof result !== 'string' && !isValueGroupArray(result) && (result.type === 'Color' || (result.type === 'FunctionCall' && (result.computed || vals.some(isCallValue))));
 
 /** The type of an export's own value, the one thing a form knows of it. */
 function exportResult(known: ValueGroup | undefined): CallResult {
@@ -606,15 +611,16 @@ function typedRead(known: ValueGroup | undefined, written: ValueGroup): ValueGro
     : written;
 }
 
+/** Whether a slot's CSS form means what a value there computes to: it takes a call, and holds this value. */
+const slotTakes = (param: ParamSpec | undefined, value: ValueGroup): boolean =>
+  param?.type?.includes('FunctionCall') === true && (param.fits?.(value) ?? true);
+
 /** Whether every export a call read is an argument its CSS form takes as what only the browser knows. */
 function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>): boolean {
   if (fn === undefined) {
     return false;
   }
-  const taken = new Set(vals.filter((value, index) => {
-    const param = fn.params[index];
-    return param?.type?.includes('FunctionCall') === true && (param.fits?.(value) ?? true);
-  }).map(lone));
+  const taken = new Set(vals.filter((val, index) => slotTakes(fn.params[index], lone(val))).map(lone));
   return inputs.every(input => taken.has(input.value));
 }
 
@@ -630,22 +636,7 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
     exportNotWritten(node, `${node.name}()`, recipeExport(stray.recipe), e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
   }
   const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
-  return {
-    fn: origin,
-    args: vals.map((v) => {
-      const recipe = recipes.get(lone(v));
-      if (recipe !== undefined) {
-        return recipe;
-      }
-      const text = emitValue(v);
-
-      /* The runtime reads a fixed argument as a CSS literal, which holds no call (`packages/fns/src/runtime.ts`). */
-      if (text.includes('(')) {
-        exportNotWritten(node, `${node.name}()`, recipeExport(inputs[0]!.recipe), e, `beside \`${text}\`, a fixed argument the runtime cannot read`);
-      }
-      return text;
-    })
-  };
+  return { fn: origin, args: vals.map(v => recipes.get(lone(v)) ?? emitValue(v)) };
 }
 
 /** The first export a recipe reads. */

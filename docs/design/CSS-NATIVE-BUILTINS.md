@@ -325,12 +325,16 @@ form over it (R8), and `@less.rgb(@r, 0, 0)` with `@r: 10` is
 `rgb(var(--r, 10), 0, 0)`, which is valid CSS with no form at all. A wrong value
 fails the slot it is in, at the compile.
 
-A channel written in parens of its own is invalid in Chrome 152 in every position
-(`rgb((10) 20 30)`, `hsl(120 (50%) 50%)`, `rgb(10 20 30 / (.5))`,
-`rgb(from #336699 (r) g b)`), so no consumer computes a space-separated call that
-has one: `fade(rgb((10) 20 30), 50%)` stays written. A group inside `calc()` is
-read (`rgb(calc((10)) 20 30)`), and computes. The comma spelling (`rgb((10), 20, 30)`)
-is invalid in Chrome too, and its consumers still compute it, as they did.
+A channel written in parens of its own is invalid CSS in Chrome 152 in every
+position, as printed. A consumer still reads the value inside the group (J16, F4):
+`fade(hsl((@h + 1) 50% 50%), 50%)` computes, as does `fade(rgb((10) 20 30), 50%)`,
+in every spelling. Parens in Less are how math is written in a space-separated
+channel under `parens` and `strict`.
+
+An export's unit decides whether its slot's form means what it computes to
+(`formUnits`): `@r: 10` in `@less.rgb(@r, 0, 0)` prints the form, and `@r: 2px`
+keeps its recipe, which computes `rgb(2, 0, 0)`. A known channel of a unit CSS does
+not take beside a `var()` fails: `@less.rgb(var(--r), 1px, 0)`.
 
 ## 4. Slice plan
 
