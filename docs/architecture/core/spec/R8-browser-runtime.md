@@ -279,7 +279,7 @@ or needs JS) to decide what ships in the bundle.
   calls marked pure: `lightness(@brand)` is 64.1 KB minified, 18.4 KB gzip; a page of
   `@less.mix(@brand, red, 25%)` or `@less.contrast(@brand)` is 34.7 KB minified, 10.7 KB gzip; a
   recipe that runs one, `@less.mix(@a, @b, 150%)`, `lightness(mix(@brand, red))` or
-  `@less.contrast(@brand, #111, #eee, 50%)`, is 502 to 504 KB minified, 134.4 KB gzip.
+  `@less.contrast(@brand, #111, #eee, 50%)`, is 502 to 504 KB minified, 134.3 KB gzip.
 - ponytail: imports of a stylesheet are not watched (`loadedUrls` is empty);
   only the stylesheet itself is. Watch the render's loaded files when the
   compiler reports them.
