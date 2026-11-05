@@ -24,7 +24,7 @@ import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
 
 /** A form and the values its parameters bind to, the first of them the one its result's format follows. */
-export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, second?: ValueGroup, third?: ValueGroup, fourth?: ValueGroup];
+export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, ...rest: readonly ValueGroup[]];
 
 type Lane = ReturnType<typeof formLane>;
 
@@ -46,13 +46,17 @@ function newLane(compress: boolean): FormLane {
 /**
  * The one place a resolved form's result takes its spelling (V10). A relative
  * `hsl()` keeps its input's format, in legacy syntax whatever its input's (Q14,
- * not yet ruled). A built-in that names a format has it, in legacy syntax. Any
- * other keeps its input's format and syntax until the result is translucent,
+ * not yet ruled). A `color-mix()` keeps its input's format, or the one its
+ * built-in names once translucent, in legacy syntax (Q14). A built-in that names
+ * a format has it, in legacy syntax. Any other keeps its input's format and syntax until the result is translucent,
  * when a hex that had no alpha digit of its own turns to `rgb()`.
  */
 function spelled(channels: FormChannels, out: Hsla | Rgba, input: Color | Dimension, format: number | undefined): Color {
   if (channels.space === 'hsl' && input.type === 'Color') {
     return makeColorHsl([out[0], out[1], out[2]], out[3], input.format);
+  }
+  if (channels.space === 'mix' && input.type === 'Color') {
+    return makeColorRgb([out[0], out[1], out[2]], out[3], out[3] < 1 ? format ?? input.format : input.format);
   }
   if (format !== undefined || input.type !== 'Color') {
     return makeColorRgb([out[0], out[1], out[2]], out[3], format ?? RGB);
@@ -83,15 +87,9 @@ const bound = (value: ValueGroup | undefined): ValueGroup | null =>
  */
 function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format: number | undefined): MaybePromise<ValueGroup> {
   const { frame, cells, channels } = form;
-  cells[0]!.evaluated = bound(call[1]);
-  if (cells.length > 1) {
-    cells[1]!.evaluated = bound(call[2]);
-  }
-  if (cells.length > 2) {
-    cells[2]!.evaluated = bound(call[3]);
-  }
-  if (cells.length > 3) {
-    cells[3]!.evaluated = bound(call[4]);
+  for (let i = 0; i < cells.length; i++) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- every element after a FormCall's form is a value.
+    cells[i]!.evaluated = bound(call[i + 1] as ValueGroup | undefined);
   }
   const input = call[1];
   const known = channels === undefined || isValueGroupArray(input) ? undefined : knownInput(channels, input);
@@ -116,16 +114,20 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format:
 
 /**
  * A function defined by a CSS form. `form` picks the form and its arguments
- * from the bound parameters. A parameter takes what only the browser knows when
+ * from the bound parameters, or gives the colour when the form cannot compute it
+ * (`contrast-color()`'s algorithm is the browser's). A parameter takes what only the browser knows when
  * its type includes `FunctionCall`; any other reads a call as it always has.
  */
-export function defineForm(name: string, spec: { readonly params: readonly ParamSpec[]; readonly form: (...args: never[]) => FormCall; readonly format?: number }): Fn {
+export function defineForm(name: string, spec: { readonly params: readonly ParamSpec[]; readonly form: (...args: never[]) => FormCall | Color; readonly format?: number }): Fn {
   const activations = new Map<AnonymousMixin, FormActivation>();
   return defineFunction(name, {
     params: spec.params,
     variadic: true,
     body: (args: ValueGroup, ctx: { readonly modes: { readonly compress?: boolean } }): MaybePromise<ValueGroup> => {
-      const call: FormCall = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, groupItems(args)));
+      const call: FormCall | Color = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, groupItems(args)));
+      if ('type' in call) {
+        return call;
+      }
       const form = call[0];
       const slot = ctx.modes.compress === true ? 1 : 0;
       const lane = lanes[slot] ?? (lanes[slot] = newLane(slot === 1));

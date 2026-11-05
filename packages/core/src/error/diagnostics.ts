@@ -772,6 +772,7 @@ type Common = {
   severity?: JessErrorInit['severity'];
 
   meta?: Record<string, unknown>;
+  cause?: unknown;
 };
 
 /**
