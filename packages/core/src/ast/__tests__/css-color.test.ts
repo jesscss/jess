@@ -315,6 +315,7 @@ describe('a built-in is its CSS form', () => {
     expect(value('hsv(var(--h), 50%, 50%)')).toBe('hwb(var(--h) 25% 50%)');
     expect(value('hsv(var(--h), 50%, 75%)')).toBe('hwb(var(--h) 37.5% 25%)');
     expect(value('hsva(var(--h), 50%, 50%, 0.5)')).toBe('hwb(var(--h) 25% 50% / 0.5)');
+    expect(value('hsv(var(--h), 33.3%, 66.6%)')).toBe('hwb(var(--h) 44.4222% 33.4%)');
     expect(value('hsv(90, var(--s), 50%)')).toBe('hsv(90, var(--s), 50%)');
     expect(value('hsva(90, 50%, 50%, var(--a))')).toBe('hsva(90, 50%, 50%, var(--a))');
   });
