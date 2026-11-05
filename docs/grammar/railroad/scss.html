@@ -399,6 +399,7 @@ svg.railroad-diagram rect {
     <a href="#rule-SupportsAndOrKeyword">SupportsAndOrKeyword</a>
     <a href="#rule-AtRulePreludeAtom">AtRulePreludeAtom</a>
     <a href="#rule-AtRootFilterPrelude">AtRootFilterPrelude</a>
+    <a href="#rule-AtRootSelectorPrelude">AtRootSelectorPrelude</a>
     <a href="#rule-SassDirective">SassDirective</a>
     <a href="#rule-SassNestedDirective">SassNestedDirective</a>
     <a href="#rule-SassControlDirective">SassControlDirective</a>
@@ -2115,6 +2116,11 @@ svg.railroad-diagram rect {
     <div class="diagram" data-rule="AtRootFilterPrelude"></div>
     <div class="ebnf">AtRootFilterPrelude ::= balanced ( … )</div>
   </section>
+  <section class="rule" id="rule-AtRootSelectorPrelude">
+    <h2><a href="#rule-AtRootSelectorPrelude">§</a> AtRootSelectorPrelude</h2>
+    <div class="diagram" data-rule="AtRootSelectorPrelude"></div>
+    <div class="ebnf">AtRootSelectorPrelude ::= SelectorList</div>
+  </section>
   <section class="rule" id="rule-SassDirective">
     <h2><a href="#rule-SassDirective">§</a> SassDirective</h2>
     <div class="diagram" data-rule="SassDirective"></div>
@@ -2213,7 +2219,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-AtRootContinuation">
     <h2><a href="#rule-AtRootContinuation">§</a> AtRootContinuation</h2>
     <div class="diagram" data-rule="AtRootContinuation"></div>
-    <div class="ebnf">AtRootContinuation ::= AtRootFilterPrelude &quot;{&quot; nestedBody &quot;}&quot; | &quot;{&quot; nestedBody &quot;}&quot;</div>
+    <div class="ebnf">AtRootContinuation ::= AtRootFilterPrelude &quot;{&quot; nestedBody &quot;}&quot; | AtRootSelectorPrelude? &quot;{&quot; nestedBody &quot;}&quot;</div>
   </section>
 <script>
 (function railroadLibrary(exports) {
@@ -3041,6 +3047,7 @@ svg.railroad-diagram rect {
   { name: "SupportsAndOrKeyword", dsl: function(){ return Diagram(NonTerminal("QueryAndOr")); } },
   { name: "AtRulePreludeAtom", dsl: function(){ return Diagram(Choice(0, NonTerminal("AtRulePreludeGroup"), NonTerminal("AtRulePreludeQuoted"), NonTerminal("BlockCommentToken"), NonTerminal("LineComment"), Terminal("/(?:[^#()\\[\\]{}'\"\\\\/]|\\\\[\\s\\S]|#(?!\\{)|\\/(?!\\*))+/"))); } },
   { name: "AtRootFilterPrelude", dsl: function(){ return Diagram(Terminal("balanced ( … )")); } },
+  { name: "AtRootSelectorPrelude", dsl: function(){ return Diagram(NonTerminal("SelectorList")); } },
   { name: "SassDirective", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, NonTerminal("MixinCallRule"), NonTerminal("MixinDefinitionRule"), NonTerminal("FunctionRule"), NonTerminal("IfRule"), NonTerminal("EachRule"), NonTerminal("ForRule"), NonTerminal("ContentRule"), NonTerminal("WhileRule"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective"), NonTerminal("AtRootContinuation")))); } },
   { name: "SassNestedDirective", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, NonTerminal("MixinCallRule"), NonTerminal("MixinDefinitionRule"), NonTerminal("IfRule"), NonTerminal("EachRule"), NonTerminal("ForRule"), NonTerminal("ContentRule"), NonTerminal("WhileRule"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective"), NonTerminal("AtRootContinuation")))); } },
   { name: "SassControlDirective", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, NonTerminal("IfRule"), NonTerminal("EachRule"), NonTerminal("ForRule"), NonTerminal("WhileRule"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective"), NonTerminal("DiagnosticDirective")))); } },
@@ -3060,7 +3067,7 @@ svg.railroad-diagram rect {
   { name: "RulePreludeRest", dsl: function(){ return Diagram(OneOrMore(Choice(0, NonTerminal("SassInterpolation"), Sequence(Terminal("("), Comment("balanced …"), Terminal(")")), Sequence(Terminal("["), Comment("balanced …"), Terminal("]")), Terminal("/(?:[^{};\"'()[\\]#/\\\\]|#(?!\\{)|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/|\\/\\/[^\\n\\r]*|\\/(?![/*])|\\\\[\\s\\S]|\"(?:[^\"\\\\]|\\\\[\\s\\S])*\"|'(?:[^'\\\\]|\\\\[\\s\\S])*')+/")))); } },
   { name: "NestedRuleset", dsl: function(){ return Diagram(Sequence(Choice(0, Sequence(NonTerminal("NestedSelector"), Optional(NonTerminal("RulePreludeRest"))), Sequence(Sequence(Comment("not"), Terminal("@")), NonTerminal("RulePreludeRest"))), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("NestedPropertyDeclaration"), NonTerminal("Declaration"), NonTerminal("Comment"), NonTerminal("ImportStatement"), NonTerminal("VariableDeclaration"), Terminal(";"), NonTerminal("Extend"), NonTerminal("NestedRuleset"), NonTerminal("SassDirective"), NonTerminal("ReturnRule"), NonTerminal("NestedConditionalBlock"), NonTerminal("NestedStartingStyleBlock"), NonTerminal("NestedLayerBlock"), NonTerminal("NestedScopeBlock"), NonTerminal("DocumentBlock"), NonTerminal("PageBlock"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("FontFace"), NonTerminal("CounterStyle"), NonTerminal("PropertyAtRule"), NonTerminal("Keyframes"), NonTerminal("UnknownAtRuleBlock"), NonTerminal("AtRuleStatement"))), Terminal("}"))); } },
   { name: "nestedBody", dsl: function(){ return Diagram(ZeroOrMore(Choice(0, NonTerminal("NestedPropertyDeclaration"), NonTerminal("Declaration"), NonTerminal("Comment"), NonTerminal("ImportStatement"), NonTerminal("VariableDeclaration"), Terminal(";"), NonTerminal("NestedRuleset"), NonTerminal("SassDirective"), NonTerminal("ReturnRule"), NonTerminal("NestedConditionalBlock"), NonTerminal("NestedStartingStyleBlock"), NonTerminal("NestedLayerBlock"), NonTerminal("NestedScopeBlock"), NonTerminal("DocumentBlock"), NonTerminal("PageBlock"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("FontFace"), NonTerminal("CounterStyle"), NonTerminal("PropertyAtRule"), NonTerminal("Keyframes"), NonTerminal("UnknownAtRuleBlock"), NonTerminal("AtRuleStatement")))); } },
-  { name: "AtRootContinuation", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("AtRootFilterPrelude"), Terminal("{"), NonTerminal("nestedBody"), Terminal("}")), Sequence(Terminal("{"), NonTerminal("nestedBody"), Terminal("}")))); } }
+  { name: "AtRootContinuation", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("AtRootFilterPrelude"), Terminal("{"), NonTerminal("nestedBody"), Terminal("}")), Sequence(Optional(NonTerminal("AtRootSelectorPrelude")), Terminal("{"), NonTerminal("nestedBody"), Terminal("}")))); } }
   ];
   rules.forEach(function (r) {
     var host = document.querySelector('.diagram[data-rule=' + CSS.escape(r.name) + ']');
