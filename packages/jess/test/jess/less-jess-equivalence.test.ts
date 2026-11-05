@@ -956,6 +956,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+3 more)'
   }],
+  ['bootstrap@5.3.8:mixins/_buttons.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
   ['bootstrap@5.3.8:mixins/_caret.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -966,10 +971,35 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'Lookup: a variable inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}` (+1 more)'
   }],
+  ['bootstrap@5.3.8:mixins/_container.scss', {
+    cause: 'p35',
+    outcome: 'p35',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)'
+  }],
   ['bootstrap@5.3.8:mixins/_deprecate.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['bootstrap@5.3.8:mixins/_gradients.scss', {
+    cause: 'cannot-express',
+    outcome: 'arm-b-parse',
+    reason: 'parse/syntax-error: Jess parser error. Expected: /--(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/.'
+  }],
+  ['bootstrap@5.3.8:mixins/_grid.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed) (+3 more)'
+  }],
+  ['bootstrap@5.3.8:mixins/_pagination.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'MixinCall: positional string argument: the `MixinCallArgument` reducer reads its content as a keyword name (parser defect)'
+  }],
+  ['bootstrap@5.3.8:mixins/_table-variants.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Interpolation: a `FunctionCall` spliced into a string: `${…}` takes a variable name'
   }],
   ['bootstrap@5.3.8:mixins/_transition.scss', {
     cause: 'cannot-express',
