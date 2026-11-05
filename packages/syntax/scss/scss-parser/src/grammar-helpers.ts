@@ -515,7 +515,7 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    */
   const last = children.findLast(child => !isArgumentGap(child));
   if (isComparisonToken(children[0]) || isComparisonToken(last)) {
-    return callArg(argumentRun(children));
+    return callArg(argumentRun(isToken(last) && last.value === '>' && !isComparisonToken(children[0]) ? [dataTypeRun(requireValueSlot(children[0])), ...children.slice(1)] : children));
   }
   const left = requireValueSlot(children[0]);
 
@@ -549,6 +549,24 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * in `a == ~b`) is the CSS run it is.
    */
   return callArg(argumentRun(children));
+}
+
+/*
+ * `<` and a `>` with nothing after it are a CSS data type, not a comparison and a
+ * delim: `attr(x <length>)` (css-values-5 §7.7) has read as `x < length`, then `>`.
+ * It is the run css builds.
+ */
+function dataTypeRun(value: ValueSlot): ValueSlot {
+  const parts = isValueSlotArray(value) ? value : [value];
+  const last = parts.at(-1);
+  const test = last !== undefined && !isValueSlotArray(last) && last.type === 'Expression' && !isValueSlotArray(last.value) && last.value.type === 'Condition' ? last.value.guard : undefined;
+  if (test?.g !== 'cmp' || test.op !== 'sass<') {
+    return value;
+  }
+  return withValueLayout(
+    [...parts.slice(0, -1), test.left, any('<'), test.right],
+    [...(valueLayoutOf(value) ?? parts.slice(1).map(() => ' ')), ' ', '']
+  );
 }
 
 function isComparisonToken(child: unknown): boolean {
@@ -1094,43 +1112,6 @@ export function isScssValuePair(value: unknown): value is ScssValuePair {
     && typeof value.separator === 'string'
     && 'value' in value
     && isScssValueSlotValue(value.value);
-}
-
-/**
- * `ValueTerm`'s reduction. A slash groups only its DIRECT neighbours
- * (DESIGN-DECISIONS P33 as amended 2026-09-24, P35): comma, then whitespace,
- * then slash. A slash tail joins the item before it — `12px/1.5 Arial` is
- * `[12px / 1.5, Arial]` — and a space tail starts a new item.
- */
-export function scssSlashGroupedTerm(children: readonly unknown[]): ValueSlot {
-  const items: ValueNode[] = [requireValue(children[0])];
-  const grouped: boolean[] = [false];
-  const separators: string[] = [];
-  for (const child of children.slice(1)) {
-    if (!isScssValueTail(child)) {
-      throw new TypeError('SCSS value term produced an invalid list boundary.');
-    }
-    const last = items.length - 1;
-    const previous = items[last]!;
-    if (child.kind === 'slash') {
-      items[last] = grouped[last] === true && previous.type === 'List'
-        ? list([...previous.value, child.value], '/')
-        : list([previous, child.value], '/');
-      grouped[last] = true;
-    } else {
-      items.push(child.value);
-      grouped.push(false);
-      separators.push(child.separator);
-      if (child.glued !== null) {
-        items.push(child.glued);
-        grouped.push(false);
-        separators.push('');
-      }
-    }
-  }
-  return items.length === 1
-    ? items[0]!
-    : withValueLayout(items, separators);
 }
 
 export function isScssValueTail(value: unknown): value is ScssValueTail {
