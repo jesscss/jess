@@ -30,6 +30,7 @@ export {
   LessMixinArgumentError,
   LessParseError,
   LessSourceImportSyntaxError,
+  LessUnresolvedPreludeInterpolationError,
   LessUncalledMixinReferenceError,
   LessUnparenthesizedMixinGuardError,
   LessUnsupportedMixinNameError,

@@ -24,6 +24,7 @@ import { LessMixinArgumentError, mixinListProblems, parseLessCst as parseLessDia
 import { parseScssCst as parseScssDiagnosticCst, parseScssDoc as parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst/positions';
 import { defaultCssDiagnosticMetadata, VENDOR_PREFIXED_PROPERTY_VALUES } from './metadata.js';
 import {
+  ATRULE_TYPES,
   CUSTOM_DECLARATION_TYPES,
   CUSTOM_PROPERTY_VALUE_TYPES,
   DECLARATION_TYPES,
@@ -33,6 +34,7 @@ import {
   absoluteStart,
   cstChildrenOf,
   dollarBraceVariableNameOf,
+  isAtRuleVarCall,
   isCstNode
 } from './cst-node.js';
 import { pushParseTwinDiagnostics } from './parse-twins.js';
@@ -318,12 +320,6 @@ const MIXIN_DEFINITION_TYPES = new Set([
 /** A Less mixin argument/parameter list, and the item nodes it holds between its separator leaves. */
 const LESS_MIXIN_LIST_TYPES = new Set(['MixinInterior', 'MixinArguments']);
 const LESS_MIXIN_LIST_ITEM_TYPES = new Set(['MixinBinding', 'MixinRestParam', 'MixinArgument']);
-const ATRULE_TYPES = new Set([
-  'AtRuleBlock',
-  'AtRuleStatement',
-  'UnknownAtRuleBlock',
-  'QueryAtRuleBlock'
-]);
 const DIMENSION_TYPES = new Set(['Dimension']);
 const PERCENTAGE_TYPES = new Set(['Percentage']);
 const KEYFRAMES_TYPES = new Set(['Keyframes']);
@@ -5538,7 +5534,7 @@ export function cstLintDiagnostics(
       && source.charCodeAt(start) === 64
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'font-face';
     const nodeContext: VisitContext = {
-      inVarCall: context.inVarCall || gt === 'VarCall',
+      inVarCall: context.inVarCall || (gt === 'VarCall' && !isAtRuleVarCall(node)),
       inDeclaration: context.inDeclaration || DECLARATION_TYPES.has(gt) || gt === 'NestedPropertyDeclaration',
       queryAtRuleKind: isMediaAtRule ? 'media' : isSupportsAtRule ? 'supports' : context.queryAtRuleKind,
       inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
@@ -5842,7 +5838,7 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (ATRULE_TYPES.has(gt)) {
+    if (ATRULE_TYPES.has(gt) || (gt === 'VarCall' && isAtRuleVarCall(node))) {
       if (source.charCodeAt(start) === 64 /* @ */) {
         const nameEnd = atRuleNameEnd(source, start, end);
         if (nameEnd > start + 1) {

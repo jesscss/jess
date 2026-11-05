@@ -15,6 +15,7 @@
  * drift, not a merge candidate: unifying it silently would change parsing.
  * Dialect-specific helpers stay in their own `grammar.ts`.
  */
+import { isNameCode, isQuote, stringEnd } from './css-syntax.js';
 import { any, keyword, NULL_NODE, pseudoHasInterp, selectorBranchCanonical, selectorBranchComponents, selectorBranchHasAmpersand, selectorBranchHasInterp, selectorCapture } from './nodes.js';
 import { NO_SPAN, sourceEndOf, sourceStartOf, withBodySpan } from './provenance.js';
 import type {
@@ -90,19 +91,78 @@ export function withBlockBody<T extends object>(node: T, rawChildren: readonly u
   return span === undefined ? node : withBodySpan(node, span);
 }
 
-/** Collapse every whitespace run to one space, leaving other characters alone. */
+/** Collapse every whitespace run to one space, leaving strings, escapes and other characters alone. */
 export function semanticGapText(text: string): string {
   let out = '';
   let inGap = false;
-  for (const char of text) {
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at]!;
     if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === '\f') {
       if (!inGap) {
         out += ' ';
         inGap = true;
       }
-    } else {
-      out += char;
-      inGap = false;
+      continue;
+    }
+    inGap = false;
+    out += char;
+    const end = isQuote(char) ? stringEnd(text, at) : char === '\\' ? at + 1 : at;
+    while (at < end && at + 1 < text.length) {
+      at++;
+      out += text[at]!;
+    }
+  }
+  return out;
+}
+
+/** The index of the last code unit of the block comment or unquoted `url()` opening at `at`, or `at` when neither does. */
+function opaqueRunEnd(text: string, at: number): number {
+  const char = text[at];
+  const isComment = char === '/' && text[at + 1] === '*';
+  const isUrl = (char === 'u' || char === 'U')
+    && `${text[at]}${text[at + 1]}${text[at + 2]}${text[at + 3]}`.toLowerCase() === 'url('
+    && !isQuote(text[at + 4])
+    && (at === 0 || !isNameCode(text[at - 1]!.charCodeAt(0)));
+  if (!isComment && !isUrl) {
+    return at;
+  }
+  let end = at + (isComment ? 3 : 4);
+  while (end < text.length && !(isComment ? text[end - 1] === '*' && text[end] === '/' : text[end] === ')')) {
+    end += 1;
+  }
+  return end;
+}
+
+/** A `//` right after one of these starts a line comment; right after anything else, as in `http://a`, it is text. */
+function startsLineComment(text: string, at: number): boolean {
+  const before = text[at - 1];
+  return before === undefined || before === ' ' || before === '\t' || before === '\n' || before === '\r' || before === '\f'
+    || before === '(' || before === ')' || before === '[' || before === ']' || before === ',' || isQuote(before);
+}
+
+/**
+ * Prelude bytes that were read with no comment grammar around them, such as an
+ * opaque group's, with each `//` line comment replaced by a space. `//` in a string,
+ * a block comment, an escape or an unquoted `url()` is not a comment, and nor is one
+ * glued to text unless `gluedToo`, for bytes whose own grammar has no `//` but a comment.
+ * A production that keeps a trivia log does not need this for the gaps it logged.
+ */
+export function withoutLineComments(text: string, gluedToo = false): string {
+  let out = '';
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at]!;
+    if (char === '/' && text[at + 1] === '/' && (gluedToo || startsLineComment(text, at))) {
+      out += ' ';
+      while (at + 1 < text.length && text[at + 1] !== '\n' && text[at + 1] !== '\r') {
+        at += 1;
+      }
+      continue;
+    }
+    const end = isQuote(char) ? stringEnd(text, at) : char === '\\' ? at + 1 : opaqueRunEnd(text, at);
+    out += char;
+    while (at < end && at + 1 < text.length) {
+      at += 1;
+      out += text[at]!;
     }
   }
   return out;

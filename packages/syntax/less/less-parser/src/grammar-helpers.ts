@@ -23,7 +23,7 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout, lookupStep, referenceCall, guardCall, guardCompare, guardDefault, guardLogical, guardNot, withFields, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, withoutLineComments, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout, lookupStep, referenceCall, guardCall, guardCompare, guardDefault, guardLogical, guardNot, withFields, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, MixinPathSegment, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, type ValuePieceKind, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex, valueRunSeparators } from './trivia-layout.js';
@@ -371,7 +371,7 @@ function staticText(value: unknown): string {
   throw new TypeError('Less grammar produced a non-static import fragment.');
 }
 
-function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
+function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[], dropLineComments = false): string {
   const gapBefore = new Set<number>();
   for (let index = 0; index < lessTriviaEntryCount(triviaLog); index += 1) {
     gapBefore.add(lessTriviaEntryInsertIndex(triviaLog, index));
@@ -388,7 +388,7 @@ function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: reado
     text += ' ';
   }
 
-  return semanticGapText(text);
+  return semanticGapText(dropLineComments ? withoutLineComments(text) : text);
 }
 
 /**
@@ -396,9 +396,9 @@ function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: reado
  * bytes. A `@{…}` in it makes the prelude an interpolation over those bytes, as
  * `@{…}` is in every other Less prelude.
  */
-function atRulePreludeFrom(children: readonly unknown[], triviaLog: readonly number[]): Any | Interpolation | null {
+function atRulePreludeFrom(children: readonly unknown[], triviaLog: readonly number[], dropLineComments = false): Any | Interpolation | null {
   if (!children.some(isInterpolationFact)) {
-    const text = staticTextWithTriviaGaps(children, triviaLog).trim();
+    const text = staticTextWithTriviaGaps(children, triviaLog, dropLineComments).trim();
     return text === '' ? null : any(text);
   }
   const gapBefore = new Set<number>();
@@ -424,7 +424,7 @@ function atRulePreludeFrom(children: readonly unknown[], triviaLog: readonly num
       trimmed.push(part);
       continue;
     }
-    let lit = semanticGapText(part.lit);
+    let lit = semanticGapText(dropLineComments ? withoutLineComments(part.lit) : part.lit);
     lit = index === 0 ? lit.trimStart() : lit;
     lit = index === parts.length - 1 ? lit.trimEnd() : lit;
     if (lit !== '') {

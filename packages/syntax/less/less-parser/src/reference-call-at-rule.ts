@@ -1,19 +1,20 @@
 /*
- * What `ReferenceCallOrAtRule` builds when its call head turns out to open an
- * at-rule: the head's bytes start the prelude and the rest continues it.
+ * What `ReferenceCallOrAtRule` builds when the token after its call head makes it
+ * an at-rule: the head's bytes start the prelude and the rest continues it.
  */
 import type { Span } from 'parseman';
-import type { AtRuleBlock, AtRuleStatement, Block, ExtendInstruction, SourceSpan, Statement, UnknownAtRuleBlock } from '@jesscss/core/ast';
-import { any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, interpolation, isInterpolation, isSpannedToken, semanticGapText, sourceEndOf, sourceStartOf, spaced, unknownAtRuleBlock, withBodySpan, withSourceSpan } from '@jesscss/core/ast';
-import { bodyExtensionsOf, isAny, isLessTerminalText, isLessValueSlotValue, isReferenceTailFact, isStatement, isVarRef, staticText } from './grammar-helpers.js';
-import { rejectBareVariable } from './parse-state.js';
+import type { Any, AtRuleBlock, AtRuleStatement, ExtendInstruction, Interpolation, SourceSpan, Statement, UnknownAtRuleBlock } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, bodySpanFromRaw, interpolation, isInterpolation, isSpannedToken, semanticGapText, sourceEndOf, sourceStartOf, unknownAtRuleBlock, withBodySpan, withoutLineComments, withSourceSpan } from '@jesscss/core/ast';
+import { bodyExtensionsOf, isAny, isLessTerminalText, isReferenceTailFact, isStatement, isVarRef, staticText, variableNameText } from './grammar-helpers.js';
+import { LessUnresolvedPreludeInterpolationError } from './parse-error.js';
+import { rejectBareVariable, reportRecovered } from './parse-state.js';
 
 type BlockTail = {
   readonly rules: readonly Statement[];
   readonly extensions: readonly ExtendInstruction[];
   readonly bodySpan: SourceSpan | undefined;
 };
-type OpaqueTail = { readonly prelude: unknown; readonly rawBody: string };
+type OpaqueTail = { readonly rawBody: string };
 
 export function atRuleBlockTailFrom(children: readonly unknown[], rawChildren: readonly unknown[]): BlockTail {
   return { rules: children.filter(isStatement), extensions: bodyExtensionsOf(children), bodySpan: bodySpanFromRaw(rawChildren) };
@@ -21,7 +22,7 @@ export function atRuleBlockTailFrom(children: readonly unknown[], rawChildren: r
 
 /* The body capture emits no child when the block is empty, as in `UnknownAtRuleBlock`. */
 export function unknownAtRuleBlockTailFrom(children: readonly unknown[]): OpaqueTail {
-  return { prelude: children[0], rawBody: children.length === 4 ? staticText(children[2]) : '' };
+  return { rawBody: children.length === 3 ? staticText(children[1]) : '' };
 }
 
 function isBlockTail(value: unknown): value is BlockTail {
@@ -34,12 +35,13 @@ function isOpaqueTail(value: unknown): value is OpaqueTail {
 
 /**
  * The head of an at-rule is its prelude, where a bare `@name` is an error (ledger
- * P7). Walks what the head read, not its bytes, so a string's `@x` is not one. A
- * named argument is a declaration value, which P7 exempts, and a `@{…}` is not bare.
+ * P7). Walks what the head read, not its bytes, so a string's `@x` is not one, and
+ * neither is a `@{…}`. A named argument is a declaration value, which P7 exempts.
+ * A value the head read may carry no span of its own; the error then points at the head.
  */
-function rejectBareVariableIn(value: unknown): void {
+function rejectBareVariableIn(value: unknown, head: Span): void {
   if (Array.isArray(value)) {
-    value.forEach(rejectBareVariableIn);
+    value.forEach(item => rejectBareVariableIn(item, head));
     return;
   }
   if (typeof value !== 'object' || value === null || isInterpolation(value)) {
@@ -49,90 +51,73 @@ function rejectBareVariableIn(value: unknown): void {
     return;
   }
   if (isVarRef(value)) {
-    rejectBareVariable(sourceStartOf(value), sourceEndOf(value), value.name);
-  }
-  Object.values(value).forEach(rejectBareVariableIn);
-}
-
-function holdsInterpolation(value: unknown): boolean {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  if (Array.isArray(value)) {
-    return value.some(holdsInterpolation);
-  }
-  if (isInterpolation(value)) {
-    return true;
-  }
-  for (const key in value) {
-    if (holdsInterpolation(Reflect.get(value, key))) {
-      return true;
+    const start = sourceStartOf(value);
+    if (start < 0) {
+      rejectBareVariable(head.start, head.end, value.name);
     }
+    rejectBareVariable(start, sourceEndOf(value), value.name);
   }
-  return false;
+  Object.values(value).forEach(item => rejectBareVariableIn(item, head));
 }
 
 /**
- * A head holding `@{…}`, as the paren group its one call read, so the value it
- * parsed carries the interpolation to evaluation, as a prelude group's does.
- * Other heads have no such reading: several calls or arguments do not keep their
- * gaps or which separator they had, so they stay the error they were rather than
- * print the `@{…}` unresolved.
- */
-function headGroup(tails: readonly unknown[]): Block {
-  const tail = tails[0];
-  const argument = tails.length === 1 && isReferenceTailFact(tail) && tail.step.type === 'Call' && tail.step.args.length === 1
-    ? tail.step.args[0]
-    : undefined;
-  if (argument === undefined || argument.name !== undefined || !isLessValueSlotValue(argument.value)) {
-    throw new TypeError('Less at-rule head cannot carry an interpolation in this form.');
-  }
-  return block(argument.value);
-}
-
-/**
- * What `ReferenceCallOrAtRule` read past its head, as an at-rule named `name`, or
- * `null` when the head stayed a call. The head's source reads as a prelude group
- * does, one space per gap, and the rest continues it with a space if one was left.
+ * What `ReferenceCallOrAtRule` read past its head, as an at-rule, or `null` when
+ * the head stayed a call. The name is its token's bytes, as for any generic
+ * at-rule (ledger P39, P40). The head's source reads as a prelude group does, and
+ * the rest continues it with a space if one was left. A `@{…}` these bytes cannot
+ * resolve must not reach the CSS, so it is reported on the at-rule (ledger P52).
  */
 export function atRuleAfterReferenceCall(
-  name: string,
   children: readonly unknown[],
   rawChildren: readonly unknown[],
-  span: Span
+  span: Span,
+  state: unknown
 ): AtRuleBlock | UnknownAtRuleBlock | AtRuleStatement | null {
+  let at = 2;
+  while (isReferenceTailFact(children[at])) {
+    at++;
+  }
+  const next = children[at];
+  if (next === undefined || isLessTerminalText(next, ';') || (next === null && children[at + 1] === undefined)) {
+    return null;
+  }
+  const raw = rawChildren[at];
+  if (!isSpannedToken(raw)) {
+    throw new TypeError('Less reference call lost the source of its head.');
+  }
   let text = '';
   let end = -1;
-  let at = 2;
-  for (; isReferenceTailFact(children[at]); at++) {
-    const piece = rawChildren[at];
+  for (let index = 2; index < at; index++) {
+    const piece = rawChildren[index];
     if (!isSpannedToken(piece)) {
       throw new TypeError('Less reference call lost the source of its head.');
     }
     text += end !== -1 && piece.span.start > end ? ` ${piece.value}` : piece.value;
     end = piece.span.end;
   }
-  const next = children[at];
-  if (next === undefined || isLessTerminalText(next, ';')) {
-    return null;
+  children.slice(2, at).forEach(value => rejectBareVariableIn(value, { start: span.start, end }));
+  const head = semanticGapText(withoutLineComments(text, true));
+  const opener = raw.span.start > end ? `${head} ` : head;
+  const parts = isInterpolation(next) ? next.parts : null;
+  const src = isAny(next) ? opener + next.src : head;
+  const bytes = parts === null ? src : opener + parts.map(part => 'lit' in part ? part.lit : '').join('');
+  const body = children[at + 1];
+  const atRule = atRuleWithBody(`@${variableNameText(children[1])}`, parts === null ? any(src) : interpolation([{ lit: opener }, ...parts]), src, body, span);
+  if (head.includes('@{')) {
+    reportRecovered(new LessUnresolvedPreludeInterpolationError(span.start, end, atRule), state);
+  } else if (bytes.includes('@{') || (parts !== null && isOpaqueTail(body))) {
+    reportRecovered(new LessUnresolvedPreludeInterpolationError(raw.span.start, raw.span.end, atRule), state);
   }
-  children.slice(2, at).forEach(rejectBareVariableIn);
-  const raw = rawChildren[at];
-  const head = semanticGapText(text) + (isSpannedToken(raw) && raw.span.start > end ? ' ' : '');
-  if (isOpaqueTail(next)) {
-    return unknownAtRuleBlock(name, typeof next.prelude === 'string' ? head + next.prelude : head.trimEnd(), next.rawBody);
+  return atRule;
+}
+
+function atRuleWithBody(name: string, prelude: Any | Interpolation, src: string, body: unknown, span: Span): AtRuleBlock | UnknownAtRuleBlock | AtRuleStatement {
+  if (isOpaqueTail(body)) {
+    return unknownAtRuleBlock(name, src, body.rawBody);
   }
-  const rest = isInterpolation(next) || (isAny(next) && next.src !== '') ? next : undefined;
-  const group = holdsInterpolation(children.slice(2, at)) ? headGroup(children.slice(2, at)) : null;
-  const prelude = group !== null
-    ? (rest === undefined ? group : spaced([group, rest]))
-    : isInterpolation(next)
-      ? interpolation([{ lit: head }, ...next.parts])
-      : any(isAny(next) ? head + next.src : head.trimEnd());
-  const tail = children[at + 1];
-  if (!isBlockTail(tail)) {
+  if (!isBlockTail(body)) {
     return atRuleStatement(name, prelude);
   }
-  const block = atRuleBlock(name, prelude, [...tail.rules], tail.extensions);
-  return withSourceSpan(tail.bodySpan === undefined ? block : withBodySpan(block, tail.bodySpan), span);
+  const atRule = atRuleBlock(name, prelude, [...body.rules], body.extensions);
+  return withSourceSpan(body.bodySpan === undefined ? atRule : withBodySpan(atRule, body.bodySpan), span);
 }
