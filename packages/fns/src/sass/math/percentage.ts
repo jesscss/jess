@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 import { assertNoUnits } from './units.js';
 
 /**
