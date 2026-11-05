@@ -132,8 +132,8 @@ The parser already gives CSS functions structure: `hsl(from …)` arrives as a
 as a `FunctionCall`, and math inside `calc()` as `Operation` nodes. Evaluation
 then discards it. A call written out as-is becomes text at once
 (`evaluator.ts` `fallbackCall` → `verbatimArgs` → a `Keyword` marked
-`keepAsWritten`), and so does kept math (`value-operate.ts` `keptMath`, a
-`WeakMap` from a `Keyword` to its bytes). The value domain
+`keepAsWritten`), and so did kept math, a `WeakMap` from a `Keyword` to its
+bytes, until slice 5. The value domain
 (`value-eval.ts:313`: `Dimension | Color | Quoted | Keyword | Any | UrlValue |
 List | Block | Bool | Null | Collection`) has nothing that holds a CSS function
 or an uncomputed operation as structure. So another function can only splice
@@ -167,11 +167,11 @@ structure:
   call is that call, its parens in its spelling until a callable reads the call
   inside them (J16). Built in slice 2b, replacing the `KeywordCall` slice 1 hung
   on the keyword.
-- **Kept math**: arithmetic that has not computed, `op`, `left`, `right`, in
-  place of `keptMath`'s bytes. Preserved math (`calc(1px + 1em)`, V18) becomes
-  that structure in a `calc` call, the same value an authored
-  `calc(1px + 1em)` evaluates to. Built with slice 5, which is the first to
-  read it.
+- **Kept math**: arithmetic that has not computed, the `Arithmetic` value
+  (`op`, `left`, `right`, `value-eval.ts`). Preserved math (`calc(1px + 1em)`,
+  V18) is that structure in a `calc` call, the same value an authored
+  `calc(1px + 1em)` evaluates to, as is math on an operand only the browser
+  knows (`calc(var(--a) * 2)`). Built in slice 5.
 
 The leaves an IR cannot compute are the values only the browser knows:
 `var()`, `env()`, `attr()`, `currentcolor`, system colours. They are `Call`s
@@ -336,7 +336,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 | 2b | Templates: the `.jess` template build step in `@jesscss/fns`, and the `FunctionCall` value kind (§3.2). Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. `clamp()` resolves in a channel. An exposed variable in the colour slot prints the form over its `var()` (R8). An unknown *amount* (`darken(@c, var(--a))`) stays exactly as it was until slice 5. A callable reads the call inside a paren group, which is also what `@v: (var(--x)); lighten(@v, 5%)` reads (J16): `lighten((var(--x)), 5%)` is `hsl(from var(--x) h s clamp(0, l + 5, 100))`, since `hsl(from (var(--x)) …)` is invalid CSS in Chrome 152. Parens around a written-out form stay (V38). A method only the browser knows cannot pick a form, so `darken(var(--c), 10%, var(--m))` stays written out, as does the same call on a known colour. Still text, so it fails a colour parameter as before: a kept `calc()`. A CSS colour call its callable cannot compute is written out under every `functionMode` when a consumer demands it, so only a known wrong type fails (§3.6). A form over `rgb(10 20 30)` or `color-mix(in srgb, red, blue)` prints until slices 3 and 6 give those their evaluation. Sass rows are slice 8. | 2a |
 | 3 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` (relative `rgb()`). | slice 2 |
 | 4 | `hsv` `hsva` → `hwb()`. | slice 2 |
-| 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | — |
+| 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. Their forms in `css-forms.jess`, computed on known inputs through the one evaluator; only `convert`'s conversion is still a kernel, its form `calc(N)` having none. Kept math is the `Arithmetic` value in a `calc` call (§3.2), replacing `keptMath`. A deferred amount (Q2) in `darken` `lighten` `saturate` `desaturate`, and `spin`'s as a number. A unit or a method only the browser knows has no form, so `unit(5px, var(--u))` and `convert(5px, var(--u))` stay written out. An exposed variable takes a form when its value is what the slot's form assumes (`formSlot`: a number, `%`, the first argument's unit, a colour), and otherwise keeps its runtime recipe, so `@a: 10%` in `darken(#c00, @a)` prints the form and `@a: 10` the recipe. `isnumber()` of a math form is true and `iskeyword()` false (Q10). A string keeps its quotes around a lone interpolation of kept math. `.scss` does not move (slice 8). `.css` does not move. | — |
 | 6 | `mix` `tint` `shade` `average` → `color-mix(in srgb)`, and the longer relative form for weights `color-mix()` cannot hold (§3.4a). | — |
 | 7 | `contrast()` → `contrast-color()`; known inputs pick by the larger WCAG 2.1 contrast ratio. | — (the `contrast()` fixtures that move are listed for the owner) |
 | 8 | Sass colour/math rows. | slices 2–6 |

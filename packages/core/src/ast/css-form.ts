@@ -12,13 +12,13 @@
 import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { compressDimensionBytes } from './compress.js';
 import { formChannelValues, relativeHsla, type Hsla, type MutableChannels } from './css-color.js';
-import { cssMath } from './css-math.js';
+import { cssMath, isDimension } from './css-math.js';
 import { buildEvaluator } from './evaluator.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { AnonymousMixin } from './nodes.js';
 import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type BindingCell, type FormActivation } from './serialize.js';
 import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
-import { isValueGroupArray, type Color, type Dimension, type ValueGroup } from './value-eval.js';
+import { isValueGroupArray, type Color, type ValueGroup } from './value-eval.js';
 import { makeColorHsl, makeDimension, withFields } from './value-factory.js';
 import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
@@ -59,9 +59,6 @@ const deferred = (out: ValueGroup): ValueGroup =>
 const bound = (value: ValueGroup | undefined): ValueGroup | null =>
   value === undefined ? null : !isValueGroupArray(value) && value.type === 'FunctionCall' ? insideParens(value) : value;
 
-const isDimension = (value: ValueGroup | null | undefined): value is Dimension =>
-  value !== null && value !== undefined && !isValueGroupArray(value) && value.type === 'Dimension';
-
 /** A form's math over numbers it knows, the channels it reads standing unbound; a number that cannot be spelled fails the call. */
 const computed = (out: ValueGroup): ValueGroup =>
   isDimension(out) ? makeDimension(out.number, out.unit) : out;
@@ -70,7 +67,7 @@ const computed = (out: ValueGroup): ValueGroup =>
 function spellCells(cells: readonly BindingCell[], compress: boolean): void {
   for (const cell of cells) {
     const value = cell.evaluated;
-    if (isDimension(value) && (compress || value.bytes === '')) {
+    if (value !== null && isDimension(value) && (compress || value.bytes === '')) {
       const bytes = value.bytes === '' ? makeDimension(value.number, value.unit).bytes : value.bytes;
       cell.evaluated = withFields(value, { bytes: compress ? compressDimensionBytes(bytes) : bytes });
     }

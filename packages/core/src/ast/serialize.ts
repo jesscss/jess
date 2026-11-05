@@ -218,7 +218,7 @@ import { collectNestedProperty, isNestedPropertyValue } from './nested-property.
 import { callSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathOnDeferred, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, isMathOnDeferred, keptInString, keptMathOf, mathOnDeferred, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeArithmetic, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
@@ -5101,8 +5101,8 @@ function evalTyped(
        * keyword.
        */
       if (node.interp !== null) {
-        return mapMaybe(mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => stringContent(content, node)), content => !isLiteral(content)
-          ? content
+        return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => !isLiteral(content)
+          ? keptInString(content, node)
           : node.escaped ? makeAny(content, node.quote) : quotedText(content, node.quote));
       }
       return node.escaped ? makeAny(node.value, node.quote) : materializeNode(node, e);
@@ -5629,6 +5629,16 @@ const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | Keyword
  */
 const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => groupText(v);
 
+/** Whether math on an operand a rule rejects is kept as written instead: it is CSS's, or not reached as math (V36, J16, V31). */
+const keepsOperation = (node: Operation, e: Lane): boolean =>
+  e.keepsMath || (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right);
+
+/** An operation over its operands; math on what only the browser knows is a `calc()` wherever it is math, not CSS's own or a slash that separates (V38). */
+const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
+  isMathOnDeferred(left, right) && ev.sassCalculations !== true && !keepsOperation(node, e) && !(node.operator === '/' && node.mathOutsideParens && e.parenFrames?.at(-1) !== true)
+    ? mathOnDeferred(node.operator, left, right)
+    : ev.operate(node.operator, left, right, e.modes);
+
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
  * so math kept as written keeps the parens (`(10px) + 1` under `unitMode:
@@ -5911,9 +5921,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
         : literal(e.compress === true ? compressDimensionBytes(node.src) : node.src);
     case 'Quoted':
       if (node.interp !== null) {
-        return mapMaybe(mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => stringContent(content, node)), content => isLiteral(content) && !node.escaped
-          ? literal(quotedBytes(content, node.quote))
-          : content);
+        return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => isLiteral(content)
+          ? node.escaped ? content : literal(quotedBytes(content, node.quote))
+          : keptInString(content, node));
       }
       return literal(node.escaped ? node.value : node.src);
     case 'Url': {
@@ -6300,14 +6310,15 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * function's and a written-out call's arguments keep such math as
            * written rather than reject it ({@link Lane.keepsMath}).
            */
-          const kept = e.keepsMath || (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right);
-          const separates = node.operator === '/' && node.mathOutsideParens;
-          const left = checkedOperation(node.operator, values[0]!, values[1]!, ev, kept || separates)
+          return checkedOperation(node.operator, values[0]!, values[1]!, ev, keepsOperation(node, e) || (node.operator === '/' && node.mathOutsideParens))
             ?? (e.channels !== undefined && !channelMath(node.operator, values[0]!, values[1]!) ? rejectChannelMath(node.operator) : undefined)
-            ?? spelledOperand(node.left, mathOperand(values[0]!, node.operator, ev, e), frame, e);
-          const right = spelledOperand(node.right, mathOperand(values[1]!, node.operator, ev, e), frame, e);
-          return rememberUnitOwner((kept || ev.sassCalculations === true || (separates && e.parenFrames?.at(-1) !== true) ? undefined : mathOnDeferred(node.operator, left, right))
-            ?? ev.operate(node.operator, left, right, e.modes), node);
+            ?? rememberUnitOwner(operated(
+              node,
+              spelledOperand(node.left, mathOperand(values[0]!, node.operator, ev, e), frame, e),
+              spelledOperand(node.right, mathOperand(values[1]!, node.operator, ev, e), frame, e),
+              ev,
+              e
+            ), node);
         } catch (error) {
           throwUnitArithmetic(error, node, e);
         }
@@ -6574,10 +6585,6 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: Lane): MaybePro
       : quotedFromLead(node.leadQuoting === true ? values[0] : undefined, literal(resolveEmergentInterp(bytes, frame, ei)));
   });
 }
-
-/** A lone interpolation of kept math in a string is that string's text: only an escaped string is the value it spells. */
-const stringContent = (content: EvalValue, node: Quoted): EvalValue =>
-  !node.escaped && !isLiteral(content) && !isValueGroupArray(content) && content.type === 'FunctionCall' ? literal(content.bytes) : content;
 
 /**
  * [compress] The context an interpolation splice evaluates in. Spliced bytes

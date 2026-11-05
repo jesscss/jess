@@ -16,7 +16,7 @@ import { isValueGroupArray, type Dimension, type ValueGroup } from './value-eval
 /** A number a form reads, spelled only if something prints it. */
 export const formNumber = (number: number, unit = ''): Dimension => new DimensionValueNode(number, unit, '');
 
-const isDimension = (value: ValueGroup | undefined): value is Dimension =>
+export const isDimension = (value: ValueGroup | undefined): value is Dimension =>
   value !== undefined && !isValueGroupArray(value) && value.type === 'Dimension';
 
 const keyword = (value: ValueGroup | undefined): string | undefined =>

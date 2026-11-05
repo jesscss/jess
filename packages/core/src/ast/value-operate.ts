@@ -647,12 +647,14 @@ const arithmeticOf = (call: FunctionCall): Arithmetic | undefined =>
  * `calc()`'s own parens: `(1px + 1em - 2px)` is `calc(1px + 1em - 2px)`,
  * `((1px + 1em) / 2)` is `calc((1px + 1em) / 2)`. Only a call pays the read.
  */
-export function keptMathOf(v: Value): string | undefined {
+export const keptMathOf = (v: Value): string | undefined => keptArithmetic(v)?.bytes;
+
+function keptArithmetic(v: Value): Arithmetic | undefined {
   if (v.type !== 'FunctionCall') {
     return undefined;
   }
   const math = arithmeticOf(v);
-  return math !== undefined && (math.kept || v.computed) ? math.bytes : undefined;
+  return math !== undefined && (math.kept || v.computed) ? math : undefined;
 }
 
 /**
@@ -661,10 +663,10 @@ export function keptMathOf(v: Value): string | undefined {
  * its own precedence wherever else it is read.
  */
 export function writtenCalc(v: Value): Value {
-  if (v.type !== 'FunctionCall' || keptMathOf(v) === undefined) {
+  const math = keptArithmetic(v);
+  if (math === undefined) {
     return keepAsWritten(v);
   }
-  const math = arithmeticOf(v)!;
   return keepAsWritten(carriedClash(makeCalc(withFields(math, { kept: false }), calcBytes(math.bytes, math.op)), v, v));
 }
 
@@ -689,12 +691,12 @@ const precedence = (op: string): number => (op === '+' || op === '-' ? 1 : 2);
  * written in the groups written around it ({@link mathText}).
  */
 export function operandAsWritten(v: Value, op: string, isRight: boolean, bytes = emitValue(v), inMath = false): string {
-  const kept = keptMathOf(v);
+  const kept = keptArithmetic(v);
   if (kept !== undefined && !inMath) {
     return bytes;
   }
-  const spelled = kept ?? mathText(v, bytes);
-  const inner = v.type === 'Arithmetic' ? v.op : kept !== undefined && v.type === 'FunctionCall' ? arithmeticOf(v)!.op : keptAsWritten.get(v);
+  const spelled = kept?.bytes ?? mathText(v, bytes);
+  const inner = v.type === 'Arithmetic' ? v.op : kept?.op ?? keptAsWritten.get(v);
   if (!inner) {
     return spelled;
   }
@@ -794,6 +796,10 @@ export function quotedText(text: string, quote: string): Quoted {
   return makeQuoted(escapeStringQuote(text, chosen), chosen, false);
 }
 
+/** A lone interpolation of kept math in a string is that string's text: only an escaped string is the value it spells. */
+export const keptInString = (content: ValueGroup, node: { readonly escaped: boolean; readonly quote: string }): ValueGroup =>
+  !node.escaped && !isValueGroupArray(content) && content.type === 'FunctionCall' ? quotedText(content.bytes, node.quote) : content;
+
 /** The bytes of {@link quotedText}, for the bytes lane. */
 export function quotedBytes(text: string, quote: string): string {
   const chosen = stringQuoteFor(text, quote);
@@ -868,14 +874,14 @@ const colourAndDeferred = (left: ValueGroup, right: ValueGroup): boolean =>
 /**
  * Math on an operand only the browser knows is CSS's math, in a `calc()`: the
  * sugar an operator is (V38, owner 2026-11-01): `(var(--a) * 2)` is
- * `calc(var(--a) * 2)`. `undefined` when neither operand is one, or one is absent
- * ({@link operate} decides).
+ * `calc(var(--a) * 2)`.
  */
-export function mathOnDeferred(op: string, left: Value, right: Value): Value | undefined {
-  return (isDeferredOperand(left) || isDeferredOperand(right)) && left.type !== 'Null' && right.type !== 'Null'
-    ? calcOf(`${operandAsWritten(left, op, false, left.bytes, true)} ${op} ${operandAsWritten(right, op, true, right.bytes, true)}`, op, left, right, true)
-    : undefined;
-}
+export const mathOnDeferred = (op: string, left: Value, right: Value): Value =>
+  calcOf(`${operandAsWritten(left, op, false, left.bytes, true)} ${op} ${operandAsWritten(right, op, true, right.bytes, true)}`, op, left, right, true);
+
+/** Whether an operand is one only the browser knows, and neither is absent. */
+export const isMathOnDeferred = (left: Value, right: Value): boolean =>
+  (isDeferredOperand(left) || isDeferredOperand(right)) && left.type !== 'Null' && right.type !== 'Null';
 
 /**
  * Binary operation. `sassUnits` is `.scss`'s unit rule for `*` and `/`
