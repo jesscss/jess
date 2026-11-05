@@ -372,7 +372,7 @@ export const engineReadRoots = async (source: EngineSource, request: EngineReque
   return roots;
 };
 
-/** Runs one render in the engine. */
+/** Runs one render in the engine. A compiler option that cannot cross names the render's entry, which it has no line in. */
 export const runInEngine = async (
   source: EngineSource,
   request: EngineRequest & {
@@ -381,7 +381,16 @@ export const runInEngine = async (
     configs?: HostConfigs;
     configsAbove?: (root: string) => ConfigWithMeta | UnusableConfig | undefined;
   }
-): Promise<unknown> => (await engineFor(source)).renderInEngine(engineRequest(request));
+): Promise<unknown> => {
+  try {
+    return await (await engineFor(source)).renderInEngine(engineRequest(request));
+  } catch (err) {
+    if (request.filePath !== undefined && err instanceof Error && Reflect.get(err, 'code') === 'plugin/engine-option') {
+      Object.assign(err, { filename: request.filePath });
+    }
+    throw err;
+  }
+};
 
 /**
  * Starts the engine ahead of a render that may reach a script, so Deno's

@@ -5,11 +5,11 @@
   "contractDigest": "6a4ac7dccadecee2e2c6cf0924aff82f17ecbff8421e3b9b38ad94a10858cab5",
   "implementations": {
     "owner": "c4feef9b75ce5c0baad559f8838ec2d8e98eb2f95d6984c709647097ed5d9a2c",
-    "compiler-convert": "50aaefd29182b5290e6f571ab38399084c9eac3bd33f0e4a51075339bef8f7e5",
+    "compiler-convert": "518c1bb8be8974415fa801d195dec43cd8dd0d58c27482b60c05890054538321",
     "less-equivalence": "6c5c019ef98d3fa9ac9d517642978433c59d1d32d19f17473537b47027484689",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "The root package.json moves its parseman pin to 0.61.3; the binding names, modules and exports jessFunctions projects are unchanged."
+  "rationale": "Only the compiler's sandbox error path and a comment on moduleIdentity changed, and the root parseman pin is 0.61.3; the binding names, modules and exports jessFunctions projects are unchanged."
 }
