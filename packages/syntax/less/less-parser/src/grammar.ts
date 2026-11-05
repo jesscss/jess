@@ -4690,7 +4690,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * `preludeUrlToken` and `preludeLineComment` in core define them: a `url(…)`, a line
    * comment, so its `)` closes nothing, or a `/` or a `u` that opens neither.
    */
-  const atPreludeGroupBytes = { skip: [regex(/(?<![-\w\u0080-\uffff\\])[uU][rR][lL]\([^)"']*\)|(?<=^|[ \t\n\r\f,)\]"']|(?<![-\w\u0080-\uffff\\])[([])\/\/[^\n\r]*|\/(?!\*)|[uU]/)] };
+  const atPreludeGroupBytes = { skip: [regex(/(?<![-\w\u0080-\uffff\\])[uU][rR][lL]\([^)"']*\)|(?<=[ \t\n\r\f,)\]"']|(?<![-\w\u0080-\uffff\\])[([])\/\/[^\n\r]*|\/(?!\*)|[uU]/)] };
   const atPreludeGroup = noTrivia(choice(
     token(balanced('(', ')', atPreludeGroupBytes)),
     token(balanced('[', ']', atPreludeGroupBytes))
@@ -4707,7 +4707,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * evaluates only `@{…}` (ledger P2), so a `@{…}` makes the prelude an
    * interpolation over its bytes. A bare `@name` there is the bare-variable
    * diagnostic (ledger P7), whose advice is that `@{…}` form. A `//` where a token
-   * could start is a Less line comment; glued inside text, as in `http://a`, it is text.
+   * could start is a Less line comment; glued to text or to a `@{…}`, as in `http://a`
+   * and `@{scheme}//a`, it is text.
    */
   const AtRulePrelude = node(
     'AtRulePrelude',
@@ -4719,7 +4720,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         atPreludeUrl,
         atPreludeGroup,
         atPreludeQuoted,
-        g.VariableInterpolation,
+        noTrivia(sequence(g.VariableInterpolation, optional(atPreludeText))),
         g.BareVariableInterpolation,
         atPreludeText
       ))
