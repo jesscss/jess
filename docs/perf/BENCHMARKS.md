@@ -156,7 +156,7 @@ How to use it:
 | Fixture | Same-build q25 | Same-build median | Paired rounds |
 | --- | --- | --- | --- |
 | `benchmark.less` | ±5% | ±5% | −23% to +30% |
-| `k-plain` (one plain declaration, `.a { b: c; }`-sized) | ±2% | ±5% | −8% to +9% |
+| `k-plain`, a small file of plain rules (`.k1 { a: 1px; }`) | ±2% | ±5% | −8% to +9% |
 
 The cause is that the number of mark-compacts in a process is not fixed. On `k-plain`, K 300 runs 3 or 4 of them, and one more is about +0.85G instructions, or about 5% of the marginal. It is the bimodal median above. Two builds with the same count agree to 0.04% (30.637G and 30.625G).
 
