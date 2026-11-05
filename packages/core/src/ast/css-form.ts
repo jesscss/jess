@@ -122,12 +122,11 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format:
   }
   const input = call[1];
   const amount = call[2];
-  const known = amount === undefined || isDimension(amount);
   const { channelLane, lane } = lanes;
-  if (known && channels === undefined && isDimension(input)) {
+  if (channels === undefined && isDimension(input) && (amount === undefined || isDimension(amount))) {
     return mapMaybe(evalFormChannel(result, frame, channelLane), computed);
   }
-  const origin = !known || channels === undefined || isValueGroupArray(input) ? undefined : knownInput(channels, input);
+  const origin = channels === undefined || isValueGroupArray(input) ? undefined : knownInput(channels, input);
   if (channels !== undefined && origin !== undefined) {
     const out = formColor(channels, origin, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
     if (out !== undefined && !isThenable(out)) {
