@@ -2,7 +2,7 @@
   "reviewVersion": 2,
   "id": "jess-function-bindings",
   "definitionDigest": "c327223c6be426f6ea7c2d8f6212bf8d9b8f9b1b8717d189e36c9d97253dc347",
-  "contractDigest": "08a588a4bc48ef3b6977063d2de3723abbcfea614c6e56d3b9ee72e64f6ef29a",
+  "contractDigest": "6a4ac7dccadecee2e2c6cf0924aff82f17ecbff8421e3b9b38ad94a10858cab5",
   "implementations": {
     "owner": "b1d9e61caf804844a7f42037f9ee53cc06ae78624401cd1fd464de5f0c524ad5",
     "compiler-convert": "50aaefd29182b5290e6f571ab38399084c9eac3bd33f0e4a51075339bef8f7e5",
@@ -11,5 +11,5 @@
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "packages/core/src/value.ts exports holdsNone and NoCssForm beside what it exported; fns' contrast splits into a shared form and an ambient one the registry holds under the same name. The call-to-export pairs and the registry derivation are unchanged."
+  "rationale": "packages/core/src/value.ts exports holdsNone and NoCssForm beside what it exported; fns' contrast splits into a shared form and an ambient one the registry holds under the same name. The call-to-export pairs and the registry derivation are unchanged. The root package.json moves its parseman pin to 0.61.3; the binding names, modules and exports jessFunctions projects are unchanged."
 }
