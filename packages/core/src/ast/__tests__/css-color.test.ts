@@ -151,7 +151,19 @@ const FORM_BYTES: readonly (readonly [string, string])[] = [
   ['darken(lighten(#33cc33, 100%), 50%)', '#33cc33'],
   ['lighten(darken(#33cc33, 100%), 50%)', '#33cc33'],
   ['spin(spin(#33cc33, 30), 30)', '#33cccc'],
-  ['spin(#ffffff, 10)', '#ffffff']
+  ['spin(#ffffff, 10)', '#ffffff'],
+  ['hsv(90, 50%, 50%)', '#608040'],
+  ['hsv(210, 25%, 75%)', '#8fa7bf'],
+  ['hsv(0, 80%, 50%)', '#801a1a'],
+  ['hsv(90, 150%, 50%)', '#408000'],
+  ['hsv(90, 50%, 150%)', '#dfffbf'],
+  ['hsv(90, -50%, 50%)', '#999999'],
+  ['hsv(0.25turn, 50%, 50%)', '#608040'],
+  ['hsv(0.25TURN, 50%, 50%)', '#608040'],
+  ['hsv(100GRAD, 50%, 50%)', '#608040'],
+  ['hsva(90, 50%, 50%, 0.5)', 'rgba(96, 128, 64, 0.5)'],
+  ['hsva(90, 50%, 50%, 50%)', 'rgba(96, 128, 64, 0.5)'],
+  ['hsva(90, 50%, 50%, 1)', 'rgb(96, 128, 64)']
 ];
 
 describe('a built-in is its CSS form', () => {
@@ -283,6 +295,13 @@ describe('a built-in is its CSS form', () => {
   it('leaves an alpha only the browser knows to be computed by a later form', () => {
     expect(value('fade(#336699, var(--a))')).toBe('fade(#336699, var(--a))');
     expect(value('fade(var(--c), var(--a))')).toBe('fade(var(--c), var(--a))');
+  });
+
+  it('prints hsv() over a hue only the browser knows, and writes out any other unknown', () => {
+    expect(value('hsv(var(--h), 50%, 50%)')).toBe('hwb(var(--h) calc((1 - 0.5) * 0.5 * 100%) calc((1 - 0.5) * 100%))');
+    expect(value('hsva(var(--h), 50%, 50%, 0.5)')).toBe('hwb(var(--h) calc((1 - 0.5) * 0.5 * 100%) calc((1 - 0.5) * 100%) / 0.5)');
+    expect(value('hsv(90, var(--s), 50%)')).toBe('hsv(90, var(--s), 50%)');
+    expect(value('hsva(90, 50%, 50%, var(--a))')).toBe('hsva(90, 50%, 50%, var(--a))');
   });
 
   it('reads a known origin by its channels, whatever its spelling', () => {

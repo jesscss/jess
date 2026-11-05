@@ -24,7 +24,7 @@ import { isValueSlotArray } from './css-grammar-helpers.js';
 import { isValueGroupArray, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { makeColorHsl, makeColorRgb } from './value-factory.js';
-import { clamp, HSL, RGB, rgbToHsl } from './color.js';
+import { clamp, HSL, hwbToRgb, RGB, rgbToHsl } from './color.js';
 import { namedColor } from './color-names.js';
 import { convertValue, groupOf, UnitGroup } from './value-units.js';
 
@@ -113,11 +113,15 @@ export function resolveColorCall(node: FunctionCall, vals: readonly ValueGroup[]
 }
 
 /**
- * What a form computes over an origin that is known, or `undefined` when a channel
- * is not known ({@link hslOf}, {@link rgbOf}).
+ * What a form computes over an `input` that is known: the origin of a relative
+ * colour, or an absolute colour's channels, or `undefined` when a channel is not
+ * known ({@link hslOf}, {@link rgbOf}, {@link hwbOf}).
  */
-export function formColor(form: FormChannels, input: Color, channels: MutableChannels, read: (slot: ValueSlot) => MaybePromise<ValueGroup>): MaybePromise<Hsla | Rgba | undefined> {
+export function formColor(form: FormChannels, input: Color | Dimension, channels: MutableChannels, read: (slot: ValueSlot) => MaybePromise<ValueGroup>): MaybePromise<Hsla | Rgba | undefined> {
   const { kinds, slashed } = form;
+  if (input.type !== 'Color') {
+    return channelsOf(form.slots, read, values => hwbOf(values, slashed));
+  }
   if (form.space === 'hsl') {
     const hsl = originHsl(input);
     channels.alpha.number = input.alpha;
@@ -137,14 +141,14 @@ export function formColor(form: FormChannels, input: Color, channels: MutableCha
 
 /** A form's colour, read once for every call: which function it is, and whether it reads an origin. */
 export interface FormChannels {
-  readonly space: 'hsl' | 'rgb';
+  readonly space: 'hsl' | 'rgb' | 'hwb';
   readonly relative: boolean;
   readonly slots: readonly ValueSlot[];
   readonly kinds: readonly number[];
   readonly slashed: boolean;
 }
 
-const FORM_SPACES: Readonly<Record<string, FormChannels['space'] | undefined>> = { hsl: 'hsl', rgb: 'rgb' };
+const FORM_SPACES: Readonly<Record<string, FormChannels['space'] | undefined>> = { hsl: 'hsl', rgb: 'rgb', hwb: 'hwb' };
 
 export function formChannels(node: FunctionCall): FormChannels | undefined {
   const nodes = node.args[0]!.value;
@@ -337,6 +341,27 @@ function rgbChannel(channel: ValueGroup, origin: number | undefined, kind: numbe
     return value === undefined ? undefined : clamp(value, 255);
   }
   return value === origin ? origin : value < 0 || value > 255 ? undefined : kind === 0 ? value : clamp(moved(value, origin, 1, kind), 255);
+}
+
+/**
+ * The colour of evaluated `h w b [/ alpha]` channels (css-color-4 §8), or
+ * `undefined` when one is not a number CSS reads there. A negative whiteness or
+ * blackness reads as 0, and a sum above 100% normalizes (Chrome 152).
+ */
+function hwbOf(values: readonly ValueGroup[], slashed: boolean): Rgba | undefined {
+  const channels = alphaLast(values, slashed);
+  if (channels === undefined) {
+    return undefined;
+  }
+  const h = channelNumber(channels[0]!, 'hue');
+  const w = channelNumber(channels[1]!, '%');
+  const b = channelNumber(channels[2]!, '%');
+  const a = channels[3] === undefined ? 1 : channelNumber(channels[3], 'alpha');
+  if (h === undefined || w === undefined || b === undefined || a === undefined) {
+    return undefined;
+  }
+  const rgb = hwbToRgb(hueOf(h, undefined, 0), Math.max(w, 0) / 100, Math.max(b, 0) / 100);
+  return [trimNumber(rgb[0]), trimNumber(rgb[1]), trimNumber(rgb[2]), clamp(a, 1)];
 }
 
 /**

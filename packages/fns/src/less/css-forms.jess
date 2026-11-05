@@ -13,3 +13,5 @@ $fadein: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha + $am
 $fadein-relative: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha + alpha * $amount)); }
 $fadeout: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - $amount)); }
 $fadeout-relative: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - alpha * $amount)); }
+$hsv: @($h, $s, $v) > { result: hwb($h calc((1 - $s) * $v * 100%) calc((1 - $v) * 100%)); }
+$hsva: @($h, $s, $v, $a) > { result: hwb($h calc((1 - $s) * $v * 100%) calc((1 - $v) * 100%) / $a); }

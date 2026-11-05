@@ -11,5 +11,5 @@
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "packages/core/src/plugin.ts moves rerouteForPlacedPlugins to plugin-reroute.ts and re-exports it, so the evaluator chunk has no node: import; fns' colour built-ins become CSS forms imported from @jesscss/core/form. The binding names, modules and exports jessFunctions projects are unchanged."
+  "rationale": "The alpha family and hsv moved to CSS forms: same call-to-export pairs, the registry derivation unchanged."
 }

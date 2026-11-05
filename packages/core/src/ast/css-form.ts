@@ -18,13 +18,13 @@ import type { AnonymousMixin } from './nodes.js';
 import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type FormActivation } from './serialize.js';
 import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
 import { HEX, RGB } from './color.js';
-import { isValueGroupArray, type Color, type ValueGroup } from './value-eval.js';
+import { isValueGroupArray, type Color, type Dimension, type Value, type ValueGroup } from './value-eval.js';
 import { makeColorHsl, makeColorRgb, withFields } from './value-factory.js';
 import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
 
 /** A form and the values its parameters bind to, the first of them the one its result's format follows. */
-export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, second?: ValueGroup];
+export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, second?: ValueGroup, third?: ValueGroup, fourth?: ValueGroup];
 
 type Lane = ReturnType<typeof formLane>;
 
@@ -50,18 +50,22 @@ function newLane(compress: boolean): FormLane {
  * other keeps its input's format and syntax until the result is translucent,
  * when a hex that had no alpha digit of its own turns to `rgb()`.
  */
-function spelled(channels: FormChannels, out: Hsla | Rgba, input: Color, format: number | undefined): Color {
-  if (channels.space === 'hsl') {
+function spelled(channels: FormChannels, out: Hsla | Rgba, input: Color | Dimension, format: number | undefined): Color {
+  if (channels.space === 'hsl' && input.type === 'Color') {
     return makeColorHsl([out[0], out[1], out[2]], out[3], input.format);
   }
-  if (format !== undefined) {
-    return makeColorRgb([out[0], out[1], out[2]], out[3], format);
+  if (format !== undefined || input.type !== 'Color') {
+    return makeColorRgb([out[0], out[1], out[2]], out[3], format ?? RGB);
   }
   const { src } = input;
   const hexDigits = typeof src === 'string' && src.startsWith('#') ? src.length - 1 : 0;
   const translucent = input.format === HEX && (hexDigits === 4 || hexDigits === 8) ? HEX : RGB;
   return makeColorRgb([out[0], out[1], out[2]], out[3], out[3] < 1 ? translucent : input.format, { modernSyntax: input.modernSyntax === true });
 }
+
+/** The input a form computes from: the colour a relative form reads, or the first channel of an absolute one. */
+const knownInput = (channels: FormChannels, input: Value): Color | Dimension | undefined =>
+  input.type === 'Color' ? (channels.relative ? input : undefined) : input.type === 'Dimension' && !channels.relative ? input : undefined;
 
 /** A form still unknown is a built-in's result, read by its type (Q10). */
 const deferred = (out: ValueGroup): ValueGroup =>
@@ -83,12 +87,19 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format:
   if (cells.length > 1) {
     cells[1]!.evaluated = bound(call[2]);
   }
+  if (cells.length > 2) {
+    cells[2]!.evaluated = bound(call[3]);
+  }
+  if (cells.length > 3) {
+    cells[3]!.evaluated = bound(call[4]);
+  }
   const input = call[1];
-  if (channels !== undefined && !isValueGroupArray(input) && input.type === 'Color') {
+  const known = channels === undefined || isValueGroupArray(input) ? undefined : knownInput(channels, input);
+  if (channels !== undefined && known !== undefined) {
     const { channelLane } = lanes;
-    const out = formColor(channels, input, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
+    const out = formColor(channels, known, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
     if (out !== undefined && !isThenable(out)) {
-      return spelled(channels, out, input, format);
+      return spelled(channels, out, known, format);
     }
   }
   const lane = lanes.lane;

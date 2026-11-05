@@ -1,18 +1,11 @@
-import type { Fn } from '@jesscss/core/value';
-import { makeColorRgb, defineFunction, HEX } from '@jesscss/core/value';
-import { hsvToRgb, normalizeHue, percentOf } from './color-ctor-helper.js';
-import { requireDimension } from '../shared/math/math-helper.js';
+import { defineForm, type FormCall } from '@jesscss/core/form';
+import { HEX, type Dimension, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { fractionOf, HUE_ARG, hueOf } from './color-form.js';
+import { hsv as form } from './css-forms.generated.js';
 
-/**
- * `hsv(h, s, v)` — `hsva` with alpha 1, emitted in HEX format (byte-faithful to
- * `less/hsv`, which sets `format = HEX` on the `hsva` result).
- */
-export const hsv: Fn = defineFunction('hsv', {
-  params: [{ type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }],
-  body: (hD, sD, vD) => {
-    const h = normalizeHue(requireDimension(hD));
-    const s = percentOf(requireDimension(sD), 1);
-    const v = percentOf(requireDimension(vD), 1);
-    return makeColorRgb(hsvToRgb(h, s, v), 1, HEX);
-  }
+/** `hsv(h, s, v)`: `hwb(h calc((1 - s) * v * 100%) calc((1 - v) * 100%))`, resolved in hex. */
+export const hsv: Fn = /* @__PURE__ */ defineForm('hsv', {
+  params: [HUE_ARG, { type: 'Dimension' }, { type: 'Dimension' }],
+  format: HEX,
+  form: (h: ValueGroup, s: Dimension, v: Dimension): FormCall => [form, hueOf(h), fractionOf(s), fractionOf(v)]
 });

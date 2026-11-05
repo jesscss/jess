@@ -112,7 +112,7 @@
       "class": "exact-if",
       "css": "hwb(H calc((1 - S) * V * 100%) calc((1 - V) * 100%))",
       "spec": "css-color-4 §8",
-      "notes": "exact when S and V are known, or deferred as 0-1 numbers; a deferred percentage (50%) makes (1 - S) invalid. hwb white = (1 - s)v, black = 1 - v, so white + black <= 100% always"
+      "notes": "exact for S and V in 0-100%, where white + black <= 100%: hwb white = (1 - s)v, black = 1 - v. Outside it a known input computes what hwb() does: a negative reads 0 and a sum over 100% normalizes to grey. A deferred S or V stays written, since a percentage (50%) makes (1 - S) invalid"
     },
     {
       "dialect": "less",
@@ -120,7 +120,7 @@
       "class": "exact-if",
       "css": "hwb(H calc((1 - S) * V * 100%) calc((1 - V) * 100%) / A)",
       "spec": "css-color-4 §8",
-      "notes": "exact when S and V are known, or deferred as 0-1 numbers; a deferred percentage (50%) makes (1 - S) invalid. hwb white = (1 - s)v, black = 1 - v, so white + black <= 100% always"
+      "notes": "exact for S and V in 0-100%, where white + black <= 100%: hwb white = (1 - s)v, black = 1 - v. Outside it a known input computes what hwb() does: a negative reads 0 and a sum over 100% normalizes to grey. A deferred S or V stays written, since a percentage (50%) makes (1 - S) invalid"
     },
     {
       "dialect": "less",
@@ -134,9 +134,7 @@
       "dialect": "less",
       "name": "rgb",
       "class": "already-css",
-      "spec": "css-color-4 §5",
-      "notes": "3+ slots and one colour; its 2-slot overload is as Less rgba"
-    },
+      "spec": "css-color-4 §5", "notes": "3+ slots and one colour; its 2-slot overload is as Less rgba" },
     {
       "dialect": "less",
       "name": "hsl",

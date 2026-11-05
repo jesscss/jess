@@ -152,8 +152,8 @@ or needs JS) to decide what ships in the bundle.
   in an argument the form takes prints the form over its `var()`,
   `hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100))`, the browser
   recomputes it, and the function is in no recipe. Built for Less `lighten`
-  `darken` `saturate` `desaturate` `spin` `greyscale` `fade` `fadein` `fadeout`
-  and two-slot `rgba`; the one seam is `exportCall`. A
+  `darken` `saturate` `desaturate` `spin` `greyscale` `fade` `fadein` `fadeout`,
+  two-slot `rgba`, and the hue of `hsv` `hsva`; the one seam is `exportCall`. A
   stylesheet that prints only forms adds no function: with no exposed variable it
   adds no JS at all, and with one it adds the runtime that sets it, `createRuntime`
   with no derived value (measured 2026-11-05 with Vite 6: 34.7 KB minified, 10.6 KB gzip). Every other computed function takes rung 4, and so does one with
@@ -248,7 +248,7 @@ or needs JS) to decide what ships in the bundle.
   runs on the evaluator: the runtime then ships `@jesscss/core/form`, the serializer
   included. Whether a recipe should reach a form that way, at that size, is the
   owner's call and is not decided here.
-  Measured again 2026-11-05 with Vite 6, after `fade` became a form:
+  Measured again 2026-11-05 with Vite 6, after `fade` and `hsv` became forms:
   `lightness(@brand)` is 72.7 KB minified, 20.3 KB gzip; a recipe that runs a form,
   `lightness(spin(@brand, 30))` or `alpha(fade(@brand, 50%))`, is 500 KB minified,
   133 KB gzip. That now includes `rgb()` and `rgba()` in a recipe, whose two-slot
