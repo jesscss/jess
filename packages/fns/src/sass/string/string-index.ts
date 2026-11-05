@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 import { NULL, STRING_KINDS, codePoints, stringText, type SassString } from './util.js';
 
 /**

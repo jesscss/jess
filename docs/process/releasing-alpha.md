@@ -76,6 +76,8 @@ Blocked from the initial alpha set (do not publish yet):
 
 - `rollup-plugin-jess` (depends on `jess`; it is a separate bundler integration,
   not part of the runtime package closure)
+- `vite-plugin-jess` (the same plugin under Vite's name; depends on
+  `rollup-plugin-jess`)
 
 ## Branch and version policy
 

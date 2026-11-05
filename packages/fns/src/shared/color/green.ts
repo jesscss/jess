@@ -1,4 +1,4 @@
-import { colorRgbRounded, defineFunction, makeDimension } from '@jesscss/core';
+import { colorRgbRounded, defineFunction, makeDimension } from '@jesscss/core/value';
 
 /** Less/Sass `green()` over the canonical value domain. */
 const green = defineFunction('green', {

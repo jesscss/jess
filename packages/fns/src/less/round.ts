@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/core';
+import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/core/value';
 
 /**
  * Less `round(value, precision = 0)` — the second argument is DECIMAL PRECISION.
