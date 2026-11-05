@@ -19623,7 +19623,7 @@ function mergeFoldMixedOwners(
  * A custom property's value is an arbitrary token stream, so `--foo: { … }` is
  * already valid CSS; a superset may not reassign its meaning.
  */
-function isCustomPropertyName(name: string | Interpolation): boolean {
+export function isCustomPropertyName(name: string | Interpolation): boolean {
   if (typeof name === 'string') {
     return name.startsWith('--');
   }

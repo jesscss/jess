@@ -158,10 +158,7 @@ describe('@jesscss/scss-parser public parse API', () => {
 
     for (const malformed of [
       '.card { value: --; }',
-      '.card { value: --#{$name}; }',
-      '.card { value: --theme#{$name}; }',
-      '.card { value: -- theme; }',
-      '@media (width: --#{$value}) { .bad { color: red; } }'
+      '.card { value: -- theme; }'
     ]) {
       expect(() => parse(malformed), malformed).toThrow(SyntaxError);
     }

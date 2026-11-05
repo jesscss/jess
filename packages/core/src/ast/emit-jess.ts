@@ -46,6 +46,7 @@ import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
 import { jessCollection, jessCurlyList, type ListSpeller } from './emit-jess-list.js';
 import { renderCombinator } from './node.js';
+import { isCustomPropertyName } from './serialize.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { WHITESPACE, runSeparator } from './emit-jess-run.js';
 import { MEMBER_CALL, moduleImportText, selectorParseCall, unquoteLiteral } from './emit-jess-module.js';
@@ -455,7 +456,7 @@ class JessPrinter {
     const name = typeof node.name === 'string'
       ? this.propertyName(node.name)
       : this.template(node.name, 'name');
-    const custom = typeof node.name === 'string' && node.name.startsWith('--');
+    const custom = isCustomPropertyName(node.name);
     if (!custom && !isSlotArray(node.value) && node.value.type === 'Any' && node.value.src === '') {
       gap('Declaration', 'an empty declaration value (`margin: ;`): the `.jess` `Declaration` rule requires a value');
     }
@@ -585,10 +586,10 @@ class JessPrinter {
       if (mixin && isSpaceRun(value)) {
         return gap(owner, 'space-run argument: the `MixinCallArgument` reducer throws on it (parser defect)');
       }
-      if (mixin && arg.name === undefined && !isSlotArray(value) && value.type === 'Quoted') {
+      const printed = this.value(value, At.Value);
+      if (mixin && arg.name === undefined && /^~?["']/u.test(printed)) {
         return gap(owner, 'positional string argument: the `MixinCallArgument` reducer reads its content as a keyword name (parser defect)');
       }
-      const printed = this.value(value, At.Value);
       return arg.name === undefined ? printed : `$${arg.name}: ${printed}`;
     }).join(', ');
   }

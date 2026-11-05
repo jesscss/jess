@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when, withCtx } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, startsWith, routed, rules, scanTo, sequence, token, when, withCtx } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -38,7 +38,7 @@ type ScssRules = {
   Quoted: Combinator<Quoted>;
   InterpolatedQuoted: Combinator<Quoted>;
   LiteralQuoted: Combinator<Quoted>;
-  CustomPropertyValue: Combinator<Keyword>;
+  CustomPropertyValue: Combinator<Keyword | Interpolation>;
   InterpolatedUrlValue: Combinator<Interpolation>;
   InterpolatedValue: Combinator<Interpolation>;
   Paren: Combinator<ValueNode>;
@@ -66,6 +66,8 @@ type ScssRules = {
   ArgumentPair: Combinator<ScssArgumentPair>;
   Value: Combinator<ValueSlot>;
   InterpolatedProperty: Combinator<Interpolation>;
+  CustomPropertyToken: Combinator<unknown>;
+  customPropertyNameRest: Combinator<unknown>;
   CustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<unknown>;
   CustomInnerPart: Combinator<unknown>;
@@ -772,10 +774,19 @@ const scssFactory = (g: ScssInputRules) => {
       span
     )
   );
-  const CustomPropertyValue = node<Keyword>(
+
+  /*
+   * A custom-property name in a `@supports` value, `#{…}` holes included. A hole
+   * makes the whole name one interpolation: only the reducer differs from css,
+   * which has no interpolation to keep.
+   */
+  const CustomPropertyValue = node<Keyword | Interpolation>(
     'CustomPropertyValue',
-    g.CustomPropertyToken,
-    children => keyword(requireToken(children[0]).value)
+    g.CustomPropertyName,
+    (children) => {
+      const name = children[0];
+      return typeof name === 'string' ? keyword(name) : requireInterpolation(name);
+    }
   );
 
   /*
@@ -1052,7 +1063,8 @@ const scssFactory = (g: ScssInputRules) => {
   const identOrFunction = token(noTrivia(choice(
     sequence(g.Identifier, literal('.'), literal('$'), scssVarName),
     sequence(g.Identifier, literal('.'), g.Identifier, literal('(')),
-    sequence(g.Identifier, optional(literal('(')))
+    sequence(g.Identifier, optional(literal('('))),
+    g.CustomPropertyToken
   )));
   const UrlFunction = node<ValueNode>(
     'Url',
@@ -1361,6 +1373,32 @@ const scssFactory = (g: ScssInputRules) => {
     children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
   );
 
+  /**
+   * The bare dashed ident a dispatch routed keeps css's `CustomPropertyValue`
+   * node, and SCSS adds glued chunks and `#{…}` to it: a hole makes the whole name
+   * one interpolation, so `var(--#{$prefix}color)` reads one identifier, as Sass
+   * reads it, not `--` and a value after it.
+   */
+  const RoutedCustomPropertyValue = node<ValueNode>(
+    'CustomPropertyValue',
+    sequence(
+      routed(),
+      g.customPropertyNameRest
+    ),
+    (children) => {
+      if (!children.some(isInterpolation)) {
+        return keyword(requireToken(children[0]).value);
+      }
+      const parts: Interpolation['parts'] = [];
+      appendCustomValueParts(
+        children,
+        parts,
+        { interpolated: false }
+      );
+      return interpolation(parts);
+    }
+  );
+
   /*
    * A namespaced CALL keeps its authored callee path in the `FunctionCall` name
    * (`color.mix`). That is the lossless store: the parser cannot know whether a
@@ -1405,6 +1443,7 @@ const scssFactory = (g: ScssInputRules) => {
      */
     when(endsWith('\\('), KeywordOrInterpolatedValue),
     when(endsWith('('), withCtx(state => leaveCalculation(state), Call)),
+    when(startsWith('--'), RoutedCustomPropertyValue),
     when(matches(/\.\$/), NamespacedVariable),
     otherwise(KeywordOrInterpolatedValue)
   );
@@ -1434,7 +1473,6 @@ const scssFactory = (g: ScssInputRules) => {
       g.VariableReference,
       g.Color,
       g.Dimension,
-      g.CustomPropertyValue,
       g.UnicodeRange,
       IdentifierOrFunction,
       g.MapOrGroup,
@@ -1951,6 +1989,14 @@ const scssFactory = (g: ScssInputRules) => {
    * remain on the compact shared CSS terminal below.
    */
   const propertyNameChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+
+  /**
+   * The custom-property token, overridden for `#{…}`: a bare `--` is a name only
+   * when a hole is written straight after it (`--#{$prefix}x`), because a hole can
+   * supply the name the token otherwise has to spell. css-variables-1 §2 reserves
+   * `--` on its own, so `--;` stays unmatched.
+   */
+  const CustomPropertyToken = regex(/--(?:(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+|(?=#\{))/);
   const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     sequence(
@@ -1982,23 +2028,19 @@ const scssFactory = (g: ScssInputRules) => {
    * A custom property is plain CSS in every dialect, so SCSS composes the same
    * recognition the CSS base does rather than routing `--x` through the ordinary
    * property terminal (which is a CSS ident and cannot start with `--`). The name
-   * is the shared custom-property leaf, or that leaf's `--` prefix followed by
-   * SCSS `#{…}` segments.
+   * opens on the custom-property token, then takes any glued chunks and `#{…}`:
+   * `--x-#{$a}b`, `--#{$a}#{$b}`.
    */
+  const customPropertyNameRest = many(choice(
+    propertyNameChunk,
+    parser({ trivia: whitespace }, g.SassInterpolation)
+  ));
   const CustomPropertyName = node<string | Interpolation>(
     'CustomPropertyName',
-    choice(
-      noTrivia(sequence(
-        literal('--'),
-        many(propertyNameChunk),
-        g.SassInterpolation,
-        many(choice(
-          propertyNameChunk,
-          g.SassInterpolation
-        ))
-      )),
-      g.CustomPropertyToken
-    ),
+    noTrivia(sequence(
+      g.CustomPropertyToken,
+      g.customPropertyNameRest
+    )),
     (children) => {
       if (!children.some(isInterpolation)) {
         return requireToken(children[0]).value;
@@ -5458,6 +5500,8 @@ const scssFactory = (g: ScssInputRules) => {
     ArgumentPair,
     Value,
     InterpolatedProperty,
+    CustomPropertyToken,
+    customPropertyNameRest,
     CustomPropertyName,
     CustomPart,
     CustomInnerPart,

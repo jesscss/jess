@@ -157,13 +157,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'custom properties', name: 'var() reference', src: '.a { w: var(--x); }', supported: true },
   { group: 'custom properties', name: 'var() with fallback', src: '.a { w: var(--x, red); }', supported: true },
   { group: 'custom properties', name: 'var() inside a function call', src: '.a { w: rgba(var(--x), .5); }', supported: true },
-  {
-    group: 'custom properties',
-    name: 'interpolation inside a var() name',
-    src: '.a { w: var(--#{$p}x); }',
-    supported: false,
-    note: 'plain `var(--x)` parses'
-  },
+  { group: 'custom properties', name: 'interpolation inside a var() name', src: '.a { w: var(--#{$p}x); }', supported: true },
 
   // ── module system / diagnostics / misc ─────────────────────────────────────
   { group: 'module system', name: '@import', src: '@import "x";', supported: true },
