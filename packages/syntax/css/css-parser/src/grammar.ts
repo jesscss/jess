@@ -2484,8 +2484,8 @@ const cssFactory = (g: GrammarSelf) => {
    * `<dashed-function>` (`--*( <declaration-value>#? )`). Both dispatches route
    * `--f(` to the generic call tail and a bare `--x` (by its `--` prefix) to its
    * `CustomPropertyValue` node. It is a rule key, read through `g` by every
-   * value-position dispatch here, so a dialect reads the same opener and an
-   * override of it reaches all of them.
+   * value-position dispatch here and by a pseudo's name in every dialect, so a
+   * dialect reads the same opener and an override of it reaches all of them.
    */
   const identOrFunction = token(noTrivia(
     sequence(

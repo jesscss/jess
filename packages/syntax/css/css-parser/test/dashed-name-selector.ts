@@ -63,7 +63,7 @@ export function describeDashedNames(
 
     it.each([...CSS_DASHED_NAMES, ...own])('%s', (source) => {
       expect(outcome(() => parse(ast[engine], source))).toMatchObject({ ok: true });
-      expect(cstOutcome(cst[engine], source, select)).toMatchObject({ ok: true });
+      expect(cstOutcome(cst[engine], source, select)).toMatchObject({ ok: true, value: { ok: true } });
     });
   });
 }

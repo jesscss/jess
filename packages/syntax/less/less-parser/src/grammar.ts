@@ -436,10 +436,8 @@ type SharedSyntax = {
   SupportsCondition: Combinator<ValueNode>;
   // Inherited from the CSS base: the comma list of supports conditions an @supports prelude reads.
   SupportsPrelude: Combinator<ValueNode>;
-  // Inherited from the CSS base: the value-position `<ident-token>` / `<function-token>` opener.
+  // Inherited from the CSS base: the `<ident-token>` / `<function-token>` opener of a value and of a pseudo's name.
   identOrFunction: Combinator<string>;
-  // Inherited from the CSS base: css-syntax-3 §4.3.9's one identifier token.
-  IdentToken: Combinator<string>;
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;
@@ -5268,9 +5266,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     regex(/::?(?![ \t\n\r\f])/),
     not(extendPseudoNameOpen),
     not(g.NthPseudoSelectorName),
-    // An `<ident-token>`, so a name may start `--`: `:--heading` (css-extensions-1 `<custom-selector>`).
-    g.IdentToken,
-    optional(literal('('))
+    // The CSS base's opener, so a name may start `--`: `:--heading` (css-extensions-1 `<custom-selector>`).
+    g.identOrFunction
   )));
   /*
    * The padding before the `)` is the argument's (`:is( .b )`), not a

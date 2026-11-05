@@ -33,8 +33,6 @@ describe.each(['css', 'less', 'scss', 'jess'])('.%s', (dialect) => {
     '.--b:hover',
     '.--b::before',
     ':not(.--b)',
-    ':is(.--b, .c)',
-    ':where(#--b)',
     ':has(> .--b)',
     'li:nth-child(2n of .--b)',
     ':--heading',
@@ -42,6 +40,31 @@ describe.each(['css', 'less', 'scss', 'jess'])('.%s', (dialect) => {
     ':not(:--heading)'
   ])('%s', async (selector) => {
     await expectCss(dialect, `${selector} { color: red; }`, rule(selector));
+  });
+
+  it.each([':is(.--b, .c)', ':where(#--b)'])('%s is a selector, so it does not warn', async (selector) => {
+    const result = await new Compiler({ quiet: true }).renderToResult(
+      { source: `${selector} { color: red; }`, filePath: `/proj/entry.${dialect}` },
+      { quiet: true, breakOnError: false }
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.map(warning => warning.code)).not.toContain('css/forgiving-selector-item');
+    expect(result.css).toBe(rule(selector));
+  });
+
+  it.each([
+    [':is(.--b /*x*/)', ':is(.--b)'],
+    [':is(.a /*x*/)', ':is(.a)'],
+    [':where(.a /*x*/, .b /*x*/)', ':where(.a, .b)'],
+    [':not(.--b /*x*/)', ':not(.--b)'],
+    [':not(.a /*x*/)', ':not(.a)'],
+    [':has(> .a /*x*/)', ':has(> .a)']
+  ])('a comment before the close of %s is trivia', async (selector, written) => {
+    await expectCss(dialect, `${selector} { color: red; }`, rule(written));
+  });
+
+  it('an `of` selector is written with single spaces', async () => {
+    await expectCss(dialect, 'li:nth-child(2n   of   .--b) { color: red; }', rule('li:nth-child(2n of .--b)'));
   });
 
   it('a list holding one', async () => {
@@ -60,6 +83,15 @@ describe.each(['css', 'less', 'scss', 'jess'])('.%s', (dialect) => {
     await expectCss(dialect, '.a { --b:hover; }', '.a {\n  --b: hover;\n}\n');
     await expectCss(dialect, '.a { color:--x; }', '.a {\n  color: --x;\n}\n');
     await expectCss(dialect, '.a { b:--c }', '.a {\n  b: --c;\n}\n');
+  });
+});
+
+describe.each(['css', 'less', 'jess'])('.%s', (dialect) => {
+  it.each([
+    [':is( /*x*/ .--b /*x*/ )', ':is(.--b)'],
+    [':not( /*x*/ .a /*x*/ )', ':not(.a)']
+  ])('a comment at both ends of %s is trivia', async (selector, written) => {
+    await expectCss(dialect, `${selector} { color: red; }`, rule(written));
   });
 });
 
@@ -84,6 +116,10 @@ describe('.less', () => {
     await expectCss('less', '.--b { color: red; }\n.c { &:extend(.--b); }', rule('.--b,\n.c'));
   });
 
+  it('an escape in a pseudo\'s name keeps its bytes', async () => {
+    await expectCss('less', '.a:\\68 over { color: red; }', rule('.a:\\68 over'));
+  });
+
   it('an interpolated name', async () => {
     await expectCss('less', '@x: y;\n.--@{x} { color: red; }', rule('.--y'));
     await expectCss('less', '@x: y;\n#--@{x} { color: red; }', rule('#--y'));
@@ -92,7 +128,11 @@ describe('.less', () => {
 
 describe('.scss', () => {
   it.each([
+    ['.a { &--m { b: c } }', '.a--m {\n  b: c;\n}\n'],
     ['.a { &--b { color: red; } }', rule('.a--b')],
+    ['.a { &-- { color: red; } }', rule('.a--')],
+    ['$x: y;\n.a { &--#{$x} { color: red; } }', rule('.a--y')],
+    ['$x: y;\n.a { &--b#{$x} { color: red; } }', rule('.a--by')],
     ['.a { &--b.d { color: red; } }', rule('.a--b.d')],
     ['.a { &--b:hover { color: red; } }', rule('.a--b:hover')],
     ['.a { &--b &--d { color: red; } }', rule('.a--b .a--d')],

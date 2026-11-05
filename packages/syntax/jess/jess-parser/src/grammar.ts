@@ -2247,26 +2247,26 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           ['is(', 'where('],
           sequence(
             routed(),
-            optional(rawWhitespace),
             parser(
               { trivia: whitespace },
-              g.ForgivingSelectorList
-            ),
-            optional(rawWhitespace),
-            literal(')')
+              sequence(
+                g.ForgivingSelectorList,
+                literal(')')
+              )
+            )
           )
         ),
         caseInsensitiveWhen(
           ['not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
           sequence(
             routed(),
-            optional(rawWhitespace),
             parser(
               { trivia: whitespace },
-              g.SelectorOnlyPseudoArgument
-            ),
-            optional(rawWhitespace),
-            literal(')')
+              sequence(
+                g.SelectorOnlyPseudoArgument,
+                literal(')')
+              )
+            )
           )
         ),
         caseInsensitiveWhen(
