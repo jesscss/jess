@@ -102,6 +102,7 @@ describe('Less `@name (…)` is an at-rule when a block or more prelude follows'
 
   it('keeps a named argument and a `@{…}` in the head as written (ledger P52)', () => {
     expect(preludeOf(first('@foo (a: @b) { c: d }'))).toMatchObject({ src: '(a: @b)' });
+    expect(preludeOf(first('@foo (@a: @b) { c: d }'))).toMatchObject({ src: '(@a: @b)' });
     expect(preludeOf(first('@foo (@{b}) { c: d }'))).toMatchObject({ src: '(@{b})' });
     expect(preludeOf(first('@foo ("@{b}") { c: d }'))).toMatchObject({ src: '("@{b}")' });
   });
