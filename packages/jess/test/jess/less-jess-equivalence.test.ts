@@ -946,6 +946,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'GuardNode: comparison operator `sass-equal` [in vendor/_rfs.scss] (+30 more)'
   }],
+  ['bootstrap@5.3.8:_utilities.scss', {
+    cause: 'cannot-express',
+    outcome: 'arm-b-parse',
+    reason: 'parse/syntax-error: Missing closing parenthesis.'
+  }],
   ['bootstrap@5.3.8:_variables-dark.scss', {
     cause: 'p35',
     outcome: 'p35',

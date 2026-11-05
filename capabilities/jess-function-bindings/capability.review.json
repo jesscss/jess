@@ -6,10 +6,10 @@
   "implementations": {
     "owner": "6a9b14616b248d77733956745e54d847f939841a8307679f58d1a2c49dab80a5",
     "compiler-convert": "852176a8fe4f1016719327ee4d23fbbfa8a264d82810c2d4779cd1c10beedf5f",
-    "less-equivalence": "77fa80a6535e798a4b7cdd77e2272cbe753d2309f9a65b22ea2f8b8fec02d563",
+    "less-equivalence": "6ad8c9c971df35d9f2d4c63b14500dce55023b97c3f0049d2ab30030917d2e0e",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "The equivalence suite gains KNOWN rows for SCSS files that now parse, and function calls spread a rest argument. It does not change which module or export a conversion binds."
+  "rationale": "The equivalence suite gains KNOWN rows for SCSS files that now parse. It does not change which module or export a conversion binds."
 }
