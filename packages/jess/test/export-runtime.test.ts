@@ -97,11 +97,17 @@ describe('the export runtime', () => {
     '@less.mix(rgba(1, 2, 3, .5), red, @a)',
     '@less.hsva(var(--h), 50%, 50%, @a)',
     '@less.hsv(var(--h), 50%, @a)',
-    '@less.darken(var(--x), @a)'
+    '@less.spin(var(--x), @a)'
   ])('compiles %s, and says what the runtime cannot read if it is set', async (expression) => {
     const exported = await compile(`@use "#less";\n@expose a;\n@a: 25%;\n.x { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '50%' })).toThrow('The runtime computes from CSS literals');
+  });
+
+  it('needs no recipe where the form holds the export', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.darken(var(--x), @a); }');
+    expect(exported.css).toContain('hsl(from var(--x) h s clamp(0, l - var(--a, 25%) / 1%, 100))');
+    expect(exported.runtime!.derived).toEqual({});
   });
 
   it.each([
