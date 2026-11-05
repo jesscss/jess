@@ -47,6 +47,7 @@ export {
   isToken,
   keywordOrNull,
   recoveredInTree,
+  charsetPreludeFrom,
   scannedLeaf,
   selectorCaptureOf,
   selectorStringComponents,
