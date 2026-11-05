@@ -77,7 +77,9 @@ import serializerNodes, {
   isCssColorCall,
   isCssColorFunction,
   isConditionOperand,
-  colorAlphaSlash
+  colorAlphaSlash,
+  copyNode,
+  withFields
 } from './nodes.js';
 import {
   type CompoundIn,
@@ -267,7 +269,7 @@ import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, h
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* The serializer-only node constructors: nodes.ts's default export, kept out of the public `@jesscss/core/ast` entry. */
-const { rulesetMixin, syntheticCall, withArgs } = serializerNodes;
+const { rulesetMixin, syntheticCall, withArgs, withSpan } = serializerNodes;
 
 /* ---------------------------------------------------- MaybePromise glue */
 
@@ -3692,7 +3694,7 @@ function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall 
   if (isValueSlotArray(value) || isValueBlock(value) || value.type === 'MixinCall') {
     return value;
   }
-  return { ...value };
+  return copyNode(value);
 }
 
 function activateVariableDeclaration(node: VariableDeclaration | VariableExpose, frame: Frame, e: Lane, own?: readonly Statement[]): void {
@@ -7318,7 +7320,7 @@ function resolveReferenceResult(
 
       /* A mixin, named directly or held by a variable (`@foo: .m;` → `@foo(red)`), takes the call's arguments. */
       if (isMixinCallValue(value)) {
-        value = step.args.length === 0 ? value : { ...value, args: step.args };
+        value = step.args.length === 0 ? value : withArgs(value, step.args);
       }
       if (!isValueSlotArray(value) && value.type === 'AnonymousMixin'
         && lambdaResultValue(value.rules) !== undefined) {
@@ -7403,10 +7405,7 @@ function resolveReferenceResult(
       const call = node.steps[stepIndex + 1];
       const name = `.${step.name}`;
       if (call?.type === 'Call' && map.activation.mixins?.has(name)) {
-        value = {
-          type: 'MixinCall', name, args: call.args, path: [], important: false, content: null,
-          _s: node._s, _e: node._e
-        };
+        value = withSpan(withArgs(mixinCall(name), call.args), node._s, node._e);
         valueFrame = map.activation;
         evaluated = null;
         stepIndex++;
@@ -12829,7 +12828,7 @@ function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, 
    */
   return crossTexts<string | undefined, SelectorTerm>(texts, (picked) => {
     const out = resolvedCompoundTokens(tokens, picked);
-    return out.length === 1 ? out[0]! : { ...comp, value: out, _hasInterp: false, _canon: undefined };
+    return out.length === 1 ? out[0]! : withFields(comp, { value: out, _hasInterp: false, _canon: undefined });
   });
 }
 
@@ -12994,7 +12993,7 @@ function resolvePseudoInterpCopy(p: PseudoSelector, frame: Frame | null, e: Lane
     return p;
   }
   const selectors = args.selectors.flatMap(c => resolveSelectorBranchInterpCopy(c, frame, e, 'argument'));
-  return { ...p, args: { ...args, selectors, _level: undefined }, _hasInterp: false };
+  return withFields(p, { args: withFields(args, { selectors, _level: undefined }), _hasInterp: false });
 }
 
 function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): SelectorTerm | SelectorTerm[] {
@@ -13033,10 +13032,10 @@ function resolveSelectorBranchInterpCopy(c: SelectorBranch, frame: Frame | null,
     const part = (term: SelectorTerm | Combinator): SelectorTerm | Combinator => typeof term === 'string' ? term : terms[at++]!;
     if (c.type === 'ComplexSelector') {
       const [, ...rest] = c.value;
-      return { ...c, value: [terms[at++]!, ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
+      return withFields(c, { value: [terms[at++]!, ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined });
     }
     const [combinator, , ...rest] = c.value;
-    return { ...c, value: [combinator, terms[at++]!, ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
+    return withFields(c, { value: [combinator, terms[at++]!, ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined });
   });
 }
 
@@ -13056,7 +13055,7 @@ function resolvedSelectorBranchesOf(list: SelectorList, branches: ReadonlyArray<
     return;
   }
   const selectors = branches.flat();
-  e.s.resolvedSelectors.set(list, { ...list, selectors, _level: undefined });
+  e.s.resolvedSelectors.set(list, withFields(list, { selectors, _level: undefined }));
   if (selectors.length !== branches.length) {
     const lone = (branch: SelectorBranch[], index: number): boolean => branch.length > 1 && loneInterpRef(list.selectors[index]!) !== null;
     e.s.resolvedUnits.set(list, Int32Array.from(branches.flatMap((branch, index) => Array.isArray(branch) ? branch.map(() => lone(branch, index) ? ~index : index) : [index])));
@@ -19038,7 +19037,7 @@ function substituteClosureVarArgs(
       if (bound && !isValueSlotArray(bound) && (isMixinReference(bound)
         || (bound === directHit!.value && (isMixinCallValue(bound) || isValueBlock(bound))))) {
         changed = true;
-        return { ...a, value: bound };
+        return callArg(bound, a.name, a.spread, a.sigil);
       }
     }
     return a;

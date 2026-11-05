@@ -17,7 +17,7 @@ import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import type { CallValue, MixinCall, Reference } from './nodes.js';
+import serializerNodes, { type CallValue, type MixinCall, type Reference } from './nodes.js';
 import type { Any } from './value-eval.js';
 import { NO_SPAN, sourceEndOf, sourceStartOf } from './provenance.js';
 import { makeAny } from './value-factory.js';
@@ -117,5 +117,5 @@ function spelling(read: object): string {
 export function calledAt(mixin: MixinCall, call: Reference): MixinCall {
   return sourceStartOf(mixin) !== NO_SPAN || sourceStartOf(call) === NO_SPAN
     ? mixin
-    : { ...mixin, _s: sourceStartOf(call), _e: sourceEndOf(call) };
+    : serializerNodes.withSpan(mixin, sourceStartOf(call), sourceEndOf(call));
 }

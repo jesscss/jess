@@ -106,6 +106,13 @@ export const grammarSourceRules = {
   'grammar/no-regex-outside-combinator': ['error', { combinators: ['regex', 'matches'] }],
 
   /*
+   * A keyword is recognized with `word()`/`keywords()`, never a hand-rolled
+   * `/word(?![-\w])/` boundary regex: the combinator owns the boundary and
+   * the case-fold class (review items 8 and 11).
+   */
+  'grammar/no-hand-rolled-keyword-regex': 'error',
+
+  /*
    * Keeps the file macro-buildable: no factories, no spreads into
    * combinator argument lists, no patterns assembled from variables.
    * `check-macro-buildable` catches these at build time; catching them at
@@ -477,6 +484,22 @@ export default tseslint.config([
        * definitions of correct indentation and left 128 unfixable errors.
        * One rule, one definition.
        */
+    }
+  },
+
+  /*
+   * Parser packages never build code at runtime; codegen belongs to parseman's
+   * build-time `compile()`. `check:guardrails` assertion 8 reads the same rule.
+   */
+  {
+    files: [
+      'packages/syntax/*/*-parser/src/**/*.{ts,mts,cts,tsx}',
+      'packages/parser-shared/src/**/*.{ts,mts,cts,tsx}'
+    ],
+    rules: {
+      'no-eval': 'error',
+      'no-implied-eval': 'error',
+      'no-new-func': 'error'
     }
   },
 

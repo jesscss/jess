@@ -351,10 +351,14 @@ Every written rule must answer:
    better compact. The mechanical floor remains strict where it protects parser
    correctness and reviewability: JSDoc requirements, no multi-line `//`
    comments, blank line before comments, no literal non-ASCII in regexes, no
-   regex outside combinators, no factories or hoisted combinator construction,
-   and no macro hazards.
+   regex outside combinators, no hand-rolled keyword regex, no factories or
+   hoisted combinator construction, and no macro hazards.
 
-5. **Does it have a JSDoc block?**
+5. **Does it have a JSDoc block?** `pnpm check:guardrails` (assertion 8) fails on
+   a new rule — a PascalCase const whose value is a combinator — with no
+   `/** … */` block; a `/* … */` block does not count. Rules that predate the
+   check are listed under `undocumentedRules` in
+   `scripts/check-guardrails.grammar-baseline.json`.
 
 6. **Is this the simplest representation in parseman combinators?**
 
@@ -625,6 +629,66 @@ that shape intentionally and fail with the richer diagnostic.
     item: for well-formed input, "reports a fatal parse diagnostic" means an
     error diagnostic, not a stop. `pnpm check:guardrails` ratchets the count of
     author-facing `throw` sites per parser package (it may only shrink).
+
+18. **Is it a grammar-side workaround for something parseman should handle?**
+    Parseman never backtracks, re-parses or pre-scans; a grammar decides on the
+    current token. When a rule cannot make its decision on one token — and
+    reaches for a regex pre-scan, a multi-token `not(...)`/`peek(...)`, an
+    `attempt(...)` that parses and rolls back (which is backtracking), a
+    hand-rolled scanner, or a second pass — that is a **missing parseman
+    capability**, and the grammar-side workaround is a defect. The fix goes in
+    parseman: file a parseman issue naming the decision the grammar cannot make,
+    and do not land the workaround. The standing example is Less's
+    `rulesetNotDeclaration`, `not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/))`, which
+    scans an identifier, whitespace and a colon to choose between a ruleset and a
+    declaration. A lookaround past one token inside a consuming `regex()` is the
+    same pre-scan in a different place.
+
+    `pnpm check:guardrails` (assertion 8) fails on a lookahead whose width it
+    cannot show to be one token, on such a lookaround, on a `dispatch` selector
+    wider than one token, on a non-last `choice` arm or an `optional` that starts
+    with a wide regex or a `scanTo`, on a repeat or a `balanced` that starts a scan
+    with a required term after it, on a hand-written `{ parse() }` object, on
+    `attempt(...)`, on a combinator imported under
+    another name, and on a dialect-prefixed rule name (item 16). "One token" is
+    a lexical shape, not a meaning: one name or number with sigils and at most a
+    glued `(` or `%`, a run of operator characters, one structural character, a
+    quoted string, or one any-character atom alone. A lookaround may check the
+    adjacent character. `token(...)` narrows only a provable one-token shape, not
+    whatever it wraps.
+
+    The existing sites are baselined in
+    `scripts/check-guardrails.grammar-baseline.json`. A new site is never
+    allowed. An entry records a fingerprint of what its site reads, with comments,
+    formatting and reducers stripped, so an edit that changes it fails unless the
+    entry records the new fingerprint and a `changed` note saying why. The gate
+    prints new notes, so a widening can't be silent. A `not`, `peek` or `dispatch`
+    site reads every definition it reaches, and in the CSS grammar or parser-shared
+    that includes a dialect's override of `g.X`. An `attempt` reads its own
+    expression and the direct bodies of what it names, one level only. CI fails a
+    pull request that adds a site or moves a fingerprint with no new note.
+
+    Known limits. A consuming arm that starts with a rule reference and fails
+    several tokens in is backtracking this scan does not see; parseman's backtrack
+    probe measures it, and the ratchet follows its release
+    (matthew-dean/parseman#246). So is an arm with a one-token lead, as in
+    `sequence(literal('.'), regex(WIDE), literal('x'))`, which can't be caught
+    without flagging quoted strings. A lone or last arm, a conditional-expression
+    arm, `ref()` and the `trivia()` wrapper are not read as arms. A widening deep
+    under an `attempt` isn't noticed, and neither is widening a bare const behind a
+    dialect's override. A `state` predicate that reads the source, as in
+    `gate(state => state.source.indexOf(...))`, is not a combinator, so this scan
+    doesn't read it; `verify:parser-runtime-boundary` catches `charCodeAt`, `test`,
+    `exec` and the like, and a string method only on a value it can tell is text. A
+    `token()` in a `dispatch` selector is trusted. Calling parseman's `compile` is
+    not flagged. The stray-grammar check knows parseman by name, so an npm alias
+    outside the scanned sources escapes it. `scripts/`, `tools/` and `docs/` are
+    exempt, so a grammar importing a helper from `scripts/` passes this gate; `tsc -p
+    tsconfig.build.json` rejects it with TS6059. `less…` with no capital after the
+    prefix and a rule returned from a function declaration are not read as rule
+    names. Finally, the gate and its baseline live in the tree they check, so one
+    pull request can edit them together; requiring a code-owner review on them is a
+    repository setting and the owner's to turn on.
 
 ### Naming is a duplication mechanism, not a style preference
 

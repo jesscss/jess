@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue, withMixinPath, guardNot, mixinPathSegment } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessExposeDeclarationError, LessMalformedExposeError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -432,8 +432,8 @@ type SharedSyntax = {
   SupportsCondition: Combinator<ValueNode>;
   // Inherited from the CSS base: the comma list of supports conditions an @supports prelude reads.
   SupportsPrelude: Combinator<ValueNode>;
-  // Inherited from the CSS base's recognition: the css-syntax-3 §4.3.9 identifier token.
-  IdentToken: Combinator<string>;
+  // Inherited from the CSS base: the value-position `<ident-token>` / `<function-token>` opener.
+  identOrFunction: Combinator<string>;
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;
@@ -1178,10 +1178,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(optional(mixinPathCombinator), mixinName),
     (children) => {
       const combToken = children.find(child => isLessTerminalText(child, '>'));
-      return {
-        combinator: combToken === undefined ? ' ' : '>',
-        selector: requireToken(children.at(-1)).value
-      };
+      return mixinPathSegment(combToken === undefined ? ' ' : '>', requireToken(children.at(-1)).value);
     }
   );
   const UnsupportedDashVariableInterpolation = node(
@@ -2238,23 +2235,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `genericFunctionOpen`: widening it would scan every `--x: …` custom-property
   // declaration through its dispatch and turn `--f(…);` into a statement call.
   //
-  // BLOCKED restatements (checklist item 1, outcome 4): `valueIdentOrFunction`
-  // is css's `identOrFunction`, a local terminal there rather than a rule this
-  // grammar can reference, and `RoutedCustomPropertyValue` is css's rule of
-  // that name, which routes through `routed()` — the case parseman does not
-  // see through a composed rule (jess#298, as for the if-test shells below).
-  // Both go when css exposes its opener and jess#298 lands.
-  const valueIdentOrFunction = token(noTrivia(sequence(
-    g.IdentToken,
-    optional(literal('('))
-  )));
+  // That opener is css's `identOrFunction` rule key.
+  //
+  // BLOCKED restatement (checklist item 1, outcome 4): `RoutedCustomPropertyValue`
+  // is css's rule of that name, which routes through `routed()` — the case
+  // parseman does not see through a composed rule (jess#298, as for the if-test
+  // shells below). It goes when jess#298 lands.
   const RoutedCustomPropertyValue = node(
     'CustomPropertyValue',
     routed(),
     children => keyword(requireToken(children[0]).value)
   );
   const IdentifierOrFunction = dispatch(
-    valueIdentOrFunction,
+    g.identOrFunction,
     caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
     caseOf('calc(', g.CalcFunction),
     caseOf('var(', g.VarFunction),
@@ -2941,10 +2934,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * the `less-var-fallback` context, where a Less variable is read as in any
    * argument (`customAtName`); its end is trimmed at the `)`.
    *
-   * BLOCKED from overriding only the slot: routing `var(` to the inherited css
-   * `VarFunction` makes the macro compose fall back to the interpreter ("ref()
-   * used before .define()"), so `VarFunction` is restated here with the css
-   * shape — opener, custom property, optional `, <fallback>` — and Less trivia.
+   * BLOCKED from overriding only the slot: the inherited css `VarCall` gives the
+   * call no source span and this one does, so `VarFunction` is restated here
+   * with the css shape — opener, custom property, optional `, <fallback>` — and
+   * Less trivia.
    * The gap after the comma is the custom-property value's own gap, so a `//`
    * that opens the fallback is value text (see CustomDeclaration).
    */
@@ -3393,11 +3386,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (last === undefined) {
         throw new TypeError('Less namespaced iterable lost its final mixin name.');
       }
-      const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
-      return {
-        ...mixinCall(last.selector, mixinArgumentsFromChildren(children)),
-        path
-      };
+      const path: MixinCall['path'] = [mixinPathSegment(' ', head), ...tails.slice(0, -1)];
+      return withMixinPath(mixinCall(last.selector, mixinArgumentsFromChildren(children)), path);
     }
   );
   /**
@@ -3424,9 +3414,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const tails = children.filter(isMixinPathTail);
       const last = tails.at(-1);
       const args = mixinArgumentsFromChildren(children);
-      const path: MixinCall['path'] = last === undefined ? [] : [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
-      const call = { ...mixinCall(last === undefined ? head : last.selector, args), path };
-      return children.at(-1) === true ? { ...call, important: true } : call;
+      const path: MixinCall['path'] = last === undefined ? [] : [mixinPathSegment(' ', head), ...tails.slice(0, -1)];
+      return withMixinPath(mixinCall(last === undefined ? head : last.selector, args), path, children.at(-1) === true);
     }
   );
   const MixinReferenceBase = node(
@@ -3617,7 +3606,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         return guard;
       }
       reportConditionKeywordCase(rawChildren[at], state);
-      return { g: 'not', inner: guard, word: requireTerminalText(children[at]), gluedAt: NO_SPAN, parens: 0 };
+      return guardNot(guard, requireTerminalText(children[at]), NO_SPAN, 0);
     }
   );
   const MixinGuardTopAnd = node(

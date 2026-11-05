@@ -15,7 +15,7 @@ import Big from 'big.js';
 import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type EvalValue, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { HEX } from './color.js';
-import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword, makeQuoted } from './value-factory.js';
+import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeGroupedKeyword, makeKeyword, makeQuoted, withFields } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { convertValue, convertible, foldUnit, unitMultisetKey } from './value-units.js';
 
@@ -574,12 +574,12 @@ const keptMath = new WeakMap<Value, string>();
  * the text alone.
  */
 export function groupText(v: Any | Keyword): Value {
-  return v.type === 'Any' ? makeAny(v.bytes, v.escapedQuote, v.groups + 1) : { ...makeKeyword(v.bytes), groups: v.groups + 1 };
+  return v.type === 'Any' ? makeAny(v.bytes, v.escapedQuote, v.groups + 1) : makeGroupedKeyword(v.bytes, v.groups + 1);
 }
 
 /** `value` spelled `bytes`, the parens written around it: a call in parens is a paren group, no longer the call it spelled. */
 export const inParens = (value: Value, bytes: string): Value =>
-  value.type === 'Keyword' ? { ...value, bytes, call: null } : { ...value, bytes };
+  value.type === 'Keyword' ? withFields(value, { bytes, call: null }) : withFields(value, { bytes });
 
 /**
  * `bytes`, the spelling of `v` ({@link emitValue}: an escaped string's already

@@ -25,10 +25,12 @@
  * holds with zero source-position tracking.
  */
 
+import { AnonymousMixinNode, AnonymousMixinWithParamsNode, AnPlusBNode, AnyNode, ApplyNode, BlockNode, BranchNode, CallArgValue, CollectionEntryNode, CollectionNode, CollectionSpreadNode, ColorNode, CommentNode, ComplexSelectorNode, CompoundSelectorNode, ConditionNode, DeclarationNode, DimensionNode, EscapedBlockNode, ExposedNameNode, ExpressionNode, ForNode, FunctionCallNode, IfNode, IfValueNode, ImportantNode, IndexedLookupStepNode, InterpolationNode, KeywordNode, LeadQuotingInterpolationNode, ListNode, LookupNode, LookupStepNode, MixinCallNode, MixinDefinitionNode, MixinPathSegmentNode, ModuleImportNode, NestedPropertyBlockNode, NullNode, OperationNode, PseudoSelectorNode, QuotedNode, RangeNode, ReferenceCallNode, ReferenceNode, RelativeSelectorNode, RulesetExtendGuardNode, RulesetExtendNode, RulesetGuardNode, RulesetNode, SelectorCaptureNode, SelectorListNode, SequenceNode, SimpleSelectorNode, StyleImportNode, StylesheetNode, UrlNode, ValueOnNewLineCollectionEntryNode, ValueOnNewLineDeclarationNode, VariableDeclarationNode, VariableExposeNode, WhileNode } from './node-ctors.js';
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
 import type { ForgivenSelectorItem } from './forgiving-selector.js';
 import { NO_SPAN, isAuthoredGroupExpression, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
+export { copyNode, withFields } from './value-factory.js';
 
 /* ------------------------------------------------------------------ values */
 
@@ -1730,18 +1732,18 @@ export type Statement =
 
 /* ------------------------------------------------------------ constructors */
 
-export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
+export const keyword = (src: string): Keyword => (new KeywordNode(src));
 
 /** The `null` literal node — ONE frozen instance; the literal carries no fact
  *  beyond its own identity, so it never allocates. */
-export const NULL_NODE: Null = { type: 'Null', src: 'null' };
-export const any = (src: string): Any => ({ type: 'Any', src, _s: NO_SPAN, _e: NO_SPAN });
-export const url = (value: ValueNode): Url => ({ type: 'Url', value, _s: NO_SPAN, _e: NO_SPAN });
+export const NULL_NODE: Null = new NullNode('null');
+export const any = (src: string): Any => (new AnyNode(src, NO_SPAN, NO_SPAN));
+export const url = (value: ValueNode): Url => (new UrlNode(value, NO_SPAN, NO_SPAN));
 export const selectorCapture = (branches: readonly string[], components: readonly (readonly string[])[], src: string): SelectorCapture =>
-  ({ type: 'SelectorCapture', branches, components, src });
-export const color = (src: string): Color => ({ type: 'Color', src });
+  (new SelectorCaptureNode(branches, components, src));
+export const color = (src: string): Color => (new ColorNode(src));
 export const quoted = (src: string, value: string, quote: string, escaped: boolean, interp: Interpolation | null = null): Quoted =>
-  ({ type: 'Quoted', src, value, quote, escaped, interp });
+  (new QuotedNode(src, value, quote, escaped, interp));
 
 /**
  * A condition as an operand, bare in a guard or in a paren group (`(1 = 1) + 1`):
@@ -1754,7 +1756,7 @@ export const isConditionOperand = (node: ValueNode): boolean =>
 /** A string whose content is its authored `value` — one that does not interpolate. */
 export const isStaticQuoted = (n: ValueNode): n is Quoted => n.type === 'Quoted' && n.interp === null;
 export const dimension = (number: number, unit = '', src = `${number}${unit}`): Dimension =>
-  ({ type: 'Dimension', number, unit, src });
+  (new DimensionNode(number, unit, src));
 
 /** A value literal that emits its `src` verbatim when inert (all five literal
  *  types). Narrows a `ValueNode` to the leaf union. A string that interpolates is
@@ -1774,18 +1776,18 @@ export const isTypedLiteral = (n: ValueNode): boolean => isLiteralNode(n) && n.t
  * `withValueLayout` side table a raw `ValueSlot[]` and a `List` already use.
  */
 export const spaced = (parts: ValueNode[], separators?: readonly string[]): Sequence => {
-  const node: Sequence = { type: 'Sequence', parts };
+  const node: Sequence = new SequenceNode(parts);
   return separators?.some(separator => /[\n\r]/u.test(separator)) ? withValueLayout(node, separators) : node;
 };
 export const list = (
   value: ValueSlot[],
   sep: List['sep'] = ','
-): List => ({ type: 'List', value, sep });
+): List => (new ListNode(value, sep));
 
-export const simpleSelector = (text: string): SimpleSelector => ({ type: 'SimpleSelector', text, interp: null, _s: NO_SPAN, _e: NO_SPAN });
+export const simpleSelector = (text: string): SimpleSelector => (new SimpleSelectorNode(text, null, NO_SPAN, NO_SPAN));
 
 /** An interpolated simple token, e.g. `.icon-@{type}`. */
-export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelector => ({ type: 'SimpleSelector', text: null, interp, _s: NO_SPAN, _e: NO_SPAN });
+export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelector => (new SimpleSelectorNode(null, interp, NO_SPAN, NO_SPAN));
 
 /**
  * Selector-function pseudos a selector may CROSS during extend (the arg list is a
@@ -1806,15 +1808,18 @@ export const pseudoSelector = (
   text: string | null = null,
   interp: Interpolation | null = null,
   arg: PseudoArgument | null = null
-): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null || arg !== null ? null : text, interp, name, args, arg, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
+): PseudoSelector => (new PseudoSelectorNode(args !== null || arg !== null ? null : text, interp, name, args, arg, crossable(name), NO_SPAN, NO_SPAN));
 
 /**
  * An `An+B` from the text of a recognized `<an+b>` (css-syntax-3 §6.1): the
  * recognizer owns the shape. Whitespace (which the microsyntax permits around
  * the sign) is not part of the form (F2).
  */
-export const anPlusB = (text: string): AnPlusB => ({ type: 'AnPlusB', src: text.replace(/[ \t\n\r\f]+/g, '') });
-export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts, _s: NO_SPAN, _e: NO_SPAN });
+export const anPlusB = (text: string): AnPlusB => (new AnPlusBNode(text.replace(/[ \t\n\r\f]+/g, '')));
+export const interpolation = (parts: InterpPart[]): Interpolation => (new InterpolationNode(parts, NO_SPAN, NO_SPAN));
+
+/** An SCSS `+` string whose lead operand was unquoted; it serializes quoted from that lead. */
+export const leadQuotingInterpolation = (parts: InterpPart[]): Interpolation => (new LeadQuotingInterpolationNode(parts, NO_SPAN, NO_SPAN));
 export const anonymousMixin = (
   rules: Statement[],
   params?: Param[],
@@ -1822,8 +1827,8 @@ export const anonymousMixin = (
 ): AnonymousMixin => {
   const extend = extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined;
   return params === undefined
-    ? { type: 'AnonymousMixin', rules, extendInstructions: extend, _bs: NO_SPAN, _be: NO_SPAN }
-    : { type: 'AnonymousMixin', rules, extendInstructions: extend, params, _bs: NO_SPAN, _be: NO_SPAN };
+    ? new AnonymousMixinNode(rules, extend, NO_SPAN, NO_SPAN)
+    : new AnonymousMixinWithParamsNode(rules, extend, params, NO_SPAN, NO_SPAN);
 };
 
 /** Less-style `{ … }` blocks are executable anonymous mixins. Jess and Sass
@@ -1837,38 +1842,29 @@ export const forNode = (
   binding: ForBinding,
   asCall: FunctionCall | null = null,
   extendInstructions?: readonly ExtendInstruction[]
-): For => ({
-  type: 'For',
-  iterable,
-  rules,
-  binding,
-  extendInstructions: extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined,
-  _asCall: asCall,
-  _bs: NO_SPAN,
-  _be: NO_SPAN
-});
+): For => (new ForNode(iterable, rules, binding, extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined, asCall, NO_SPAN, NO_SPAN));
 export const ifNode = (branches: readonly [IfBranch, ...IfBranch[]], asCall: FunctionCall | null = null): If =>
-  ({ type: 'If', branches, _asCall: asCall });
-export const whileNode = (guard: GuardNode, rules: Statement[]): While => ({ type: 'While', guard, rules });
+  (new IfNode(branches, asCall));
+export const whileNode = (guard: GuardNode, rules: Statement[]): While => (new WhileNode(guard, rules));
 export const range = (
   start: ValueNode,
   end: ValueNode,
   step: ValueNode | null = null,
   includeStart = true,
   includeEnd = true
-): Range => ({ type: 'Range', start, end, step, includeStart, includeEnd });
+): Range => (new RangeNode(start, end, step, includeStart, includeEnd));
 export const reference = (
   base: ValueNode | MixinCall,
-  steps: readonly ReferenceStep[],
+  steps: ReferenceStep[],
   raw: string
-): Reference => ({ type: 'Reference', base, steps, raw, _s: NO_SPAN, _e: NO_SPAN });
+): Reference => (new ReferenceNode(base, steps.slice(), raw, NO_SPAN, NO_SPAN));
 
 /** A Less property accessor `$name` — {@link Lookup} of kind `prop`. */
 export const propertyReference = (name: string, raw: string = `$${name}`): Lookup =>
-  ({ type: 'Lookup', scope: 'scoped', kind: 'prop', name, raw, _s: NO_SPAN, _e: NO_SPAN });
+  (new LookupNode('scoped', 'prop', name, raw, NO_SPAN, NO_SPAN));
 
 /** A compound from an already-built list of simple tokens. */
-export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => ({ type: 'CompoundSelector', value, _s: NO_SPAN, _e: NO_SPAN });
+export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => (new CompoundSelectorNode([...value], NO_SPAN, NO_SPAN));
 
 /** A selector term: a lone simple token stays direct; adjacent tokens form a compound. */
 export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]): SelectorTerm => {
@@ -1891,12 +1887,7 @@ export const complexSelector = (
     head.term,
     ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
   ];
-  return {
-    type: 'ComplexSelector',
-    value,
-    _s: NO_SPAN,
-    _e: NO_SPAN
-  };
+  return new ComplexSelectorNode([...value], NO_SPAN, NO_SPAN);
 };
 export const relativeSelector = (
   combinator: Combinator,
@@ -1908,18 +1899,13 @@ export const relativeSelector = (
     head.term,
     ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
   ];
-  return {
-    type: 'RelativeSelector',
-    value,
-    _s: NO_SPAN,
-    _e: NO_SPAN
-  };
+  return new RelativeSelectorNode([...value], NO_SPAN, NO_SPAN);
 };
 export const selectorBranchOf = (segments: readonly [SelectorPartInput, ...SelectorPartInput[]]): SelectorBranch => {
   const [first, second, ...rest] = segments;
   return second === undefined ? first.term : complexSelector([first, second, ...rest]);
 };
-export const selist = (...selectors: SelectorBranch[]): SelectorList => ({ type: 'SelectorList', selectors, _s: NO_SPAN, _e: NO_SPAN, _level: undefined });
+export const selist = (...selectors: SelectorBranch[]): SelectorList => (new SelectorListNode(selectors, NO_SPAN, NO_SPAN, undefined));
 
 export const decl = (
   name: string | Interpolation,
@@ -1929,8 +1915,8 @@ export const decl = (
   valueOnNewLine = false
 ): Declaration =>
   valueOnNewLine
-    ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true, _s: NO_SPAN, _e: NO_SPAN }
-    : { type: 'Declaration', name, value, merge, important, _s: NO_SPAN, _e: NO_SPAN };
+    ? new ValueOnNewLineDeclarationNode(name, value, merge, important, true, NO_SPAN, NO_SPAN)
+    : new DeclarationNode(name, value, merge, important, NO_SPAN, NO_SPAN);
 
 export const collectionEntry = (
   key: ValueSlot,
@@ -1940,39 +1926,39 @@ export const collectionEntry = (
   valueOnNewLine = false
 ): CollectionEntry =>
   valueOnNewLine
-    ? { type: 'CollectionEntry', key, value, merge, important, valueOnNewLine: true }
-    : { type: 'CollectionEntry', key, value, merge, important };
+    ? new ValueOnNewLineCollectionEntryNode(key, value, merge, important, true)
+    : new CollectionEntryNode(key, value, merge, important);
 
 /** An ordered shallow-merge item in a data Collection. */
 export const collectionSpread = (value: ValueSlot): CollectionSpread =>
-  ({ type: 'CollectionSpread', value });
+  (new CollectionSpreadNode(value));
 
 /** A data Collection. */
 export const collection = (entries: CollectionItem[]): Collection =>
-  ({ type: 'Collection', entries });
+  (new CollectionNode(entries));
 
 /** A structural SCSS nested-property block, deliberately not a Collection. */
 export const nestedPropertyBlock = (entries: CollectionEntry[], base?: ValueSlot): NestedPropertyBlock =>
-  ({ type: 'NestedPropertyBlock', entries, base: base ?? null });
-export const comment = (text: string): Comment => ({ type: 'Comment', text, _s: NO_SPAN, _e: NO_SPAN });
+  (new NestedPropertyBlockNode(entries, base ?? null));
+export const comment = (text: string): Comment => (new CommentNode(text, NO_SPAN, NO_SPAN));
 
 /** A bound-variable reference — {@link Lookup} of kind `var`. `name` may be a
  *  NODE, which is how `@@indirect` is spelled now that it needs no own kind. */
 export const variableReference = (name: string | ValueNode, lookup: VariableLookup, raw?: string): Lookup =>
-  ({ type: 'Lookup', scope: lookup, kind: 'var', name, raw: raw ?? (typeof name === 'string' ? `@${name}` : ''), _s: NO_SPAN, _e: NO_SPAN });
+  (new LookupNode(lookup, 'var', name, raw ?? (typeof name === 'string' ? `@${name}` : ''), NO_SPAN, NO_SPAN));
 
 /** The current declaration-entry surface — {@link Lookup} of kind `entry`. */
 export const declarationReference = (raw: string = '$'): Lookup =>
-  ({ type: 'Lookup', scope: 'scoped', kind: 'entry', name: '', raw, _s: NO_SPAN, _e: NO_SPAN });
+  (new LookupNode('scoped', 'entry', '', raw, NO_SPAN, NO_SPAN));
 
 /** `&` in a value — {@link Lookup} of kind `parent`. */
 export const parentSelectorReference = (): Lookup =>
-  ({ type: 'Lookup', scope: 'scoped', kind: 'parent', name: '', raw: '&', _s: NO_SPAN, _e: NO_SPAN });
+  (new LookupNode('scoped', 'parent', '', '&', NO_SPAN, NO_SPAN));
 
 /** One lookup step in a {@link Reference} chain (dot or bracket — one node). */
 export const lookupStep = (kind: LookupKind, name: string | ValueNode | number, indexBase?: 0 | 1): LookupStep =>
-  indexBase === undefined ? { type: 'LookupStep', kind, name } : { type: 'LookupStep', kind, name, indexBase };
-export const important = (value: ValueSlot): Important => ({ type: 'Important', value });
+  indexBase === undefined ? new LookupStepNode(kind, name) : new IndexedLookupStepNode(kind, name, indexBase);
+export const important = (value: ValueSlot): Important => (new ImportantNode(value));
 
 /**
  * The CSS base answer to {@link Operation.mathOutsideParens}: every operator but
@@ -2006,7 +1992,7 @@ export const operation = (
   inMathFunction: boolean,
   mathOutsideParens: boolean
 ): Operation =>
-  ({ type: 'Operation', operator, left, right, inMathFunction, mathOutsideParens, _s: NO_SPAN, _e: NO_SPAN });
+  (new OperationNode(operator, left, right, inMathFunction, mathOutsideParens, NO_SPAN, NO_SPAN));
 
 /**
  * The ONE construction site for a {@link CallArg}. Every field is written on
@@ -2015,7 +2001,10 @@ export const operation = (
  * not omit the property.
  */
 export const callArg = <V extends CallValue>(value: V, name?: string, spread = false, sigil?: string): CallArg<V> =>
-  ({ value, name, spread, sigil });
+  new CallArgValue(value, name, spread, sigil);
+
+/** A call step after a reference or lookup. It owns a copy of its argument list (invariant 12). */
+export const referenceCall = (args: readonly CallArg[]): ReferenceCall => new ReferenceCallNode(args.slice());
 
 /** Normalize a mixed authored-argument array to {@link CallArg}s. A bare value
  *  slot (node OR nested array) is positional; an already-built `CallArg` passes
@@ -2049,33 +2038,35 @@ export const funcCall = (
   if (layout !== undefined) {
     withValueLayout(boxed, layout);
   }
-  return { type: 'FunctionCall', name, args: boxed, modern, _s: NO_SPAN, _e: NO_SPAN, _fnScope: null };
+  return new FunctionCallNode(name, boxed, modern, NO_SPAN, NO_SPAN, null);
 };
 export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
-  escaped ? { type: 'Block', value, delimiter, escaped: true, _s: NO_SPAN, _e: NO_SPAN } : { type: 'Block', value, delimiter, _s: NO_SPAN, _e: NO_SPAN };
-export const branch = (condition: ValueSlot, value: ValueSlot): Branch => ({ type: 'Branch', condition, value });
+  escaped ? new EscapedBlockNode(value, delimiter, true, NO_SPAN, NO_SPAN) : new BlockNode(value, delimiter, NO_SPAN, NO_SPAN);
+export const branch = (condition: ValueSlot, value: ValueSlot): Branch => (new BranchNode(condition, value));
 
 /** The `$( … )` computation boundary — see {@link Expression}. */
 export const expression = (value: ValueSlot, asCall: FunctionCall | null = null, callArgument = false): Expression =>
-  ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN, _asCall: asCall, _callArgument: callArgument });
-export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src, _s: NO_SPAN, _e: NO_SPAN });
+  (new ExpressionNode(value, NO_SPAN, NO_SPAN, asCall, callArgument));
+export const condition = (guard: GuardNode, src: string): Condition => (new ConditionNode(guard, src, NO_SPAN, NO_SPAN));
 export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]], asCall: FunctionCall | null = null, trailingSemicolon = false, name = 'if'): IfValue =>
-  ({ type: 'IfValue', branches, _asCall: asCall, trailingSemicolon, name });
+  (new IfValueNode(branches, asCall, trailingSemicolon, name));
 export const variableDeclaration = (
   name: string,
   value: ValueSlot | MixinCall,
   write: VariableWrite
 ): VariableDeclaration =>
-  ({ type: 'VariableDeclaration', name, value, write, _s: NO_SPAN, _e: NO_SPAN });
+  (new VariableDeclarationNode(name, value, write, NO_SPAN, NO_SPAN));
+export const withWrite = (declaration: VariableDeclaration, write: VariableWrite): VariableDeclaration =>
+  (new VariableDeclarationNode(declaration.name, declaration.value, write, declaration._s, declaration._e));
 
 export const variableExpose = (names: readonly ExposedName[]): VariableExpose =>
-  ({ type: 'VariableExpose', names, _s: NO_SPAN, _e: NO_SPAN });
+  (new VariableExposeNode(names, NO_SPAN, NO_SPAN));
 
-export const exposedName = (name: string): ExposedName => ({ name, _s: NO_SPAN, _e: NO_SPAN });
+export const exposedName = (name: string): ExposedName => new ExposedNameNode(name, NO_SPAN, NO_SPAN);
 
 /** The one `MixinDefinition` literal: every field, in one order, so all share one hidden class (V8 invariant 1). */
 const mixinDefinition = (name: string, params: Param[], rules: Statement[], extendInstructions: ExtendInstruction[] | undefined, guard: GuardNode | undefined): MixinDefinition =>
-  ({ type: 'MixinDefinition', name, params, rules, extendInstructions, guard, ruleMixin: undefined, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
+  (new MixinDefinitionNode(name, params, rules, extendInstructions, guard, undefined, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN));
 export const mixinDef = (name: string, params: Param[], rules: Statement[], guard?: GuardNode, extendInstructions?: readonly ExtendInstruction[]): MixinDefinition =>
   mixinDefinition(name, params, rules, extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined, guard);
 
@@ -2090,26 +2081,37 @@ const rulesetMixin = (rule: Ruleset, name: string): MixinDefinition => {
   return def;
 };
 
+/** The empty namespace path, shared by every call without one; frozen, since nothing writes a path. */
+const NO_PATH: MixinPathSegment[] = [];
+Object.freeze(NO_PATH);
+
 /** [guards] Args may be bare value nodes (positional) or {@link CallArg}s.
  *  `content` is the assigned block (`$ > m(): @{ … }`), not an argument. */
 export const mixinCall = (
   name: string,
   args: readonly (CallValue | CallArg)[] = [],
   content: AnonymousMixin | null = null
-): MixinCall => ({
-  type: 'MixinCall',
-  name,
-  args: toCallArgs(args),
-  path: [],
-  important: false,
-  content,
-  _s: NO_SPAN, _e: NO_SPAN
-});
+): MixinCall => (new MixinCallNode(name, toCallArgs(args), NO_PATH, false, content, NO_SPAN, NO_SPAN));
+
+/** One segment of a namespaced-call path. */
+export const mixinPathSegment = (combinator: Combinator, selector: string): MixinPathSegment => new MixinPathSegmentNode(combinator, selector);
+
+/** `call` with a namespace `path` (and optionally `!important`). */
+export const withMixinPath = (call: MixinCall, path: MixinCall['path'], important: boolean = call.important): MixinCall =>
+  new MixinCallNode(call.name, call.args, [...path], important, call.content, call._s, call._e);
+
+/** `call` with `args`, every other field kept. */
+const withMixinArgs = (call: MixinCall, args: CallArg[]): MixinCall =>
+  new MixinCallNode(call.name, args, call.path, call.important, call.content, call._s, call._e);
+
+/** `call` placed at a source span. */
+const withMixinSpan = (call: MixinCall, start: number, end: number): MixinCall =>
+  new MixinCallNode(call.name, call.args, call.path, call.important, call.content, start, end);
 
 /** Serializer-only, so the default export, which the public entry's `export *` skips: `syntheticCall` binds `args` to a synthesized definition with no name or source. */
-const syntheticCall = (args: CallArg[]): MixinCall => ({ type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN });
-export default { rulesetMixin, syntheticCall, withArgs: (call: MixinCall, args: CallArg[]): MixinCall => ({ type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e }) };
-export const apply = (selectors: readonly SelectorTerm[]): Apply => ({ type: 'Apply', selectors });
+const syntheticCall = (args: CallArg[]): MixinCall => (new MixinCallNode('', args, NO_PATH, false, null, NO_SPAN, NO_SPAN));
+export default { rulesetMixin, syntheticCall, withArgs: withMixinArgs, withSpan: withMixinSpan };
+export const apply = (selectors: readonly SelectorTerm[]): Apply => (new ApplyNode(selectors));
 
 /** A single simple-string selector branch, e.g. `sel('.test')`. */
 export const sel = (text: string): SelectorBranch => simpleSelector(text);
@@ -2128,17 +2130,15 @@ export const rule = (
       : selector.type === 'SelectorList'
         ? selector
         : selist(selector);
-  return {
-    type: 'Ruleset',
-    selector: list,
-    rules,
-    ...(extendInstructions !== undefined ? { extendInstructions } : {}),
-    ...(guard !== undefined ? { guard } : {}),
-    _s: NO_SPAN,
-    _e: NO_SPAN,
-    _bs: NO_SPAN,
-    _be: NO_SPAN
-  };
+
+  const own = rules.slice();
+  return extendInstructions === undefined
+    ? guard === undefined
+      ? new RulesetNode(list, own, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
+      : new RulesetGuardNode(list, own, guard, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
+    : guard === undefined
+      ? new RulesetExtendNode(list, own, extendInstructions, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN)
+      : new RulesetExtendGuardNode(list, own, extendInstructions, guard, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN);
 };
 
 /**
@@ -2248,24 +2248,12 @@ export const styleImport = (
   name: string,
   target: Quoted | Url | Interpolation,
   fields: StyleImportFields = {}
-): StyleImport => ({
-  type: 'StyleImport',
-  name,
-  target,
-  options: fields.options ?? null,
-  alias: fields.alias ?? null,
-  mode: fields.mode ?? 'compose',
-  namespace: fields.namespace ?? null,
-  forward: fields.forward ?? false,
-  config: fields.config ?? null,
-  _s: NO_SPAN,
-  _e: NO_SPAN
-});
+): StyleImport => (new StyleImportNode(name, target, fields.options ?? null, fields.alias ?? null, fields.mode ?? 'compose', fields.namespace ?? null, fields.forward ?? false, fields.config ?? null, NO_SPAN, NO_SPAN));
 export const moduleImport = (
   path: Quoted,
   mode: ModuleImport['mode'],
   namespace: string | null = null,
   imports: readonly ModuleImportSpecifier[] = [],
   defaultImport: string | null = null
-): ModuleImport => ({ type: 'ModuleImport', path, mode, defaultImport, namespace, imports, _s: NO_SPAN, _e: NO_SPAN });
-export const stylesheet = (rules: Statement[]): Stylesheet => ({ type: 'Stylesheet', rules, _s: NO_SPAN, _e: NO_SPAN, _trivia: undefined, _extend: undefined });
+): ModuleImport => (new ModuleImportNode(path, mode, defaultImport, namespace, imports, NO_SPAN, NO_SPAN));
+export const stylesheet = (rules: Statement[]): Stylesheet => (new StylesheetNode(rules, NO_SPAN, NO_SPAN, undefined, undefined));

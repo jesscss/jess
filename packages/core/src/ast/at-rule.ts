@@ -29,6 +29,7 @@
  * modules (`node`, `nodes`) — never the legacy tree.
  */
 
+import { AtRuleBlockNode, AtRuleStatementNode, PluginNode, UnknownAtRuleBlockNode } from './node-ctors.js';
 import { NO_SPAN, type BodySpanSlots, type SpanSlots } from './provenance.js';
 import type { ExtendInstruction, Interpolation, Quoted, Statement, Url, ValueNode } from './nodes.js';
 
@@ -124,35 +125,12 @@ export const atRuleBlock = (
   prelude: ValueNode | null,
   rules: Statement[],
   extendInstructions?: readonly ExtendInstruction[]
-): AtRuleBlock => ({
-  type: 'AtRuleBlock',
-  name,
-  prelude,
-  rules,
-  extendInstructions: extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined,
-  _s: NO_SPAN,
-  _e: NO_SPAN,
-  _bs: NO_SPAN,
-  _be: NO_SPAN
-});
+): AtRuleBlock => (new AtRuleBlockNode(name, prelude, rules.slice(), extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN));
 
 export const atRuleStatement = (
   name: string,
   prelude: ValueNode | null
-): AtRuleStatement => {
-  const statement: AtRuleStatement = {
-    type: 'AtRuleStatement',
-    name,
-    prelude,
-    _s: NO_SPAN,
-    _e: NO_SPAN,
-    [importStartKey]: NO_SPAN,
-    [importEndKey]: NO_SPAN,
-    [importTailStartKey]: NO_SPAN,
-    [diagnosticKey]: false
-  };
-  return statement;
-};
+): AtRuleStatement => new AtRuleStatementNode(name, prelude, NO_SPAN, NO_SPAN);
 
 /**
  * Mark a statement as a Sass compile-time diagnostic (`@debug`/`@warn`/
@@ -213,9 +191,9 @@ export const unknownAtRuleBlock = (
   name: string,
   prelude: string | null,
   rawBody: string
-): UnknownAtRuleBlock => ({ type: 'UnknownAtRuleBlock', name, prelude, rawBody, _s: NO_SPAN, _e: NO_SPAN });
+): UnknownAtRuleBlock => (new UnknownAtRuleBlockNode(name, prelude, rawBody, NO_SPAN, NO_SPAN));
 
 export const plugin = (
   target: Quoted | Url | Interpolation,
   options: Interpolation | null = null
-): Plugin => ({ type: 'Plugin', target, options, _s: NO_SPAN, _e: NO_SPAN });
+): Plugin => (new PluginNode(target, options, NO_SPAN, NO_SPAN));
