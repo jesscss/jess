@@ -496,8 +496,9 @@ const lineComment = regex(/\/\/[^\n\r]*/);
 
 /*
  * The trivia of a selector pseudo's argument: whitespace and both comment
- * forms, so a comment between items or after an item's selector is trivia
- * there as CSS reads it, not the start of a kept item.
+ * forms. It reaches what the argument's own rules leave: a comment before the
+ * `)`, or between `:is()` items. Inside a selector, and before `:not()`'s `,`,
+ * those rules read whitespace only, so `:not(.a /*c*\/, .e)` stops.
  */
 const forgivingListTrivia = classifiedTrivia({
   whitespace: whitespaceRun,
@@ -5041,10 +5042,11 @@ const scssFactory = (g: ScssInputRules) => {
        * (`pseudoCanonical`). `SelectorOnlyPseudoArgument` is the one parse of
        * the static argument; an interpolated argument fails there and, with no
        * text fallback for these names, rejects exactly as before.
-       * Whitespace and comments surrounding the argument inside the parens are
-       * trivia here, so the structured arg normalizes them away (`:not( .b )` is
+       * Whitespace around the argument and a comment before the `)` are trivia
+       * here, so the structured arg normalizes them away (`:not( .b )` is
        * `:not(.b)`) via `pseudoCanonical`, matching the other dialects
-       * (Selectors-4; the residual SCSS surrounding-whitespace divergence).
+       * (Selectors-4; the residual SCSS surrounding-whitespace divergence). A
+       * comment before the argument is not: `:not( /*x*\/ .a)` stops.
        */
     sequence(
       routed(),
