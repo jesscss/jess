@@ -15800,13 +15800,14 @@ function flattenWithHeader(
    * still emits when the rule is pulled in as a mixin — a separate expansion path).
    * A hidden rule the deferred fold may still reveal emits a RESERVED block that the
    * fold rewrites or blanks: one the walk records here, or a planned one a recorded
-   * extend may reach (#355). A placeholder rule the walk records is reserved the same
-   * way when an extend may reveal it (`@include` placing `%ph`, jess#499).
+   * extend may reach (#355). A placeholder rule is reserved the same way when an extend
+   * may reveal it, whether the walk or the static plan holds it: `@include` placing
+   * `%ph` (jess#499), and `%ph` at the root with its extender in a mixin.
    */
   let header = visibleHeader(rule, header0, frame, e);
   const reserved = header === null && (e.referenceImportDepth > 0
     ? recorded || dyn?.revealRules?.has(rule) === true
-    : recorded && mayRevealPlaceholder(dyn!, rule, e.extends));
+    : dyn !== null && mayRevealPlaceholder(dyn, rule, e.extends));
   if (reserved) {
     header = withoutPlaceholders(header0) ?? header0;
   }
@@ -23535,8 +23536,8 @@ function writeNestedRule(rule: Ruleset, frame: Frame, at: Placement, e: Emit, pl
      */
     const recorded = e.dynamicExtend !== null && (!placedStatically(rule, e) || reachedViaMixinSplice(frame));
 
-    /* A placeholder rule the walk records that an extend may reveal is written RESERVED: the fold rewrites it to its extenders or drops it (jess#499). */
-    const own = withoutPlaceholders(ownAll) ?? (recorded && mayRevealPlaceholder(e.dynamicExtend!, rule, e.extends) ? ownAll : null);
+    /* A placeholder rule an extend may reveal is written RESERVED: the fold rewrites it to its extenders or drops it (jess#499). */
+    const own = withoutPlaceholders(ownAll) ?? (e.dynamicExtend !== null && mayRevealPlaceholder(e.dynamicExtend, rule, e.extends) ? ownAll : null);
     if (own === null) {
       return;
     }

@@ -1,36 +1,36 @@
 {
-  "generated": "2026-10-05T21:29:48.102Z",
+  "generated": "2026-11-05T03:36:36.442Z",
   "foundation": "6.9.0",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
   "parse": {
     "total": 136,
-    "pass": 116,
+    "pass": 135,
     "blockerCounts": [
-      {
-        "name": "trailing comma in a parenthesized list",
-        "primary": 5,
-        "files": 8
-      },
-      {
-        "name": "interpolation inside a pseudo-class argument list",
-        "primary": 3,
-        "files": 5
-      },
-      {
-        "name": "keyword argument ($name: v) in a function-call argument list",
-        "primary": 2,
-        "files": 15
-      },
-      {
-        "name": "comparison (== / !=) inside a function-call argument list",
-        "primary": 1,
-        "files": 5
-      },
       {
         "name": "@at-root with a selector prelude",
         "primary": 1,
         "files": 1
+      },
+      {
+        "name": "keyword argument ($name: v) in a function-call argument list",
+        "primary": 0,
+        "files": 1
+      },
+      {
+        "name": "comparison (== / !=) inside a function-call argument list",
+        "primary": 0,
+        "files": 1
+      },
+      {
+        "name": "trailing comma in a parenthesized list",
+        "primary": 0,
+        "files": 1
+      },
+      {
+        "name": "interpolation inside a pseudo-class argument list",
+        "primary": 0,
+        "files": 0
       },
       {
         "name": "nested selector list `type:pseudo, .class`",
@@ -38,16 +38,7 @@
         "files": 0
       }
     ],
-    "unattributed": [
-      "_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss",
-      "docs/assets/scss/docs.scss",
-      "scss/components/_dropdown-menu.scss",
-      "scss/components/_menu.scss",
-      "scss/components/_reveal.scss",
-      "scss/typography/_base.scss",
-      "scss/util/_breakpoint.scss",
-      "scss/util/_math.scss"
-    ],
+    "unattributed": [],
     "results": [
       {
         "file": "_vendor/sassy-lists/stylesheets/functions/_contain.scss",
@@ -71,22 +62,11 @@
       },
       {
         "file": "_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss",
-        "outcome": "fail",
-        "at": "24:40",
-        "source": "@return length($missing-dependencies) > 0;",
-        "blockers": [],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "_vendor/sassy-lists/stylesheets/helpers/_true.scss",
-        "outcome": "fail",
-        "at": "12:73",
-        "source": "@return if($value == null, false, $value and $value != null and $value != '' and $value != ());",
-        "blockers": [
-          "comparison (== / !=) inside a function-call argument list"
-        ],
-        "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "assets/foundation-float.scss",
@@ -126,13 +106,7 @@
       },
       {
         "file": "docs/assets/scss/docs.scss",
-        "outcome": "fail",
-        "at": "243:11",
-        "source": "li:not(:last-child) {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "docs/assets/scss/examples/_buttons.scss",
@@ -184,16 +158,7 @@
       },
       {
         "file": "scss/components/_button-group.scss",
-        "outcome": "fail",
-        "at": "131:37",
-        "source": "&:first-child:nth-last-child(#{$i}) {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list",
-          "interpolation inside a pseudo-class argument list"
-        ],
-        "primaryBlocker": "interpolation inside a pseudo-class argument list",
-        "detail": "SCSS parser error. Expected: \"(\", \"[\", \"\\\"\", \"'\", BlockCommentToken, /(?:[^()\\[\\]'\"#\\/]|#(?!\\{)|\\/(?!\\*))+/."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_button.scss",
@@ -217,13 +182,7 @@
       },
       {
         "file": "scss/components/_dropdown-menu.scss",
-        "outcome": "fail",
-        "at": "84:4",
-        "source": "> li.opens-left { // sass-lint:disable-line no-qualifying-elements",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_dropdown.scss",
@@ -255,13 +214,7 @@
       },
       {
         "file": "scss/components/_menu.scss",
-        "outcome": "fail",
-        "at": "100:2",
-        "source": "@else {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_off-canvas.scss",
@@ -275,7 +228,7 @@
           "@at-root with a selector prelude"
         ],
         "primaryBlocker": "@at-root with a selector prelude",
-        "detail": "SCSS parser error. Expected: /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", \"*\", Identifier, \"--\", CustomPropertyToken, \":\", \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", \"*\", Identifier, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, \"(\", \"{\"."
+        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
       },
       {
         "file": "scss/components/_orbit.scss",
@@ -295,13 +248,7 @@
       },
       {
         "file": "scss/components/_reveal.scss",
-        "outcome": "fail",
-        "at": "108:2",
-        "source": "@extend %reveal-centered;",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_slider.scss",
@@ -397,16 +344,7 @@
       },
       {
         "file": "scss/grid/_classes.scss",
-        "outcome": "fail",
-        "at": "100:31",
-        "source": "@include -zf-each-breakpoint {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "trailing comma in a parenthesized list",
-          "interpolation inside a pseudo-class argument list"
-        ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/grid/_column.scss",
@@ -426,15 +364,7 @@
       },
       {
         "file": "scss/grid/_layout.scss",
-        "outcome": "fail",
-        "at": "50:18",
-        "source": "&:nth-of-type(#{$n}n+1) {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "interpolation inside a pseudo-class argument list"
-        ],
-        "primaryBlocker": "interpolation inside a pseudo-class argument list",
-        "detail": "SCSS parser error. Expected: \"(\", \"[\", \"\\\"\", \"'\", BlockCommentToken, /(?:[^()\\[\\]'\"#\\/]|#(?!\\{)|\\/(?!\\*))+/."
+        "outcome": "pass"
       },
       {
         "file": "scss/grid/_position.scss",
@@ -494,14 +424,7 @@
       },
       {
         "file": "scss/prototype/_relation.scss",
-        "outcome": "fail",
-        "at": "9:16",
-        "source": "&:nth-child(-n + #{$num}) {",
-        "blockers": [
-          "interpolation inside a pseudo-class argument list"
-        ],
-        "primaryBlocker": "interpolation inside a pseudo-class argument list",
-        "detail": "SCSS parser error. Expected: not(lazy)."
+        "outcome": "pass"
       },
       {
         "file": "scss/prototype/_rotate.scss",
@@ -529,14 +452,7 @@
       },
       {
         "file": "scss/prototype/_text-decoration.scss",
-        "outcome": "fail",
-        "at": "15:0",
-        "source": "$prototype-text-decoration: (",
-        "blockers": [
-          "trailing comma in a parenthesized list"
-        ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
-        "detail": "Unexpected SCSS input after a complete stylesheet."
+        "outcome": "pass"
       },
       {
         "file": "scss/prototype/_text-transformation.scss",
@@ -548,15 +464,7 @@
       },
       {
         "file": "scss/settings/_settings.scss",
-        "outcome": "fail",
-        "at": "724:0",
-        "source": "$prototype-text-decoration: (",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "trailing comma in a parenthesized list"
-        ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
-        "detail": "Unexpected SCSS input after a complete stylesheet."
+        "outcome": "pass"
       },
       {
         "file": "scss/typography/_alignment.scss",
@@ -564,14 +472,7 @@
       },
       {
         "file": "scss/typography/_base.scss",
-        "outcome": "fail",
-        "at": "434:4",
-        "source": "cite {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "trailing comma in a parenthesized list"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/typography/_helpers.scss",
@@ -587,14 +488,7 @@
       },
       {
         "file": "scss/util/_breakpoint.scss",
-        "outcome": "fail",
-        "at": "180:8",
-        "source": "@media print, screen and #{$str} {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "trailing comma in a parenthesized list"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/util/_color.scss",
@@ -610,24 +504,11 @@
       },
       {
         "file": "scss/util/_math.scss",
-        "outcome": "fail",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "detail": "SCSS grammar produced a non-value child."
+        "outcome": "pass"
       },
       {
         "file": "scss/util/_mixins.scss",
-        "outcome": "fail",
-        "at": "158:2",
-        "source": "@media screen and (min-width: 0\\0) {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list",
-          "interpolation inside a pseudo-class argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/util/_selector.scss",
@@ -647,15 +528,7 @@
       },
       {
         "file": "scss/util/_value.scss",
-        "outcome": "fail",
-        "at": "123:36",
-        "source": "@return if(type-of($map) != 'list', ($value,), $map);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "trailing comma in a parenthesized list"
-        ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/vendor/normalize.scss",
@@ -667,15 +540,7 @@
       },
       {
         "file": "scss/xy-grid/_classes.scss",
-        "outcome": "fail",
-        "at": "83:6",
-        "source": ".grid-x > .#{$-zf-size}-shrink {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/xy-grid/_collapse.scss",
@@ -727,14 +592,7 @@
       },
       {
         "file": "test/sass/_value.scss",
-        "outcome": "fail",
-        "at": "6:30",
-        "source": "@include test-module('Value') {",
-        "blockers": [
-          "trailing comma in a parenthesized list"
-        ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
-        "detail": "Unexpected SCSS input after a complete stylesheet."
+        "outcome": "pass"
       }
     ]
   },
@@ -745,27 +603,27 @@
       {
         "file": "assets/foundation.scss",
         "outcome": "fail",
-        "detail": "Missing closing brace."
+        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
       },
       {
         "file": "assets/foundation-float.scss",
         "outcome": "fail",
-        "detail": "Missing closing brace."
+        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
       },
       {
         "file": "assets/foundation-prototype.scss",
         "outcome": "fail",
-        "detail": "Missing closing brace."
+        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
       },
       {
         "file": "assets/foundation-rtl.scss",
         "outcome": "fail",
-        "detail": "Missing closing brace."
+        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
       },
       {
         "file": "scss/foundation.scss",
         "outcome": "fail",
-        "detail": "Missing closing brace."
+        "detail": "SCSS parser error. Expected: \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", /-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/, /--(?:(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+|(?=#\\{))/, /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \";\", \"(\", \"{\"."
       }
     ]
   }

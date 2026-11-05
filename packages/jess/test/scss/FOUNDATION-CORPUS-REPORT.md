@@ -8,13 +8,13 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-10-05T21:29:48.102Z`
+- Generated: `2026-11-05T03:36:36.442Z`
 - Foundation for Sites: `6.9.0`
 - Runner: `v24.11.1` on `darwin/arm64`
 
 ## Parse lane (all `foundation-sites/**/*.scss`)
 
-- files: **136**, parsed: **116**, failed: **20**
+- files: **136**, parsed: **135**, failed: **1**
 
 Blocking constructs. `gives up on` counts files whose `gave up at` POSITION lands
 on this blocker — the one the parser actually stopped at, so that column ranks
@@ -25,49 +25,19 @@ plausible name: it means this list is missing an entry.
 
 | blocking construct | gives up on | contains |
 |---|--:|--:|
-| trailing comma in a parenthesized list | 5 | 8 |
-| interpolation inside a pseudo-class argument list | 3 | 5 |
-| keyword argument ($name: v) in a function-call argument list | 2 | 15 |
-| comparison (== / !=) inside a function-call argument list | 1 | 5 |
 | @at-root with a selector prelude | 1 | 1 |
+| keyword argument ($name: v) in a function-call argument list | 0 | 1 |
+| comparison (== / !=) inside a function-call argument list | 0 | 1 |
+| trailing comma in a parenthesized list | 0 | 1 |
+| interpolation inside a pseudo-class argument list | 0 | 0 |
 | nested selector list `type:pseudo, .class` | 0 | 0 |
-| _unattributed — no listed blocker at the failure position_ | 8 | — |
-
-Unattributed failures:
-
-- `_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss` — 24:40 `@return length($missing-dependencies) > 0;`
-- `docs/assets/scss/docs.scss` — 243:11 `li:not(:last-child) {`
-- `scss/components/_dropdown-menu.scss` — 84:4 `> li.opens-left { // sass-lint:disable-line no-qualifying-elements`
-- `scss/components/_menu.scss` — 100:2 `@else {`
-- `scss/components/_reveal.scss` — 108:2 `@extend %reveal-centered;`
-- `scss/typography/_base.scss` — 434:4 `cite {`
-- `scss/util/_breakpoint.scss` — 180:8 `@media print, screen and #{$str} {`
-- `scss/util/_math.scss` — the parser reported no position, so nothing can be attributed
+| _unattributed — no listed blocker at the failure position_ | 0 | — |
 
 ### Parse failures
 
 | file | gave up at | source | blocker at that position | all blockers |
 |---|---|---|---|---|
-| `_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss` | 24:40 | `@return length($missing-dependencies) > 0;` | — | — |
-| `_vendor/sassy-lists/stylesheets/helpers/_true.scss` | 12:73 | `@return if($value == null, false, $value and $value != null and $value != '' and $value != ());` | comparison (== / !=) inside a function-call argument list | comparison (== / !=) inside a function-call argument list |
-| `docs/assets/scss/docs.scss` | 243:11 | `li:not(:last-child) {` | — | keyword argument ($name: v) in a function-call argument list |
-| `scss/components/_button-group.scss` | 131:37 | `&:first-child:nth-last-child(#{$i}) {` | interpolation inside a pseudo-class argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; interpolation inside a pseudo-class argument list |
-| `scss/components/_dropdown-menu.scss` | 84:4 | `> li.opens-left { // sass-lint:disable-line no-qualifying-elements` | — | keyword argument ($name: v) in a function-call argument list |
-| `scss/components/_menu.scss` | 100:2 | `@else {` | — | keyword argument ($name: v) in a function-call argument list |
 | `scss/components/_off-canvas.scss` | 207:4 | `@at-root .#{$maincontent-class} .off-canvas.position-#{$position} {` | @at-root with a selector prelude | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; trailing comma in a parenthesized list; @at-root with a selector prelude |
-| `scss/components/_reveal.scss` | 108:2 | `@extend %reveal-centered;` | — | keyword argument ($name: v) in a function-call argument list |
-| `scss/grid/_classes.scss` | 100:31 | `@include -zf-each-breakpoint {` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list; interpolation inside a pseudo-class argument list |
-| `scss/grid/_layout.scss` | 50:18 | `&:nth-of-type(#{$n}n+1) {` | interpolation inside a pseudo-class argument list | keyword argument ($name: v) in a function-call argument list; interpolation inside a pseudo-class argument list |
-| `scss/prototype/_relation.scss` | 9:16 | `&:nth-child(-n + #{$num}) {` | interpolation inside a pseudo-class argument list | interpolation inside a pseudo-class argument list |
-| `scss/prototype/_text-decoration.scss` | 15:0 | `$prototype-text-decoration: (` | trailing comma in a parenthesized list | trailing comma in a parenthesized list |
-| `scss/settings/_settings.scss` | 724:0 | `$prototype-text-decoration: (` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
-| `scss/typography/_base.scss` | 434:4 | `cite {` | — | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
-| `scss/util/_breakpoint.scss` | 180:8 | `@media print, screen and #{$str} {` | — | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
-| `scss/util/_math.scss` | — | `` | — | keyword argument ($name: v) in a function-call argument list |
-| `scss/util/_mixins.scss` | 158:2 | `@media screen and (min-width: 0\0) {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; interpolation inside a pseudo-class argument list |
-| `scss/util/_value.scss` | 123:36 | `@return if(type-of($map) != 'list', ($value,), $map);` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
-| `scss/xy-grid/_classes.scss` | 83:6 | `.grid-x > .#{$-zf-size}-shrink {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list |
-| `test/sass/_value.scss` | 6:30 | `@include test-module('Value') {` | trailing comma in a parenthesized list | trailing comma in a parenthesized list |
 
 ## Eval lane (self-contained entry points)
 
@@ -75,11 +45,11 @@ Unattributed failures:
 
 | entry | outcome | detail |
 |---|---|---|
-| `assets/foundation.scss` | fail | Missing closing brace. |
-| `assets/foundation-float.scss` | fail | Missing closing brace. |
-| `assets/foundation-prototype.scss` | fail | Missing closing brace. |
-| `assets/foundation-rtl.scss` | fail | Missing closing brace. |
-| `scss/foundation.scss` | fail | Missing closing brace. |
+| `assets/foundation.scss` | fail | SCSS parser error. Expected: "*", /(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/, "#{", /-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/, /--(?:(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+|(?=#\{))/, /\/\*(?:[^*]|\*(?!\/))*\*\//, keyword, "$", ";", "(", "{". |
+| `assets/foundation-float.scss` | fail | SCSS parser error. Expected: "*", /(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/, "#{", /-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/, /--(?:(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+|(?=#\{))/, /\/\*(?:[^*]|\*(?!\/))*\*\//, keyword, "$", ";", "(", "{". |
+| `assets/foundation-prototype.scss` | fail | SCSS parser error. Expected: "*", /(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/, "#{", /-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/, /--(?:(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+|(?=#\{))/, /\/\*(?:[^*]|\*(?!\/))*\*\//, keyword, "$", ";", "(", "{". |
+| `assets/foundation-rtl.scss` | fail | SCSS parser error. Expected: "*", /(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/, "#{", /-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/, /--(?:(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+|(?=#\{))/, /\/\*(?:[^*]|\*(?!\/))*\*\//, keyword, "$", ";", "(", "{". |
+| `scss/foundation.scss` | fail | SCSS parser error. Expected: "*", /(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/, "#{", /-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/, /--(?:(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+|(?=#\{))/, /\/\*(?:[^*]|\*(?!\/))*\*\//, keyword, "$", ";", "(", "{". |
 
 ## Owner rulings on each blocker (2026-08-08)
 
@@ -109,9 +79,9 @@ to. Rows marked LANDED are implemented; the rest are still design-only.
 | 7 | `@while` | **LANDED.** Gets a **`$while`**, alongside `$if` / `$for`. |
 | 8 | chained unary `not not` | **LANDED.** Sass `not not $x` lowers to `.jess` `not(not($x))`. Falls out of §4.5.4's rule that `not` always takes parens — it needed no special case, only the missing `Expression` arm in the condition-source spelling. |
 | 9 | nested selector list `type:pseudo, .class` | **A grammar defect, and the rule is fully specified — see below.** |
-| 10 | interpolation in a pseudo-class arg | Not yet ruled on. |
+| 10 | interpolation in a pseudo-class arg | Not yet ruled on. Parses since `pseudo-interpolation.test.ts`, compared with `sass`. |
 | 11 | `@at-root` with a selector prelude | **Needs a decision.** Bare `@at-root { … }` already parses. |
-| 12 | `@extend` inside a mixin / control-flow body (NOT `%placeholder`) | **PLACEHOLDERS LANDED; THE REAL BLOCKER IS ELSEWHERE AND HAS NOW BEEN MISLABELLED THREE TIMES.** Ruling: `.jess` spells a placeholder `\\name` (two literal backslashes) and SCSS `%name` LOWERS to it, so both dialects reduce to the SAME `SimpleSelector` — zero new AST kinds. Two backslashes because `\\` is the CSS escape for a literal `\` (css-syntax-3 4.3.7), making the selector a well-formed identifier no element type can match (selectors-4 5.1): a placeholder is inert BY CONSTRUCTION, and suppression exists only to match dart-sass output. Suppression is per-BRANCH, not per-rule — `%ph, .a {}` emits `.a` — which is why `Ruleset.reference` could NOT be reused for it (whole-rule flag, import-boundary-confined, and it has no producers at all). `.jess` needed NO grammar arm: `\\name` already parses as a plain `SimpleSelector` via the shared escape-aware terminal, and adding a `\\`-arm ahead of `Simple` would STEAL every genuine CSS escape (`\3A hover`, `\@media`) — do not add one. **What actually blocks `_reveal.scss:108` is neither `%` nor grammar placement.** Admitting `@extend` into `nestedBody`/`IfBody` is a two-line change and was tried: it parses, and then the extend is SILENTLY DROPPED, which is strictly worse than the loud parse error. An extend written in a mixin body must apply to the rule that `@include`s the mixin, but extend facts are planned STATICALLY over the authored tree, so an authored `@mixin m { & { @extend .b; } }` containing no placeholder at all is already dropped today — proving the defect is a pre-existing PLANNER limitation, not a grammar or placeholder gap. The mechanism that would carry it already exists: dynamic plan facts via `byPlacement` / `extendPlacement` (`serialize.ts` `extendProjection`), used today for LOOP placements; mixin expansion needs routing through the same path. Until then the arm stays out on purpose. Also landed here: `!optional` is parsed and recorded on `ExtendInstruction.optional`, and SCSS `@extend` is `partial: true` (Sass has no exact/all distinction). Still OPEN alongside the planner work: a missing target is silent for both spellings where dart-sass errors, and `:is()` compaction can still print a placeholder alternative (`:is(\\ph, .a) .c` instead of `.a .c`) — inert, so it matches correctly, but it is a cosmetic divergence. |
+| 12 | `@extend` inside a mixin / control-flow body (NOT `%placeholder`) | **PLACEHOLDERS LANDED; THE REAL BLOCKER IS ELSEWHERE AND HAS NOW BEEN MISLABELLED THREE TIMES.** Ruling: `.jess` spells a placeholder `\\name` (two literal backslashes) and SCSS `%name` LOWERS to it, so both dialects reduce to the SAME `SimpleSelector` — zero new AST kinds. Two backslashes because `\\` is the CSS escape for a literal `\` (css-syntax-3 4.3.7), making the selector a well-formed identifier no element type can match (selectors-4 5.1): a placeholder is inert BY CONSTRUCTION, and suppression exists only to match dart-sass output. Suppression is per-BRANCH, not per-rule — `%ph, .a {}` emits `.a` — which is why `Ruleset.reference` could NOT be reused for it (whole-rule flag, import-boundary-confined, and it has no producers at all). `.jess` needed NO grammar arm: `\\name` already parses as a plain `SimpleSelector` via the shared escape-aware terminal, and adding a `\\`-arm ahead of `Simple` would STEAL every genuine CSS escape (`\3A hover`, `\@media`) — do not add one. **What actually blocks `_reveal.scss:108` is neither `%` nor grammar placement.** Admitting `@extend` into `nestedBody`/`IfBody` is a two-line change and was tried: it parses, and then the extend is SILENTLY DROPPED, which is strictly worse than the loud parse error. An extend written in a mixin body must apply to the rule that `@include`s the mixin, but extend facts are planned STATICALLY over the authored tree, so an authored `@mixin m { & { @extend .b; } }` containing no placeholder at all is already dropped today — proving the defect is a pre-existing PLANNER limitation, not a grammar or placeholder gap. The mechanism that would carry it already exists: dynamic plan facts via `byPlacement` / `extendPlacement` (`serialize.ts` `extendProjection`), used today for LOOP placements; mixin expansion needs routing through the same path. Until then the arm stays out on purpose. Also landed here: `!optional` is parsed and recorded on `ExtendInstruction.optional`, and SCSS `@extend` is `partial: true` (Sass has no exact/all distinction). Still OPEN alongside the planner work: a missing target is silent for both spellings where dart-sass errors, and `:is()` compaction can still print a placeholder alternative (`:is(\\ph, .a) .c` instead of `.a .c`) — inert, so it matches correctly, but it is a cosmetic divergence. **Mixin body LANDED:** `@extend` directly in `@mixin` is carried on `MixinDefinition.extendInstructions` (ledger J15/X16) and a walked extend reveals a static placeholder. `@if`, `@each`, `@for` bodies have no carrier and stay rejected. |
 
 **Sequencing note:** #2, #5 and #6 are LANDED, together — #6 IS the lowering
 target for #2, so neither closes alone. #1 and #9 are defects. #10, #11 and #12
