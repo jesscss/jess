@@ -162,6 +162,7 @@ type ScssRules = {
   NestedStartingStyleBlock: Combinator<AtRuleBlock>;
   NestedLayerBlock: Combinator<AtRuleBlock>;
   InterpolatedSimple: Combinator<SimpleSelector>;
+  NestingSelector: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
@@ -228,9 +229,6 @@ type ScssSharedSyntax = {
   /* Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list. */
   ForgivingSelectorList: Combinator<SelectorList>;
 
-  /* Inherited from the CSS base: a pseudo's name opener. */
-  identifierOrFunction: Combinator<string>;
-
   /*
    * Converged to the CSS base (inherited via compose): same token rule
    * token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
@@ -289,7 +287,6 @@ type ScssSharedSyntax = {
   UnicodeRange: Combinator<ValueNode>;
   Keyword: Combinator<Keyword>;
   Important: Combinator<true>;
-  NestingSelector: Combinator<SimpleSelector>;
 
   /*
    * Converged to the CSS base (inherited via compose): CSS already spells
@@ -4819,6 +4816,17 @@ const scssFactory = (g: ScssInputRules) => {
    * Interpolated placeholder names need a typed interpolation model and are
    * deliberately excluded.
    */
+  /**
+   * `&` with a `--` suffix (Sass "Adding Suffixes": `&--b` in `.a` is `.a--b`). A
+   * suffix that starts with one dash reaches the compound as a type selector
+   * (`&-b`); `--b` cannot, so `--x:…` stays a custom property's, and this token
+   * reads it. A `--#{…}` suffix is `InterpolatedSimple`'s.
+   */
+  const NestingSelector = node<SimpleSelector>(
+    'SimpleSelector',
+    regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+)?/),
+    children => simpleSelector(requireToken(children[0]).value)
+  );
   const Placeholder = node<SimpleSelector>(
     'SimpleSelector',
     regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/),
@@ -4858,11 +4866,13 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * Pseudos share a glued `:name` / `:name(` opener. Route it once, then let the
    * selected branch own that opener through `routed()` so the public
-   * semantic pseudo CST labels keep their source span.
+   * semantic pseudo CST labels keep their source span. The name is an
+   * `<ident-token>`, so it may start `--` (`:--heading`, css-extensions-1 `<custom-selector>`).
    */
   const pseudoIdentOrFunction = token(noTrivia(sequence(
     pseudoColon,
-    g.identifierOrFunction
+    g.IdentToken,
+    optional(literal('('))
   )));
 
   /*
@@ -5552,6 +5562,7 @@ const scssFactory = (g: ScssInputRules) => {
     ScssGenericAtRuleName,
     UnknownAtRuleBlock,
     InterpolatedSimple,
+    NestingSelector,
     Placeholder,
     PseudoArgument,
     PseudoArgumentGroup,

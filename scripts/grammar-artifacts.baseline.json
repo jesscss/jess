@@ -5,55 +5,55 @@
   "grammars": {
     "css": {
       "source": "packages/syntax/css/css-parser/src/grammar.ts",
-      "sourceBytes": 182478,
+      "sourceBytes": 182184,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 417521,
+          "bytes": 416861,
           "ratio": 2.29,
-          "assemblyFunctions": 156
+          "assemblyFunctions": 155
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 166480,
+          "bytes": 166471,
           "ratio": 0.91,
           "assemblyFunctions": 0
         },
         "lib/grammar/base.js": {
-          "bytes": 165402,
+          "bytes": 165391,
           "ratio": 0.91,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 166651,
+          "bytes": 166642,
           "ratio": 0.91,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 166628,
+          "bytes": 166619,
           "ratio": 0.91,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 84122,
+          "bytes": 84020,
           "ratio": 0.46,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 84205,
+          "bytes": 84103,
           "ratio": 0.46,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/base.js": {
-          "bytes": 84665,
+          "bytes": 84563,
           "ratio": 0.46,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 84603,
+          "bytes": 84501,
           "ratio": 0.46,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 84212,
+          "bytes": 84110,
           "ratio": 0.46,
           "assemblyFunctions": null
         }
@@ -61,45 +61,45 @@
     },
     "less": {
       "source": "packages/syntax/less/less-parser/src/grammar.ts",
-      "sourceBytes": 277595,
+      "sourceBytes": 278121,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 693455,
+          "bytes": 694222,
           "ratio": 2.5,
           "assemblyFunctions": 65
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 561500,
+          "bytes": 562284,
           "ratio": 2.02,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 564566,
+          "bytes": 565353,
           "ratio": 2.03,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 561816,
+          "bytes": 562600,
           "ratio": 2.02,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 284063,
+          "bytes": 284143,
           "ratio": 1.02,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 284149,
+          "bytes": 284229,
           "ratio": 1.02,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 284149,
+          "bytes": 284229,
           "ratio": 1.02,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 284155,
+          "bytes": 284235,
           "ratio": 1.02,
           "assemblyFunctions": null
         }
@@ -107,45 +107,45 @@
     },
     "scss": {
       "source": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "sourceBytes": 201553,
+      "sourceBytes": 202154,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 433767,
+          "bytes": 434255,
           "ratio": 2.15,
           "assemblyFunctions": 61
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 343315,
+          "bytes": 343825,
           "ratio": 1.7,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 343817,
-          "ratio": 1.71,
+          "bytes": 344326,
+          "ratio": 1.7,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 343578,
+          "bytes": 344088,
           "ratio": 1.7,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 136596,
+          "bytes": 136838,
           "ratio": 0.68,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 136679,
+          "bytes": 136921,
           "ratio": 0.68,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 136602,
+          "bytes": 136844,
           "ratio": 0.68,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 136685,
+          "bytes": 136927,
           "ratio": 0.68,
           "assemblyFunctions": null
         }
@@ -153,46 +153,46 @@
     },
     "jess": {
       "source": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "sourceBytes": 227225,
+      "sourceBytes": 227485,
       "tablesOnly": "Built with assemblyBudget 0 (packages/syntax/jess/jess-parser/tsdown.config.ts): under selective assembly every budget measured parses at the same speed and each step up costs import time. https://github.com/jesscss/jess/issues/508",
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 384062,
+          "bytes": 384145,
           "ratio": 1.69,
           "assemblyFunctions": 0
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 383511,
+          "bytes": 383592,
           "ratio": 1.69,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 384353,
+          "bytes": 384436,
           "ratio": 1.69,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 383818,
+          "bytes": 383899,
           "ratio": 1.69,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 141514,
+          "bytes": 141570,
           "ratio": 0.62,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 141597,
+          "bytes": 141653,
           "ratio": 0.62,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 141520,
+          "bytes": 141576,
           "ratio": 0.62,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 141603,
+          "bytes": 141659,
           "ratio": 0.62,
           "assemblyFunctions": null
         }
