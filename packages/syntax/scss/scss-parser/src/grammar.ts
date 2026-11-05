@@ -27,7 +27,7 @@ import { NO_SPAN, anonymousMixin, any, asScssAtRoot, generalEnclosedGroup, ifTes
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { RulePreludeRest as PreludeRest, ruleFromPrelude, unreadablePseudo, writtenAt } from './grammar-rule-prelude.js';
 import { functionalPseudoFrom, nthPseudoFrom, pseudoArgumentFrom } from './grammar-pseudo.js';
-import { conditionWord, gluedTerm, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { conditionWord, gluedTerm, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { RETURN_DIRECTIVE, directivePrelude, lowerFunctionReturns } from './grammar-return.js';
 import { scssSum } from './plus-chain.js';
 import { foldLogicalOperation, scssSlashGroupedTerm } from './grammar-logical.js';
@@ -405,6 +405,11 @@ const sumOperator = choice(
   ))
 );
 const space = regex(/[ \t\n\r\f]+/);
+
+/**
+ * Whitespace and comments a value rule reads itself, where trivia is off: a run
+ * between a call argument's parts, with `//` comments, which `.scss` allows in a value.
+ */
 const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)+/);
 
 /**
@@ -2067,6 +2072,11 @@ const scssFactory = (g: ScssInputRules) => {
     propertyNameChunk,
     g.SassInterpolation
   ));
+
+  /**
+   * A custom property's name in a declaration, `--a` or `--#{$prefix}a`: a plain
+   * string, or one interpolation when a hole stands in it.
+   */
   const CustomPropertyName = node<string | Interpolation>(
     'CustomPropertyName',
     noTrivia(sequence(
@@ -2175,10 +2185,20 @@ const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
+
+  /** A declaration's value and its `!important`, the part both colon arms of `Declaration` share. */
   const declarationTail = sequence(
     statementValue,
     optional(g.Important)
   );
+
+  /**
+   * `name: value`, with an optional priority, or a custom property. The colon decides
+   * what may stand after the value. A colon before the start of a pseudo's name
+   * (`x:f() .b { … }`) may open a selector, so a value followed by a combinator or the
+   * start of a simple selector leaves this rule and the statement reads as a rule, as
+   * Sass reads it; any other colon only gives way to a block or a comma (ledger P53).
+   */
   const Declaration = node<Declaration>(
     'Declaration',
     choice(
@@ -3123,6 +3143,8 @@ const scssFactory = (g: ScssInputRules) => {
     g.AtRuleStatement,
     g.NestedRuleset
   ));
+
+  /** The body of a root `@starting-style` or `@layer`: rules and at-rules, no declarations. */
   const startingLayerBlockBody = many(choice(
     g.Comment,
     g.ImportStatement,
@@ -3142,6 +3164,8 @@ const scssFactory = (g: ScssInputRules) => {
     g.AtRuleStatement,
     g.NestedRuleset
   ));
+
+  /** `@mixin name($params) { … }`, whose body is a rule's: declarations, nested rules, directives. */
   const MixinDefinitionRule = node<MixinDefinition>(
     'MixinDefinition',
     sequence(
@@ -4162,6 +4186,11 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (_children, _fields, span, _rawChildren, _triviaLog, state) => any(writtenAt(span, state, 'An @at-root prelude').trim())
   );
+
+  /**
+   * `@at-root { … }` or `@at-root .x { … }`. It parses in every form, and the compile
+   * reports `parse/at-root-placement` at it (ledger P10; the carrier is jess#593).
+   */
   const AtRootBlock = node<AtRuleBlock>(
     'AtRootBlock',
     sequence(
@@ -4186,6 +4215,8 @@ const scssFactory = (g: ScssInputRules) => {
       )), rawChildren), span);
     }
   );
+
+  /** `@at-root (with: media) { … }` and `(without: …)`, read and reported as {@link AtRootBlock} is. */
   const AtRootFilter = node<AtRuleBlock>(
     'AtRootFilter',
     sequence(
@@ -4553,6 +4584,11 @@ const scssFactory = (g: ScssInputRules) => {
       ))
     ), rawChildren), span)
   );
+
+  /**
+   * `@supports`, `@media` or `@container` in a rule: each its root form's header, with a
+   * body that also holds declarations.
+   */
   const NestedConditionalBlock = node<AtRuleBlock>(
     'NestedConditionalBlock',
     choice(
@@ -4590,6 +4626,8 @@ const scssFactory = (g: ScssInputRules) => {
       )
     ), rawChildren), span)
   );
+
+  /** `@starting-style` in a rule: the root header, with a body that also holds declarations. */
   const NestedStartingStyleBlock = node<AtRuleBlock>(
     'NestedStartingStyleBlock',
     sequence(
@@ -4611,6 +4649,8 @@ const scssFactory = (g: ScssInputRules) => {
       )
     ), rawChildren), span)
   );
+
+  /** `@layer` in a rule: the root header, with a body that also holds declarations. */
   const NestedLayerBlock = node<AtRuleBlock>(
     'NestedLayerBlock',
     sequence(
@@ -4901,6 +4941,11 @@ const scssFactory = (g: ScssInputRules) => {
     )),
     pseudoArgumentFrom
   );
+
+  /**
+   * A functional pseudo's argument, as opaque text: groups, strings, comments and holes
+   * are read so they can hold a `)`. A string when it holds no hole, else one interpolation.
+   */
   const PseudoArgument = node<string | Interpolation>(
     'PseudoArgument',
     noTrivia(oneOrMore(choice(
@@ -5140,6 +5185,8 @@ const scssFactory = (g: ScssInputRules) => {
       requireSelectorList(children.find(isSelectorList))
     )
   );
+
+  /** `:global(…)` and `:local(…)`, whose argument stays text in one simple selector. */
   const GlobalLocalPseudo = node<SimpleSelector>(
     'GlobalLocalPseudo',
 
@@ -5154,6 +5201,8 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => functionalPseudoFrom(requireToken(children[0]).value, children[1])
   );
+
+  /** Any other `:name(…)`, whose argument, which may be empty, stays text in one simple selector. */
   const GenericFunctionPseudo = node<SimpleSelector>(
     'GenericPseudo',
 
@@ -5422,6 +5471,10 @@ const scssFactory = (g: ScssInputRules) => {
     (_children, _fields, span, _rawChildren, _triviaLog, state) => new PreludeRest(span.start, span.end, state)
   );
 
+  /**
+   * A root rule: a selector list, what no selector read of its prelude
+   * ({@link RulePreludeRest}), or both, then a block.
+   */
   const Ruleset = node<Ruleset>(
     'Ruleset',
     sequence(
@@ -5434,6 +5487,8 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, _span, rawChildren) => ruleFromPrelude(children, rawChildren)
   );
+
+  /** A rule in a block, as {@link Ruleset} is, with a selector that may lead with a combinator or `&`. */
   const NestedRuleset = node<Ruleset>(
     'NestedRuleset',
     sequence(
