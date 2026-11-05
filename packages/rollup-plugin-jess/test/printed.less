@@ -1,0 +1,8 @@
+@use "#less";
+@expose brand;
+@brand: #c00;
+
+.button {
+  color: @less.fade(@brand, 50%);
+  border-color: @less.darken(@brand, 10%);
+}

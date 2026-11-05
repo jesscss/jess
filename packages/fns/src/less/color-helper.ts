@@ -6,7 +6,7 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../tree`, no legacy node).
  */
-import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, serializeColor, textOf, withFields, type Color, type Value } from '@jesscss/core/value';
+import { RGB, colorRawRgb, colorRgbRounded, makeColorRgb, serializeColor, withFields, type Color, type Value } from '@jesscss/core/value';
 import { clamp01 } from './color-ctor-helper.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
@@ -29,33 +29,6 @@ export function reformatColor(c: Color, format: number): Color {
 
 /** Collapse a hair's-breadth-of-1 alpha (mix float drift) back to exactly 1. */
 export const snapAlpha = (a: number): number => (Math.abs(a - 1) < 1e-12 ? 1 : a);
-
-/**
- * The one alpha-adjust kernel for `fade`/`fadein`/`fadeout`: rebuild `color` at
- * `newAlpha`, carried at FULL precision. It used to round to Less's 8-decimal
- * `fround` here so that float drift emitted `0.7` and not `0.7000000000000001` —
- * but that is the OUTPUT policy's job (`formatNumber` trims exactly that noise),
- * and ruling V5 forbids quantizing a colour channel at construction precisely
- * because chained colour math compounds the error. A `#`-hex input keeps HEX
- * format ONLY when the literal already encoded an alpha channel (`#rgba` /
- * `#rrggbbaa`); an opaque hex (`#rgb` / `#rrggbb`) turns to `rgba(…)` the moment
- * it becomes translucent (Less 4.x/v5 parity — e.g. `fadeout(#ff0, 50%)` →
- * `rgba(255, 255, 0, 0.5)`, but `fade(#5F59, 10%)` → `#55ff551a`).
- *
- * The retag fires ONLY when the result is actually translucent (ledger **V10**, the
- * same `alpha < 1 ? RGB : <input format>` rule {@link mixColors} already applies).
- * It used to fire unconditionally, so a round trip back to opaque left the value
- * tagged `RGB` and `fade(#f00, 100%)` emitted `rgb(255, 0, 0)` where every other
- * computed opaque colour — `lighten` → `#b3f075`, `mix` → `#800080` — emits hex.
- * An opaque result has no alpha to carry, so there is nothing for the retag to say.
- */
-export function withAlpha(color: Color, newAlpha: number): Color {
-  const node = color.src;
-  const hexDigits = typeof node === 'string' && node.startsWith('#') ? node.length - 1 : 0;
-  const preserveHex = color.format === HEX && (hexDigits === 4 || hexDigits === 8);
-  const format = newAlpha < 1 ? (preserveHex ? HEX : RGB) : color.format;
-  return makeColorRgb(colorRawRgb(color), newAlpha, format, { modernSyntax: color.modernSyntax === true });
-}
 
 /**
  * Weighted blend of two colors (`mix`'s kernel; `tint`/`shade` are one-liners over
