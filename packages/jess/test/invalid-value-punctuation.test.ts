@@ -56,12 +56,12 @@ const EVERY_DIALECT: ReadonlyArray<readonly [value: string, delim: string]> = [
   ['foo(a~b)', '~'],
   ['foo(x, a~b)', '~'],
   ['foo(bar(a|b))', '|'],
-  ['foo(a = b < c)', '='],
   ['a:b', ':']
 ];
 
 const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: string]>> = {
   css: [
+    ['foo(a = b < c)', '='],
     ['foo(a==b)', '=='],
     ['color.mix(red, blue)', '.'],
     ['ns.fn()', '.'],
@@ -86,6 +86,7 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['100%%', '%']
   ],
   less: [
+    ['foo(a = b < c)', '='],
     ['foo(a==b)', '=='],
     ['color.mix(red, blue)', '.'],
     ['ns.fn()', '.'],
@@ -114,6 +115,7 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['#{$a}.b', '.']
   ],
   jess: [
+    ['foo(a = b < c)', '='],
     ['foo(a==b)', '=='],
     ['color.mix(red, blue)', '.'],
     ['ns.fn()', '.'],
