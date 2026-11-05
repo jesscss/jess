@@ -35,7 +35,7 @@ describe('the export runtime', () => {
     ['@less.lightness(@brand)', 'rebeccapurple'],
     ['@less.luma(@less.multiply(@brand, #888))', '#3a7'],
     ['@less.fade(@brand, 50%)', '#123456'],
-    ['@less.spin(@brand, 30)', '#123']
+    ['@less.lightness(@less.spin(@brand, 30))', '#123']
   ])('writes what a compile writes: %s with %s', async (expression, value) => {
     const exported = await compile(`@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
@@ -44,6 +44,25 @@ describe('the export runtime', () => {
     const recompiled = await compile(`@use "#less";\n@brand: ${value};\n.a { v: ${expression}; }`);
     expect(vars['--brand']).toBe(value);
     expect(recompiled.css).toContain(`v: ${vars[property!]};`);
+  });
+
+  it('leaves a function with a CSS form to the browser', async () => {
+    const exported = await compile('@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.spin(@brand, 30); }');
+    expect(exported.css).toContain('v: hsl(from var(--brand, #c00) calc(h + 30) s l);');
+    expect(exported.runtime!.derived).toEqual({});
+    expect(exported.runtime!.defaults).toEqual({});
+  });
+
+  it.each(['10px', '"str"', 'foo'])('rejects an export whose own value a form cannot take: %s', async (value) => {
+    await expect(new Compiler({}).renderString(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: @less.darken(@brand, 10%); }`, { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/invalid-function' });
+  });
+
+  it('leaves nothing behind for a form over a form', async () => {
+    const exported = await compile('@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.darken(@less.spin(@brand, 30), 10%); }');
+    expect(exported.css).toContain('v: hsl(from hsl(from var(--brand, #c00) calc(h + 30) s l) h s clamp(0, l - 10, 100));');
+    expect(exported.runtime!.derived).toEqual({});
+    expect(exported.runtime!.defaults).toEqual({});
   });
 
   it('computes only what reads a given export', async () => {

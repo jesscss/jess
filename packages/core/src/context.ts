@@ -6,6 +6,7 @@ import type { TriviaMap } from './types/index.js';
 import type { ApplySelectorKind, ExtendSelectorKind, OutputOptions } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
 import { FunctionMode, MathMode, UnitMode } from './types/modes.js';
+import { attachDocumentFacts, DocumentContext, documentTriviaOf } from './document-context.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
@@ -379,48 +380,7 @@ export interface DocumentContextOptions extends ContextOptions {
   plugin?: PluginInterface;
 }
 
-/** Private parser-provenance slot on the exported document identity. */
-const DOCUMENT_TRIVIA: unique symbol = Symbol('jess.context.document-trivia');
-
-/**
- * Source identity carried by canonical AST documents for one Context session.
- * It intentionally has no legacy node scope, selector cache, or placement state.
- */
-export class DocumentContext {
-  private _options: Readonly<ResolvedOptions>;
-
-  /** Immutable view of the resolved policy owned by the active source. */
-  get options(): Readonly<ResolvedOptions> {
-    return this._options;
-  }
-
-  isModule: boolean | undefined;
-  file?: DocumentContextOptions['file'];
-  plugin?: PluginInterface;
-
-  constructor(options: Readonly<ResolvedOptions>, opts: DocumentContextOptions = {}) {
-    this._options = options;
-    this.isModule = opts.isModule;
-    this.file = opts.file;
-    this.plugin = opts.plugin;
-  }
-}
-
-/** Attach canonical-document trivia without changing the public class declaration. */
-function attachDocumentFacts(
-  context: DocumentContext,
-  trivia: TriviaMap | undefined
-): void {
-  Object.defineProperty(context, DOCUMENT_TRIVIA, { value: trivia });
-}
-
-/** Core-internal access; intentionally absent from the package-root exports. */
-export function documentTriviaOf(context: DocumentContext): TriviaMap | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- canonical contexts receive this module-private slot in rememberDocumentContext.
-  return (context as DocumentContext & {
-    readonly [DOCUMENT_TRIVIA]: TriviaMap | undefined;
-  })[DOCUMENT_TRIVIA];
-}
+export { DocumentContext, documentTriviaOf };
 
 /** The source facts of the active canonical document. */
 export type SourceContext = Pick<DocumentContext, 'options' | 'file' | 'plugin'>;

@@ -14,6 +14,10 @@
   "main": "lib/index.cjs",
   "module": "lib/index.js",
   "types": "lib/index.d.ts",
+  "sideEffects": [
+    "./lib/index.js",
+    "./lib/index.cjs"
+  ],
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -31,6 +35,12 @@
       "source": "./src/value.ts",
       "import": "./lib/value.js",
       "require": "./lib/value.cjs"
+    },
+    "./form": {
+      "types": "./lib/form.d.ts",
+      "source": "./src/form.ts",
+      "import": "./lib/form.js",
+      "require": "./lib/form.cjs"
     },
     "./ast": {
       "types": "./lib/ast.d.ts",

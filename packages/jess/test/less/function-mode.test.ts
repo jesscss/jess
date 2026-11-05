@@ -84,8 +84,7 @@ describe('functionMode', () => {
   }, 60000);
 
   it('evaluates a failing call in a variable only where the variable is referenced (lazy variables, R1)', async () => {
-    // tests-error/eval/color-func-invalid-color-2 declares this variable and never reads it.
-    const declared = '@base-color: darken(var(--baseColor, red), 50%);';
+    const declared = '@base-color: darken(10px, 50%);';
     const referenced = `${declared}\n.a { color: @base-color; }`;
     const options = { filePath: 'entry.less', extension: '.less' };
 
@@ -93,7 +92,17 @@ describe('functionMode', () => {
     await expect(makeCompiler({ functionMode: 'error' }).renderString(referenced, options))
       .rejects.toMatchObject({ code: 'eval/invalid-function', line: 1, column: 14 });
     await expect(makeCompiler().renderString(referenced, options))
-      .resolves.toContain('color: darken(var(--baseColor, red), 50%)');
+      .resolves.toContain('color: darken(10px, 50%)');
+  }, 60000);
+
+  it('prints a built-in\'s CSS form over an input only the browser knows, in every mode', async () => {
+    // tests-error/eval/color-func-invalid-color-2 declares this variable and never reads it.
+    const source = '@base-color: darken(var(--baseColor, red), 50%);\n.a { color: @base-color; }';
+    const options = { filePath: 'entry.less', extension: '.less' };
+    for (const functionMode of ['preserve', 'error'] as const) {
+      await expect(makeCompiler({ functionMode }).renderString(source, options))
+        .resolves.toContain('color: hsl(from var(--baseColor, red) h s clamp(0, l - 50, 100))');
+    }
   }, 60000);
 
   it('leaves unknown (non-registered) function names as-is WITHOUT warning, even in error mode', async () => {

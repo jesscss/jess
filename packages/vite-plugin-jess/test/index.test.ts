@@ -30,7 +30,7 @@ describe('vite-plugin-jess', () => {
     const first = [result].flat()[0];
     const output = first !== undefined && 'output' in first ? first.output : [];
     const css = output.find(item => item.type === 'asset' && item.fileName.endsWith('.css'));
-    expect(css?.type === 'asset' ? String(css.source) : '').toContain('var(--brand-darken,');
+    expect(css?.type === 'asset' ? String(css.source) : '').toContain('var(--brand-fade,');
 
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vite-plugin-jess-'));
     try {
@@ -41,7 +41,7 @@ describe('vite-plugin-jess', () => {
       if (isRuntime(module)) {
         expect(module.css).toContain('var(--brand,');
         // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
-        expect(module.vars({ brand: '#08f' })).toEqual({ '--brand': '#08f', '--brand-darken': '#006dcc' });
+        expect(module.vars({ brand: '#08f' })).toEqual({ '--brand': '#08f', '--brand-fade': 'rgba(0, 136, 255, 0.5)' });
       }
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
@@ -75,6 +75,19 @@ describe('vite-plugin-jess', () => {
     const css = output.find(item => item.type === 'asset' && item.fileName.endsWith('.css'));
     return { css: css?.type === 'asset' ? String(css.source) : '', js: output[0]?.code ?? '' };
   }
+
+  it('bundles a function with a CSS form that the runtime has to run', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose brand;\n@brand: #c00;\n.a { line-height: @less.lightness(@less.spin(@brand, 30)); }\n`]
+    ], async (root) => {
+      const { js } = await built(root);
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(isRuntime(module) && module.vars({ brand: '#08f' })['--brand-lightness']).toBe('50%');
+    });
+  });
 
   it('resolves a relative `@import` and `url()` from the stylesheet\'s directory', async () => {
     await inProject([
@@ -161,8 +174,8 @@ describe('vite-plugin-jess', () => {
         expect(module.card).toBe(module.classes.card);
         expect(module.classes.card).not.toBe('card');
         expect(text).toContain(`.${module.classes.card}{color:var(--brand, #c00)}`);
-        expect(text).toContain(`.${module.classes.card__title}{border-color:var(--brand-darken, #990000)}`);
-        expect(module.vars({ brand: '#08f' })['--brand-darken']).toBe('#006dcc');
+        expect(text).toContain(`.${module.classes.card__title}{border-color:var(--brand-fade, rgba(204, 0, 0, .5))}`);
+        expect(module.vars({ brand: '#08f' })['--brand-fade']).toBe('rgba(0, 136, 255, 0.5)');
       }
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });

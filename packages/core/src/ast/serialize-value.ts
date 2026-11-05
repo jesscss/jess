@@ -79,6 +79,7 @@ export function serializeValue(v: ValueGroup): string {
     case 'Color': return serializeColor(v);
     case 'Quoted': return serializeQuoted(v);
     case 'Keyword': return v.text;
+    case 'FunctionCall': return v.bytes;
     case 'Any': return v.bytes;
     case 'Url': return v.bytes;
     case 'Bool': return v.value ? 'true' : 'false';
