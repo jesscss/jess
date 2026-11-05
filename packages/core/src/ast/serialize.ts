@@ -200,6 +200,7 @@ import {
   type Value,
   type Any as TextValue,
   type Keyword as KeywordValue,
+  type FunctionCall as ValueFunctionCall,
   type List as EvalList,
   type WrittenArguments
 } from './value-eval.js';
@@ -5610,8 +5611,8 @@ function writtenParens(slot: ValueSlot, frame: Frame | null, e: Lane): number {
  * an identifier, so `(foo) * 2` stays `(foo) * 2`. The test is the value's type
  * and the node the group holds, never its bytes.
  */
-const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | KeywordValue =>
-  v.type === 'Any' || (v.type === 'Keyword' && ((e.calcDepth ?? 0) > 0 || call) && e.ev?.sassCalculations === true);
+const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | KeywordValue | ValueFunctionCall =>
+  v.type === 'Any' || ((v.type === 'Keyword' || v.type === 'FunctionCall') && ((e.calcDepth ?? 0) > 0 || call) && e.ev?.sassCalculations === true);
 
 /**
  * A paren group around opaque text ({@link isOpaqueText}): the text, carrying
@@ -5623,7 +5624,7 @@ const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | Keyword
  * alone: `.x-@{a}` with `@a: (~"x")` is `.x-x`, a callable reads `x` from
  * `(e("x"))` ({@link readText}).
  */
-const textGroup = (v: TextValue | KeywordValue): Value => groupText(v);
+const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => groupText(v);
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
@@ -7804,7 +7805,7 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromis
       const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
       return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(isValueGroupArray(v) ? emitValue(v) : mathText(v, emitValue(v)), isValueGroupArray(v) || !isOpaqueText(v, ce) ? authored : 0)})`), v, v));
     }
-    if (!isValueGroupArray(v) && v.type === 'Keyword') {
+    if (!isValueGroupArray(v) && (v.type === 'Keyword' || v.type === 'FunctionCall')) {
       return calcInner(v.bytes) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${mathText(v)})`), v, v));
     }
 
@@ -9114,7 +9115,7 @@ function dispatchCall(
     }
   };
   const call = demanded && selected === undefined && isModernHsl(node)
-    ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'Keyword' || out.call === null
+    ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
         : resolveHsl(node, vals[0]!, (slot, channels) => evalTypedSlot(slot, frame, deriveLane(be, 'channels', undefined, undefined, channels), true, ARG_INPUT), out))
     : dispatch;
@@ -21332,6 +21333,7 @@ const STATEMENT_RESULT_POSITIONS: Readonly<Record<Value['type'], readonly [root:
   Color: [false, false],
   Dimension: [false, false],
   Keyword: [false, false],
+  FunctionCall: [false, false],
   List: [false, false],
   Null: [false, false],
   Quoted: [false, false],

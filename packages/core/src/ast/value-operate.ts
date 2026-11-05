@@ -12,10 +12,10 @@
  * units table.
  */
 import Big from 'big.js';
-import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type EvalValue, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { HEX } from './color.js';
-import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeGroupedKeyword, makeKeyword, makeQuoted, withFields } from './value-factory.js';
+import { callKeyword, colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeGroupedKeyword, makeKeyword, makeQuoted, withFields } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { convertValue, convertible, foldUnit, unitMultisetKey } from './value-units.js';
 
@@ -573,13 +573,13 @@ const keptMath = new WeakMap<Value, string>();
  * `.scss` string's only in math ({@link mathText}); a splice or a callable reads
  * the text alone.
  */
-export function groupText(v: Any | Keyword): Value {
-  return v.type === 'Any' ? makeAny(v.bytes, v.escapedQuote, v.groups + 1) : makeGroupedKeyword(v.bytes, v.groups + 1);
+export function groupText(v: Any | Keyword | FunctionCall): Value {
+  return v.type === 'Any' ? makeAny(v.bytes, v.escapedQuote, v.groups + 1) : makeGroupedKeyword(v.bytes, v.type === 'FunctionCall' ? 1 : v.groups + 1);
 }
 
 /** `value` spelled `bytes`, the parens written around it: a call in parens is a paren group, no longer the call it spelled. */
 export const inParens = (value: Value, bytes: string): Value =>
-  value.type === 'Keyword' ? withFields(value, { bytes, call: null }) : withFields(value, { bytes });
+  withFields(value.type === 'FunctionCall' ? callKeyword(value) : value, { bytes });
 
 /**
  * `bytes`, the spelling of `v` ({@link emitValue}: an escaped string's already
@@ -703,7 +703,7 @@ export function groupAsWritten(v: Value): Value {
   if (kept !== undefined) {
     return keptMathKeyword(`(${kept})`, '', v, v);
   }
-  return v.type === 'Keyword' && keptAsWritten.has(v) ? composedKeyword(`(${v.bytes})`, v, v, '') : v;
+  return v.type === 'FunctionCall' || (v.type === 'Keyword' && keptAsWritten.has(v)) ? composedKeyword(`(${v.bytes})`, v, v, '') : v;
 }
 
 /**
@@ -733,6 +733,8 @@ function invalidOperand(v: ValueGroup, sass: boolean, scss: boolean): string | n
         return null;
       }
       return !keptAsWritten.has(v) ? 'keyword' : keptAsWritten.get(v) === '' ? 'function call' : null;
+    case 'FunctionCall':
+      return calcInner(v.bytes) === null ? 'function call' : null;
     case 'Color':
       return scss ? 'color' : null;
     case 'Quoted':
@@ -879,8 +881,8 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
 
   const leftKept = keptMathOf(left) !== undefined;
   const rightKept = keptMathOf(right) !== undefined;
-  const leftInner = left.type === 'Keyword' && !leftKept ? calcInner(left.bytes) : null;
-  const rightInner = right.type === 'Keyword' && !rightKept ? calcInner(right.bytes) : null;
+  const leftInner = (left.type === 'Keyword' || left.type === 'FunctionCall') && !leftKept ? calcInner(left.bytes) : null;
+  const rightInner = (right.type === 'Keyword' || right.type === 'FunctionCall') && !rightKept ? calcInner(right.bytes) : null;
   const kept = leftKept || rightKept;
   if (kept || leftInner !== null || rightInner !== null) {
     const lb = leftInner !== null ? spliceInner(leftInner) : operandAsWritten(left, op, false, left.bytes, true);
@@ -894,7 +896,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
    * kept as math in its group, as Less text is: `(unquote("1px + 2px")) * 2`
    * is `calc((1px + 2px) * 2)`, never `1px + 2px * 2` ({@link groupText}).
    */
-  if ((left.type === 'Keyword' && left.groups === 0) || (right.type === 'Keyword' && right.groups === 0)) {
+  if ((left.type === 'Keyword' && left.groups === 0) || (right.type === 'Keyword' && right.groups === 0) || left.type === 'FunctionCall' || right.type === 'FunctionCall') {
     return composedKeyword(`${operandAsWritten(left, op, false)} ${op} ${operandAsWritten(right, op, true)}`, left, right, op);
   }
 

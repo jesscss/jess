@@ -99,7 +99,7 @@ function numberArg(op: Op, name: string, v: ValueGroup): Dimension {
 
 /** `$space`: an unquoted rgb, hsl or hwb. */
 function spaceArg(v: ValueGroup): Space {
-  if (isValueGroupArray(v) || (v.type !== 'Keyword' && v.type !== 'Quoted')) {
+  if (isValueGroupArray(v) || (v.type !== 'Keyword' && v.type !== 'FunctionCall' && v.type !== 'Quoted')) {
     throw new TypeError(`$space: ${describe(v)} is not a string.`);
   }
   if (v.type === 'Quoted') {

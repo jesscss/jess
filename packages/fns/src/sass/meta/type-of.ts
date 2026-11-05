@@ -40,6 +40,7 @@ const typeOf = defineFunction('type-of', {
        * here, at the point of use.
        */
       case 'Keyword': return makeKeyword(namedColor(value.text) !== undefined ? 'color' : 'string');
+      case 'FunctionCall':
       case 'Quoted':
       case 'Any':
       case 'Url': return makeKeyword('string');

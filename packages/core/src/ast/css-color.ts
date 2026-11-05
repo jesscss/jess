@@ -19,7 +19,7 @@
 import { type MaybePromise, combineAll, isThenable, mapMaybe } from '@jesscss/awaitable-pipe';
 import { colorAlphaSlash, type FunctionCall, type ValueSlot } from './nodes.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import { isValueGroupArray, type Color, type Dimension, type Keyword, type ValueGroup } from './value-eval.js';
+import { isValueGroupArray, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { makeDimension, makeHslColor } from './value-factory.js';
 import { rgbToHsl } from './color.js';
@@ -60,7 +60,7 @@ export function isModernHsl(node: FunctionCall): boolean {
  * per enclosing level. A channel that fails only bound (`calc(l / 0)`, CSS math
  * the browser rejects) is not known.
  */
-export function resolveHsl(node: FunctionCall, slot: ValueGroup, evaluate: ChannelEval, written: Keyword): MaybePromise<Color | Keyword> {
+export function resolveHsl(node: FunctionCall, slot: ValueGroup, evaluate: ChannelEval, written: WrittenCall): MaybePromise<Color | WrittenCall> {
   const nodes = node.args[0]!.value;
   if (!isValueSlotArray(nodes)) {
     return written;

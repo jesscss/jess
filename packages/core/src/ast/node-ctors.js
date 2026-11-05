@@ -715,12 +715,20 @@ export function QuotedValueNode(value, quote, escaped, bytes) {
   this.bytes = bytes;
 }
 
-export function KeywordValueNode(text, bytes, groups, call) {
+export function KeywordValueNode(text, bytes, groups) {
   this.type = 'Keyword';
   this.text = text;
   this.bytes = bytes;
   this.groups = groups;
-  this.call = call;
+}
+
+export function FunctionCallValueNode(name, args, result, computed, bytes) {
+  this.type = 'FunctionCall';
+  this.name = name;
+  this.args = args;
+  this.result = result;
+  this.computed = computed;
+  this.bytes = bytes;
 }
 
 export function AnyValueNode(bytes, escapedQuote, groups) {

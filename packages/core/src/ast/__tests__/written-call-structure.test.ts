@@ -15,9 +15,9 @@ import { parse as parseLess } from '../../../../syntax/less/less-parser/src/inde
  * received as `name[arg arg …]`, `-` for an argument that is no call.
  */
 const shape = (value: ValueGroup): string =>
-  isValueGroupArray(value) || value.type !== 'Keyword' || value.call === null
+  isValueGroupArray(value) || value.type !== 'FunctionCall'
     ? '-'
-    : `${value.call.name}[${groupItems(value.call.args).map(shape).join(' ')}]`;
+    : `${value.name}[${groupItems(value.args).map(shape).join(' ')}]`;
 
 const registry = makeLessRegistry();
 registry.register(defineFunction('shape', {
@@ -37,6 +37,34 @@ describe('a call written out as-is', () => {
 
   it('includes a built-in that could not compute', () => {
     expect(value('shape(darken(var(--a), 10%))')).toBe('darken[var[-] -]');
+  });
+
+  it('reads a call\'s CSS type from its name', () => {
+    const result = (source: string): string | undefined => {
+      let seen: string | undefined;
+      const inner = makeLessRegistry();
+      inner.register(defineFunction('result', {
+        params: [{ name: 'value', type: 'any' }],
+        body: (read) => {
+          seen = isValueGroupArray(read) || read.type !== 'FunctionCall' ? 'none' : String(read.result);
+          return makeKeyword('done');
+        }
+      }));
+      css(serialize(parseLess(`.a { x: result(${source}); }`), { evaluator: buildEvaluator(inner) }));
+      return seen;
+    };
+    expect(result('color-mix(in srgb, var(--a), red)')).toBe('color');
+    expect(result('light-dark(var(--a), red)')).toBe('color');
+    expect(result('min(var(--a), 1px)')).toBe('numeric');
+    expect(result('var(--a)')).toBe('null');
+    expect(result('foo(1)')).toBe('null');
+  });
+
+  it('is read as the keyword that spells it by anything that does not ask for the structure', () => {
+    expect(value('iskeyword(foo(1))')).toBe('true');
+    expect(value('iskeyword(var(--a))')).toBe('true');
+    expect(value('iscolor(var(--a))')).toBe('false');
+    expect(value('e(foo(1))')).toBe('foo(1)');
   });
 
   it('is absent from any other value', () => {

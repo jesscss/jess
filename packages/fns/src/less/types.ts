@@ -9,7 +9,7 @@ import type { Fn, ValueGroup } from '@jesscss/core';
  */
 function isColorLike(value: ValueGroup): boolean {
   return !isValueGroupArray(value)
-    && (value.type === 'Color' || (value.type === 'Keyword' && namedColor(value.text) !== undefined));
+    && (value.type === 'Color' || (value.type === 'Keyword' && namedColor(value.text) !== undefined) || (value.type === 'FunctionCall' && value.computed && value.result === 'color'));
 }
 
 /** Less `iscolor()` — true for a colour value or a named-color keyword. */
@@ -34,7 +34,7 @@ const isstring: Fn = defineFunction('isstring', {
  * (a named-color keyword answers `iscolor`, matching pre-convergence Less). */
 const iskeyword: Fn = defineFunction('iskeyword', {
   params: [{ type: 'any' }],
-  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Keyword' && namedColor(value.text) === undefined)
+  body: value => makeBool(!isValueGroupArray(value) && (value.type === 'FunctionCall' || (value.type === 'Keyword' && namedColor(value.text) === undefined)))
 });
 
 /** Less `isurl()` — true only for a parser-owned `url(...)` value. */

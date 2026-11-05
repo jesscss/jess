@@ -155,21 +155,34 @@ export interface Keyword {
 
   /** The paren groups written around it where it is text ({@link Any.groups}); `0` otherwise. */
   readonly groups: number;
-
-  /** The call it spells when it is a call written out as-is ({@link KeywordCall}), `null` for any other keyword. */
-  readonly call: KeywordCall | null;
 }
 
 /**
- * A call written out as-is (an unknown or CSS function, a built-in that could
- * not compute), as structure: its name and its evaluated arguments as written,
- * any of which may be such a call in turn. The keyword holding it is its
- * spelling. It travels with the value, so a callable that receives it can read
- * the call rather than its bytes (docs/design/CSS-NATIVE-BUILTINS.md §3.2).
+ * The CSS type a call written out as-is produces, read from its name: `color`
+ * for a colour function, `numeric` for a css-values-4 §10 math function (its
+ * exact type follows from its arguments, §10.9), `null` when only the browser
+ * knows (`var()`, an unknown function).
  */
-export interface KeywordCall {
+export type CallResult = 'color' | 'numeric' | null;
+
+/**
+ * A call written out as-is (an unknown or CSS function, a built-in that could
+ * not compute, a built-in's CSS form), as structure: the evaluated twin of the
+ * parse tree's `FunctionCall`. `args` are its evaluated arguments as written,
+ * any of which may be such a call in turn, `bytes` its spelling. It travels
+ * with the value, so a callable that receives it can read the call rather than
+ * its bytes (docs/design/CSS-NATIVE-BUILTINS.md §3.2). Every reader that does
+ * not ask for the structure reads it as the keyword that spells it.
+ */
+export interface FunctionCall {
+  readonly type: 'FunctionCall';
   readonly name: string;
   readonly args: ValueGroup;
+  readonly result: CallResult;
+
+  /** A built-in's CSS form, which a type predicate reads by {@link result}; an authored call is not (Q10). */
+  readonly computed: boolean;
+  readonly bytes: string;
 }
 
 /**
@@ -325,7 +338,7 @@ export interface UrlValue {
   readonly bytes: string;
 }
 
-export type Value = Dimension | Color | Quoted | Keyword | Any | UrlValue | List | Block | Bool | Null | Collection;
+export type Value = Dimension | Color | Quoted | Keyword | FunctionCall | Any | UrlValue | List | Block | Bool | Null | Collection;
 
 /**
  * The canonical structural value carrier. A raw array is a default

@@ -12,7 +12,8 @@ import { isValueGroup, isValueGroupArray, type EvalModes, type ValueEvaluator, t
 import { numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
-import { makeCollection, makeList } from './value-factory.js';
+import { callKeyword, makeCollection, makeList } from './value-factory.js';
+import { keepAsWritten } from './value-operate.js';
 import type {
   DefinedFunction,
   Fn,
@@ -58,6 +59,7 @@ const VALUE_TYPES: ReadonlySet<string> = new Set([
   'Color',
   'Quoted',
   'Keyword',
+  'FunctionCall',
   'Any',
   'Url',
   'List',
@@ -214,12 +216,16 @@ function validateValue(name: string, index: number, type: NormalizedParamType, v
    * `Color`-typed parameter by materializing to its `Color` at the bind point —
    * the point of USE — without the un-operated literal ever being reclassified.
    * `lighten(red, 10%)` binds `#ff0000`; a keyword that is not a named color
-   * still fails the `Color` slot as before.
+   * still fails the `Color` slot as before. A call written out as-is is read
+   * as the keyword that spells it, unless the slot asks for the call.
    */
-  const bound = type === 'any'
+  const single = isValueGroupArray(value) ? undefined : value;
+  const bound = type === 'any' || (single?.type === 'FunctionCall' && type.includes('FunctionCall'))
     ? value
-    : !isValueGroupArray(value) && value.type === 'Keyword' && type.includes('Color')
-        ? coerceNamedColorKeyword(value)
+    : single?.type === 'FunctionCall'
+      ? keepAsWritten(callKeyword(single))
+      : single?.type === 'Keyword' && type.includes('Color')
+        ? coerceNamedColorKeyword(single)
         : type.includes('Collection') && groupItems(value).length === 0 && isListShaped(value)
           ? EMPTY_COLLECTION
           : value;

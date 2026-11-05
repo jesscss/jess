@@ -7,13 +7,14 @@
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
 import type {
-  Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, KeywordCall, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
+  Any, Block, Bool, CallResult, Collection, CollectionEntry, Color, Dimension, FunctionCall, Keyword, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
 } from './value-eval.js';
+import { isMathFunctionName } from './math-functions.js';
 import { colorRgb, colorSourceRgb, HSL, hslToRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 import {
   AnyValueNode, BlockValueNode, BoolValueNode, CollectionValueNode, ColorValueNode, CompoundDimensionValueNode, DimensionValueNode,
-  HslColorValueNode, KeywordValueNode, ListValueNode, NullValueNode, QuotedValueNode, UrlValueNode, copyNode as copyNodeOf, withFields as withFieldsOf
+  FunctionCallValueNode, HslColorValueNode, KeywordValueNode, ListValueNode, NullValueNode, QuotedValueNode, UrlValueNode, copyNode as copyNodeOf, withFields as withFieldsOf
 } from './node-ctors.js';
 
 /*
@@ -186,13 +187,26 @@ export function makeQuoted(value: string, quote: string, escaped: boolean): Quot
   return q;
 }
 
-export const makeKeyword = (text: string): Keyword => new KeywordValueNode(text, text, 0, null);
+export const makeKeyword = (text: string): Keyword => new KeywordValueNode(text, text, 0);
 
 /** A keyword written inside `groups` paren groups (see {@link Keyword.groups}). */
-export const makeGroupedKeyword = (text: string, groups: number): Keyword => new KeywordValueNode(text, text, groups, null);
+export const makeGroupedKeyword = (text: string, groups: number): Keyword => new KeywordValueNode(text, text, groups);
 
-/** The keyword spelling `call` as `bytes`: a call written out as-is ({@link KeywordCall}). */
-export const makeCallKeyword = (bytes: string, call: KeywordCall): Keyword => new KeywordValueNode(bytes, bytes, 0, call);
+/** The CSS colour functions a call's type reads by name (css-color-4 §5–§10, css-color-5 §3, §8, css-color-4 §6.5 `light-dark`). */
+const COLOR_FUNCTIONS: ReadonlySet<string> = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix', 'contrast-color', 'light-dark']);
+
+/** The CSS type a call produces, by its name ({@link CallResult}). */
+function callResult(name: string): CallResult {
+  const lower = name.toLowerCase();
+  return COLOR_FUNCTIONS.has(lower) ? 'color' : isMathFunctionName(lower) ? 'numeric' : null;
+}
+
+/** A call written out as-is, spelled `bytes` ({@link FunctionCall}). */
+export const makeFunctionCall = (name: string, args: ValueGroup, bytes: string): FunctionCall =>
+  new FunctionCallValueNode(name, args, callResult(name), false, bytes);
+
+/** `call` as a keyword: how a reader that does not ask for its structure reads a call written out as-is. */
+export const callKeyword = (call: FunctionCall): Keyword => new KeywordValueNode(call.bytes, call.bytes, 0);
 
 /** Opaque text; `escapedQuote` is set only for an escaped string (see {@link Any.escapedQuote}). */
 export const makeAny = (bytes: string, escapedQuote = '', groups = 0): Any => new AnyValueNode(bytes, escapedQuote, groups);
