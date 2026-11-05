@@ -400,8 +400,15 @@ export function pushParseTwinDiagnostics(
   if (language === 'scss' && (gt === 'Ruleset' || gt === 'NestedRuleset')) {
     pushInvalidRulePreludeTwin(node, source, push);
   }
+  if (language === 'scss' && gt === 'InvalidPseudo') {
+    const error = ERR.invalidRulePrelude();
+    push('parse/invalid-rule-prelude', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
   if (language === 'jess' && gt === 'Stylesheet') {
     pushBareArithmeticTwins(node, source, push);
+  }
+  if (language === 'scss' && gt === 'Stylesheet') {
+    pushReturnPlacementTwins(node, false, push);
   }
 
   /* Less keeps its own text for a separator-led value until its parser takes the shared one. */
@@ -605,6 +612,25 @@ function isArithmeticOperand(node: CssCstNode | undefined): boolean {
 
 /* What the compiler does not check for arithmetic: a group or a function's arguments (ledger P18(a)), and text it does not read as a run. */
 const NOT_ARITHMETIC_TYPES = new Set(['ParenValue', 'SquareValue', 'CallComponent', 'CallArgument', 'VarCall', 'CustomDeclaration']);
+
+/*
+ * `parse/return-placement`: the compile reports a misplaced `@return` when it runs
+ * it, and the editor reports every one. A function reads it directly in its body
+ * or through `@if`/`@else`, the only nodes that keep `inFunction`.
+ */
+function pushReturnPlacementTwins(node: CssCstNode, inFunction: boolean, push: ParseTwinPusher): void {
+  const gt = node.grammarType;
+  if (gt === 'ReturnRule' && !inFunction) {
+    const error = ERR.returnPlacement();
+    push('parse/return-placement', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
+  const keeps = gt === 'FunctionRule' || (inFunction && (gt === 'IfRule' || gt === 'IfBody'));
+  for (const part of cstChildrenOf(node)) {
+    if (isCstNode(part)) {
+      pushReturnPlacementTwins(part, keeps, push);
+    }
+  }
+}
 
 /*
  * `.jess` arithmetic outside `$( … )` (ledger P17): the compiler's error at a
