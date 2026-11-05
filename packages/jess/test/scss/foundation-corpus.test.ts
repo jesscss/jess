@@ -392,6 +392,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'docs/assets/scss/_course-callout.scss',
   'docs/assets/scss/_docs-footer.scss',
   'docs/assets/scss/content/_install.scss',
+  'docs/assets/scss/docs.scss',
   'docs/assets/scss/examples/_buttons.scss',
   'docs/assets/scss/examples/_grid.scss',
   'docs/assets/scss/examples/_motion-ui.scss',

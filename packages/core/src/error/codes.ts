@@ -23,6 +23,7 @@ export type JessErrorCode =
   | 'parse/unsupported-mixin-name'
   | 'parse/unparenthesized-mixin-guard'
   | 'parse/leading-separator-value'
+  | 'parse/invalid-rule-prelude'
   | 'parse/return-placement'
   | 'parse/uncalled-mixin-reference'
   | 'parse/important-on-mixin-reference'
@@ -213,6 +214,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   ['parse/leading-separator-value', leadingSeparatorValueText('/')],
+  [
+    'parse/invalid-rule-prelude',
+    {
+      summary: 'This rule\'s prelude is not a selector',
+      reason: 'A block makes this a rule, and no selector reads what comes before it, so a browser drops the rule.',
+      fix: 'Write a selector. If a declaration comes first, end it with `;`.'
+    }
+  ],
   [
     'parse/arithmetic-outside-expression',
     {

@@ -565,7 +565,7 @@ export const COMPARISON_OPERATORS = new Set(['==', '!=', '>=', '<=', '>', '<']);
  * run, written as authored (ledger N18).
  */
 export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
-  if (children.length === 1) {
+  if (children.length === 1 && !isArgumentDelim(children[0])) {
     return callArg(requireValueSlot(children[0]));
   }
 
@@ -575,8 +575,13 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * the run.
    */
   const last = children.findLast(child => !isArgumentGap(child));
-  if (isComparisonToken(children[0]) || isComparisonToken(last)) {
-    return callArg(argumentRun(isToken(last) && last.value === '>' && !isComparisonToken(children[0]) ? [dataTypeRun(requireValueSlot(children[0])), ...children.slice(1)] : children));
+
+  /* A padded sign before a number is that number's sign (`abs(+ 1)`, `calc(+ 1px + 2px)`). */
+  if (isToken(children[0]) && children[0].value === '+' && isScssValue(last) && (last.type === 'Dimension' || last.type === 'Operation')) {
+    return callArg(last);
+  }
+  if (isArgumentDelim(children[0]) || isComparisonToken(last)) {
+    return callArg(argumentRun(isToken(last) && last.value === '>' && !isArgumentDelim(children[0]) ? [dataTypeRun(requireValueSlot(children[0])), ...children.slice(1)] : children));
   }
   const left = requireValueSlot(children[0]);
 
@@ -612,6 +617,11 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
   return callArg(argumentRun(children));
 }
 
+/** A delim that opens an argument: a comparison with nothing before it, or the opener of a selector the argument cannot be (`li:is(.a)`). */
+function isArgumentDelim(child: unknown): boolean {
+  return isToken(child) && !isScssValue(child);
+}
+
 /*
  * `<` and a `>` with nothing after it are a CSS data type, not a comparison and a
  * delim: `attr(x <length>)` (css-values-5 §7.7) has read as `x < length`, then `>`.
@@ -638,9 +648,13 @@ function isComparisonToken(child: unknown): boolean {
  * A call argument read as the css run of its components: each operator a
  * delim, each operand spliced in, with the padding written before it.
  */
-/** The padding a call argument's tokens carry between its parts: a token that is no value, comparison or `:`. */
-function isArgumentGap(child: unknown): boolean {
-  return isToken(child) && !isScssValue(child) && !COMPARISON_OPERATORS.has(child.value) && child.value !== ':';
+/** The padding a call argument holds between its parts, by its node, so no delim reads as one. */
+export interface ScssArgumentGap {
+  readonly gap: string;
+}
+
+function isArgumentGap(child: unknown): child is ScssArgumentGap {
+  return typeof child === 'object' && child !== null && 'gap' in child;
 }
 
 function argumentRun(children: readonly unknown[]): ValueSlot {
@@ -649,7 +663,7 @@ function argumentRun(children: readonly unknown[]): ValueSlot {
   let gap = '';
   for (const child of children) {
     if (isArgumentGap(child)) {
-      gap = requireToken(child).value;
+      gap = child.gap;
       continue;
     }
     if (isToken(child) && !isScssValue(child)) {
@@ -702,7 +716,7 @@ export function leaveIfTest(state: unknown): unknown {
  * an attempt the parser abandons (`div:hover & { … }` is tried as a
  * declaration first), so without a sink the report is dropped, never thrown.
  */
-function reportRecovered(error: ScssRecoveredError, state: unknown): void {
+export function reportRecovered(error: ScssRecoveredError, state: unknown): void {
   const sink: unknown = typeof state === 'object' && state !== null && 'diagnostics' in state ? state.diagnostics : null;
   if (Array.isArray(sink)) {
     sink.push(error);
@@ -1119,6 +1133,9 @@ export function scssConditionSource(value: ValueSlot): string {
     case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${scssConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     case 'Sequence': return node.parts.map(scssConditionSource).join(' ');
     case 'List': return node.value.map(scssConditionSource).join(node.sep === ',' ? ', ' : ' / ');
+    case 'Collection': return `(${node.entries.map(entry => 'key' in entry ? `${scssConditionSource(entry.key)}: ${scssConditionSource(entry.value)}` : '').join(', ')})`;
+    case 'Interpolation': return node.parts.map(part => 'lit' in part ? part.lit : `#{${scssConditionSource(part.ref)}}`).join('');
+    case 'Url': return `url(${scssConditionSource(node.value)})`;
     default: throw new TypeError(`SCSS condition cannot preserve ${node.type}.`);
   }
 }
