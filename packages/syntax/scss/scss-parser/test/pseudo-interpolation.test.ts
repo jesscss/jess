@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parse } from '@jesscss/scss-parser';
+import { parse, parseRecovering } from '@jesscss/scss-parser';
 
 /**
  * A `#{…}` stands anywhere in a pseudo selector: its name, and its argument,
@@ -32,9 +32,10 @@ describe('SCSS pseudo selector interpolation', () => {
     });
   });
 
-  it('still rejects a malformed An+B', () => {
+  it('reads a malformed An+B, and the error sits on the pseudo', () => {
     for (const source of ['a:nth-child(2n+) { b: c; }', 'a:nth-child(2n + x) { b: c; }', 'a:nth-child(1.5) { b: c; }']) {
       expect(() => parse(source)).toThrow();
+      expect(parseRecovering(source).recovered.map(error => error.code)).toEqual(['parse/invalid-rule-prelude']);
     }
   });
 

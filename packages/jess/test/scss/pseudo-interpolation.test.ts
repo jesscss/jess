@@ -17,6 +17,8 @@ const cases: ReadonlyArray<readonly [string, string, string]> = [
   ['a spaced An+B step writes unspaced', '$x: 2; .a:nth-child(#{$x}n + 1):before { b: c; }', '.a:nth-child(2n+1):before {\n  b: c;\n}\n'],
   ['padding around a hole', '$x: 2; a:nth-child( #{$x} ) { b: c; }', 'a:nth-child(2) {\n  b: c;\n}\n'],
   ['an `of S` tail', '$x: 2; a:nth-child(2n + #{$x} of .a) { b: c; }', 'a:nth-child(2n+2 of .a) {\n  b: c;\n}\n'],
+  ['a space between holes in an `of S` tail', '$n: 2; $a: ".x"; $b: ".y"; li:nth-child(#{$n} of #{$a} #{$b}) { c: d; }', 'li:nth-child(2 of .x .y) {\n  c: d;\n}\n'],
+  ['a space between holes before an `of S` tail', '$a: 2n; $b: of; li:nth-child(#{$a} #{$b} .y) { c: d; }', 'li:nth-child(2n of .y) {\n  c: d;\n}\n'],
   ['a generic argument', '$x: b; a:foo(#{$x}) { b: c; }', 'a:foo(b) {\n  b: c;\n}\n'],
   ['a hole in an argument group', '$x: b; a:foo(x (y #{$x}) z) { b: c; }', 'a:foo(x (y b) z) {\n  b: c;\n}\n'],
   ['a pseudo-class name', '$p: hover; .a:#{$p} { b: c; }', '.a:hover {\n  b: c;\n}\n'],

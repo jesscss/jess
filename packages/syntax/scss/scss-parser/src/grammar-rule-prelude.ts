@@ -1,5 +1,5 @@
 import { authoredSource, isExtendInstruction, rule, selist, simpleSelector, sourceStartOf, withBlockBody } from '@jesscss/core/ast';
-import type { Ruleset, SelectorList } from '@jesscss/core/ast';
+import type { AstSourceSpan, Ruleset, SelectorList, SimpleSelector } from '@jesscss/core/ast';
 import { InvalidRulePreludeError } from '@jesscss/core/diagnostics';
 import { reportRecovered, requireSelectorList, requireToken, statementChildren } from './grammar-helpers.js';
 
@@ -29,6 +29,13 @@ function unreadableRulePrelude({ end, state }: RulePreludeRest, start: number): 
   const selector = simpleSelector(text);
   reportRecovered(new InvalidRulePreludeError(offset, offset + text.length, selector), state);
   return selist(selector);
+}
+
+/** A known pseudo its argument rule cannot read, as written in one simple selector, and the error at it (ledger P45). */
+export function unreadablePseudo(span: AstSourceSpan, state: unknown): SimpleSelector {
+  const selector = simpleSelector(typeof state === 'object' && state !== null && 'source' in state ? authoredSource(span, state, 'A pseudo') : '');
+  reportRecovered(new InvalidRulePreludeError(span.start, span.end, selector), state);
+  return selector;
 }
 
 /**

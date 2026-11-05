@@ -151,17 +151,23 @@ export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
   return functionalPseudoFrom(opener, typeof arg === 'string' ? arg.trim() : isInterpolation(arg) ? unspacedNth(arg) : arg);
 }
 
+const AN_PLUS_B_TEXT: ReadonlySet<string> = new Set('-+0123456789nN \t\n\r\f');
+const AN_PLUS_B_SPACE: ReadonlySet<string> = new Set(' \t\n\r\f');
+
 /**
  * An An+B with a hole reads as the one without: whitespace in it is not part of
  * its value (css-syntax-3 §6), and An+B is written unspaced (`-n + #{$n}` is
- * `-n+2`). Text that is not An+B, an `of S` tail, is left as written.
+ * `-n+2`). Whitespace alone between two holes separates them (`#{$a} #{$b}` may
+ * be `2n of`, or a descendant combinator), and any other text is left as written.
  */
 function unspacedNth(arg: Interpolation): Interpolation {
-  const anb = new Set('-+0123456789nN \t\n\r\f');
-  const gap = new Set(' \t\n\r\f');
-  return interpolation(arg.parts.map(part => 'lit' in part && [...part.lit].every(char => anb.has(char))
-    ? { lit: [...part.lit].filter(char => !gap.has(char)).join('') }
-    : part));
+  const last = arg.parts.length - 1;
+  return interpolation(arg.parts.map((part, index) => {
+    if (!('lit' in part) || [...part.lit].some(char => !AN_PLUS_B_TEXT.has(char)) || (part.lit.trim() === '' && index > 0 && index < last)) {
+      return part;
+    }
+    return { lit: [...part.lit].filter(char => !AN_PLUS_B_SPACE.has(char)).join('') };
+  }));
 }
 
 /** A pseudo argument's source text, or its interpolation when a `#{…}` stands in it. */
@@ -561,8 +567,13 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * the run.
    */
   const last = children.findLast(child => !isArgumentGap(child));
+
+  /* A padded sign before a number is that number's sign (`abs(+ 1)`, `calc(+ 1px + 2px)`). */
+  if (isToken(children[0]) && children[0].value === '+' && isScssValue(last) && (last.type === 'Dimension' || last.type === 'Operation')) {
+    return callArg(last);
+  }
   if (isArgumentDelim(children[0]) || isComparisonToken(last)) {
-    return callArg(argumentRun(children));
+    return callArg(argumentRun(isToken(last) && last.value === '>' && !isArgumentDelim(children[0]) ? [dataTypeRun(requireValueSlot(children[0])), ...children.slice(1)] : children));
   }
   const left = requireValueSlot(children[0]);
 
@@ -603,6 +614,24 @@ function isArgumentDelim(child: unknown): boolean {
   return isToken(child) && !isScssValue(child);
 }
 
+/*
+ * `<` and a `>` with nothing after it are a CSS data type, not a comparison and a
+ * delim: `attr(x <length>)` (css-values-5 §7.7) has read as `x < length`, then `>`.
+ * It is the run css builds.
+ */
+function dataTypeRun(value: ValueSlot): ValueSlot {
+  const parts = isValueSlotArray(value) ? value : [value];
+  const last = parts.at(-1);
+  const test = last !== undefined && !isValueSlotArray(last) && last.type === 'Expression' && !isValueSlotArray(last.value) && last.value.type === 'Condition' ? last.value.guard : undefined;
+  if (test?.g !== 'cmp' || test.op !== 'sass<') {
+    return value;
+  }
+  return withValueLayout(
+    [...parts.slice(0, -1), test.left, any('<'), test.right],
+    [...(valueLayoutOf(value) ?? parts.slice(1).map(() => ' ')), ' ', '']
+  );
+}
+
 function isComparisonToken(child: unknown): boolean {
   return isToken(child) && !isScssValue(child) && COMPARISON_OPERATORS.has(child.value);
 }
@@ -611,9 +640,13 @@ function isComparisonToken(child: unknown): boolean {
  * A call argument read as the css run of its components: each operator a
  * delim, each operand spliced in, with the padding written before it.
  */
-/** The padding a call argument's tokens carry between its parts: a token that is no value, comparison or `:`. */
-function isArgumentGap(child: unknown): boolean {
-  return isToken(child) && !isScssValue(child) && (child.value[0] === '/' || child.value.trim() === '');
+/** The padding a call argument holds between its parts, by its node, so no delim reads as one. */
+export interface ScssArgumentGap {
+  readonly gap: string;
+}
+
+function isArgumentGap(child: unknown): child is ScssArgumentGap {
+  return typeof child === 'object' && child !== null && 'gap' in child;
 }
 
 function argumentRun(children: readonly unknown[]): ValueSlot {
@@ -622,7 +655,7 @@ function argumentRun(children: readonly unknown[]): ValueSlot {
   let gap = '';
   for (const child of children) {
     if (isArgumentGap(child)) {
-      gap = requireToken(child).value;
+      gap = child.gap;
       continue;
     }
     if (isToken(child) && !isScssValue(child)) {
@@ -1149,43 +1182,6 @@ export function isScssValuePair(value: unknown): value is ScssValuePair {
     && typeof value.separator === 'string'
     && 'value' in value
     && isScssValueSlotValue(value.value);
-}
-
-/**
- * `ValueTerm`'s reduction. A slash groups only its DIRECT neighbours
- * (DESIGN-DECISIONS P33 as amended 2026-09-24, P35): comma, then whitespace,
- * then slash. A slash tail joins the item before it — `12px/1.5 Arial` is
- * `[12px / 1.5, Arial]` — and a space tail starts a new item.
- */
-export function scssSlashGroupedTerm(children: readonly unknown[]): ValueSlot {
-  const items: ValueNode[] = [requireValue(children[0])];
-  const grouped: boolean[] = [false];
-  const separators: string[] = [];
-  for (const child of children.slice(1)) {
-    if (!isScssValueTail(child)) {
-      throw new TypeError('SCSS value term produced an invalid list boundary.');
-    }
-    const last = items.length - 1;
-    const previous = items[last]!;
-    if (child.kind === 'slash') {
-      items[last] = grouped[last] === true && previous.type === 'List'
-        ? list([...previous.value, child.value], '/')
-        : list([previous, child.value], '/');
-      grouped[last] = true;
-    } else {
-      items.push(child.value);
-      grouped.push(false);
-      separators.push(child.separator);
-      if (child.glued !== null) {
-        items.push(child.glued);
-        grouped.push(false);
-        separators.push('');
-      }
-    }
-  }
-  return items.length === 1
-    ? items[0]!
-    : withValueLayout(items, separators);
 }
 
 export function isScssValueTail(value: unknown): value is ScssValueTail {
