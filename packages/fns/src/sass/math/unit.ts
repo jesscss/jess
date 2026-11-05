@@ -1,4 +1,4 @@
-import { defineFunction, makeQuoted } from '@jesscss/core';
+import { defineFunction, makeQuoted } from '@jesscss/core/value';
 import { unitText } from './units.js';
 
 /**
