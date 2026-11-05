@@ -94,5 +94,10 @@ export function minMax(isMin: boolean, list: ValueGroup): Value {
       bestMagnitude = candidateMagnitude;
     }
   }
-  return reference !== undefined && isUnitlessDimension(best) ? makeDimension(best.number, reference.unit) : best;
+  if (reference !== undefined && isUnitlessDimension(best)) {
+    return makeDimension(best.number, reference.unit);
+  }
+
+  /* A `calc()` that resolved to one number is that number here, whatever math it held (`min(calc(3px), 4px)` is `3px`). */
+  return best.preserved !== undefined && best.numerator === undefined ? makeDimension(best.number, best.unit) : best;
 }

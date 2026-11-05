@@ -51,6 +51,16 @@ export const isModern = (value: ValueGroup): boolean => {
   return separator === ' ' || separator === '/';
 };
 
-/** Whether a slot's form means what this value computes to: anything but a dimension of another unit. */
-export const inUnits = (value: ValueGroup, units: readonly string[]): boolean =>
-  isValueGroupArray(value) || value.type !== 'Dimension' || units.includes(value.unit.toLowerCase());
+/**
+ * Whether a slot's form means what this value computes to: a dimension of one of
+ * these units, or a value the browser reads as one. It cannot judge anything else,
+ * a list above all, which keeps the call's recipe.
+ */
+export const inUnits = (value: ValueGroup, units: readonly string[]): boolean => {
+  if (isValueGroupArray(value)) {
+    return false;
+  }
+  return value.type === 'Dimension'
+    ? units.includes(value.unit.toLowerCase())
+    : value.type === 'Color' || value.type === 'Keyword' || value.type === 'FunctionCall' || value.type === 'Arithmetic';
+};

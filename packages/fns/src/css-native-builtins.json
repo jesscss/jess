@@ -1,5 +1,5 @@
 {
-  "$comment": "Inventory for docs/design/CSS-NATIVE-BUILTINS.md. One row per built-in colour/math function. `class` is one of: exact | exact-if | approx | already-css | none (defined in the design doc, section 1). `css` is the CSS-native form over the parameter names; `C`, `C1`, `C2` are colours, `A` an amount on the CSS channel scale, `N`, `B` numbers. `css` is the simplest CSS form (ladder rung 2), `extended` the longer one (rung 3); a `none` row reaches rung 4, compile time plus the JS runtime (doc §3.4a). A row with `aliasOf` is a second name for the row it names, with its classification. Every other registered function is listed in `outOfScope`; `packages/fns/src/__tests__/css-native-builtins.test.ts` checks the three lists cover the registries exactly.",
+  "$comment": "Inventory for docs/design/CSS-NATIVE-BUILTINS.md. One row per built-in colour/math function. `class` is one of: exact | exact-if | approx | already-css | none (defined in the design doc, section 1). `css` is the CSS-native form over the parameter names; `C`, `C1`, `C2` are colours, `A` an amount on the CSS channel scale, `N`, `B` numbers. `css` is the simplest CSS form (ladder rung 2), `extended` the longer one (rung 3); a `none` row reaches rung 4, compile time plus the JS runtime (doc §3.4a). `deferred` and `relativeDeferred` are the form an amount or places only the browser knows takes (Q2). A row with `aliasOf` is a second name for the row it names, with its classification. Every other registered function is listed in `outOfScope`; `packages/fns/src/__tests__/css-native-builtins.test.ts` checks the three lists cover the registries exactly.",
   "schema": 1,
   "functions": [
     {
@@ -8,6 +8,8 @@
       "class": "exact",
       "css": "hsl(from C h s clamp(0, l + A, 100))",
       "relative": "hsl(from C h s clamp(0, l + l * A / 100, 100))",
+      "deferred": "hsl(from C h s clamp(0, l + A / 1%, 100))",
+      "relativeDeferred": "hsl(from C h s clamp(0, l + l * A / 1% / 100, 100))",
       "spec": "css-color-5 §4.4, css-values-4 #comparison-funcs"
     },
     {
@@ -16,6 +18,8 @@
       "class": "exact",
       "css": "hsl(from C h s clamp(0, l - A, 100))",
       "relative": "hsl(from C h s clamp(0, l - l * A / 100, 100))",
+      "deferred": "hsl(from C h s clamp(0, l - A / 1%, 100))",
+      "relativeDeferred": "hsl(from C h s clamp(0, l - l * A / 1% / 100, 100))",
       "spec": "css-color-5 §4.4, css-values-4 #comparison-funcs"
     },
     {
@@ -24,6 +28,8 @@
       "class": "exact",
       "css": "hsl(from C h clamp(0, s + A, 100) l)",
       "relative": "hsl(from C h clamp(0, s + s * A / 100, 100) l)",
+      "deferred": "hsl(from C h clamp(0, s + A / 1%, 100) l)",
+      "relativeDeferred": "hsl(from C h clamp(0, s + s * A / 1% / 100, 100) l)",
       "spec": "css-color-5 §4.4"
     },
     {
@@ -32,6 +38,8 @@
       "class": "exact",
       "css": "hsl(from C h clamp(0, s - A, 100) l)",
       "relative": "hsl(from C h clamp(0, s - s * A / 100, 100) l)",
+      "deferred": "hsl(from C h clamp(0, s - A / 1%, 100) l)",
+      "relativeDeferred": "hsl(from C h clamp(0, s - s * A / 1% / 100, 100) l)",
       "spec": "css-color-5 §4.4"
     },
     {
@@ -290,7 +298,7 @@
       "class": "exact-if",
       "css": "round(up, N, 1)",
       "spec": "css-values-4 §10.3",
-      "notes": "N a <number>; a dimension needs B in N's unit, unknown for a deferred N"
+      "notes": "N a <number>; a dimension needs B in N's unit, for a deferred N the unit its structure gives (`var(--x) + 1px`), else a number (Q3)"
     },
     {
       "dialect": "less",
@@ -305,7 +313,8 @@
       "class": "exact-if",
       "css": "calc(sign(N) * round(abs(N), 10^-P))",
       "spec": "css-values-4 §10.3, §10.6",
-      "notes": "Less P is decimal places, CSS B is a step; CSS nearest breaks ties toward +infinity, Less (V8) away from zero, hence sign/abs. Today round(var(--x), 2) prints a CSS call with the step meaning; and N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question)"
+      "deferred": "calc(sign(N) * round(abs(N), pow(10, -1 * P)))",
+      "notes": "Less P is decimal places, CSS B is a step; CSS nearest breaks ties toward +infinity, Less (V8) away from zero, hence sign/abs. N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question). A known N with a unit and a deferred P multiplies the step by 1 in that unit"
     },
     {
       "dialect": "less",

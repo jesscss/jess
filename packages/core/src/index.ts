@@ -61,6 +61,7 @@ export type {
   Color,
   Quoted,
   Keyword,
+  Arithmetic,
   FunctionCall,
   CallResult,
   Any,

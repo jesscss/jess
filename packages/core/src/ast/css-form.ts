@@ -12,16 +12,19 @@
 import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { compressDimensionBytes } from './compress.js';
 import { formChannelValues, formColor, type FormChannels, type Hsla, type MutableChannels, type Rgba } from './css-color.js';
+import { cssMath, isDimension } from './css-math.js';
 import { buildEvaluator } from './evaluator.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { AnonymousMixin } from './nodes.js';
-import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type FormActivation } from './serialize.js';
+import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type BindingCell, type FormActivation } from './serialize.js';
 import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
 import { HEX, RGB } from './color.js';
 import { isValueGroupArray, type Color, type Dimension, type Value, type ValueGroup } from './value-eval.js';
-import { makeColorHsl, makeColorRgb, withFields } from './value-factory.js';
+import { DimensionValueNode } from './node-ctors.js';
+import { makeColorHsl, makeColorRgb, makeDimension, withFields } from './value-factory.js';
 import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
+import { negated } from './math-operand.js';
 
 /** A form and the values its parameters bind to, the first of them the one its result's format follows. */
 export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, ...rest: readonly ValueGroup[]];
@@ -38,7 +41,7 @@ interface FormLane {
 const lanes: Array<FormLane | undefined> = [undefined, undefined];
 
 function newLane(compress: boolean): FormLane {
-  const lane = formLane(buildEvaluator(createFnRegistry()), compress);
+  const lane = formLane(buildEvaluator(createFnRegistry(), { cssMath }), compress);
   const channels = formChannelValues();
   return { lane, channels, channelLane: formChannelLane(lane, channels) };
 }
@@ -75,40 +78,68 @@ const knownInput = (channels: FormChannels, input: Value): Color | Dimension | u
 const deferred = (out: ValueGroup): ValueGroup =>
   !isValueGroupArray(out) && out.type === 'FunctionCall' ? keepAsWritten(withFields(out, { computed: true })) : out;
 
-/** What a form's parameter binds: the call inside any paren group, which is what a callable reads (J16). */
-const bound = (value: ValueGroup | undefined): ValueGroup | null =>
-  value === undefined ? null : !isValueGroupArray(value) && value.type === 'FunctionCall' ? insideParens(value) : value;
+/**
+ * What a form's parameter binds: the call inside any paren group, which is what a
+ * callable reads (J16). The form's math is written around a `calc()` it reads, so
+ * no `calc()` prints inside it.
+ */
+function bound(value: ValueGroup | undefined): ValueGroup | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (isValueGroupArray(value) || value.type !== 'FunctionCall') {
+    return value;
+  }
+  const call = insideParens(value);
+  if (call.name === 'calc' && !call.computed) {
+    return keepAsWritten(withFields(call, { computed: true }));
+  }
+
+  /* A glued minus is one function token to CSS, invalid here as anywhere it is read as a number. */
+  return negated(call);
+}
+
+/** A form's math over numbers it knows, the channels it reads standing unbound; a number that cannot be spelled fails the call. */
+const computed = (out: ValueGroup): ValueGroup =>
+  isDimension(out) && out.bytes === '' ? makeDimension(out.number, out.unit) : out;
+
+/** What prints a form spells the numbers it read, under `compress` as compressed. */
+function spellCells(cells: readonly BindingCell[], compress: boolean): void {
+  for (const cell of cells) {
+    const value = cell.evaluated;
+    if (value !== null && isDimension(value) && (compress || value.bytes === '')) {
+      const bytes = value.bytes === '' ? makeDimension(value.number, value.unit).bytes : value.bytes;
+      cell.evaluated = new DimensionValueNode(value.number, value.unit, compress ? compressDimensionBytes(bytes) : bytes);
+    }
+  }
+}
 
 /**
  * A built-in's CSS form over evaluated arguments: a stylesheet function with its
- * parameters bound to the values, so nothing is evaluated twice. A known origin
- * decides first: the colour needs no written-out call, which is what anything
- * not known prints.
+ * parameters bound to the values, so nothing is evaluated twice. Known inputs
+ * compute it first: they need no written-out call, which is what anything not
+ * known prints.
  */
 function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format: number | undefined): MaybePromise<ValueGroup> {
-  const { frame, cells, channels } = form;
+  const { frame, cells, channels, result } = form;
   for (let i = 0; i < cells.length; i++) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- every element after a FormCall's form is a value.
     cells[i]!.evaluated = bound(call[i + 1] as ValueGroup | undefined);
   }
   const input = call[1];
-  const known = channels === undefined || isValueGroupArray(input) ? undefined : knownInput(channels, input);
-  if (channels !== undefined && known !== undefined) {
-    const { channelLane } = lanes;
-    const out = formColor(channels, known, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
+  const amount = call[2];
+  const { channelLane, lane } = lanes;
+  if (channels === undefined && isDimension(input) && (amount === undefined || isDimension(amount))) {
+    return mapMaybe(evalFormChannel(result, frame, channelLane), computed);
+  }
+  const origin = channels === undefined || isValueGroupArray(input) ? undefined : knownInput(channels, input);
+  if (channels !== undefined && origin !== undefined) {
+    const out = formColor(channels, origin, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
     if (out !== undefined && !isThenable(out)) {
-      return spelled(channels, out, known, format);
+      return spelled(channels, out, origin, format);
     }
   }
-  const lane = lanes.lane;
-  if (lane.compress === true) {
-    for (const cell of cells) {
-      const value = cell.evaluated;
-      if (value !== null && !isValueGroupArray(value) && value.type === 'Dimension') {
-        cell.evaluated = withFields(value, { bytes: compressDimensionBytes(value.bytes) });
-      }
-    }
-  }
+  spellCells(cells, lane.compress === true);
   return mapMaybe(evalFormResult(form, lane), deferred);
 }
 

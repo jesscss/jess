@@ -23,9 +23,11 @@
  */
 
 /** Math — shared with Sass (identical behaviour). */
-export { abs, ceil, floor } from '../shared/index.js';
+export { abs } from '../shared/index.js';
 
 /** Math — Less-specific. */
+export { ceil } from './ceil.js';
+export { floor } from './floor.js';
 export { round } from './round.js';
 export { sqrt } from './sqrt.js';
 export { pow } from './pow.js';

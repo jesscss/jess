@@ -180,6 +180,23 @@ Reference point (2026-11-05, node 24.11.1, M-series at load averages of 80–280
 
 `gen-workload` costs 1.8 times what real SCSS costs per KB on AST, and 3.1 times on CST. The AST per-call cost is the same (about 115 instructions), so the difference is how much parsing each byte asks for. Its CST row is too noisy on the default runtime to carry a verdict.
 
+## 10. Render marginals — what can resolve a few percent
+
+`measure:less:hotpath` under an instruction counter, `(I(K2) − I(K1)) / (K2 − K1)` over `K` renders in a fresh process, does not resolve single digits on the standard fixtures at K 100 → 300. Two runs of one build on one machine (2026-11):
+
+| Fixture | Same-build q25 | Same-build median | Paired rounds |
+| --- | --- | --- | --- |
+| `benchmark.less` | ±5% | ±5% | −23% to +30% |
+| `k-plain`, a small file of plain rules (`.k1 { a: 1px; }`) | ±2% | ±5% | −8% to +9% |
+
+The cause is that the number of mark-compacts in a process is not fixed. On `k-plain`, K 300 runs 3 or 4 of them, and one more is about +0.85G instructions, or about 5% of the marginal. It is the bimodal median above. Two builds with the same count agree to 0.04% (30.637G and 30.625G).
+
+How to use it:
+
+1. **To decide a few percent, use a small fixture of the shape under review**, where the code under review is most of the marginal, with interleaved arms. Run each build as two arms and report that same-build spread beside the result. A change smaller than that spread is not a result.
+2. **Or compare only runs with the same mark-compact count**: record the count per process and take medians per count.
+3. **Do not read a single-digit difference from `benchmark.less` or `k-plain` at K 100 → 300**, in either direction. They still catch a large change.
+
 ## Fixtures (the standard inputs)
 
 - `packages/jess/benchmark/benchmark.less` (104KB) + `benchmark.css` (expected) — the main perf fixture. EXEMPT from byte-identity gates.

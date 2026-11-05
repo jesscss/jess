@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { invoke, node } from '../../__tests__/harness.js';
+import { call, invoke, node } from '../../__tests__/harness.js';
 import { lessFns } from '../registry.js';
 import { makeDimension } from '@jesscss/core';
 import { mod } from '../mod.js';
@@ -59,7 +59,7 @@ describe('Less pi/mod canonical cutover', () => {
 
     for (const [a, b] of vectors) {
       const expected = legacyModOracle(a, b);
-      const result = node(invoke(mod, makeDimension(a.number, a.unit), makeDimension(b.number, b.unit)), 'Dimension');
+      const result = node(call(mod, makeDimension(a.number, a.unit), makeDimension(b.number, b.unit)), 'Dimension');
 
       expect(result.type).toBe('Dimension');
       expect(result.number).toBe(expected.number);

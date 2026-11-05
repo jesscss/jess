@@ -18,6 +18,12 @@
  */
 const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string, to: string]>>([
   /*
+   * A built-in is its CSS form over an input only the browser knows
+   * (docs/design/CSS-NATIVE-BUILTINS.md Q8, approved by the owner 2026-11-01).
+   */
+  ['tests-unit/math-css-vars/math-css-vars.less', [['  e: percentage(var(--p));', '  e: calc(var(--p) * 100%);']]],
+
+  /*
    * A slash list a variable or a mixin argument holds divides once math that
    * computes reads it (P35, FIXTURES, owner 2026-10-29: "A stored `10px/2`
    * divides once it's used in math").

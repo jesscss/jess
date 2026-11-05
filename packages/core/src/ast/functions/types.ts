@@ -37,10 +37,12 @@ interface ParamSpecBase {
   readonly lazy?: boolean;
 
   /**
-   * Whether the CSS form holds this value where an exposed variable reads it, for
-   * a slot that takes what only the browser knows. Any other runs on the runtime.
+   * Whether a built-in's CSS form holds this value where an exposed variable reads
+   * it, given the call's other arguments (docs/design/CSS-NATIVE-BUILTINS.md Q2, Q3).
+   * Any other value keeps the call's runtime recipe, as does a slot without this
+   * field, which has no form.
    */
-  readonly fits?: (value: ValueGroup) => boolean;
+  readonly fits?: (value: ValueGroup, vals: readonly ValueGroup[]) => boolean;
 }
 
 type ParamTypeSpec = ParamSpecBase & {

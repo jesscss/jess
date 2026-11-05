@@ -97,6 +97,7 @@ export declare const HslColorValueNode: new (rgb: V.Color['rgb'], alpha: number,
 export declare const QuotedValueNode: new (value: string, quote: string, escaped: boolean, bytes: string) => Pick<V.Quoted, 'type' | 'value' | 'quote' | 'escaped' | 'bytes'>;
 export declare const KeywordValueNode: new (text: string, bytes: string, groups: number) => Pick<V.Keyword, 'type' | 'text' | 'bytes' | 'groups'>;
 export declare const FunctionCallValueNode: new (name: string, args: V.ValueGroup, result: V.CallResult, computed: boolean, bytes: string) => V.FunctionCall;
+export declare const ArithmeticValueNode: new (op: string, left: V.EvalValue, right: V.EvalValue, kept: boolean, bytes: string, written: V.Arithmetic['written']) => V.Arithmetic;
 export declare const AnyValueNode: new (bytes: string, escapedQuote: string, groups: number) => Pick<V.Any, 'type' | 'bytes' | 'escapedQuote' | 'groups'>;
 export declare const UrlValueNode: new (bytes: string) => Pick<V.UrlValue, 'type' | 'bytes'>;
 export declare const BoolValueNode: new (value: boolean, bytes: string) => Pick<V.Bool, 'type' | 'value' | 'bytes'>;
