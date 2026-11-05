@@ -5,7 +5,15 @@ import { reportRecovered, requireSelectorList, requireToken, statementChildren }
 
 /** What a rule's prelude holds past any selector: its span, and the parse state its error reports through. */
 export class RulePreludeRest {
-  constructor(readonly start: number, readonly end: number, readonly state: unknown) {}
+  readonly start: number;
+  readonly end: number;
+  readonly state: unknown;
+
+  constructor(start: number, end: number, state: unknown) {
+    this.start = start;
+    this.end = end;
+    this.state = state;
+  }
 }
 
 /**
