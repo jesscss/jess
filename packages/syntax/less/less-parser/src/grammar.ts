@@ -2662,7 +2662,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * run.
    */
   const gluedPiece = choice(
-    sequence(gluedPunctuationDelim, g.valuePiece),
+    sequence(gluedPunctuationDelim, not(triviaStart), g.valuePiece),
     sequence(not(gluedPunctuationStart), g.valuePiece)
   );
   /**

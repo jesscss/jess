@@ -40,8 +40,7 @@ function isOpaqueTail(value: unknown): value is OpaqueTail {
 /**
  * The head of an at-rule is its prelude, where a bare `@name` is an error (ledger
  * P7). Walks what the head read, not its bytes, so a string's `@x` is not one. A
- * named argument or `(name: value)` is a declaration value, which P7 exempts, and
- * a `@{…}` is not bare.
+ * named argument is a declaration value, which P7 exempts, and a `@{…}` is not bare.
  */
 function rejectBareVariableIn(value: unknown): void {
   if (Array.isArray(value)) {
@@ -51,7 +50,7 @@ function rejectBareVariableIn(value: unknown): void {
   if (typeof value !== 'object' || value === null || isInterpolation(value)) {
     return;
   }
-  if (('spread' in value && 'name' in value && value.name !== undefined) || ('type' in value && value.type === 'Branch')) {
+  if ('spread' in value && 'name' in value && value.name !== undefined) {
     return;
   }
   if (isVarRef(value)) {
