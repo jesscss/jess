@@ -230,8 +230,8 @@
   },
   "tests": {
     "(file preamble: imports and helpers)": "0cc544db328c3779",
-    "P45 (owner 2026-10-09): SCSS gives a parenthesized comparison its Sass meaning, `x: (3px > 2px)` is `x: true`": "c9c7572f80398f74",
-    "P45 (owner 2026-10-09): SCSS gives a bare comparison its Sass meaning, `x: 3px > 2px` is `x: true`": "8f6d886996139931",
+    "P45 (owner 2026-10-09): SCSS gives a parenthesized comparison its Sass meaning, `x: (3px > 2px)` is `x: true`": "4c4c4269a1bb1278",
+    "P45 (owner 2026-10-09): SCSS gives a bare comparison its Sass meaning, `x: 3px > 2px` is `x: true`": "652f0f072f4861f2",
     "P45 (owner 2026-10-09): Less parses `@supports selector(a > b)`": "afb6b9909c632121",
     "P45 (owner 2026-10-09): .jess parses a comment between two values, `b: x /**/ y`": "58f04c7263b577a7",
     "P45 (owner 2026-10-09): .jess parses `@media (min-width: calc(100px + 1px))`": "218307833883d0e6",
