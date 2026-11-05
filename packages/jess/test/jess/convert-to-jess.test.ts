@@ -218,6 +218,29 @@ describe('Compiler.convertToJess', () => {
    * however the import spells it. The file that cannot be written, and its
    * importer, are gaps.
    */
+  it.each([
+    'font: 12px/@x Arial;',
+    'b: 1 / @x;',
+    'b: @x / 2;',
+    'b: 100% - @x / 2;'
+  ])('under `math: always` prints the CSS the `.less` does: %s', async (declaration) => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    const less = path.join(dir, 'a.less');
+    fs.writeFileSync(less, `@x: var(--x); .a { ${declaration} }`);
+
+    const compiler = new Compiler({ compile: { mathMode: 'always' } });
+    try {
+      const { files, errors } = await compiler.convertToJess(less);
+      expect(errors).toEqual([]);
+      for (const file of files) {
+        fs.writeFileSync(file.jessPath, 'jess' in file ? file.jess : '');
+      }
+      expect(await compiler.render(path.join(dir, 'a.jess'))).toBe(await compiler.render(less));
+    } finally {
+      compiler.dispose();
+    }
+  });
+
   describe('an existing `.jess` path', () => {
     const convert = async (overwrite: boolean) => {
       const compiler = new Compiler();

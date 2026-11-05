@@ -558,29 +558,6 @@ describe('a slash under `math: always` is math only over numbers', () => {
   });
 });
 
-describe('under `math: always` a Less file and its Jess conversion print the same', () => {
-  it.each([
-    'font: 12px/@x Arial;',
-    'b: 1 / @x;',
-    'b: @x / 2;',
-    'b: 100% - @x / 2;'
-  ])('%s', async (declaration) => {
-    const dir = mkdtempSync(join(tmpdir(), 'jess-form-round-trip-'));
-    try {
-      const compiler = new Compiler({ quiet: true, output: { collapseNesting: true }, compile: { mathMode: 'always' } });
-      const less = join(dir, 'entry.less');
-      writeFileSync(less, `@x: var(--x); .a { ${declaration} }`);
-      const { files, errors } = await compiler.convertToJess(less, { suppressWarnings: true });
-      expect(errors).toEqual([]);
-      const jess = join(dir, 'entry.jess');
-      writeFileSync(jess, files.flatMap(file => ('jess' in file ? [file.jess] : []))[0] ?? '');
-      await expect(compiler.render(jess, { suppressWarnings: true })).resolves.toBe(await compiler.render(less, { suppressWarnings: true }));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
 describe('a `%` in a math function under compress', () => {
   it('writes its numbers as `%` anywhere does', async () => {
     await expect(css('.a{b:calc(var(--x) % 0.5)}', { compress: true })).resolves.toContain('calc(rem(var(--x),.5))');
