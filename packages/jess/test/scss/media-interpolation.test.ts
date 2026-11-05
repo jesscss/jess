@@ -20,9 +20,21 @@ describe('a `#{…}` as a media term', () => {
     expect(await new Compiler().renderString(source, { extension: '.scss' })).toBe(css);
   });
 
-  /* PINNED DEFECT: `sass` 1.101.7 writes `@media screen`. An identifier and a hole glued together read as two terms. */
-  it('PINNED DEFECT — splits a hole glued after an identifier', async () => {
-    const css = await new Compiler().renderString('$s: "een"; @media scr#{$s} { .a { b: c; } }', { extension: '.scss' });
+  /* Each expectation is what `sass` 1.101.7 writes. */
+  it.each([
+    ['an identifier before it', '$s: een; @media scr#{$s} { .a { b: c; } }', 'screen'],
+    ['an identifier after it', '$s: scr; @media #{$s}een { .a { b: c; } }', 'screen'],
+    ['another hole', '$s: scr; $t: een; @media #{$s}#{$t} { .a { b: c; } }', 'screen'],
+    ['both sides, before `and`', '$s: x; @media a#{$s}b and (color) { .a { b: c; } }', 'axb and (color)'],
+    ['after `not`', '$s: x; @media not scr#{$s} { .a { b: c; } }', 'not scrx'],
+    ['in a list', '$s: x; @media scr#{$s}, print { .a { b: c; } }', 'scrx, print']
+  ])('glues %s into one term', async (_label, source, query) => {
+    const css = await new Compiler().renderString(source, { extension: '.scss' });
+    expect(css).toBe(`@media ${query} {\n  .a {\n    b: c;\n  }\n}\n`);
+  });
+
+  it('keeps two terms a space apart', async () => {
+    const css = await new Compiler().renderString('$s: scr; $t: een; @media #{$s} #{$t} { .a { b: c; } }', { extension: '.scss' });
     expect(css).toBe('@media scr een {\n  .a {\n    b: c;\n  }\n}\n');
   });
 });

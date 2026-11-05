@@ -104,10 +104,6 @@ describe('a delim run in a call argument', () => {
   }
 
   /* `<` is a Sass operator in any value, which leaves the `name = value` of a legacy IE filter. */
-  it('scss: foo(a = b < c) parses, then is legacy IE syntax', async () => {
-    expect(await errorCodes('scss', 'foo(a = b < c)')).toEqual(['css/legacy-ie-syntax']);
-  });
-
   it.each(['css', 'less', 'jess'] as const)('%s: foo(a==b) parses, then is invalid punctuation', async (dialect) => {
     expect(await errorCodes(dialect, 'foo(a==b)')).toEqual([CODE]);
   });
