@@ -1,4 +1,4 @@
-import { defineFunction, isValueGroupArray, makeKeyword, namedColor } from '@jesscss/core';
+import { defineFunction, isValueGroupArray, makeKeyword, namedColor } from '@jesscss/core/value';
 
 /**
  * Sass `meta.type-of($value)` / the global `type-of()`.

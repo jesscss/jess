@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { defineFunction, groupItems } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { defineFunction, groupItems } from '@jesscss/core/value';
 import { sameStringKind } from './string-result.js';
 
 /**

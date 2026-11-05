@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
 import { applyMath } from '../../shared/math/math-helper.js';
 import { assertNoUnits } from './units.js';
 

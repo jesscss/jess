@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 import { applyMath } from '../../shared/math/math-helper.js';
 import { assertAngle, assertNoUnits, convertToMatch } from './units.js';
 
