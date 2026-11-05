@@ -139,7 +139,22 @@ const FORMS: readonly (readonly [string, string, readonly number[]])[] = [
   ['rgba(#336699, 0.5)', 'rgb(from #336699 r g b / 0.5)', [0.2, 0.4, 0.6, 0.5]],
   ['rgba(#336699, 50%)', 'rgb(from #336699 r g b / 0.5)', [0.2, 0.4, 0.6, 0.5]],
   ['darken(rgb(10 20 30), 5%)', 'hsl(from rgb(10 20 30) h s clamp(0, l - 5, 100))', [0.014216, 0.028431, 0.042647, 1]],
-  ['darken(rgb(from #336699 calc(r + 10) g b), 0%)', 'hsl(from rgb(from #336699 calc(r + 10) g b) h s clamp(0, l - 0, 100))', [0.239216, 0.4, 0.6, 1]]
+  ['darken(rgb(from #336699 calc(r + 10) g b), 0%)', 'hsl(from rgb(from #336699 calc(r + 10) g b) h s clamp(0, l - 0, 100))', [0.239216, 0.4, 0.6, 1]],
+  ['mix(#336699, red)', 'color-mix(in srgb, #336699, red)', [0.6, 0.2, 0.3, 1]],
+  ['mix(#336699, red, 25%)', 'color-mix(in srgb, #336699 25%, red)', [0.8, 0.1, 0.15, 1]],
+  ['mix(#336699, red, 25px)', 'color-mix(in srgb, #336699 25%, red)', [0.8, 0.1, 0.15, 1]],
+  ['mix(#336699, rgba(0, 0, 255, 0.6), 25%)', 'color-mix(in srgb, #336699 25%, rgba(0, 0, 255, 0.6))', [0.0714286, 0.142857, 0.857143, 0.7]],
+  ['average(#336699, red)', 'color-mix(in srgb, #336699, red)', [0.6, 0.2, 0.3, 1]],
+  ['tint(#336699, 13%)', 'color-mix(in srgb, white 13%, #336699)', [0.304, 0.478, 0.652, 1]],
+  ['shade(#336699, 13%)', 'color-mix(in srgb, black 13%, #336699)', [0.174, 0.348, 0.522, 1]],
+  ['tint(#336699, -13%)', 'rgb(from #336699 clamp(0, (r * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (g * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (b * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) / calc(alpha * 1.13 + -0.13))', [0.096, 0.322, 0.548, 1]],
+  ['shade(#336699, -13%)', 'rgb(from #336699 clamp(0, (r * alpha * 1.13 + 0) / (alpha * 1.13 + -0.13), 255) clamp(0, (g * alpha * 1.13 + 0) / (alpha * 1.13 + -0.13), 255) clamp(0, (b * alpha * 1.13 + 0) / (alpha * 1.13 + -0.13), 255) / calc(alpha * 1.13 + -0.13))', [0.226, 0.452, 0.678, 1]],
+  ['tint(#336699, 113%)', 'rgb(from #336699 clamp(0, (r * alpha * -0.13 + 288.15) / (alpha * -0.13 + 1.13), 255) clamp(0, (g * alpha * -0.13 + 288.15) / (alpha * -0.13 + 1.13), 255) clamp(0, (b * alpha * -0.13 + 288.15) / (alpha * -0.13 + 1.13), 255) / calc(alpha * -0.13 + 1.13))', [1, 1, 1, 1]],
+  ['tint(rgba(51, 102, 153, 0.6), -13%)', 'rgb(from rgba(51, 102, 153, 0.6) clamp(0, (r * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (g * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (b * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) / calc(alpha * 1.13 + -0.13))', [0.010219, 0.257664, 0.505109, 0.548]],
+  ['mix(#336699, red, 150%)', 'rgb(from #336699 clamp(0, (r * alpha * 1.5 + -127.5) / (alpha * 1.5 + -0.5), 255) clamp(0, (g * alpha * 1.5 + 0) / (alpha * 1.5 + -0.5), 255) clamp(0, (b * alpha * 1.5 + 0) / (alpha * 1.5 + -0.5), 255) / calc(alpha * 1.5 + -0.5))', [0, 0.6, 0.9, 1]],
+  ['mix(red, #336699, 150%)', 'rgb(from #336699 clamp(0, (r * alpha * -0.5 + 382.5) / (alpha * -0.5 + 1.5), 255) clamp(0, (g * alpha * -0.5 + 0) / (alpha * -0.5 + 1.5), 255) clamp(0, (b * alpha * -0.5 + 0) / (alpha * -0.5 + 1.5), 255) / calc(alpha * -0.5 + 1.5))', [1, 0, 0, 1]],
+  ['darken(color-mix(in srgb, #336699 30%, red 30%), 0%)', 'hsl(from color-mix(in srgb, #336699 30%, red 30%) h s clamp(0, l - 0, 100))', [0.6, 0.2, 0.3, 0.6]],
+  ['darken(color-mix(in srgb, #336699 80%, red 80%), 0%)', 'hsl(from color-mix(in srgb, #336699 80%, red 80%) h s clamp(0, l - 0, 100))', [0.6, 0.2, 0.3, 1]]
 ];
 
 /* The bytes Chrome 152's canvas gives each form, where a channel lands on a half byte. */
@@ -163,7 +178,15 @@ const FORM_BYTES: readonly (readonly [string, string])[] = [
   ['hsv(100GRAD, 50%, 50%)', '#608040'],
   ['hsva(90, 50%, 50%, 0.5)', 'rgba(96, 128, 64, 0.5)'],
   ['hsva(90, 50%, 50%, 50%)', 'rgba(96, 128, 64, 0.5)'],
-  ['hsva(90, 50%, 50%, 1)', 'rgb(96, 128, 64)']
+  ['hsva(90, 50%, 50%, 1)', 'rgb(96, 128, 64)'],
+  ['tint(#777777, 13%)', '#898989'],
+  ['tint(#777777, -13%)', '#656565'],
+  ['shade(#777777, 13%)', '#686868'],
+  ['shade(#777777, -13%)', '#868686'],
+  ['mix(red, rgba(0, 0, 255, 0.5), 25%)', 'rgba(102, 0, 153, 0.625)'],
+  ['mix(red, hsl(120, 0%, 50%))', '#bf4040'],
+  ['mix(black, hsl(120, 50%, 40%))', '#1a4d1a'],
+  ['mix(rgba(255, 0, 0, 0), rgba(0, 0, 255, 0))', 'rgba(0, 0, 0, 0)']
 ];
 
 describe('a built-in is its CSS form', () => {
@@ -188,6 +211,50 @@ describe('a built-in is its CSS form', () => {
 
   it.each(FORM_BYTES)('%s is the byte Chrome draws, %s', (builtin, bytes) => {
     expect(value(builtin)).toBe(bytes);
+  });
+
+  it('prints the relative form over the colour not known, whichever it is, and leaves two unknown as written beyond 100%', () => {
+    expect(value('mix(red, var(--c), 150%)')).toBe('rgb(from var(--c) clamp(0, (r * alpha * -0.5 + 382.5) / (alpha * -0.5 + 1.5), 255) clamp(0, (g * alpha * -0.5 + 0) / (alpha * -0.5 + 1.5), 255) clamp(0, (b * alpha * -0.5 + 0) / (alpha * -0.5 + 1.5), 255) / calc(alpha * -0.5 + 1.5))');
+    expect(value('mix(var(--a), var(--b), 25%)')).toBe('color-mix(in srgb, var(--a) 25%, var(--b))');
+    expect(value('mix(var(--a), var(--b), 150%)')).toBe('mix(var(--a), var(--b), 150%)');
+    expect(value('tint(var(--c), var(--w))')).toBe('color-mix(in srgb, white var(--w), var(--c))');
+    expect(value('tint(#777777, var(--w))')).toBe('color-mix(in srgb, white var(--w), #777777)');
+    expect(value('tint(var(--c))')).toBe('color-mix(in srgb, white 50%, var(--c))');
+    expect(value('darken(mix(var(--a), red), 10%)')).toBe('hsl(from color-mix(in srgb, var(--a), red) h s clamp(0, l - 10, 100))');
+  });
+
+  it.each([
+    'color-mix(in srgb, #336699 0%, red 0%)',
+    'color-mix(in srgb, #336699 -5%, red)',
+    'color-mix(in srgb, #336699 105%, red)',
+    'color-mix(in srgb, #336699 25, red)',
+    'color-mix(in oklab, #336699, red)',
+    'color-mix(in srgb, var(--a), red)',
+    'color-mix(in srgb, currentcolor, red)',
+    'color-mix(#336699, red)',
+    'color-mix(in srgb, #336699)'
+  ])('leaves %s to the browser, known or not, when a consumer reads it', (call) => {
+    expect(value(`darken(${call}, 10%)`)).toBe(`hsl(from ${call} h s clamp(0, l - 10, 100))`);
+  });
+
+  it.each([
+    ['color-mix(in srgb, red, blue)', 'rgb(77, 0, 76)'],
+    ['color-mix(in sRGB, red, blue)', 'rgb(77, 0, 76)'],
+    ['COLOR-MIX(IN SRGB, red, blue)', 'rgb(77, 0, 76)'],
+    ['color-mix(in srgb, 25% red, blue)', 'rgb(47, 0, 140)'],
+    ['color-mix(in srgb, blue, 25% red)', 'rgb(47, 0, 140)'],
+    ['color-mix(in srgb, red calc(10% + 5%), blue)', 'rgb(29, 0, 166)'],
+    ['color-mix(in srgb, color-mix(in srgb, red, blue), green)', 'rgb(38, 38, 38)'],
+    ['color-mix(in srgb, transparent, blue)', 'rgba(0, 0, 204, 0.5)']
+  ])('computes %s for a consumer in every spelling', (call, darkened) => {
+    expect(value(`darken(${call}, 10%)`)).toBe(darkened);
+    expect(value(call)).toBe(call);
+  });
+
+  it('reads color-mix() as a relative colour\'s origin only for a consumer', () => {
+    expect(value('rgb(from color-mix(in srgb, red, blue) r g b / 0.5)')).toBe('rgb(from color-mix(in srgb, red, blue) r g b / 0.5)');
+    expect(value('darken(rgb(from color-mix(in srgb, red, blue) r g b / .5), 5%)')).toBe('rgba(102, 0, 102, 0.5)');
+    expect(value('lightness(color-mix(in srgb, red, blue))')).toBe('25%');
   });
 
   it('reads an hsl() origin by its own h, s and l, and any other through sRGB (Q9)', () => {
@@ -439,9 +506,12 @@ describe('a built-in is its CSS form', () => {
     expect(value('darken(solid, 10%)')).toBe('darken(solid, 10%)');
   });
 
-  it('leaves an amount only the browser knows to be computed by a later form', () => {
-    expect(value('darken(#336699, var(--a))')).toBe('darken(#336699, var(--a))');
-    expect(value('darken(var(--c), var(--a))')).toBe('darken(var(--c), var(--a))');
+  it('reads an amount only the browser knows as a percentage (Q2)', () => {
+    expect(value('darken(#336699, var(--a))')).toBe('hsl(from #336699 h s clamp(0, l - var(--a) / 1%, 100))');
+    expect(value('darken(var(--c), var(--a))')).toBe('hsl(from var(--c) h s clamp(0, l - var(--a) / 1%, 100))');
+    expect(value('darken(var(--c), var(--a), relative)')).toBe('hsl(from var(--c) h s clamp(0, l - l * var(--a) / 1% / 100, 100))');
+    expect(value('saturate(var(--c), var(--a))')).toBe('hsl(from var(--c) h clamp(0, s + var(--a) / 1%, 100) l)');
+    expect(value('spin(var(--c), var(--a))')).toBe('hsl(from var(--c) calc(h + var(--a)) s l)');
   });
 
   it('nests', () => {

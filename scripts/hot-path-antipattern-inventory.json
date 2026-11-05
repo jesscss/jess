@@ -1038,13 +1038,6 @@
       "snippet": "new WeakMap<Value, string>()"
     },
     {
-      "file": "packages/core/src/ast/value-operate.ts",
-      "rule": "no-node-keyed-side-map",
-      "fingerprint": "d1eb8fc25775a38f",
-      "ordinal": 1,
-      "snippet": "new WeakMap<Value, string>()"
-    },
-    {
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
       "rule": "no-speculative-allocation-predicate",
       "fingerprint": "6925a15b6f630dc4",

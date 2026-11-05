@@ -33,11 +33,16 @@ interface ParamSpecBase {
   /** Collect all remaining positional arguments in this final slot. */
   readonly rest?: boolean;
 
-  /** The units a dimension may have for a slot's CSS form to mean what it computes to. Another unit keeps the call's runtime recipe. */
-  readonly formUnits?: readonly string[];
-
   /** Hand the body a typed thunk; evaluation and validation happen on invocation. */
   readonly lazy?: boolean;
+
+  /**
+   * Whether a built-in's CSS form holds this value where an exposed variable reads
+   * it, given the call's other arguments (docs/design/CSS-NATIVE-BUILTINS.md Q2, Q3).
+   * Any other value keeps the call's runtime recipe, as does a slot without this
+   * field, which has no form.
+   */
+  readonly fits?: (value: ValueGroup, vals: readonly ValueGroup[]) => boolean;
 }
 
 type ParamTypeSpec = ParamSpecBase & {

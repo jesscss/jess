@@ -15,6 +15,7 @@ function selectorText(value: ValueGroup, level = 0): string | null {
   switch (value.type) {
     case 'Quoted': return value.value;
     case 'Keyword': return value.text;
+    case 'Arithmetic':
     case 'FunctionCall': return value.bytes;
     case 'List':
       if (value.sep === '/' || level === 2 || (level === 1 && value.sep === ',')) {

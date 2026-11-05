@@ -25,6 +25,28 @@ async function runtime(source: string): Promise<unknown> {
 
 describe('Less @expose variables (A4)', () => {
   it.each([
+    ['@r: 10; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(var(--r, 10), 0, 0);'],
+    ['@r: 10%; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(var(--r, 10%), 0, 0);'],
+    ['@r: 2px; .x { v: @less.rgb(@r, 0, 0); }', 'v: var(--r-rgb, rgb(2, 0, 0));'],
+    ['@h: 30; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30) 37.5% 25%);'],
+    ['@h: 30deg; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30deg) 37.5% 25%);'],
+    ['@h: 30px; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: var(--h-hsv, #bf8f60);'],
+    ['@a: 50%; .x { v: @less.rgba(#c00, @a); }', 'v: rgb(from #c00 r g b / var(--a, 50%));'],
+    ['@a: 2px; .x { v: @less.rgba(#c00, @a); }', 'v: var(--a-rgba, rgb(204, 0, 0));'],
+    ['@b: 5px; .x { v: @less.mod(10px, @b); }', 'v: rem(10px, var(--b, 5px));'],
+    ['@b: 5px; .x { v: @less.mod(10em, @b); }', 'v: var(--b-mod, 0em);']
+  ])('one slot field answers whether a form holds the value: %s', async (source, written) => {
+    const name = /@(\w+):/.exec(source)?.[1];
+    await expect(render(`@use "#less";\n@expose ${name};\n${source}`)).resolves.toContain(written);
+  });
+
+  it('a built-in reading an exposed slash list keeps its recipe', async () => {
+    const css = await render('@use "#less";\n@expose a;\n@a: 1/2;\n.x { b: @less.percentage(@a); c: @less.ceil(@a); }');
+    expect(css).toContain('b: var(--a-percentage, 50%);');
+    expect(css).toContain('c: var(--a-ceil, 1);');
+  });
+
+  it.each([
     ['@expose brand;\n@brand: #c00;\n.btn { color: @brand; }', 'color: var(--brand, #c00);'],
     ['@-expose brand;\n@brand: #c00;\n.btn { color: @brand; }', 'color: var(--brand, #c00);'],
     ['@expose brand;\n@brand: #c00;\n.btn { border: 1px solid @brand; }', 'border: 1px solid var(--brand, #c00);'],
@@ -32,6 +54,7 @@ describe('Less @expose variables (A4)', () => {
     ['.btn { color: @brand; }\n@expose brand;\n@brand: #c00;', 'color: var(--brand, #c00);'],
     ['@expose fonts;\n@fonts: Inter, sans-serif;\nbody { font-family: @fonts; }', 'font-family: var(--fonts, Inter, sans-serif);'],
     ['@expose gap;\n@gap: 8px;\n.grid { gap: calc(@gap * 2); }', 'gap: calc(var(--gap, 8px) * 2);'],
+    ['@expose gap;\n@gap: 8px;\n.grid { gap: @gap * 2; }', 'gap: calc(var(--gap, 8px) * 2);'],
     ['@expose brand;\n@brand: #c00;\n.btn { background: color-mix(in srgb, @brand, white); }', 'background: color-mix(in srgb, var(--brand, #c00), white);'],
     ['@expose brand;\n@brand: #c00 !important;\n.btn { color: @brand; }', 'color: var(--brand, #c00) !important;'],
     ['@expose gap;\n@gap: 8px;\n.grid { gap: @{gap}; }', 'gap: var(--gap, 8px);'],
@@ -61,10 +84,6 @@ describe('Less @expose variables (A4)', () => {
 
   it('puts the document in modern mode (P36)', async () => {
     await expect(render('@expose brand;\n@brand: #c00;\n.btn { width: round(1.5px); }')).resolves.toContain('width: round(1.5px);');
-  });
-
-  it('keeps math on the exposed variable outside a calculation an operand error, as for an authored var()', async () => {
-    await expect(render('@expose gap;\n@gap: 8px;\n.grid { gap: @gap * 2; }')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 
   it.each([
@@ -110,8 +129,41 @@ describe('Less @expose variables (A4)', () => {
     ['nested CSS forms', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lighten(@less.darken(@brand, 10%), 5%); }', 'v: hsl(from hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100)) h s clamp(0, l + 5, 100));'],
     ['a CSS form as a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @c; }\n.a { .m(@less.darken(@brand, 10%)); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
     ['a CSS form of a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @less.darken(@c, 10%); }\n.a { .m(@brand); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
-    ['an exposed amount, which a CSS form does not take yet', '@use "#less";\n@expose a;\n@a: 10%;\n.b { v: @less.darken(#c00, @a); }', 'v: var(--a-darken, #990000);']
+    ['an amount no form takes in its unit', '@use "#less";\n@expose a;\n@a: 10;\n.b { v: @less.darken(#c00, @a); }', 'v: var(--a-darken, #990000);'],
+    ['a number holding a unit, which a form takes as a number', '@use "#less";\n@expose a;\n@a: 0.5px;\n.b { v: @less.percentage(@a); }', 'v: var(--a-percentage, 50%);'],
+    ['a divisor in another unit than the dividend', '@use "#less";\n@expose a;\n@a: 2;\n.b { v: @less.mod(5px, @a); }', 'v: var(--a-mod, 1px);'],
+    ['a unit, which picks no form', '@use "#less";\n@expose u;\n@u: em;\n.b { v: @less.unit(5px, @u); }', 'v: var(--u-unit, 5em);'],
+    ['a method, which picks no form', '@use "#less";\n@expose m;\n@m: relative;\n.b { v: @less.darken(#c00, 10%, @m); }', 'v: var(--m-darken, #b80000);']
   ])('follows the exposed variable through %s', async (_what, source, expected) => {
+    await expect(render(source)).resolves.toContain(expected);
+  });
+
+  it.each([
+    ['an amount', '@use "#less";\n@expose a;\n@a: 10%;\n.b { v: @less.darken(#c00, @a); }', 'v: hsl(from #c00 h s clamp(0, l - var(--a, 10%) / 1%, 100));'],
+    ['a number', '@use "#less";\n@expose a;\n@a: 0.5;\n.b { v: @less.percentage(@a); }', 'v: calc(var(--a, 0.5) * 100%);'],
+    ['a divisor in the dividend\'s unit', '@use "#less";\n@expose a;\n@a: 2px;\n.b { v: @less.mod(5px, @a); }', 'v: rem(5px, var(--a, 2px));'],
+    ['a divisor in the dividend\'s unit, in any case', '@use "#less";\n@expose a;\n@a: 2px;\n.b { v: @less.mod(5PX, @a); }', 'v: rem(5PX, var(--a, 2px));'],
+    ['decimal places on a length', '@use "#less";\n@expose a;\n@a: 2;\n.b { v: @less.round(1px, @a); }', 'v: calc(sign(1px) * round(abs(1px), pow(10, -1 * var(--a, 2)) * 1px));']
+  ])('takes the exposed variable in a form that holds its value: %s', async (_what, source, expected) => {
+    await expect(render(source)).resolves.toContain(expected);
+  });
+
+  it.each([
+    ['a colour', '@expose c;\n@c: #c00;\n.a { v: (@c * 2); }'],
+    ['a colour keyword', '@expose c;\n@c: red;\n.a { v: (@c * 2); }'],
+    ['a keyword', '@expose c;\n@c: foo;\n.a { v: (@c * 2); }'],
+    ['a string', '@expose c;\n@c: "s";\n.a { v: (@c * 2); }'],
+    ['a list', '@expose c;\n@c: 1px 2px;\n.a { v: (@c * 2); }'],
+    ['a colour bound as a mixin argument', '@expose c;\n@c: #c00;\n.m(@p) { v: (@p * 2); }\n.a { .m(@c); }']
+  ])('fails math on an exposed variable of a known wrong type: %s', async (_what, source) => {
+    await expect(render(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+
+  it.each([
+    ['a number', '@expose g;\n@g: 8;\n.a { v: @g + 1; }', 'v: calc(var(--g, 8) + 1);'],
+    ['what only the browser knows', '@expose g;\n@g: var(--z);\n.a { v: (@g * 2); }', 'v: calc(var(--g, var(--z)) * 2);'],
+    ['a mixin argument', '@expose g;\n@g: 8px;\n.m(@p) { v: (@p * 2); }\n.a { .m(@g); }', 'v: calc(var(--g, 8px) * 2);']
+  ])('keeps math on an exposed variable holding %s as calc()', async (_what, source, expected) => {
     await expect(render(source)).resolves.toContain(expected);
   });
 

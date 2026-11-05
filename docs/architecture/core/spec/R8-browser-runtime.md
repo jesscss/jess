@@ -153,7 +153,13 @@ or needs JS) to decide what ships in the bundle.
   `hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100))`, the browser
   recomputes it, and the function is in no recipe. Built for Less `lighten`
   `darken` `saturate` `desaturate` `spin` `greyscale` `fade` `fadein` `fadeout`,
-  two-slot `rgb` `rgba`, and the hue of `hsv` `hsva`; the one seam is `exportCall`.
+  `mix` `tint` `shade` `average`, `contrast`, two-slot `rgb` `rgba`, and the hue of `hsv`
+  `hsva`; the one seam is `exportCall`. A weight is a form's while its value is one
+  `color-mix()` holds, and a call with no form over what only the browser knows
+  (`@less.mix(@a, @b, 150%)`) takes rung 4. The form or the recipe is chosen by the
+  default: `@less.mix(red, blue, @w)` with `@w: 25%` prints the form, and
+  `vars({ w: '150%' })` then gives a value the browser finds invalid. OPEN for the owner.
+  An exposed variable in parens is read as one without them.
   `rgb` and `rgba` with an exposed channel are valid CSS as written, and print so:
   `@less.rgb(@r, 0, 0)` is `rgb(var(--r, 10), 0, 0)`; one exposed colour,
   `@less.rgb(@brand)`, is `var(--brand, #c00)`. A wrong exposed value fails at the
@@ -269,6 +275,11 @@ or needs JS) to decide what ships in the bundle.
   is 501 to 502 KB minified, 133.5 KB gzip. So is `lightness(rgb(@r, 0, 0))`: `rgb()` nested inside a function with
   no CSS form runs in the recipe, and its two-slot overload is a form, so it costs
   the evaluator (503 KB minified, 133.8 KB gzip).
+  After `mix` `tint` `shade` `average` and `contrast` became forms, with every form's factory
+  calls marked pure: `lightness(@brand)` is 64.1 KB minified, 18.4 KB gzip; a page of
+  `@less.mix(@brand, red, 25%)` or `@less.contrast(@brand)` is 34.7 KB minified, 10.7 KB gzip; a
+  recipe that runs one, `@less.mix(@a, @b, 150%)`, `lightness(mix(@brand, red))` or
+  `@less.contrast(@brand, #111, #eee, 50%)`, is 502 to 504 KB minified, 134.3 KB gzip.
 - ponytail: imports of a stylesheet are not watched (`loadedUrls` is empty);
   only the stylesheet itself is. Watch the render's loaded files when the
   compiler reports them.

@@ -17,7 +17,7 @@ import { foldUnit, isValueGroupArray, makeDimension, type Dimension, type FnSpec
  * Angle → radians normalization (`deg`/`grad`/`turn`, any ASCII case), else the raw number.
  * Byte-identical to legacy `mathHelper`'s per-operand normalize step.
  */
-const normalizeAngle = (d: Dimension): number => {
+export const normalizeAngle = (d: Dimension): number => {
   switch (foldUnit(d.unit)) {
     case 'deg': return d.number * Math.PI / 180;
     case 'grad': return d.number * Math.PI / 200;

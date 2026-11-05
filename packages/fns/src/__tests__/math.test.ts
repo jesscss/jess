@@ -2,7 +2,7 @@ import { abs, acos, asin, atan, ceil, cos, floor, sin, sqrt, tan } from '../less
 
 import { makeDimension } from '@jesscss/core';
 import { describe, it, test, expect } from 'vitest';
-import { invoke } from './harness.js';
+import { call, invoke } from './harness.js';
 
 describe('math', () => {
   const dim = makeDimension(2.4, 'px');
@@ -27,7 +27,7 @@ describe('math', () => {
   });
 
   test('ceil', () => {
-    expect(ceil(dim)).toMatchObject({ number: 3, unit: 'px' });
+    expect(call(ceil, dim)).toMatchObject({ number: 3, unit: 'px' });
   });
 
   test('cos', () => {
@@ -35,7 +35,7 @@ describe('math', () => {
   });
 
   test('floor', () => {
-    expect(floor(dim)).toMatchObject({ number: 2, unit: 'px' });
+    expect(call(floor, dim)).toMatchObject({ number: 2, unit: 'px' });
   });
 
   test('sin', () => {

@@ -1,5 +1,5 @@
 {
-  "$comment": "Inventory for docs/design/CSS-NATIVE-BUILTINS.md. One row per built-in colour/math function. `class` is one of: exact | exact-if | approx | already-css | none (defined in the design doc, section 1). `css` is the CSS-native form over the parameter names; `C`, `C1`, `C2` are colours, `A` an amount on the CSS channel scale, `N`, `B` numbers. `css` is the simplest CSS form (ladder rung 2), `extended` the longer one (rung 3); a `none` row reaches rung 4, compile time plus the JS runtime (doc §3.4a). A row with `aliasOf` is a second name for the row it names, with its classification. Every other registered function is listed in `outOfScope`; `packages/fns/src/__tests__/css-native-builtins.test.ts` checks the three lists cover the registries exactly.",
+  "$comment": "Inventory for docs/design/CSS-NATIVE-BUILTINS.md. One row per built-in colour/math function. `class` is one of: exact | exact-if | approx | already-css | none (defined in the design doc, section 1). `css` is the CSS-native form over the parameter names; `C`, `C1`, `C2` are colours, `A` an amount on the CSS channel scale, `N`, `B` numbers. `css` is the simplest CSS form (ladder rung 2), `extended` the longer one (rung 3); a `none` row reaches rung 4, compile time plus the JS runtime (doc §3.4a). `deferred` and `relativeDeferred` are the form an amount or places only the browser knows takes (Q2). A row with `aliasOf` is a second name for the row it names, with its classification. Every other registered function is listed in `outOfScope`; `packages/fns/src/__tests__/css-native-builtins.test.ts` checks the three lists cover the registries exactly.",
   "schema": 1,
   "functions": [
     {
@@ -8,6 +8,8 @@
       "class": "exact",
       "css": "hsl(from C h s clamp(0, l + A, 100))",
       "relative": "hsl(from C h s clamp(0, l + l * A / 100, 100))",
+      "deferred": "hsl(from C h s clamp(0, l + A / 1%, 100))",
+      "relativeDeferred": "hsl(from C h s clamp(0, l + l * A / 1% / 100, 100))",
       "spec": "css-color-5 §4.4, css-values-4 #comparison-funcs"
     },
     {
@@ -16,6 +18,8 @@
       "class": "exact",
       "css": "hsl(from C h s clamp(0, l - A, 100))",
       "relative": "hsl(from C h s clamp(0, l - l * A / 100, 100))",
+      "deferred": "hsl(from C h s clamp(0, l - A / 1%, 100))",
+      "relativeDeferred": "hsl(from C h s clamp(0, l - l * A / 1% / 100, 100))",
       "spec": "css-color-5 §4.4, css-values-4 #comparison-funcs"
     },
     {
@@ -24,6 +28,8 @@
       "class": "exact",
       "css": "hsl(from C h clamp(0, s + A, 100) l)",
       "relative": "hsl(from C h clamp(0, s + s * A / 100, 100) l)",
+      "deferred": "hsl(from C h clamp(0, s + A / 1%, 100) l)",
+      "relativeDeferred": "hsl(from C h clamp(0, s + s * A / 1% / 100, 100) l)",
       "spec": "css-color-5 §4.4"
     },
     {
@@ -32,6 +38,8 @@
       "class": "exact",
       "css": "hsl(from C h clamp(0, s - A, 100) l)",
       "relative": "hsl(from C h clamp(0, s - s * A / 100, 100) l)",
+      "deferred": "hsl(from C h clamp(0, s - A / 1%, 100) l)",
+      "relativeDeferred": "hsl(from C h clamp(0, s - s * A / 1% / 100, 100) l)",
       "spec": "css-color-5 §4.4"
     },
     {
@@ -77,8 +85,8 @@
       "class": "exact",
       "css": "color-mix(in srgb, C1 W%, C2)",
       "spec": "css-color-5 §3.3, §3.5",
-      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime)",
-      "extended": "rgb(from C1 clamp(0, r * W + K * (1 - W), 255) ...), K the known C2 channel; or symmetric with C1 known"
+      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime; naming no export it fails). A colour written with none stays in the form",
+      "extended": "rgb(from C clamp(0, (r * alpha * w + q_r) / (alpha * w + p), 255) ... / calc(alpha * w + p)), w the share of the colour not known, p and q the known colour's opacity and premultiplied channels"
     },
     {
       "dialect": "less",
@@ -86,8 +94,8 @@
       "class": "exact",
       "css": "color-mix(in srgb, white W%, C)",
       "spec": "css-color-5 §3",
-      "notes": "rung 2 color-mix() for 0-100%; rung 3 relative rgb for a known weight outside 0-100% (exact for every weight; translucent C adds the alpha terms color-mix() uses)",
-      "extended": "rgb(from C clamp(0, r + W * (255 - r), 255) clamp(0, g + W * (255 - g), 255) clamp(0, b + W * (255 - b), 255))"
+      "notes": "rung 2 color-mix() for 0-100%; rung 3 relative rgb for a known weight outside 0-100%, exact for every weight, with the alpha terms color-mix() uses",
+      "extended": "rgb(from C clamp(0, (r * alpha * w + q_r) / (alpha * w + p), 255) ... / calc(alpha * w + p)), w the share of the colour not known, p and q the known colour's opacity and premultiplied channels"
     },
     {
       "dialect": "less",
@@ -96,7 +104,7 @@
       "css": "color-mix(in srgb, black W%, C)",
       "spec": "css-color-5 §3",
       "notes": "as tint, toward black",
-      "extended": "rgb(from C clamp(0, r - W * r, 255) clamp(0, g - W * g, 255) clamp(0, b - W * b, 255))"
+      "extended": "rgb(from C clamp(0, (r * alpha * w + q_r) / (alpha * w + p), 255) ... / calc(alpha * w + p)), w the share of the colour not known, p and q the known colour's opacity and premultiplied channels"
     },
     {
       "dialect": "less",
@@ -104,7 +112,7 @@
       "class": "exact",
       "css": "color-mix(in srgb, C1, C2)",
       "spec": "css-color-5 §3",
-      "notes": "ruled 2026-11-01: mix() is color-mix(in srgb), compile-time results included (no legacy weighting); weights outside 0-100% have no CSS form (Q11)"
+      "notes": "ruled 2026-11-01: mix() is color-mix(in srgb), compile-time results included (no legacy weighting); takes no weight"
     },
     {
       "dialect": "less",
@@ -195,7 +203,7 @@
       "css": "contrast-color(C)",
       "withColors": "rgb(from contrast-color(C) calc(Dr + (Lr - Dr) * r / 255) calc(Dg + (Lg - Dg) * r / 255) calc(Db + (Lb - Db) * r / 255) / calc(Da + (La - Da) * r / 255))",
       "spec": "css-color-5 §8",
-      "notes": "ruled 2026-11-01: a known input picks dark/light by the larger WCAG 2.1 contrast ratio (not the 43% luma rule), so contrast(#999) = black; an explicit threshold keeps the luma-threshold rule for a known input and has no CSS form for an unknown one. Still approx: contrast-color() uses a UA-defined algorithm. D and L must be known for the withColors form"
+      "notes": "built: slice 7. Ruled 2026-11-01 (Q13): a known input picks dark/light by the larger WCAG 2.1 contrast ratio, so contrast(#999) = black; an explicit threshold keeps the luma rule for a known input and has no CSS form for an unknown one (it fails, or runs on the runtime). A lone ambient contrast(<unknown>) stays as written, since a number there is CSS's filter function (coordinator's ruling, open for the owner). Black and white agree with contrast-color() in Chrome 152 on every origin of the grid; a custom pair can disagree, because the form switches where black and white do. Dark and light must be known for the withColors form"
     },
     {
       "dialect": "less",
@@ -290,7 +298,7 @@
       "class": "exact-if",
       "css": "round(up, N, 1)",
       "spec": "css-values-4 §10.3",
-      "notes": "N a <number>; a dimension needs B in N's unit, unknown for a deferred N"
+      "notes": "N a <number>; a dimension needs B in N's unit, for a deferred N the unit its structure gives (`var(--x) + 1px`), else a number (Q3)"
     },
     {
       "dialect": "less",
@@ -305,7 +313,8 @@
       "class": "exact-if",
       "css": "calc(sign(N) * round(abs(N), 10^-P))",
       "spec": "css-values-4 §10.3, §10.6",
-      "notes": "Less P is decimal places, CSS B is a step; CSS nearest breaks ties toward +infinity, Less (V8) away from zero, hence sign/abs. Today round(var(--x), 2) prints a CSS call with the step meaning; and N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question)"
+      "deferred": "calc(sign(N) * round(abs(N), pow(10, -1 * P)))",
+      "notes": "Less P is decimal places, CSS B is a step; CSS nearest breaks ties toward +infinity, Less (V8) away from zero, hence sign/abs. N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question). A known N with a unit and a deferred P multiplies the step by 1 in that unit"
     },
     {
       "dialect": "less",
@@ -500,7 +509,7 @@
       "class": "exact",
       "css": "color-mix(in srgb, C1 W%, C2)",
       "spec": "css-color-5 §3",
-      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime)",
+      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime; naming no export it fails). A colour written with none stays in the form",
       "extended": "rgb(from C1 clamp(0, r * W + K * (1 - W), 255) ...), K the known C2 channel; or symmetric with C1 known"
     },
     {

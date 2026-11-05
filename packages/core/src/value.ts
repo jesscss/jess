@@ -17,6 +17,7 @@ export type {
   Color,
   Quoted,
   Keyword,
+  Arithmetic,
   FunctionCall,
   CallResult,
   Any,
@@ -75,9 +76,9 @@ export {
 export { CollectionOverlay, isCollection, collectionEntries, collectionEntryIndex, collectionKeyIndex } from './ast/value-collection.js';
 
 // --- value serializer ---
-export { HEX, RGB, HSL, serializeColor, hslToRgb } from './ast/color.js';
+export { HEX, RGB, HSL, holdsNone, serializeColor, hslToRgb } from './ast/color.js';
 export { serializeValue } from './ast/serialize-value.js';
-export { round } from './ast/round.js';
+export { decimalStep, round } from './ast/round.js';
 
 // --- shared value COMPARISON primitive (§5.1) ---
 export { compareOrder } from './ast/value-guards.js';
@@ -86,7 +87,7 @@ export { compareOrder } from './ast/value-guards.js';
 export { operate } from './ast/value-operate.js';
 
 // --- unit table / conversion ---
-export { convertValue, foldUnit, groupOf, unify, unitFactor } from './ast/value-units.js';
+export { convertValue, foldUnit, groupOf, isCssUnit, unify, unitFactor } from './ast/value-units.js';
 
 // --- literal materialize / sniff ---
 export { parseHex, sniffLiteral, coerceNamedColorKeyword } from './ast/literal-tag.js';
@@ -117,5 +118,5 @@ export type {
 } from './ast/functions/types.js';
 
 // --- registry seam ---
-export { createFnRegistry, defineFunction, FunctionDeclined } from './ast/value-dispatch.js';
+export { createFnRegistry, defineFunction, FunctionDeclined, NoCssForm } from './ast/value-dispatch.js';
 export type { FnRegistry } from './ast/value-dispatch.js';

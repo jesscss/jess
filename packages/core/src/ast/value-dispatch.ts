@@ -8,8 +8,8 @@
  * HARD MODULE BOUNDARY: value domain + built-in fns only.
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { isValueGroup, isValueGroupArray, type EvalModes, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
-import { numberOperand } from './math-operand.js';
+import { isValueGroup, isValueGroupArray, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
+import { calcOperand, numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { callKeyword, makeCollection, makeList, NULL } from './value-factory.js';
@@ -49,6 +49,18 @@ export class FunctionDeclined extends Error {
   }
 }
 
+/**
+ * No CSS form holds this call over what only the browser knows. It fails as any
+ * call does, except that one reading an exposed variable runs on the runtime
+ * instead (docs/design/CSS-NATIVE-BUILTINS.md §3.4a, rung 4).
+ */
+export class NoCssForm extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoCssForm';
+  }
+}
+
 export function dispatchFn(fn: Fn, value: ValueGroup, ctx: FnCtx): MaybePromise<ValueGroup> {
   return fn(value, ctx);
 }
@@ -61,6 +73,7 @@ const VALUE_TYPES: ReadonlySet<string> = new Set([
   'Quoted',
   'Keyword',
   'FunctionCall',
+  'Arithmetic',
   'Any',
   'Url',
   'List',
@@ -141,13 +154,17 @@ export function numberArguments(fn: Fn, args: ValueGroup, ev: Pick<ValueEvaluato
   const tail = fn.variadic === true ? fn.params.at(-1) : fn.params.find(isRest);
   for (let index = 0; index < items.length; index++) {
     const item = items[index]!;
-    if (isValueGroupArray(item) || item.type !== 'List' || item.sep !== '/') {
+    if (isValueGroupArray(item)) {
+      continue;
+    }
+    const isCalc = item.type === 'FunctionCall' && item.name === 'calc' && ev.sassCalculations !== true;
+    if (!isCalc && (item.type !== 'List' || item.sep !== '/')) {
       continue;
     }
     const param = fn.params[index] ?? tail;
     const type = param === undefined ? null : normalizeParamType(param.type ?? param.kinds);
-    if (type !== null && type !== 'any' && type.includes('Dimension') && !type.includes('List')) {
-      (out ??= [...items])[index] = numberOperand(item, ev, modes);
+    if (type !== null && type !== 'any' && type.includes('Dimension') && (isCalc || !type.includes('List'))) {
+      (out ??= [...items])[index] = isCalc ? calcOperand(item, ev) : numberOperand(item, ev, modes);
     }
   }
   if (out === undefined) {
@@ -210,6 +227,22 @@ const isListShaped = (value: ValueGroup): boolean =>
 /** css-color-4 §4.4 `currentcolor` and the §6.2 system colours: colours whose value only the browser knows. */
 const BROWSER_COLORS: ReadonlySet<string> = new Set(['currentcolor', 'accentcolor', 'accentcolortext', 'activetext', 'buttonborder', 'buttonface', 'buttontext', 'canvas', 'canvastext', 'field', 'fieldtext', 'graytext', 'highlight', 'highlighttext', 'linktext', 'mark', 'marktext', 'selecteditem', 'selecteditemtext', 'visitedtext']);
 
+/** Whether `value` holds what only the browser knows: `var()`, `env()`, `attr()`, an unknown function. */
+function holdsDeferred(value: EvalValue): boolean {
+  if (typeof value === 'string') {
+    return false;
+  }
+  if (isValueGroupArray(value)) {
+    return value.some(holdsDeferred);
+  }
+  switch (value.type) {
+    case 'FunctionCall': return value.result === null || value.name === 'var' || holdsDeferred(value.args);
+    case 'Arithmetic': return holdsDeferred(value.left) || holdsDeferred(value.right);
+    case 'List': return holdsDeferred(value.value);
+    default: return false;
+  }
+}
+
 /** Whether a keyword names a colour only the browser knows. */
 export const isBrowserColor = (text: string): boolean => BROWSER_COLORS.has(text.toLowerCase());
 
@@ -218,11 +251,20 @@ export const isBrowserColor = (text: string): boolean => BROWSER_COLORS.has(text
  * only the browser can read: a call of no known type or of the slot's type, or
  * a browser colour in a colour slot. A call whose type is known and wrong fails
  * the slot, as its spelling does (docs/design/CSS-NATIVE-BUILTINS.md §3.2, §3.6).
+ * Math is the slot's type only over what the browser alone knows: all its leaves
+ * written (`calc(1px + 1em)`) it has no number a form can hold, and fails too (V18).
  */
 function isDeferred(value: Value, type: readonly Kind[]): boolean {
-  return value.type === 'FunctionCall'
-    ? value.result === null || type.includes(value.result === 'color' ? 'Color' : 'Dimension')
-    : value.type === 'Keyword' && type.includes('Color') && isBrowserColor(value.text);
+  switch (value.type) {
+    case 'FunctionCall':
+      return value.result === null || (value.result === 'color' ? type.includes('Color') : type.includes('Dimension') && holdsDeferred(value));
+    case 'Arithmetic':
+      return type.includes('Dimension') && holdsDeferred(value);
+    case 'Keyword':
+      return type.includes('Color') && isBrowserColor(value.text);
+    default:
+      return false;
+  }
 }
 
 function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown): ValueGroup {
@@ -244,7 +286,7 @@ function validateValue(name: string, index: number, type: NormalizedParamType, v
   }
   const bound = type === 'any'
     ? value
-    : single?.type === 'FunctionCall'
+    : single?.type === 'FunctionCall' || single?.type === 'Arithmetic'
       ? keepAsWritten(callKeyword(single))
       : single?.type === 'Keyword' && type.includes('Color')
         ? coerceNamedColorKeyword(single)

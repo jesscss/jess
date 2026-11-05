@@ -211,21 +211,21 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { channelFunction, channelMath, channelOf, formChannels, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
+import { channelFunction, channelMath, channelOf, formChannels, isComputedColorCall, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
 import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
-import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
+import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptInString, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { makeAny, makeWrittenMath, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
-import { mathOperand } from './math-operand.js';
+import { mathOperand, negatedCall, slashOperated, writtenPercent } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type FnOrigin, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -888,7 +888,7 @@ interface DeclIndex {
  * back (see {@link activateVariableDeclaration}), so a plain overwrite sequence
  * stays O(1) and only a genuine read-then-write retains its predecessor.
  */
-interface BindingCell {
+export interface BindingCell {
   declaration: VariableDeclaration;
   value: Binding;
   valueFrame: Frame | null;
@@ -5102,7 +5102,7 @@ function evalTyped(
        */
       if (node.interp !== null) {
         return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => !isLiteral(content)
-          ? content
+          ? keptInString(content, node)
           : node.escaped ? makeAny(content, node.quote) : quotedText(content, node.quote));
       }
       return node.escaped ? makeAny(node.value, node.quote) : materializeNode(node, e);
@@ -5240,7 +5240,7 @@ function evalTyped(
         frame,
         deriveLane(e, 'paren'),
         projectMixinValues,
-        writtenAsAuthored(argument) ? argument : ARG_NONE
+        writtenAsAuthored(argument) || (argument === ARG_INPUT && e.s.exports.runtime !== undefined && readsOneVariable(node.value)) ? argument : ARG_NONE
       ), v => keepAuthoredGroup(v, e, !isValueSlotArray(node.value) && node.value.type === 'FunctionCall'));
     case 'Collection':
       /*
@@ -5551,25 +5551,27 @@ function isComputationSplice(node: Interpolation): boolean {
   return node.parts.length === 1 && first !== undefined && 'ref' in first && first.ref.type === 'Expression';
 }
 
+const insideGroups = (slot: ValueSlot): ValueSlot => isParenGroup(slot) ? insideGroups(slot.value) : slot;
+
 /**
  * Whether a paren group holds one value — not a list, a sequence, a feature
  * (`(min-width: 640px)`) or an operation — past any parens around it.
  */
 function groupsOneValue(node: Block): boolean {
-  let inner: ValueSlot = node.value;
-  while (isParenGroup(inner)) {
-    inner = inner.value;
-  }
+  const inner = insideGroups(node.value);
   return !isValueSlotArray(inner) && inner.type !== 'Operation' && inner.type !== 'List' && inner.type !== 'Sequence'
     && inner.type !== 'Condition' && inner.type !== 'Branch';
 }
 
+/** A group around one variable: its read is the argument's own, an export's input ({@link exportInput}). */
+function readsOneVariable(slot: ValueSlot): boolean {
+  const inner = insideGroups(slot);
+  return !isValueSlotArray(inner) && inner.type === 'Lookup' && inner.kind === 'var';
+}
+
 /** A paren group around math kept as written or around raw bytes: nothing in it computes. */
 function isInertGroup(node: Block): boolean {
-  let inner: ValueSlot = node.value;
-  while (isParenGroup(inner)) {
-    inner = inner.value;
-  }
+  const inner = insideGroups(node.value);
   return !isValueSlotArray(inner) && (inner.type === 'Any' || (inner.type === 'Operation' && inner.inMathFunction));
 }
 
@@ -5630,6 +5632,16 @@ const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | Keyword
  */
 const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => groupText(v);
 
+/** Whether math on an operand a rule rejects is kept as written instead: it is CSS's, or not reached as math (V36, J16, V31). */
+const keepsOperation = (node: Operation, e: Lane): boolean =>
+  e.keepsMath || (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right);
+
+/** An operation over its operands: two known numbers are the operation's, anything else may be CSS's math ({@link operatedOn}). */
+const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
+  (left.type === 'Dimension' && right.type === 'Dimension') || ev.sassCalculations === true
+    ? ev.operate(node.operator, left, right, e.modes)
+    : slashOperated(node, left, right, e.modes, keepsOperation(node, e));
+
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
  * so math kept as written keeps the parens (`(10px) + 1` under `unitMode:
@@ -5642,7 +5654,7 @@ const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => gr
  */
 function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: Lane): Value {
   const depth = writtenParens(node, frame, e);
-  return depth === 0 || (value.type === 'Keyword' && (namedColor(value.bytes) !== undefined || keptMathOf(value) !== undefined)) || isOpaqueText(value, e)
+  return depth === 0 || (value.type === 'Keyword' && namedColor(value.bytes) !== undefined) || keptMathOf(value) !== undefined || isOpaqueText(value, e)
     ? value
     : inParens(value, wrapParens(value.bytes, depth));
 }
@@ -5701,10 +5713,7 @@ function writtenGroup(v: EvalValue): Value {
   if (isLiteral(v) || isValueGroupArray(v)) {
     return makeKeyword(`(${emitValue(v)})`);
   }
-  if (keptMathOf(v) !== undefined) {
-    return groupAsWritten(v);
-  }
-  if (v.type === 'FunctionCall') {
+  if (v.type === 'FunctionCall' || v.type === 'Arithmetic') {
     return groupAsWritten(v);
   }
   return v.type === 'Any' && v.escapedQuote !== '' ? textGroup(v) : makeKeyword(`(${emitValue(v)})`);
@@ -5915,9 +5924,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
         : literal(e.compress === true ? compressDimensionBytes(node.src) : node.src);
     case 'Quoted':
       if (node.interp !== null) {
-        return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => isLiteral(content) && !node.escaped
-          ? literal(quotedBytes(content, node.quote))
-          : content);
+        return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => isLiteral(content)
+          ? node.escaped ? content : literal(quotedBytes(content, node.quote))
+          : keptInString(content, node));
       }
       return literal(node.escaped ? node.value : node.src);
     case 'Url': {
@@ -6263,6 +6272,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * exactly as before. It is dominated by the flag, so a `.css`/`.jess`
        * operation never consults it.
        */
+      const ev = e.ev;
       const shouldOperate = (!node.inMathFunction || e.channels !== undefined)
         && ((e.calcDepth ?? 0) > 0
           || node.mathOutsideParens
@@ -6279,13 +6289,11 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * back a bare string sends it through `force`, which reads
            * `8px / 2` as a slash LIST — and a List is not a calc argument, so
            * `calc($val / 2)` came back as `8px / 2` with the wrapper dropped.
-           * A Keyword is the same carrier `value-operate` already uses for a
-           * preserved `calc(…)` sub-expression.
+           * It is arithmetic, what the `calc()` around it holds.
            */
-          return node.inMathFunction ? carryKeptClash(makeKeyword(bytes), values[0]!, values[1]!) : literal(bytes);
+          return node.inMathFunction ? writtenPercent(node.operator, values, e.modes, ev) ?? carryKeptClash(makeWrittenMath(node, values[0]!, values[1]!, bytes), values[0]!, values[1]!) : literal(bytes);
         });
       }
-      const ev = e.ev;
 
       /*
        * Operands are materialized TYPED (tag sourced from the parse), not
@@ -6305,13 +6313,14 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * function's and a written-out call's arguments keep such math as
            * written rather than reject it ({@link Lane.keepsMath}).
            */
-          return checkedOperation(node.operator, values[0]!, values[1]!, ev, e.keepsMath || (e.calcDepth ?? 0) > 0 || (node.operator === '/' && node.mathOutsideParens) || isConditionOperand(node.left) || isConditionOperand(node.right))
+          return checkedOperation(node.operator, values[0]!, values[1]!, ev, keepsOperation(node, e) || (node.operator === '/' && node.mathOutsideParens))
             ?? (e.channels !== undefined && !channelMath(node.operator, values[0]!, values[1]!) ? rejectChannelMath(node.operator) : undefined)
-            ?? rememberUnitOwner(ev.operate(
-              node.operator,
+            ?? rememberUnitOwner(operated(
+              node,
               spelledOperand(node.left, mathOperand(values[0]!, node.operator, ev, e), frame, e),
               spelledOperand(node.right, mathOperand(values[1]!, node.operator, ev, e), frame, e),
-              e.modes
+              ev,
+              e
             ), node);
         } catch (error) {
           throwUnitArithmetic(error, node, e);
@@ -7858,10 +7867,10 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromis
 
       /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
       const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
-      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(isValueGroupArray(v) ? emitValue(v) : mathText(v, emitValue(v)), isValueGroupArray(v) || !isOpaqueText(v, ce) ? authored : 0)})`), v, v));
+      return keepAsWritten(carryKeptClash(makeCalc(v, `calc(${kept ?? wrapParens(isValueGroupArray(v) ? emitValue(v) : mathText(v, emitValue(v)), isValueGroupArray(v) || !isOpaqueText(v, ce) ? authored : 0)})`), v, v));
     }
-    if (!isValueGroupArray(v) && (v.type === 'Keyword' || v.type === 'FunctionCall')) {
-      return writtenCalcInner(v) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${mathText(v)})`), v, v));
+    if (!isValueGroupArray(v) && (v.type === 'Keyword' || v.type === 'FunctionCall' || v.type === 'Arithmetic')) {
+      return writtenCalcInner(v) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeCalc(v, `calc(${mathText(v)})`), v, v));
     }
 
     /*
@@ -7872,7 +7881,7 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromis
      * no longer a calculation at all (V31).
      */
     if (isValueGroupArray(v) || v.type !== 'Dimension') {
-      return keepAsWritten(makeKeyword(`calc(${isValueGroupArray(v) ? emitValueC(v, e) : mathText(v, emitValueC(v, e))})`));
+      return keepAsWritten(makeCalc(v, `calc(${isValueGroupArray(v) ? emitValueC(v, e) : mathText(v, emitValueC(v, e))})`));
     }
     return e.ev?.sassCalculations === true || e.channels !== undefined ? v : makeSpelledDimension(v, v.preserved ?? v.bytes);
   });
@@ -9078,7 +9087,9 @@ function evalCall(
    * evaluator's unknown-call path, the one `.jess` reaches through its empty
    * registry (P17). The parser attached its document's scope to the node.
    */
-  return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
+  return node.name.charCodeAt(0) === 45 && selected === undefined && ev.has(node.name.slice(1)) && hasAmbientFunctions(node)
+    ? mapMaybe(evalCall(withFields(node, { name: node.name.slice(1) }), frame, e, demanded), value => negatedCall(value) ?? dispatchCall(node, frame, e, ev, selected, 'ambient', demanded))
+    : dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
 }
 
 /**
@@ -9181,12 +9192,12 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   };
-  const call = demanded && selected === undefined && isCssColorCall(node)
+  const call = demanded && selected === undefined && isComputedColorCall(node)
     ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
         : resolveColorCall(node, vals, channelBinder(frame, be), out))
     : e.channels !== undefined && selected === undefined
-      ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? dispatch(vals)
+      ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? ev.cssMath?.(node.name, vals) ?? dispatch(vals)
       : dispatch;
 
   /* [A4] A computed call reading an export is recorded for the runtime. */
@@ -9467,7 +9478,8 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: Lane): never
   throw (error instanceof EmptyListValueError ? ERR.emptyListValue : ERR.invalidFunction)({
     node,
     ...callSiteLocation(node, e.s),
-    meta: { name: node.name, reason: error instanceof Error ? error.message : String(error) }
+    meta: { name: node.name, reason: error instanceof Error ? error.message : String(error) },
+    cause: error
   });
 }
 
@@ -21336,6 +21348,7 @@ function emitRawInline(loaded: ImportDocumentInline, node: StyleImport, e: Emit)
  */
 const STATEMENT_RESULT_POSITIONS: Readonly<Record<Value['type'], readonly [root: boolean, declarationList: boolean]>> = {
   Any: [true, true],
+  Arithmetic: [false, false],
   Block: [false, false],
   Bool: [false, false],
   Collection: [false, false],

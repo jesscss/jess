@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { ExportRecipe, Fn } from '@jesscss/core';
 import * as less from '@jesscss/fns/less';
 import { createRuntime, type RuntimeRecipe } from '@jesscss/fns/runtime';
@@ -25,11 +28,42 @@ function toRuntime(recipe: ExportRecipe | string): RuntimeRecipe {
   return [fn as Fn, recipe.args.map(toRuntime)];
 }
 
+async function compileWithPartial(partial: string, a = '#c00') {
+  const dir = mkdtempSync(join(tmpdir(), 'jess-export-partial-'));
+  try {
+    writeFileSync(join(dir, 'one.less'), partial);
+    return await new Compiler({}).renderToResult({ filePath: join(dir, 'entry.less'), source: `@expose a, b;\n@a: ${a};\n@b: #00c;\n@import "./one.less";`, language: 'less' });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function compile(source: string) {
   return new Compiler({}).renderToResult({ filePath: 'entry.less', source, language: 'less' });
 }
 
 describe('the export runtime', () => {
+  it.each([
+    'mix(@a, @b, 150%)',
+    'mix(@a, var(--z), 150%)',
+    'mix(var(--y), @a, 150%)',
+    'contrast(@a, #111, #eee, 50%)'
+  ])('does not print a built-in with no form, unimported in a classic partial: %s', async (call) => {
+    expect((await compileWithPartial(`.a { color: ${call}; }`)).errors).toMatchObject([{ code: 'eval/expose-not-a-value', reason: expect.stringContaining('@a is exposed') }]);
+  });
+
+  it.each([
+    ['filter: contrast(@a)', 'filter: contrast(var(--a, var(--x)));'],
+    ['backdrop-filter: blur(2px) contrast(@a) brightness(1.2)', 'backdrop-filter: blur(2px) contrast(var(--a, var(--x))) brightness(1.2);']
+  ])('keeps the filter function over an exposed value only the browser knows, unimported in a classic partial: %s', async (declaration, expected) => {
+    expect((await compileWithPartial(`.a { ${declaration}; }`, 'var(--x)')).css).toContain(expected);
+  });
+
+  it('says why a call failed over an export inside an argument', async () => {
+    await expect(compile('@use "#less";\n@expose a;\n@a: #c00;\n.a { x: @less.mix(foo(@a), bar(1), 150%); }').then(result => result.errors?.[0]?.reason))
+      .resolves.toContain('no CSS form holds a weight of 150%');
+  });
+
   it.each([
     ['@less.lightness(@brand)', '#08f'],
     ['@less.lightness(@brand)', 'rebeccapurple'],
@@ -68,7 +102,19 @@ describe('the export runtime', () => {
     ['@less.rgb(@brand, 0, 0)', '10', 'rgb(var(--brand, 10), 0, 0)'],
     ['@less.rgb(0, @brand, 0)', '10', 'rgb(0, var(--brand, 10), 0)'],
     ['@less.rgba(1, 2, 3, @brand)', '.5', 'rgba(1, 2, 3, var(--brand, 0.5))'],
-    ['@less.fade(@less.rgb(@brand, 0, 0), 50%)', '10', 'rgb(from rgb(var(--brand, 10), 0, 0) r g b / 0.5)']
+    ['@less.fade(@less.rgb(@brand, 0, 0), 50%)', '10', 'rgb(from rgb(var(--brand, 10), 0, 0) r g b / 0.5)'],
+    ['@less.mix(@brand, red)', '#c00', 'color-mix(in srgb, var(--brand, #c00), red)'],
+    ['@less.mix(@brand, red, 25%)', '#c00', 'color-mix(in srgb, var(--brand, #c00) 25%, red)'],
+    ['@less.mix(red, @brand, 25%)', '#c00', 'color-mix(in srgb, red 25%, var(--brand, #c00))'],
+    ['@less.mix(red, blue, @brand)', '25%', 'color-mix(in srgb, red var(--brand, 25%), blue)'],
+    ['@less.average(@brand, red)', '#c00', 'color-mix(in srgb, var(--brand, #c00), red)'],
+    ['@less.contrast(@brand)', '#c00', 'contrast-color(var(--brand, #c00))'],
+    ['@less.contrast(@brand, #111, #eee)', '#c00', 'rgb(from contrast-color(var(--brand, #c00)) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) / calc(1 + 0 * r / 255))'],
+    ['@less.tint(@brand, 13%)', '#c00', 'color-mix(in srgb, white 13%, var(--brand, #c00))'],
+    ['@less.tint(red, @brand)', '13%', 'color-mix(in srgb, white var(--brand, 13%), red)'],
+    ['@less.shade(@brand)', '#c00', 'color-mix(in srgb, black 50%, var(--brand, #c00))'],
+    ['@less.tint(@brand, -13%)', '#c00', 'rgb(from var(--brand, #c00) clamp(0, (r * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (g * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (b * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) / calc(alpha * 1.13 + -0.13))'],
+    ['@less.darken(color-mix(in srgb, @brand, red), 10%)', '#c00', 'hsl(from color-mix(in srgb, var(--brand, #c00), red) h s clamp(0, l - 10, 100))']
   ])('prints %s of %s over its var(), with no recipe', async (expression, value, printed) => {
     const exported = await compile(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
@@ -84,6 +130,66 @@ describe('the export runtime', () => {
       .rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 
+  it.each([
+    ['@less.mix(red, blue, @brand)', '150%', '25%'],
+    ['@less.mix(red, blue, @brand)', '25', '50%'],
+    ['@less.tint(#777, @brand)', '-13%', '13%'],
+    ['@less.contrast(@brand, #111, #eee, 50%)', '#999', '#222'],
+    ['@less.contrast(#999, @brand, #eee)', '#111', '#222'],
+    ['@less.mix(red, blue, (@brand))', '150%', '25%'],
+    ['@less.tint(red, (@brand))', '13', '25%'],
+    ['@less.tint(red, (@brand))', '13px', '25%'],
+    ['@less.rgb((@brand), 0, 0)', '2px', '10'],
+    ['@less.lightness(@less.mix(@brand, red))', '#c00', '#08f']
+  ])('runs %s of %s on the runtime, where no form holds it', async (expression, value, later) => {
+    const exported = await compile(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`);
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    const [property] = Object.keys(derived);
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ brand: later });
+    const recompiled = await compile(`@use "#less";\n@brand: ${later};\n.a { v: ${expression}; }`);
+    expect(recompiled.css).toContain(`v: ${vars[property!]};`);
+  });
+
+  it.each([
+    ['@less.mix((@a), (@b), 150%)', '@a: #c00;\n@b: #08f;'],
+    ['@less.mix(@a, red, (@b))', '@a: #c00;\n@b: 150%;']
+  ])('runs %s on the runtime, as it does with no parens', async (expression, declarations) => {
+    const exported = await compile(`@use "#less";\n@expose a, b;\n${declarations}\n.a { v: ${expression}; }`);
+    expect(Object.keys(exported.runtime!.derived)).toEqual(['--a-mix']);
+    expect(exported.css).toContain('v: var(--a-mix, ');
+  });
+
+  it('fails @less.contrast((@a)) of a number, as it does with no parens', async () => {
+    await expect(new Compiler({}).renderString('@use "#less";\n@expose a;\n@a: 1.5;\n.x { v: @less.contrast((@a)); }', { filePath: 'entry.less', extension: '.less' })).rejects.toMatchObject({ code: 'eval/invalid-function' });
+  });
+
+  it('prints an exposed variable in parens as it prints one without', async () => {
+    const exported = await compile('@use "#less";\n@expose r;\n@r: 10;\n.a { v: @less.rgb((@r), 0, 0); }');
+    expect(exported.css).toContain('v: rgb(var(--r, 10), 0, 0);');
+  });
+
+  it.each([
+    ['@less.contrast(rgb(@o 0 0), #111, #eee, 50%)', '200'],
+    ['@less.mix(color-mix(in srgb, @o, red), var(--b), 150%)', '#c00'],
+    ['@less.lightness(rgb(@o 0 0))', '200'],
+    ['@less.multiply(rgb(@o 0 0), red)', '200']
+  ])('names the exposed variable when %s fails', async (expression, value) => {
+    await expect(new Compiler({}).renderString(`@use "#less";\n@expose o;\n@o: ${value};\n.a { v: ${expression}; }`, { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('@o is exposed') });
+  });
+
+  it('prints a form over a colour call that reads an exposed variable', async () => {
+    const exported = await compile('@use "#less";\n@expose o;\n@o: 200;\n.a { v: @less.darken(rgb(@o 0 0), 10%); }');
+    expect(exported.css).toContain('v: hsl(from rgb(var(--o, 200) 0 0) h s clamp(0, l - 10, 100));');
+  });
+
+  it('runs a mix of two exports on the runtime beyond 100%, as no form holds it', async () => {
+    const exported = await compile('@use "#less";\n@expose a, b;\n@a: #336699;\n@b: red;\n.a { v: @less.mix(@a, @b, 150%); }');
+    expect(exported.css).toContain('v: var(--a-mix, #0099e6);');
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '#000', b: '#fff' })['--a-mix']).toBe('#000000');
+  });
+
   it('runs rgb() as a recipe inside a function with no CSS form', async () => {
     const exported = await compile('@use "#less";\n@expose r;\n@r: 200;\n.a { v: @less.lightness(@less.rgb(@r, 0, 0)); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
@@ -94,12 +200,23 @@ describe('the export runtime', () => {
   it.each([
     '@less.fade(var(--x), @a)',
     '@less.fade(hsl(120, 50%, 50%), @a)',
-    '@less.mix(rgba(1, 2, 3, .5), red, @a)',
     '@less.hsva(var(--h), 50%, 50%, @a)',
     '@less.hsv(var(--h), 50%, @a)',
-    '@less.darken(var(--x), @a)'
+    '@less.spin(var(--x), @a)'
   ])('compiles %s, and says what the runtime cannot read if it is set', async (expression) => {
     const exported = await compile(`@use "#less";\n@expose a;\n@a: 25%;\n.x { v: ${expression}; }`);
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '50%' })).toThrow('The runtime computes from CSS literals');
+  });
+
+  it('needs no recipe where the form holds the export', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.darken(var(--x), @a); }');
+    expect(exported.css).toContain('hsl(from var(--x) h s clamp(0, l - var(--a, 25%) / 1%, 100))');
+    expect(exported.runtime!.derived).toEqual({});
+  });
+
+  it.each(['rgba(1, 2, 3, .5)', 'rgb(1 2 3)'])('compiles a mix of %s beside a weight no form holds, and says what the runtime cannot read if it is set', async (color) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: 150%;\n.x { v: @less.mix(${color}, red, @a); }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '50%' })).toThrow('The runtime computes from CSS literals');
   });
