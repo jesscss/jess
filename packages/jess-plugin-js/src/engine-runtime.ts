@@ -77,7 +77,11 @@ const decodeEngineValue = async (value, plugins = new Map()) => {
     let made = plugins.get(key);
     if (made === undefined) {
       const { module, exportName, args } = value.__jessPlugin;
-      made = import(module).then(async mod => mod[exportName](...await decodeEngineValue(args, plugins)));
+      made = import(module).then(async (mod) => {
+        /* A factory recorded from a CommonJS build: importing it, `default` is its `module.exports`, which holds the export. */
+        const factory = typeof mod[exportName] === 'function' ? mod[exportName] : mod.default[exportName];
+        return factory(...await decodeEngineValue(args, plugins));
+      });
       plugins.set(key, made);
     }
     return await made;
