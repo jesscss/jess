@@ -265,6 +265,11 @@ or needs JS) to decide what ships in the bundle.
   is 501 to 502 KB minified, 133.5 KB gzip. So is `lightness(rgb(@r, 0, 0))`: `rgb()` nested inside a function with
   no CSS form runs in the recipe, and its two-slot overload is a form, so it costs
   the evaluator (503 KB minified, 133.8 KB gzip).
+  After `mix` `tint` `shade` `average` and `contrast` became forms: `lightness(@brand)` is
+  71.8 KB minified, 19.8 KB gzip; a page of `@less.mix(@brand, red, 25%)` or
+  `@less.contrast(@brand)` is 34.7 KB minified, 10.6 KB gzip; a recipe that runs one,
+  `@less.mix(@a, @b, 150%)`, `lightness(mix(@brand, red))` or
+  `@less.contrast(@brand, #111, #eee, 50%)`, is 506 KB minified, 134.4 KB gzip.
 - ponytail: imports of a stylesheet are not watched (`loadedUrls` is empty);
   only the stylesheet itself is. Watch the render's loaded files when the
   compiler reports them.
