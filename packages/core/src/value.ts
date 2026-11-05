@@ -17,6 +17,7 @@ export type {
   Color,
   Quoted,
   Keyword,
+  Arithmetic,
   FunctionCall,
   CallResult,
   Any,
@@ -77,7 +78,7 @@ export { CollectionOverlay, isCollection, collectionEntries, collectionEntryInde
 // --- value serializer ---
 export { HEX, RGB, HSL, serializeColor, hslToRgb } from './ast/color.js';
 export { serializeValue } from './ast/serialize-value.js';
-export { round } from './ast/round.js';
+export { decimalStep, round } from './ast/round.js';
 
 // --- shared value COMPARISON primitive (§5.1) ---
 export { compareOrder } from './ast/value-guards.js';

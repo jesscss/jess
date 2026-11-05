@@ -35,6 +35,12 @@ interface ParamSpecBase {
 
   /** Hand the body a typed thunk; evaluation and validation happen on invocation. */
   readonly lazy?: boolean;
+
+  /**
+   * The unit a built-in's CSS form takes this slot's value in when only the browser
+   * knows it (`''` a number, `%` a percentage; docs/design/CSS-NATIVE-BUILTINS.md Q2, Q3).
+   */
+  readonly formUnit?: string;
 }
 
 type ParamTypeSpec = ParamSpecBase & {

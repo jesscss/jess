@@ -1,10 +1,10 @@
 import { defineForm, type FormCall } from '@jesscss/core/form';
-import type { Dimension, Fn, ValueGroup } from '@jesscss/core/value';
+import type { Dimension, Fn, FunctionCall, ValueGroup } from '@jesscss/core/value';
 import { channelAmount, COLOR_ARG } from './color-form.js';
 import { spin as form } from './css-forms.generated.js';
 
-/** `spin(color, amount)`: `hsl(from color calc(h + amount) s l)`. */
+/** `spin(color, amount)`: `hsl(from color calc(h + amount) s l)`, an amount only the browser knows taken to hold a number of degrees (Q2). */
 export const spin: Fn = /* @__PURE__ */ defineForm('spin', {
-  params: [COLOR_ARG, { type: 'Dimension' }],
-  form: (color: ValueGroup, amount: Dimension): FormCall => [form, color, channelAmount(amount)]
+  params: [COLOR_ARG, { type: ['Dimension', 'FunctionCall'], formUnit: '' }],
+  form: (color: ValueGroup, amount: Dimension | FunctionCall): FormCall => [form, color, amount.type === 'FunctionCall' ? amount : channelAmount(amount)]
 });

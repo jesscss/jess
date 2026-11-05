@@ -8,3 +8,19 @@ $desaturate: @($color, $amount) > { result: hsl(from $color h clamp(0, s - $amou
 $desaturate-relative: @($color, $amount) > { result: hsl(from $color h clamp(0, s - s * $amount / 100, 100) l); }
 $spin: @($color, $amount) > { result: hsl(from $color calc(h + $amount) s l); }
 $greyscale: @($color) > { result: hsl(from $color h 0 l); }
+$darken-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l - $amount / 1%, 100)); }
+$darken-relative-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l - l * $amount / 1% / 100, 100)); }
+$lighten-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l + $amount / 1%, 100)); }
+$lighten-relative-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l + l * $amount / 1% / 100, 100)); }
+$saturate-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s + $amount / 1%, 100) l); }
+$saturate-relative-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s + s * $amount / 1% / 100, 100) l); }
+$desaturate-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s - $amount / 1%, 100) l); }
+$desaturate-relative-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s - s * $amount / 1% / 100, 100) l); }
+$percentage: @($value) > { result: calc($value * 100%); }
+$unit: @($value, $one) > { result: calc($value * $one); }
+$convert: @($value) > { result: calc($value); }
+$ceil: @($value, $step) > { result: round(up, $value, $step); }
+$floor: @($value, $step) > { result: round(down, $value, $step); }
+$round: @($value, $step) > { result: calc(sign($value) * round(abs($value), $step)); }
+$round-deferred: @($value, $places) > { result: calc(sign($value) * round(abs($value), pow(10, -1 * $places))); }
+$mod: @($value, $divisor) > { result: rem($value, $divisor); }

@@ -13,11 +13,17 @@
  */
 const roundHalf = (n: number): number => (n < 0 ? -Math.round(-n) : Math.round(n));
 
+/** The decimal places a precision rounds to. */
+const places = (precision: number): number => precision < 0 ? 0 : precision > 292 ? 292 : Math.trunc(precision);
+
+/** The CSS `round()` step those decimal places are (css-values-4 §10.3). */
+export const decimalStep = (precision = 0): number => 10 ** -places(precision);
+
 export function round(number: number, precision?: number): number {
   if (precision === undefined) {
     return roundHalf(number);
   }
-  const p = precision < 0 ? 0 : precision > 292 ? 292 : Math.trunc(precision);
+  const p = places(precision);
   if (p !== 0 && Number.isFinite(number)) {
     if (Number.isInteger(number)) {
       return number;

@@ -12,13 +12,14 @@
 import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { compressDimensionBytes } from './compress.js';
 import { formChannelValues, relativeHsla, type Hsla, type MutableChannels } from './css-color.js';
+import { cssMath } from './css-math.js';
 import { buildEvaluator } from './evaluator.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { AnonymousMixin } from './nodes.js';
-import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type FormActivation } from './serialize.js';
+import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type BindingCell, type FormActivation } from './serialize.js';
 import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
-import { isValueGroupArray, type Color, type ValueGroup } from './value-eval.js';
-import { makeColorHsl, withFields } from './value-factory.js';
+import { isValueGroupArray, type Color, type Dimension, type ValueGroup } from './value-eval.js';
+import { makeColorHsl, makeDimension, withFields } from './value-factory.js';
 import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
 
@@ -37,7 +38,7 @@ interface FormLane {
 const lanes: Array<FormLane | undefined> = [undefined, undefined];
 
 function newLane(compress: boolean): FormLane {
-  const lane = formLane(buildEvaluator(createFnRegistry()), compress);
+  const lane = formLane(buildEvaluator(createFnRegistry(), { cssMath }), compress);
   const channels = formChannelValues();
   return { lane, channels, channelLane: formChannelLane(lane, channels) };
 }
@@ -58,35 +59,50 @@ const deferred = (out: ValueGroup): ValueGroup =>
 const bound = (value: ValueGroup | undefined): ValueGroup | null =>
   value === undefined ? null : !isValueGroupArray(value) && value.type === 'FunctionCall' ? insideParens(value) : value;
 
+const isDimension = (value: ValueGroup | null | undefined): value is Dimension =>
+  value !== null && value !== undefined && !isValueGroupArray(value) && value.type === 'Dimension';
+
+/** A form's math over numbers it knows, the channels it reads standing unbound; a number that cannot be spelled fails the call. */
+const computed = (out: ValueGroup): ValueGroup =>
+  isDimension(out) ? makeDimension(out.number, out.unit) : out;
+
+/** What prints a form spells the numbers it read, under `compress` as compressed. */
+function spellCells(cells: readonly BindingCell[], compress: boolean): void {
+  for (const cell of cells) {
+    const value = cell.evaluated;
+    if (isDimension(value) && (compress || value.bytes === '')) {
+      const bytes = value.bytes === '' ? makeDimension(value.number, value.unit).bytes : value.bytes;
+      cell.evaluated = withFields(value, { bytes: compress ? compressDimensionBytes(bytes) : bytes });
+    }
+  }
+}
+
 /**
  * A built-in's CSS form over evaluated arguments: a stylesheet function with its
- * parameters bound to the values, so nothing is evaluated twice. A known origin
- * decides first: the colour needs no written-out call, which is what anything
- * not known prints.
+ * parameters bound to the values, so nothing is evaluated twice. Known inputs
+ * compute it first: they need no written-out call, which is what anything not
+ * known prints.
  */
 function evalForm(form: FormActivation, call: FormCall, lanes: FormLane): MaybePromise<ValueGroup> {
-  const { frame, cells, channels } = form;
+  const { frame, cells, channels, result } = form;
   cells[0]!.evaluated = bound(call[1]);
   if (cells.length > 1) {
     cells[1]!.evaluated = bound(call[2]);
   }
   const input = call[1];
-  if (channels !== undefined && !isValueGroupArray(input) && input.type === 'Color') {
-    const { channelLane } = lanes;
+  const amount = call[2];
+  const known = amount === undefined || isDimension(amount);
+  const { channelLane, lane } = lanes;
+  if (known && isDimension(input)) {
+    return mapMaybe(evalFormChannel(result, frame, channelLane), computed);
+  }
+  if (known && channels !== undefined && !isValueGroupArray(input) && input.type === 'Color') {
     const hsla = relativeHsla(channels, input, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
     if (hsla !== undefined && !isThenable(hsla)) {
       return spelled(hsla, input);
     }
   }
-  const lane = lanes.lane;
-  if (lane.compress === true) {
-    for (const cell of cells) {
-      const value = cell.evaluated;
-      if (value !== null && !isValueGroupArray(value) && value.type === 'Dimension') {
-        cell.evaluated = withFields(value, { bytes: compressDimensionBytes(value.bytes) });
-      }
-    }
-  }
+  spellCells(cells, lane.compress === true);
   return mapMaybe(evalFormResult(form, lane), deferred);
 }
 

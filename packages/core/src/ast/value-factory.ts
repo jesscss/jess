@@ -7,14 +7,14 @@
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
 import type {
-  Any, Block, Bool, CallResult, Collection, CollectionEntry, Color, Dimension, FunctionCall, Keyword, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
+  Any, Arithmetic, Block, Bool, CallResult, Collection, CollectionEntry, Color, Dimension, EvalValue, FunctionCall, Keyword, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
 } from './value-eval.js';
 import { isMathFunctionName } from './math-functions.js';
 import { colorRgb, colorSourceRgb, HSL, hslToRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 import {
   AnyValueNode, BlockValueNode, BoolValueNode, CollectionValueNode, ColorValueNode, CompoundDimensionValueNode, DimensionValueNode,
-  FunctionCallValueNode, HslColorValueNode, KeywordValueNode, ListValueNode, NullValueNode, QuotedValueNode, UrlValueNode, copyNode as copyNodeOf, withFields as withFieldsOf
+  ArithmeticValueNode, FunctionCallValueNode, HslColorValueNode, KeywordValueNode, ListValueNode, NullValueNode, QuotedValueNode, UrlValueNode, copyNode as copyNodeOf, withFields as withFieldsOf
 } from './node-ctors.js';
 
 /*
@@ -186,8 +186,16 @@ function callResult(name: string): CallResult {
 export const makeFunctionCall = (name: string, args: ValueGroup, bytes: string): FunctionCall =>
   new FunctionCallValueNode(name, args, callResult(name), false, bytes);
 
-/** `call` as a keyword: how a reader that does not ask for its structure reads a call written out as-is. */
-export const callKeyword = (call: FunctionCall): Keyword => new KeywordValueNode(call.bytes, call.bytes, 0);
+/** `call` as a keyword: how a reader that does not ask for its structure reads a call written out as-is, or arithmetic. */
+export const callKeyword = (call: FunctionCall | Arithmetic): Keyword => new KeywordValueNode(call.bytes, call.bytes, 0);
+
+/** Arithmetic spelled `bytes` ({@link Arithmetic}). */
+export const makeArithmetic = (op: string, left: EvalValue, right: EvalValue, kept: boolean, bytes: string): Arithmetic =>
+  new ArithmeticValueNode(op, left, right, kept, bytes);
+
+/** A `calc()` over what it holds, spelled `bytes` ({@link FunctionCall}). */
+export const makeCalc = (args: ValueGroup, bytes: string): FunctionCall =>
+  new FunctionCallValueNode('calc', args, 'numeric', false, bytes);
 
 /** Opaque text; `escapedQuote` is set only for an escaped string (see {@link Any.escapedQuote}). */
 export const makeAny = (bytes: string, escapedQuote = '', groups = 0): Any => new AnyValueNode(bytes, escapedQuote, groups);

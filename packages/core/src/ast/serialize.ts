@@ -218,8 +218,8 @@ import { collectNestedProperty, isNestedPropertyValue } from './nested-property.
 import { callSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
-import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
+import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathOnDeferred, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { makeAny, makeArithmetic, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
@@ -888,7 +888,7 @@ interface DeclIndex {
  * back (see {@link activateVariableDeclaration}), so a plain overwrite sequence
  * stays O(1) and only a genuine read-then-write retains its predecessor.
  */
-interface BindingCell {
+export interface BindingCell {
   declaration: VariableDeclaration;
   value: Binding;
   valueFrame: Frame | null;
@@ -5641,7 +5641,7 @@ const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => gr
  */
 function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: Lane): Value {
   const depth = writtenParens(node, frame, e);
-  return depth === 0 || (value.type === 'Keyword' && (namedColor(value.bytes) !== undefined || keptMathOf(value) !== undefined)) || isOpaqueText(value, e)
+  return depth === 0 || (value.type === 'Keyword' && namedColor(value.bytes) !== undefined) || keptMathOf(value) !== undefined || isOpaqueText(value, e)
     ? value
     : inParens(value, wrapParens(value.bytes, depth));
 }
@@ -5700,10 +5700,7 @@ function writtenGroup(v: EvalValue): Value {
   if (isLiteral(v) || isValueGroupArray(v)) {
     return makeKeyword(`(${emitValue(v)})`);
   }
-  if (keptMathOf(v) !== undefined) {
-    return groupAsWritten(v);
-  }
-  if (v.type === 'FunctionCall') {
+  if (v.type === 'FunctionCall' || v.type === 'Arithmetic') {
     return groupAsWritten(v);
   }
   return v.type === 'Any' && v.escapedQuote !== '' ? textGroup(v) : makeKeyword(`(${emitValue(v)})`);
@@ -6278,10 +6275,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * back a bare string sends it through `force`, which reads
            * `8px / 2` as a slash LIST — and a List is not a calc argument, so
            * `calc($val / 2)` came back as `8px / 2` with the wrapper dropped.
-           * A Keyword is the same carrier `value-operate` already uses for a
-           * preserved `calc(…)` sub-expression.
+           * It is arithmetic, what the `calc()` around it holds.
            */
-          return node.inMathFunction ? carryKeptClash(makeKeyword(bytes), values[0]!, values[1]!) : literal(bytes);
+          return node.inMathFunction ? carryKeptClash(makeArithmetic(node.operator, values[0]!, values[1]!, false, bytes), values[0]!, values[1]!) : literal(bytes);
         });
       }
       const ev = e.ev;
@@ -6304,14 +6300,14 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * function's and a written-out call's arguments keep such math as
            * written rather than reject it ({@link Lane.keepsMath}).
            */
-          return checkedOperation(node.operator, values[0]!, values[1]!, ev, e.keepsMath || (e.calcDepth ?? 0) > 0 || (node.operator === '/' && node.mathOutsideParens) || isConditionOperand(node.left) || isConditionOperand(node.right))
+          const kept = e.keepsMath || (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right);
+          const separates = node.operator === '/' && node.mathOutsideParens;
+          const left = checkedOperation(node.operator, values[0]!, values[1]!, ev, kept || separates)
             ?? (e.channels !== undefined && !channelMath(node.operator, values[0]!, values[1]!) ? rejectChannelMath(node.operator) : undefined)
-            ?? rememberUnitOwner(ev.operate(
-              node.operator,
-              spelledOperand(node.left, mathOperand(values[0]!, node.operator, ev, e), frame, e),
-              spelledOperand(node.right, mathOperand(values[1]!, node.operator, ev, e), frame, e),
-              e.modes
-            ), node);
+            ?? spelledOperand(node.left, mathOperand(values[0]!, node.operator, ev, e), frame, e);
+          const right = spelledOperand(node.right, mathOperand(values[1]!, node.operator, ev, e), frame, e);
+          return rememberUnitOwner((kept || ev.sassCalculations === true || (separates && e.parenFrames?.at(-1) !== true) ? undefined : mathOnDeferred(node.operator, left, right))
+            ?? ev.operate(node.operator, left, right, e.modes), node);
         } catch (error) {
           throwUnitArithmetic(error, node, e);
         }
@@ -7857,10 +7853,10 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromis
 
       /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
       const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
-      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(isValueGroupArray(v) ? emitValue(v) : mathText(v, emitValue(v)), isValueGroupArray(v) || !isOpaqueText(v, ce) ? authored : 0)})`), v, v));
+      return keepAsWritten(carryKeptClash(makeCalc(v, `calc(${kept ?? wrapParens(isValueGroupArray(v) ? emitValue(v) : mathText(v, emitValue(v)), isValueGroupArray(v) || !isOpaqueText(v, ce) ? authored : 0)})`), v, v));
     }
-    if (!isValueGroupArray(v) && (v.type === 'Keyword' || v.type === 'FunctionCall')) {
-      return writtenCalcInner(v) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${mathText(v)})`), v, v));
+    if (!isValueGroupArray(v) && (v.type === 'Keyword' || v.type === 'FunctionCall' || v.type === 'Arithmetic')) {
+      return writtenCalcInner(v) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeCalc(v, `calc(${mathText(v)})`), v, v));
     }
 
     /*
@@ -7871,7 +7867,7 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromis
      * no longer a calculation at all (V31).
      */
     if (isValueGroupArray(v) || v.type !== 'Dimension') {
-      return keepAsWritten(makeKeyword(`calc(${isValueGroupArray(v) ? emitValueC(v, e) : mathText(v, emitValueC(v, e))})`));
+      return keepAsWritten(makeCalc(v, `calc(${isValueGroupArray(v) ? emitValueC(v, e) : mathText(v, emitValueC(v, e))})`));
     }
     return e.ev?.sassCalculations === true || e.channels !== undefined ? v : makeSpelledDimension(v, v.preserved ?? v.bytes);
   });
@@ -9185,7 +9181,7 @@ function dispatchCall(
         ? out
         : resolveHsl(node, vals[0]!, channelBinder(frame, be), out))
     : e.channels !== undefined && selected === undefined
-      ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? dispatch(vals)
+      ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? ev.cssMath?.(node.name, vals) ?? dispatch(vals)
       : dispatch;
 
   /* [A4] A computed call reading an export is recorded for the runtime. */
@@ -21333,6 +21329,7 @@ function emitRawInline(loaded: ImportDocumentInline, node: StyleImport, e: Emit)
  */
 const STATEMENT_RESULT_POSITIONS: Readonly<Record<Value['type'], readonly [root: boolean, declarationList: boolean]>> = {
   Any: [true, true],
+  Arithmetic: [false, false],
   Block: [false, false],
   Bool: [false, false],
   Collection: [false, false],

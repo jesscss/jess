@@ -186,6 +186,25 @@ export interface FunctionCall {
 }
 
 /**
+ * Arithmetic that has not computed, as structure: the evaluated twin of the
+ * parse tree's `Operation`, spelled `bytes`. What a `calc()` holds when its math
+ * cannot compute, and what math written in any math function is (css-values-4
+ * §10; docs/design/CSS-NATIVE-BUILTINS.md §3.2). `kept` when the compile kept it
+ * (V18, V27, V38) rather than the author writing it in a math function, so it
+ * is that `calc()`'s arithmetic wherever more math reads it (V27). An `op` of
+ * `''` is a paren group around `left`. Operands written in a math function that
+ * nothing reads as values stay literal.
+ */
+export interface Arithmetic {
+  readonly type: 'Arithmetic';
+  readonly op: string;
+  readonly left: EvalValue;
+  readonly right: EvalValue;
+  readonly kept: boolean;
+  readonly bytes: string;
+}
+
+/**
  * Opaque evaluated bytes produced by explicit unquote APIs such as Less `e()`.
  * Value-domain `Any.bytes` is distinct from parsed AST `Any.src`: both carry
  * opaque CSS bytes, but this shape is already evaluated and must emit as-is.
@@ -338,7 +357,7 @@ export interface UrlValue {
   readonly bytes: string;
 }
 
-export type Value = Dimension | Color | Quoted | Keyword | FunctionCall | Any | UrlValue | List | Block | Bool | Null | Collection;
+export type Value = Dimension | Color | Quoted | Keyword | FunctionCall | Arithmetic | Any | UrlValue | List | Block | Bool | Null | Collection;
 
 /**
  * The canonical structural value carrier. A raw array is a default
@@ -856,6 +875,9 @@ export const writtenArgument = (keyword: ArgumentKeyword, bytes: string, compres
 export interface ValueEvaluator {
   /** Binary operation on two materialized operands (direct / delegated math). */
   operate(op: string, left: Value, right: Value, modes: EvalModes): Value;
+
+  /** The CSS math functions a built-in's form computes on known inputs (`css-math.ts`); no document's evaluator has them. */
+  readonly cssMath?: (name: string, args: readonly ValueGroup[]) => Dimension | null;
 
   /** Named-function call on a materialized arg list. Sync unless a genuinely
    * async built-in forces a thenable (scoped to the forcing leaf). `scope`, when

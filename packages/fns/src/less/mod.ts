@@ -1,12 +1,11 @@
-import type { Fn } from '@jesscss/core/value';
-import { makeDimension, defineFunction } from '@jesscss/core/value';
-import { requireDimension } from '../shared/math/math-helper.js';
+import { defineForm, formNumber, type FormCall } from '@jesscss/core/form';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
+import { isDimension, NUMBER_ARG, plain } from './css-math-args.js';
+import { mod as form } from './css-forms.generated.js';
 
-/** `mod(a, b)` — `a % b`, keeping `a`'s unit. */
-export const mod: Fn = defineFunction('mod', {
-  params: [{ type: 'Dimension' }, { type: 'Dimension' }],
-  body: (a, b) => {
-    const first = requireDimension(a);
-    return makeDimension(first.number % requireDimension(b).number, first.unit);
-  }
+/** `mod(a, b)`: `rem(a, b)`, the dividend's sign and, known, its unit. */
+export const mod: Fn = /* @__PURE__ */ defineForm('mod', {
+  params: [NUMBER_ARG, NUMBER_ARG],
+  form: (a: ValueGroup, b: ValueGroup): FormCall =>
+    [form, plain(a), isDimension(a) && isDimension(b) ? formNumber(b.number, a.unit) : b]
 });

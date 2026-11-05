@@ -553,7 +553,7 @@ export function exportCall<F>(
 
 /** What a built-in's CSS form computes: its colour, or the form itself. A call written out is neither. */
 const isFormResult = (result: EvalValue): boolean =>
-  typeof result !== 'string' && !isValueGroupArray(result) && (result.type === 'Color' || (result.type === 'FunctionCall' && result.computed));
+  typeof result !== 'string' && !isValueGroupArray(result) && (result.type === 'Color' || result.type === 'Dimension' || (result.type === 'FunctionCall' && result.computed));
 
 const lone = (v: ValueGroup): ValueGroup => isValueGroupArray(v) && v.length === 1 ? v[0]! : v;
 
@@ -563,7 +563,13 @@ function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: N
     return false;
   }
   const taken = new Set(vals.filter((_, index) => fn.params[index]?.type?.includes('FunctionCall') === true).map(lone));
-  return inputs.every(input => taken.has(input.value));
+  return inputs.every(input => taken.has(input.value) && holdsFormUnit(fn, vals, input.value));
+}
+
+/** Whether an export's value has the unit its slot's form takes what only the browser knows in (§3.6; {@link ParamSpec}), so the form means the same as the export's value computes to. */
+function holdsFormUnit(fn: Fn, vals: readonly ValueGroup[], value: ValueGroup): boolean {
+  const unit = fn.params[vals.findIndex(val => lone(val) === value)]?.formUnit;
+  return unit === undefined || isValueGroupArray(value) || value.type !== 'Dimension' || value.unit === unit;
 }
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */

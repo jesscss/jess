@@ -1,28 +1,27 @@
-import type { Fn } from '@jesscss/core/value';
-import { makeDimension, textOf, defineFunction, groupOf, unitFactor } from '@jesscss/core/value';
-import { requireDimension } from '../shared/math/math-helper.js';
+import { defineForm, formNumber, type FormCall } from '@jesscss/core/form';
+import { groupOf, textOf, unitFactor, type Dimension, type Fn, type FunctionCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
+import { isDimension, NUMBER_ARG } from './css-math-args.js';
+import { convert as form } from './css-forms.generated.js';
+
+/** A known `value` in `target` when they share a unit group; else unchanged, still a computed result with canonical bytes. */
+function converted(value: Dimension, target: string): Dimension {
+  const from = value.unit;
+  const group = groupOf(from);
+  return from && target && from !== target && group !== undefined && group === groupOf(target)
+    ? formNumber(value.number * (unitFactor(from)! / unitFactor(target)!), target)
+    : formNumber(value.number, from);
+}
 
 /**
- * `convert(value, unit)` — convert `value` to `unit` when they share a group; else
- * return the value canonicalized (an incompatible/no-op convert is still a COMPUTED
- * result, so it emits canonical bytes, matching the adapter's `render()`).
+ * `convert(value, unit)`: `calc(value)`, the same CSS quantity, a known one spelled
+ * in `unit`. A unit only the browser knows has no CSS form.
  */
-export const convert: Fn = defineFunction('convert', {
-  params: [{ type: 'Dimension' }, { type: ['Keyword', 'Quoted'] }],
-  body: (value, unitArg) => {
-    const v = requireDimension(value);
-    const from = v.unit;
-    if (unitArg.type !== 'Keyword' && unitArg.type !== 'Quoted') {
-      throw new TypeError('Expected a keyword or quoted unit');
+export const convert: Fn = /* @__PURE__ */ defineForm('convert', {
+  params: [NUMBER_ARG, { type: ['Keyword', 'Quoted', 'FunctionCall'] }],
+  form: (value: ValueGroup, to: Keyword | Quoted | FunctionCall): FormCall => {
+    if (to.type === 'FunctionCall') {
+      throw new TypeError('convert: a unit only the browser knows cannot pick a form');
     }
-    const target = textOf(unitArg);
-    if (!from || !target || from === target) {
-      return makeDimension(v.number, v.unit);
-    }
-    const g = groupOf(from);
-    if (g !== undefined && g === groupOf(target)) {
-      return makeDimension(v.number * (unitFactor(from)! / unitFactor(target)!), target);
-    }
-    return makeDimension(v.number, v.unit);
+    return [form, isDimension(value) ? converted(value, textOf(to)) : value];
   }
 });

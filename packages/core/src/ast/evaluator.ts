@@ -136,7 +136,7 @@ const stringify = (v: ValueGroup): string =>
  */
 export function buildEvaluator(
   registry: FnRegistry,
-  options: { readonly sassCalculations?: boolean; readonly sassOperands?: boolean; readonly parseSelector?: SelectorParse } = {}
+  options: { readonly sassCalculations?: boolean; readonly sassOperands?: boolean; readonly parseSelector?: SelectorParse; readonly cssMath?: ValueEvaluator['cssMath'] } = {}
 ): ValueEvaluator {
   const { parseSelector } = options;
   const rejectEmpty = options.sassOperands === true;
@@ -224,7 +224,8 @@ export function buildEvaluator(
     compareMatch,
     typeCheck,
     sassCalculations: options.sassCalculations === true,
-    sassOperands: options.sassOperands === true
+    sassOperands: options.sassOperands === true,
+    cssMath: options.cssMath
   };
   return evaluator;
 }

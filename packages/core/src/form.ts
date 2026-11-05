@@ -4,3 +4,4 @@
  * costs, and `@jesscss/core/value` stays without it.
  */
 export { defineForm, type FormCall } from './ast/css-form.js';
+export { formNumber } from './ast/css-math.js';
