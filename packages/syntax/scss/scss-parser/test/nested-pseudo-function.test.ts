@@ -37,6 +37,20 @@ describe('SCSS nested rule that opens with a functional pseudo', () => {
     });
   });
 
+  /* Only a colon before a pseudo's name can open a selector, so the others keep the declaration. */
+  it.each([
+    ['a spaced colon', '.a { x: y .c { d: e; } }'],
+    ['a glued number', '.a { x:1px .c { d: e; } }'],
+    ['a glued variable', '.a { x:$y .c { d: e; } }']
+  ])('keeps the rule after %s as a rule', (_label, source) => {
+    expect(parse(source)).toMatchObject({
+      rules: [{ rules: [
+        { type: 'Declaration', name: 'x' },
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'd' }] }
+      ] }]
+    });
+  });
+
   it('keeps a number that opens an argument', () => {
     expect(parse('.a { x: f(.5); }')).toMatchObject({
       rules: [{ rules: [{ value: { type: 'FunctionCall', args: [{ value: { type: 'Dimension' } }] } }] }]
