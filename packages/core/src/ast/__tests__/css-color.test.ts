@@ -3,7 +3,7 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { serialize, type SerializeReturn } from '../serialize.js';
 import { defineFunction } from '../value-dispatch.js';
-import { makeKeyword } from '../value-factory.js';
+import { makeDimension, makeKeyword } from '../value-factory.js';
 import { isValueGroupArray, type ValueGroup } from '../value-eval.js';
 import { parse as parseLess } from '../../../../syntax/less/less-parser/src/index.js';
 
@@ -197,10 +197,29 @@ describe('a built-in is its CSS form', () => {
     expect(value('srgb(hsl(var(--h), 60%, 40%))')).toBe('-');
   });
 
-  it('reads a channel above 100 as Chrome 152 does: comma clamps it, space-separated keeps it', () => {
+  it('clamps a comma channel outside 0–100, and leaves a space-separated one to the browser', () => {
     expect(value('desaturate(hsl(120, 150%, 50%), 20%)')).toBe('hsl(120, 80%, 50%)');
-    expect(value('desaturate(hsl(120 150% 50%), 20%)')).toBe('hsl(120, 100%, 50%)');
-    expect(value('desaturate(hsl(120 -10% 50%), 0%)')).toBe('hsl(120, 0%, 50%)');
+    expect(value('desaturate(hsl(120 150% 50%), 20%)')).toBe('hsl(from hsl(120 150% 50%) h clamp(0, s - 20, 100) l)');
+    expect(value('desaturate(hsl(120 -10% 50%), 0%)')).toBe('hsl(from hsl(120 -10% 50%) h clamp(0, s - 0, 100) l)');
+    expect(value('darken(hsl(120 200% 75%), 10%)')).toBe('hsl(from hsl(120 200% 75%) h s clamp(0, l - 10, 100))');
+  });
+
+  it('evaluates a comma hsl()\'s computed arguments once', () => {
+    let calls = 0;
+    const counting = makeLessRegistry();
+    counting.register(defineFunction('next-hue', { params: [], body: () => makeDimension(++calls * 100) }));
+    const out = css(serialize(parseLess('.a { x: hue(hsl(next-hue(), calc(10% + 10%), 50%)); }'), { evaluator: buildEvaluator(counting) }));
+    expect(out).toContain('x: 100;');
+    expect(calls).toBe(1);
+  });
+
+  it('reads a hue unit in any case', () => {
+    const printed = (color: string): string | undefined =>
+      css(serialize(parseLess(`.m(@c) { x: @c; } .a { .m(${color}); }`), { evaluator }))?.match(/x: ?([^;}]*)/)?.[1];
+    expect(printed('hsl(0.25TURN, 50%, 50%)')).toBe('hsl(0.25TURN, 50%, 50%)');
+    expect(printed('hsl(100GRAD, 50%, 50%)')).toBe('hsl(100GRAD, 50%, 50%)');
+    expect(printed('hsl(1RAD, 50%, 50%)')).toBe('hsl(1RAD, 50%, 50%)');
+    expect(value('hue(hsl(0.25TURN, 50%, 50%))')).toBe('90');
   });
 
   it('leaves a call written out when only the browser knows its method', () => {
