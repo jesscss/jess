@@ -107,7 +107,7 @@
     },
     "scss": {
       "source": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "sourceBytes": 202321,
+      "sourceBytes": 202322,
       "artifacts": {
         "lib/grammar/ast.js": {
           "bytes": 394523,
