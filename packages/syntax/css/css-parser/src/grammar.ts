@@ -426,9 +426,12 @@ const compoundTrivia = classifiedTrivia({ blockComment });
 const commentTrivia = classifiedTrivia({ blockComment });
 
 /*
- * The value ladder runs under `ValueSequence`'s `noTrivia`, and parseman scopes
- * trivia dynamically — clearing it covers every rule reached through a `g.`
- * reference, not just the terms written inside the wrapper. So every interior
+ * The value ladder runs under `ValueSequence`'s `noTrivia`, and clearing trivia
+ * does not reach through a reference: a rule with terms of its own takes its
+ * ambient trivia back when it is entered from a cleared region (parseman's
+ * `hasOwnTriviaBoundary`). So a rule that keeps authored padding clears trivia
+ * itself, as `CurlyValue` and the `var()` fallback rules do; otherwise the ambient
+ * skip takes the padding before its own term reads it. Every interior
  * that admits authored padding has to spell it, and it must spell `cssValueTrivia`
  * rather than a bare whitespace run: css-syntax-3 §4 makes a comment trivia
  * wherever whitespace is trivia. The `[ \t\n\r\f]+` spellings these replaced are
@@ -1102,13 +1105,13 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const BranchValues = node(
     'BranchValues',
-    sequence(
+    noTrivia(sequence(
       functionArgumentGroup,
       many(sequence(
         functionArgumentSemicolon,
         branchListGroup
       ))
-    ),
+    )),
     children => branchRest(children)
   );
   const BasicSelector = node(
@@ -1998,7 +2001,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackParen = node(
     'VarFallbackParen',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackParenCrossBracket,
         varFallbackParenCrossBrace
@@ -2022,7 +2025,7 @@ const cssFactory = (g: GrammarSelf) => {
         ))
       )),
       literal(')')
-    ),
+    )),
     children => parenGroupBlock(children)
   );
 
@@ -2034,7 +2037,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackBracket = node(
     'VarFallbackBracket',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackBracketCrossParen,
         varFallbackBracketCrossBrace
@@ -2047,12 +2050,12 @@ const cssFactory = (g: GrammarSelf) => {
         }
       ),
       literal(']')
-    ),
+    )),
     children => any(children.map(tokenText).join(''))
   );
   const VarFallbackBrace = node(
     'VarFallbackBrace',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackBraceCrossParen,
         varFallbackBraceCrossBracket
@@ -2065,7 +2068,7 @@ const cssFactory = (g: GrammarSelf) => {
         }
       ),
       literal('}')
-    ),
+    )),
     children => any(children.map(tokenText).join(''))
   );
 
@@ -2088,13 +2091,13 @@ const cssFactory = (g: GrammarSelf) => {
 
   const VarFallbackTerm = node(
     'VarFallbackTerm',
-    sequence(
+    noTrivia(sequence(
       varFallbackComponent,
       many(sequence(
         optional(cssValueTrivia),
         varFallbackComponent
       ))
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1 ? values[0]! : values;
@@ -2111,14 +2114,14 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackLead = node(
     'VarFallbackTerm',
-    sequence(
+    noTrivia(sequence(
       varFallbackComponent,
       many(sequence(
         optional(cssValueTrivia),
         not(literal(':')),
         varFallbackComponent
       ))
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1 ? values[0]! : values;
@@ -2146,10 +2149,10 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const VarFallback = node(
     'VarFallback',
-    oneOrMoreSep(
+    noTrivia(oneOrMoreSep(
       g.VarFallbackItem,
       varFallbackComma
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1
