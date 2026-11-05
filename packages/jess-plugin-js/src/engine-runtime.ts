@@ -5,6 +5,7 @@
  * ordinary function call. The host sends one `render` request per render and
  * receives the result and what the render printed, as data.
  */
+import { existsSync } from 'node:fs';
 import Module from 'node:module';
 import os from 'node:os';
 
@@ -57,6 +58,33 @@ const rebuildFunction = ({ source, where }) => {
 };
 
 /**
+ * The module to import for one recorded on the host. A package's CommonJS build
+ * records its own `.cjs` file. The ES module beside it is the same code, and
+ * the one the compiler here imports: importing the `.cjs` file would load a
+ * second copy of Jess with its own module state, and the CSS would depend on
+ * which build the host loaded (`docs/design/DENO-SANDBOX-COMPILE.md` §2).
+ * ponytail: a `.js` file beside a `.cjs` file is taken as its ES build; read the
+ * package's `exports` if a package ever ships an unrelated one.
+ */
+const esModuleOf = (recorded) => {
+  const sibling = recorded.endsWith('.cjs') ? `${recorded.slice(0, -'.cjs'.length)}.js` : undefined;
+  return sibling !== undefined && existsSync(new URL(sibling)) ? sibling : recorded;
+};
+
+/**
+ * What holds a recorded export of an imported module: the module, or, for a
+ * CommonJS module, the `module.exports` that importing it gives as `default`,
+ * where a `default` export of its own, and a name the import did not detect, are.
+ */
+const holderOf = (mod, name) => {
+  const commonJs = mod.default;
+  if (Object.hasOwn(mod, name) && (name !== 'default' || typeof commonJs === 'function')) {
+    return mod;
+  }
+  return commonJs !== null && typeof commonJs === 'object' && Object.hasOwn(commonJs, name) ? commonJs : undefined;
+};
+
+/**
  * Turns the host's encoded options back into values: `__jessFn` is a rebuilt
  * function, `__jessPlugin` a plugin made again by the factory that made it on
  * the host (its module, export and arguments), never a live object.
@@ -77,10 +105,12 @@ const decodeEngineValue = async (value, plugins = new Map()) => {
     let made = plugins.get(key);
     if (made === undefined) {
       const { module, exportName, args } = value.__jessPlugin;
-      made = import(module).then(async (mod) => {
-        /* A factory recorded from a CommonJS build: importing it, `default` is its `module.exports`, which holds the export. */
-        const factory = typeof mod[exportName] === 'function' ? mod[exportName] : mod.default[exportName];
-        return factory(...await decodeEngineValue(args, plugins));
+      made = import(esModuleOf(module)).then(async (mod) => {
+        const holder = holderOf(mod, exportName);
+        if (typeof holder?.[exportName] !== 'function') {
+          throw new Error(`The plugin factory "${exportName}" of ${module} is not a function that module exports.`);
+        }
+        return holder[exportName](...await decodeEngineValue(args, plugins));
       });
       plugins.set(key, made);
     }
@@ -161,7 +191,7 @@ const errorToData = (err) => {
 const compilerFor = async (req) => {
   let Compiler = engine.classes.get(req.compiler.module);
   if (!Compiler) {
-    Compiler = (await import(req.compiler.module))[req.compiler.exportName];
+    Compiler = (await import(esModuleOf(req.compiler.module)))[req.compiler.exportName];
     engine.classes.set(req.compiler.module, Compiler);
   }
   const key = `${req.compiler.module}\u0000${req.compiler.exportName}\u0000${JSON.stringify(req.compilerOptions)}`;

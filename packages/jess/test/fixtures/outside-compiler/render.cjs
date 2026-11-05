@@ -23,10 +23,7 @@ class OutsideCompiler extends Compiler {
 }
 
 const compiler = new OutsideCompiler({ compile: { plugins: [lessPlugin({}), lessCompatPlugin({ plugins: [] })] } });
-compiler.render(process.argv[2], { suppressWarnings: true }).then((css) => {
-  process.stdout.write(css);
-  compiler.dispose();
-}, (error) => {
+import('./report.mjs').then(({ report }) => report(compiler, process.argv[2])).catch((error) => {
   process.stderr.write(`${error.message}\n`);
   process.exit(1);
 });

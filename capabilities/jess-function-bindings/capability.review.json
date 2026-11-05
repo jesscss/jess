@@ -5,11 +5,11 @@
   "contractDigest": "08a588a4bc48ef3b6977063d2de3723abbcfea614c6e56d3b9ee72e64f6ef29a",
   "implementations": {
     "owner": "c4feef9b75ce5c0baad559f8838ec2d8e98eb2f95d6984c709647097ed5d9a2c",
-    "compiler-convert": "8bd61d83c7c01534557867e8a2b4e3d7f1b0dc52f86b17128d640c6cade60042",
+    "compiler-convert": "518c1bb8be8974415fa801d195dec43cd8dd0d58c27482b60c05890054538321",
     "less-equivalence": "6c5c019ef98d3fa9ac9d517642978433c59d1d32d19f17473537b47027484689",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "Only the moduleIdentity comment in packages/compiler/src/index.ts changed; the conversion's function bindings are the same."
+  "rationale": "Only the compiler's error path changed: an option that cannot cross into the sandbox now names its entry. The conversion's function bindings are the same."
 }
