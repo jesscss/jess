@@ -355,8 +355,8 @@ const whitespace = classifiedTrivia({
  * disjoint characters, so the match stays linear. `sumPad` requires real whitespace, which a comment does not
  * supply, and is the shape Sass's list-vs-math discrimination is written in.
  */
-const productPad = regex(/[ \t\n\r\f]*(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r\f]*)[ \t\n\r\f]*)*/);
-const sumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/)*[ \t\n\r\f]+(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r\f]*)[ \t\n\r\f]*)*/);
+const productPad = regex(/[ \t\n\r\f]*(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
+const sumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/)*[ \t\n\r\f]+(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
 
 /*
  * Each pad is its own term rather than part of the operator regex, so the
@@ -397,7 +397,7 @@ const sumOperator = choice(
   ))
 );
 const space = regex(/[ \t\n\r\f]+/);
-const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r\f]*)+/);
+const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)+/);
 
 /**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that SCSS gives no
