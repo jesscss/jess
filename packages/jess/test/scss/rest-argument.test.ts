@@ -24,3 +24,44 @@ describe('a rest argument to a function', () => {
     expect(await new Compiler().renderString(source, { extension: '.scss' })).toBe(css);
   });
 });
+
+const render = (source: string) => new Compiler().renderString(source, { extension: '.scss' });
+
+describe('a keyword after a rest argument stays on its own value', () => {
+  it.each([
+    ['$l: 1 2; .a { b: rgb($l..., $blue: 3); }', '.a {\n  b: rgb(1, 2, 3);\n}\n'],
+    ['$l: "abcd" 2; .a { b: str-slice($l..., $end-at: 3); }', '.a {\n  b: "bc";\n}\n'],
+    ['$l: 2 3; .a { b: rgb(1, $l..., $alpha: 0.5); }', '.a {\n  b: rgba(1, 2, 3, 0.5);\n}\n'],
+    ['$l: red; .a { b: lighten($amount: 10%, $l...); }', '.a {\n  b: #ff3333;\n}\n'],
+
+    /* Sass writes this colour as `rgb(30%, 0%, 70%)`. */
+    ['$l: red blue; .a { b: mix($l..., $weight: 30%); }', '.a {\n  b: rgb(77, 0, 179);\n}\n'],
+
+    /* As `hsl(50%, 50%, $hue: 1)`: positional arguments fill the slots the keywords leave. */
+    ['$l: 50% 50%; .a { b: hsl($l..., $hue: 1); }', '.a {\n  b: hsl(1, 50%, 50%);\n}\n']
+  ])('%s', async (source, css) => {
+    expect(await render(source)).toBe(css);
+  });
+
+  it('writes a call it cannot bind with each argument once', async () => {
+    expect(await render('$l: red 20%; .a { b: lighten($amount: 10%, $l...); }')).toBe('.a {\n  b: lighten($amount: 10%, red, 20%);\n}\n');
+  });
+});
+
+describe('a rest argument with no items to pass', () => {
+  it.each([
+    ['$m: (color: red, amount: 10%);\n.a {\n  b: lighten($m...);\n}', 'eval/invalid-function', 3, 16],
+    ['$m: (amount: 10%);\n.a {\n  b: lighten(red, $m...);\n}', 'eval/invalid-function', 3, 21],
+    ['.a {\n  b: hsl(from red h s l...);\n}', 'eval/invalid-function', 2, 24],
+    ['$c: h s l;\n.a {\n  b: hsl(from red $c...);\n}', 'eval/invalid-function', 3, 21],
+    ['$e: ();\n.a {\n  b: max($e...);\n}', 'eval/empty-list-value', 3, 12],
+    ['$e: ();\n.a {\n  b: rgb($e...);\n}', 'eval/empty-list-value', 3, 12],
+    ['$e: ();\n.a {\n  b: foo($e...);\n}', 'eval/empty-list-value', 3, 12]
+  ])('%s', async (source, code, line, column) => {
+    await expect(render(source)).rejects.toMatchObject({ code, line, column });
+  });
+
+  it('passes none to a function of the stylesheet', async () => {
+    expect(await render('@function f($a: 1) { @return $a; } $e: (); .a { b: f($e...); }')).toBe('.a {\n  b: 1;\n}\n');
+  });
+});

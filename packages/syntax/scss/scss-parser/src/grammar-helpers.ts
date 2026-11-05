@@ -17,7 +17,7 @@
  */
 
 import { NO_SPAN, any, block, keyword, interpolation, appendInterpolationLiteral, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, withSourceSpan, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout, lookupStep, guardLogical, guardNot, guardValue, withWrite, withParens } from '@jesscss/core/ast';
-import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { Any, AstSourceSpan, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
@@ -509,8 +509,8 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
     return callArg(argumentRun(isToken(last) && last.value === '>' && !isArgumentDelim(children[0]) ? [dataTypeRun(requireValueSlot(children[0])), ...children.slice(1)] : children));
   }
   const left = requireValueSlot(children[0]);
-  if (isToken(last) && last.value === '...') {
-    return callArg(left, undefined, true);
+  if (isSpreadMark(last)) {
+    return withSourceSpan(callArg(left, undefined, true), last.spreadAt);
   }
 
   /*
@@ -579,6 +579,15 @@ function isComparisonToken(child: unknown): boolean {
 /** The padding a call argument holds between its parts, by its node, so no delim reads as one. */
 export interface ScssArgumentGap {
   readonly gap: string;
+}
+
+/** A spread argument's `...`, by its node. */
+export interface ScssSpreadMark {
+  readonly spreadAt: AstSourceSpan;
+}
+
+function isSpreadMark(child: unknown): child is ScssSpreadMark {
+  return typeof child === 'object' && child !== null && 'spreadAt' in child;
 }
 
 function isArgumentGap(child: unknown): child is ScssArgumentGap {

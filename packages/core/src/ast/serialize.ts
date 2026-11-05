@@ -186,6 +186,7 @@ import {
   runReplays,
   sepGlue,
   writtenArgument,
+  spreadArguments,
   type EvalModes,
   type FnScope,
   type PluginCallCtx,
@@ -201,7 +202,7 @@ import {
   type Any as TextValue,
   type Keyword as KeywordValue,
   type List as EvalList,
-  type WrittenArguments
+  type ArgumentKeyword
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { defineFunction, FunctionDeclined } from './value-dispatch.js';
@@ -9054,26 +9055,25 @@ function dispatchCall(
     ? be
     : deriveLane(be, be.keepsMath ? 'checkMath' : 'keepMath');
   const dispatch = (evaluated: ValueGroup[]): MaybePromise<EvalValue> => {
-    const named = node.args.some(isNamedArg);
-    const vals = argument === ARG_INPUT && node.args.some(a => a.spread)
-      ? evaluated.flatMap((value, i) => (node.args[i]!.spread ? spreadItems(value) : [value]))
-      : evaluated;
-    const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, reach === 'ambient') : vals;
-    const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
-
-    /*
-     * A call that names an argument also hands over its arguments as written,
-     * read only if the call is written out as-is (P23). The keywords are the
-     * call's own arguments; when nothing was rebound, the order is the authored
-     * one already. The authored arguments themselves ride along for the
-     * comments and line breaks a written-out call keeps (F11); nothing is
-     * looked up unless the call is written out.
-     */
-    const written: WrittenArguments | undefined = named
-      ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
-      : undefined;
     try {
-      const result = ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', written, node.args);
+      const named = node.args.some(isNamedArg);
+      const flat = argument === ARG_INPUT && node.args.some(isSpreadArg) ? spreadArguments(node.args, evaluated, selected === undefined ? node.name : undefined, isCssColorFunction(node)) : undefined;
+      const vals = flat === undefined ? evaluated : flat.vals;
+      const keywords = flat === undefined ? node.args : flat.keywords;
+      const ordered = named ? orderKeywordArgs(keywords, vals, ev, node.name, selected, reach === 'ambient') : vals;
+      const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
+
+      /*
+       * A call that names an argument also hands over its arguments as written,
+       * read only if the call is written out as-is (P23). The keywords are the
+       * call's own arguments; when nothing was rebound, the order is the authored
+       * one already. The authored arguments themselves ride along for the
+       * comments and line breaks a written-out call keeps (F11); nothing is
+       * looked up unless the call is written out.
+       */
+      const result = ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', named
+        ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords }
+        : undefined, keywords);
       if (isThenable(result)) {
         return result.then((value) => {
           warnConsumedKept(vals, value, node, e);
@@ -9101,10 +9101,8 @@ function dispatchCall(
 /** Whether a call argument is written by name (`$lightness: -10%`). */
 const isNamedArg = (arg: CallArg<ValueSlot>): boolean => arg.name !== undefined;
 
-/** The arguments a `$list...` stands for: its items, or itself when it is one value. */
-function spreadItems(value: ValueGroup): readonly ValueGroup[] {
-  return isValueGroupArray(value) ? value : value.type === 'List' ? value.value : [value];
-}
+/** Whether a call argument stands for a list's items (`$list...`). */
+const isSpreadArg = (arg: CallArg): boolean => arg.spread === true;
 
 /** A call's arguments, typed: each slot, or a colour call's channels with its alpha ({@link colorAlphaSlash}); a loop, so no closure per call. */
 function callArguments(node: FunctionCall, alpha: Operation | null, frame: Frame | null, e: Lane, argument: ArgumentMode): Array<MaybePromise<ValueGroup>> {
@@ -9333,7 +9331,7 @@ function writtenBlockBody(
  * silent wrong lowering this exists to prevent.
  */
 function orderKeywordArgs(
-  args: readonly CallArg<ValueSlot>[],
+  args: readonly ArgumentKeyword[],
   vals: ValueGroup[],
   ev: ValueEvaluator,
   name: string,
@@ -9436,7 +9434,7 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: Lane): never
   }
   throw (error instanceof EmptyListValueError ? ERR.emptyListValue : ERR.invalidFunction)({
     node,
-    ...callSiteLocation(node, e.s),
+    ...callSiteLocation(node.args.find(isSpreadArg) ?? node, e.s),
     meta: { name: node.name, reason: error instanceof Error ? error.message : String(error) }
   });
 }
@@ -18800,7 +18798,7 @@ function expandSpreadArgs(
   e: Lane
 ): MaybePromise<ExpandedSpreadArgs> {
   // The overwhelmingly common call has no spread at all and leaves here untouched.
-  if (!call.args.some(a => a.spread)) {
+  if (!call.args.some(isSpreadArg)) {
     return call;
   }
   const args: CallArg[] = [];

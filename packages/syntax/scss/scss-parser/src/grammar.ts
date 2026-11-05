@@ -31,7 +31,7 @@ import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation
 import { RETURN_DIRECTIVE, directivePrelude, lowerFunctionReturns } from './grammar-return.js';
 import { scssSum } from './plus-chain.js';
 import { foldLogicalOperation, scssSlashGroupedTerm } from './grammar-logical.js';
-import type { ConditionWord, MathOperatorFact, ScssArgumentGap, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
+import type { ConditionWord, MathOperatorFact, ScssArgumentGap, ScssSpreadMark, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
@@ -55,6 +55,7 @@ type ScssRules = {
   Square: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
   ArgumentGap: Combinator<ScssArgumentGap>;
+  SpreadMark: Combinator<ScssSpreadMark>;
   MathUnary: Combinator<ValueNode>;
   MathProductOperator: Combinator<MathOperatorFact>;
   MathTopProductOperator: Combinator<MathOperatorFact>;
@@ -1785,6 +1786,13 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const argumentDelim = regex(/[<>+~]=?|::?|\.(?![0-9])|\*|%|#[-_a-zA-Z0-9]*[g-zG-Z_-][-_a-zA-Z0-9]*/);
 
+  /** A spread argument's `...`: its span is the one a call that cannot read the argument reports. */
+  const SpreadMark = node<ScssSpreadMark>(
+    'SpreadMark',
+    literal('...'),
+    (_children, _fields, span) => ({ spreadAt: span })
+  );
+
   /** The padding between a call argument's parts: labelled, so a run can tell it from a delim. */
   const ArgumentGap = node<ScssArgumentGap>(
     'ArgumentGap',
@@ -1819,7 +1827,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(sequence(
         optional(g.ArgumentGap),
         choice(
-          literal('...'),
+          g.SpreadMark,
           sequence(
             choice(
               comparisonOperator,
@@ -5456,6 +5464,7 @@ const scssFactory = (g: ScssInputRules) => {
     Square,
     ValueAtom,
     ArgumentGap,
+    SpreadMark,
     MathUnary,
     MathProductOperator,
     MathTopProductOperator,
