@@ -152,12 +152,29 @@ or needs JS) to decide what ships in the bundle.
   in an argument the form takes prints the form over its `var()`,
   `hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100))`, the browser
   recomputes it, and the function is in no recipe. Built for Less `lighten`
-  `darken` `saturate` `desaturate` `spin` `greyscale`; the one seam is
-  `exportCall`. Every other computed function takes rung 4, and so does one with
+  `darken` `saturate` `desaturate` `spin` `greyscale` `fade` `fadein` `fadeout`,
+  two-slot `rgb` `rgba`, and the hue of `hsv` `hsva`; the one seam is `exportCall`.
+  `rgb` and `rgba` with an exposed channel are valid CSS as written, and print so:
+  `@less.rgb(@r, 0, 0)` is `rgb(var(--r, 10), 0, 0)`; one exposed colour,
+  `@less.rgb(@brand)`, is `var(--brand, #c00)`. A wrong exposed value fails at the
+  compile, as its slot rejects it. A
+  stylesheet that prints only forms adds no function: with no exposed variable it
+  adds no JS at all, and with one it adds the runtime that sets it, `createRuntime`
+  with no derived value (measured 2026-11-05 with Vite 6: 34.7 KB minified, 10.6 KB gzip). Every other computed function takes rung 4, and so does one with
   an exposed variable in an argument its form does not take yet (`@less.darken(#c00, @a)`,
   that task's slice 5). An input of a function on rung 4 stays computed, as the
   runtime reads it: `@less.lightness(@less.darken(@brand, 10%))` is one recipe
   that runs both.
+  An exposed unit the form does not take keeps its recipe (`@r: 2px` in
+  `@less.rgb(@r, 0, 0)`). A call CSS reads as written over something only the browser
+  knows prints so (`@less.rgb(@r, var(--x), 0)`, `@less.rgb(@c, 0, 0)` with
+  `@c: var(--x)`).
+  The runtime reads a recipe's fixed arguments and other exports' defaults as CSS
+  literals, and a quoted string may hold parens. One holding a call
+  (`@less.fade(var(--x), @a)`, `@less.fade(hsl(120, 50%, 50%), @a)`) compiles, so the
+  stylesheet's CSS stands, and `vars()` throws saying so when that value is set. Hex
+  cannot stand in: it loses a grey's hue and rounds an alpha. OPEN for the owner:
+  whether this should be reported at the compile.
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent
@@ -245,6 +262,13 @@ or needs JS) to decide what ships in the bundle.
   runs on the evaluator: the runtime then ships `@jesscss/core/form`, the serializer
   included. Whether a recipe should reach a form that way, at that size, is the
   owner's call and is not decided here.
+  Measured again 2026-11-05 with Vite 6, after `fade` and `hsv` became forms:
+  `lightness(@brand)` is 72.2 KB minified, 20.2 KB gzip; a page of `@less.rgb(@r, 0, 0)` or
+  `@less.rgba(@brand, .5)` has no function in its runtime and is 34.7 KB minified, 10.6 KB gzip; a recipe
+  that runs a form, `lightness(spin(@brand, 30))` or `alpha(fade(@brand, 50%))`,
+  is 501 to 502 KB minified, 133.5 KB gzip. So is `lightness(rgb(@r, 0, 0))`: `rgb()` nested inside a function with
+  no CSS form runs in the recipe, and its two-slot overload is a form, so it costs
+  the evaluator (503 KB minified, 133.8 KB gzip).
 - ponytail: imports of a stylesheet are not watched (`loadedUrls` is empty);
   only the stylesheet itself is. Watch the render's loaded files when the
   compiler reports them.
@@ -261,8 +285,8 @@ or needs JS) to decide what ships in the bundle.
   functions is 26.5 KB gzip, because `@jesscss/fns` builds each dialect as one
   chunk and `@jesscss/core` has no `sideEffects: false`. Making that tree-shake
   per function is a size task of its own. (2026-11-05: `@jesscss/core` now states
-  its `sideEffects`, and with esbuild one function with no form, `fade` or
-  `percentage`, is 18.7 KB gzip; one form, `lighten`, is 116 KB gzip.)
+  its `sideEffects`, and with esbuild one function with no form, `lightness` or
+  `percentage`, is 18.3 KB gzip; one form, `lighten` or `fade`, is 117 KB gzip.)
 - **Generated names are the exposed variable's namespace.** `@expose brand` publishes
   `--brand` and reserves `--brand-*` for values derived from it; an exposed variable and a
   generated name never share a name (numbered). Two exposures of one name are one

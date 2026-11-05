@@ -100,7 +100,7 @@ export function fractionAmount(value: Value): number {
  * literal turning translucent becomes rgb — dart-sass: `transparentize(#ff0, .5)`
  * → `rgba(255, 255, 0, 0.5)` and `opacify(#ff000080, .1)` →
  * `rgba(255, 0, 0, 0.6019607843)` (so an 8-digit hex is NOT preserved the way
- * Less's `withAlpha` preserves it), while `transparentize(hsl(120,50%,50%), .5)`
+ * Less's alpha family preserves it), while `transparentize(hsl(120,50%,50%), .5)`
  * → `hsla(120, 50%, 50%, 0.5)` keeps hsl. No 8-decimal rounding: the emit policy
  * (`formatNumber` + 1e-10 tolerance trim) owns numeric presentation.
  */
