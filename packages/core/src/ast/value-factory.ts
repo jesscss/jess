@@ -163,11 +163,12 @@ export function makeColorHsl(
 }
 
 /**
- * An `hsl()` colour (h in degrees, s and l on 0–1). A grey, black or white
- * (`s === 0 || l === 0 || l === 1`) has no hue or saturation to carry, so it is
- * built from its rgb: its hue reads as 0, as in the browser (css-color-4
- * §4.4.1), and the authored hue unit goes with it. `src` is the colour's
- * spelling while no operation has consumed it.
+ * An `hsl()` colour (h in degrees, s and l on 0–1). A consumer reads the h, s
+ * and l it was given, a grey's, black's or white's included
+ * (docs/design/CSS-NATIVE-BUILTINS.md Q9). Until one does, those print as the
+ * colour they are in sRGB, hue and saturation 0, with no authored hue unit
+ * (css-color-4 §4.4.1). `src` is the colour's spelling while no operation has
+ * consumed it.
  */
 export function makeHslColor(
   hsl: readonly [number, number, number],
@@ -176,9 +177,11 @@ export function makeHslColor(
   opts?: { hueUnit?: string; alphaPct?: number; src?: string }
 ): Color {
   const [h, s, l] = hsl;
-  return s === 0 || l === 0 || l === 1
-    ? makeColorRgb(hslToRgb(h, s, l), alpha, HSL, { modernSyntax, ...(opts?.alphaPct !== undefined ? { alphaPct: opts.alphaPct } : {}), ...(opts?.src !== undefined ? { src: opts.src } : {}) })
-    : makeColorHsl(hsl, alpha, HSL, modernSyntax, opts);
+  if (s !== 0 && l !== 0 && l !== 1) {
+    return makeColorHsl(hsl, alpha, HSL, modernSyntax, opts);
+  }
+  const alphaOpts = opts?.alphaPct !== undefined ? { alphaPct: opts.alphaPct } : {};
+  return makeColorHsl(hsl, alpha, HSL, modernSyntax, { ...alphaOpts, src: opts?.src ?? makeColorRgb(hslToRgb(h, s, l), alpha, HSL, { modernSyntax, ...alphaOpts }).bytes });
 }
 
 export function makeQuoted(value: string, quote: string, escaped: boolean): Quoted {

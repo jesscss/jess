@@ -113,6 +113,9 @@ export interface ExportArgument {
 /** An export a computed call's argument reads, with the value it read. */
 interface ExportInput {
   readonly recipe: ExportRecipe;
+
+  /** The exports read through it and their values, recorded as defaults when a recipe holding them is written. */
+  readonly reads?: ReadonlyArray<{ readonly name: string; readonly value: ValueGroup }>;
   readonly value: ValueGroup;
 }
 
@@ -522,28 +525,35 @@ export function exportCall<F>(
   /* An argument still pending reports its exports when it settles. */
   return combineAll(typed, vals => inputs.length === 0
     ? dispatch(vals)
-    : outer === undefined && (typeof checks === 'object' || checks === 'argument') && takesForm(fn, vals, inputs)
-      ? dispatch(args(true))
-      : mapMaybe(dispatch(vals), (computed) => {
-          markArgument(argument);
-          const result: ValueGroup = typeof computed === 'string' ? makeKeyword(computed) : computed;
-          const recipe = callRecipe(node, fn, vals, inputs, e);
-          for (const input of inputs) {
-            if ('export' in input.recipe && !x.runtime.defaults.has(input.recipe.export)) {
-              x.runtime.defaults.set(input.recipe.export, emitValue(input.value));
-            }
+    : mapMaybe(dispatch(vals), (computed) => {
+        /* Whether the export's own value is one the form takes (§3.6): a wrong one has failed by now, or is written out. */
+        if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed) && takesForm(fn, vals, inputs)) {
+          return dispatch(args(true));
+        }
+        markArgument(argument);
+        const result: ValueGroup = typeof computed === 'string' ? makeKeyword(computed) : computed;
+        const recipe = callRecipe(node, fn, vals, inputs, e);
+        const reads = inputs.flatMap(input => 'export' in input.recipe ? [{ name: input.recipe.export, value: input.value }] : input.reads ?? []);
+        if (outer !== undefined) {
+          outer.push({ recipe, value: result, reads });
+          return result;
+        }
+        for (const read of reads) {
+          if (!x.runtime.defaults.has(read.name)) {
+            x.runtime.defaults.set(read.name, emitValue(read.value));
           }
-          if (outer !== undefined) {
-            outer.push({ recipe, value: result });
-            return result;
-          }
-          if (typeof checks !== 'object' && checks !== 'argument') {
-            exportNotWritten(node, `${node.name}()`, recipeExport(recipe), e,
-              'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
-          }
-          return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe, node.name)), result], ','), e.modes);
-        }));
+        }
+        if (typeof checks !== 'object' && checks !== 'argument') {
+          exportNotWritten(node, `${node.name}()`, recipeExport(recipe), e,
+            'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
+        }
+        return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe, node.name)), result], ','), e.modes);
+      }));
 }
+
+/** What a built-in's CSS form computes: its colour, or the form itself. A call written out is neither. */
+const isFormResult = (result: EvalValue): boolean =>
+  typeof result !== 'string' && !isValueGroupArray(result) && (result.type === 'Color' || (result.type === 'FunctionCall' && result.computed));
 
 const lone = (v: ValueGroup): ValueGroup => isValueGroupArray(v) && v.length === 1 ? v[0]! : v;
 

@@ -20,7 +20,7 @@ describe.each(MODES)('a CSS form under math: %s', (mathMode) => {
     ['@less.darken(var(--c), 10%)', 'hsl(from var(--c) h s clamp(0, l - 10, 100))'],
     ['@less.darken(var(--c), 10%, relative)', 'hsl(from var(--c) h s clamp(0, l - l * 10 / 100, 100))'],
     ['@less.spin(var(--c), 30)', 'hsl(from var(--c) calc(h + 30) s l)'],
-    ['@less.lighten(hsl(from #336699 h s clamp(0, l - 10, 100)), 10%)', 'hsl(210deg 50% 40%)']
+    ['@less.lighten(hsl(from #336699 h s clamp(0, l - 10, 100)), 10%)', 'hsl(210, 50%, 40%)']
   ])('%s is %s', async (source, expected) => {
     await expect(value(source)).resolves.toBe(expected);
   });

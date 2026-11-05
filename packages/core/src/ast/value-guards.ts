@@ -796,7 +796,7 @@ export function typeCheck(name: string, args: readonly Value[]): boolean {
     case 'iscolor': return asColor(a) !== undefined || (a.type === 'FunctionCall' && a.computed && a.result === 'color');
     case 'isnumber': return a.type === 'Dimension';
     case 'isstring': return a.type === 'Quoted';
-    case 'iskeyword': return a.type === 'FunctionCall' || (a.type === 'Keyword' && asColor(a) === undefined);
+    case 'iskeyword': return (a.type === 'FunctionCall' && !(a.computed && a.result === 'color')) || (a.type === 'Keyword' && asColor(a) === undefined);
     case 'isurl': return a.type === 'Url';
     case 'ispixel': return a.type === 'Dimension' && a.unit === 'px';
     case 'ispercentage': return a.type === 'Dimension' && a.unit === '%';

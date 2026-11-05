@@ -1,4 +1,5 @@
-import { defineForm, makeDimension, textOf, type Dimension, type Fn, type FormCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core';
+import { defineForm, type FormCall } from '@jesscss/core/form';
+import { makeDimension, textOf, type Dimension, type Fn, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 
 /** A colour a form's relative colour reads as its origin, or what only the browser knows of one. */
 export const COLOR_ARG = { type: ['Color', 'FunctionCall'] } as const;
@@ -7,6 +8,7 @@ export const COLOR_ARG = { type: ['Color', 'FunctionCall'] } as const;
 export const channelAmount = (amount: Dimension): Dimension => makeDimension(amount.number);
 
 /** `name(color, amount, method?)` over its CSS form, and the form `method: relative` takes. */
+/* @__NO_SIDE_EFFECTS__ */
 export function defineAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0]): Fn {
   return defineForm(name, {
     params: [COLOR_ARG, { type: 'Dimension' }, { type: ['Keyword', 'Quoted'], optional: true }],

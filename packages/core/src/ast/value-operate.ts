@@ -12,10 +12,11 @@
  * units table.
  */
 import Big from 'big.js';
+import { DimensionValueNode } from './node-ctors.js';
 import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { HEX } from './color.js';
-import { callKeyword, colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeGroupedKeyword, makeKeyword, makeQuoted, withFields } from './value-factory.js';
+import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeGroupedKeyword, makeKeyword, makeQuoted, withFields } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { convertValue, convertible, foldUnit, unitMultisetKey } from './value-units.js';
 
@@ -357,6 +358,11 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
     throw new DivisionByZeroError(`${a.bytes} / ${b.bytes}`);
   }
 
+  /* A colour channel's math is read, never written out ({@link ColorChannels}). */
+  if (a.unit === '' && b.unit === '' && (a.bytes === '' || b.bytes === '')) {
+    return new DimensionValueNode(calculate(a.number, op, b.number), '', '') as Dimension;
+  }
+
   const u = unitsOf(a);
   const bu = unitsOf(b);
   let value = calculate(a.number, op, b.number);
@@ -476,6 +482,10 @@ export const calcInner = (bytes: string): string | null => {
   return m ? m[1]! : null;
 };
 
+/** The inside of a `calc()` a value spells: a keyword's bytes, or a call named `calc`. */
+export const writtenCalcInner = (v: Value): string | null =>
+  v.type === 'Keyword' || (v.type === 'FunctionCall' && v.name.toLowerCase() === 'calc') ? calcInner(v.bytes) : null;
+
 /**
  * Whether `s` is a single fully-parenthesized group (`(a - b)`), so its leading
  * `(` closes only at the final `)`. Used so a spliced calc operand keeps ONE
@@ -577,9 +587,8 @@ export function groupText(v: Any | Keyword | FunctionCall): Value {
   return v.type === 'Any' ? makeAny(v.bytes, v.escapedQuote, v.groups + 1) : makeGroupedKeyword(v.bytes, v.type === 'FunctionCall' ? 1 : v.groups + 1);
 }
 
-/** `value` spelled `bytes`, the parens written around it: a call in parens is a paren group, no longer the call it spelled. */
-export const inParens = (value: Value, bytes: string): Value =>
-  withFields(value.type === 'FunctionCall' ? callKeyword(value) : value, { bytes });
+/** `value` spelled `bytes`, the parens written around it. A call in parens is the same call, read as itself (J16). */
+export const inParens = (value: Value, bytes: string): Value => withFields(value, { bytes });
 
 /**
  * `bytes`, the spelling of `v` ({@link emitValue}: an escaped string's already
@@ -703,7 +712,10 @@ export function groupAsWritten(v: Value): Value {
   if (kept !== undefined) {
     return keptMathKeyword(`(${kept})`, '', v, v);
   }
-  return v.type === 'FunctionCall' || (v.type === 'Keyword' && keptAsWritten.has(v)) ? composedKeyword(`(${v.bytes})`, v, v, '') : v;
+  if (v.type === 'FunctionCall') {
+    return keepAsWritten(inParens(v, `(${v.bytes})`));
+  }
+  return v.type === 'Keyword' && keptAsWritten.has(v) ? composedKeyword(`(${v.bytes})`, v, v, '') : v;
 }
 
 /**
@@ -734,7 +746,7 @@ function invalidOperand(v: ValueGroup, sass: boolean, scss: boolean): string | n
       }
       return !keptAsWritten.has(v) ? 'keyword' : keptAsWritten.get(v) === '' ? 'function call' : null;
     case 'FunctionCall':
-      return calcInner(v.bytes) === null ? 'function call' : null;
+      return writtenCalcInner(v) === null ? 'function call' : null;
     case 'Color':
       return scss ? 'color' : null;
     case 'Quoted':
@@ -881,8 +893,8 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
 
   const leftKept = keptMathOf(left) !== undefined;
   const rightKept = keptMathOf(right) !== undefined;
-  const leftInner = (left.type === 'Keyword' || left.type === 'FunctionCall') && !leftKept ? calcInner(left.bytes) : null;
-  const rightInner = (right.type === 'Keyword' || right.type === 'FunctionCall') && !rightKept ? calcInner(right.bytes) : null;
+  const leftInner = leftKept ? null : writtenCalcInner(left);
+  const rightInner = rightKept ? null : writtenCalcInner(right);
   const kept = leftKept || rightKept;
   if (kept || leftInner !== null || rightInner !== null) {
     const lb = leftInner !== null ? spliceInner(leftInner) : operandAsWritten(left, op, false, left.bytes, true);

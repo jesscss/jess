@@ -29,17 +29,17 @@ describe('rollup-plugin-jess', () => {
     const bundle = await rollup.rollup({ input: path.resolve(__dirname, './runtime.less'), plugins: [nodeResolve(), commonJs(), jess()] });
     const { output } = await bundle.generate({ format: 'es' });
     const css = output.find(item => item.type === 'asset' && item.fileName === 'runtime.css');
-    expect(css && css.type === 'asset' ? String(css.source) : '').toContain('border-color: var(--brand-darken, #990000);');
+    expect(css && css.type === 'asset' ? String(css.source) : '').toContain('border-color: var(--brand-fade, rgba(204, 0, 0, 0.5));');
 
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rollup-plugin-jess-'));
     try {
       const file = path.join(directory, 'runtime.mjs');
       fs.writeFileSync(file, output[0].code);
       const module: unknown = await import(file);
-      const recompiled = await new Compiler().renderString('@use "#less";\n.a { b: @less.darken(#08f, 10%); }', { filePath: 'entry.less', extension: '.less' });
+      const recompiled = await new Compiler().renderString('@use "#less";\n.a { b: @less.fade(#08f, 50%); }', { filePath: 'entry.less', extension: '.less' });
       expect(isRuntime(module)).toBe(true);
       if (isRuntime(module)) {
-        expect(recompiled).toContain(`b: ${module.vars({ brand: '#08f' })['--brand-darken']};`);
+        expect(recompiled).toContain(`b: ${module.vars({ brand: '#08f' })['--brand-fade']};`);
         expect(module.vars({ brand: '#08f' })['--brand']).toBe('#08f');
       }
     } finally {

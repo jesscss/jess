@@ -38,6 +38,9 @@ const camel = name => name.replace(/-(\w)/g, (_, letter) => letter.toUpperCase()
 export function generate(parse, source) {
   const forms = parse(source).rules.filter(rule => rule.type === 'VariableDeclaration');
   const lines = forms.map(({ name, value }) => {
+    if (value.rules.length !== 1) {
+      throw new Error(`The CSS form ${name} must be one \`result:\`; evalForm walks no body`);
+    }
     const params = value.params.map(param => `{ name: ${text(param.name)} }`).join(', ');
     return `export const ${camel(name)} = /* @__PURE__ */ anonymousMixin([${value.rules.map(node).join(', ')}], [${params}]);`;
   });

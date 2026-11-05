@@ -105,6 +105,15 @@ export function formatNumber(n: number): string {
 }
 
 /**
+ * `n` with what {@link formatNumber} trims trimmed: the number the math meant.
+ * A whole number within {@link TOLERANCE} needs no search.
+ */
+export function trimNumber(n: number): number {
+  const whole = Math.round(n);
+  return Math.abs(whole - n) <= Math.abs(n) * TOLERANCE ? whole : Number(formatNumber(n));
+}
+
+/**
  * Expand a `String(n)` exponent form to positional decimal. CSSOM §6.7.2 on
  * serializing a `<number>`: "scientific notation is not used" — and `<length>` /
  * `<percentage>` are defined by reference to `<number>`, so this reaches them.

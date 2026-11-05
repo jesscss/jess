@@ -9,19 +9,21 @@
  * channel keywords to the origin's values ({@link ColorChannels}), so the math
  * written in them is Less math (V6). Anything not known — a `var()` origin, a
  * channel that does not compute or is not CSS ({@link channelMath}), a
- * saturation or lightness outside 0–100 — leaves the call to ordinary
- * dispatch. Only a call its callable wrote out as-is resolves, spelled with
+ * saturation or lightness a channel moved outside 0–100 — leaves the call to
+ * ordinary dispatch. Only a call its callable wrote out as-is resolves, spelled with
  * those bytes until an operation consumes it (V1), so a mixin argument or a
  * call written out around it prints it as it did.
  *
  * HARD MODULE BOUNDARY: the value domain and the parse tree's call shape.
  */
 import { type MaybePromise, combineAll, isThenable, mapMaybe } from '@jesscss/awaitable-pipe';
+import { trimNumber } from './format-number.js';
+import { DimensionValueNode } from './node-ctors.js';
 import { colorAlphaSlash, type FunctionCall, type ValueSlot } from './nodes.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import { isValueGroupArray, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
-import { makeDimension, makeHslColor } from './value-factory.js';
+import { makeHslColor } from './value-factory.js';
 import { rgbToHsl } from './color.js';
 import { namedColor } from './color-names.js';
 import { convertValue, groupOf, UnitGroup } from './value-units.js';
@@ -29,15 +31,34 @@ import { convertValue, groupOf, UnitGroup } from './value-units.js';
 /**
  * The channel keywords a relative colour's channels read, bound to the origin's
  * values as numbers (css-color-5 §4.4: `h` in degrees, `s` and `l` on 0–100,
- * `alpha` on 0–1). Keyed by the lowercase keyword. An absolute colour's
- * channels are evaluated with none bound, so the math in them still computes.
+ * `alpha` on 0–1). An absolute colour's channels are evaluated with none bound,
+ * so the math in them still computes.
  */
-export type ColorChannels = ReadonlyMap<string, Dimension>;
+export interface ColorChannels {
+  readonly h: Dimension | undefined;
+  readonly s: Dimension | undefined;
+  readonly l: Dimension | undefined;
+  readonly alpha: Dimension | undefined;
+}
 
-const UNBOUND: ColorChannels = new Map();
+const UNBOUND: ColorChannels = { h: undefined, s: undefined, l: undefined, alpha: undefined };
 
-/** Evaluates one channel node, typed, with `channels` bound. */
-export type ChannelEval = (slot: ValueSlot, channels: ColorChannels) => MaybePromise<ValueGroup>;
+/** The value a channel keyword reads on a lane with `channels` bound, if it is one. */
+export function channelOf(channels: ColorChannels, keyword: string): Dimension | undefined {
+  switch (keyword.toLowerCase()) {
+    case 'h': return channels.h;
+    case 's': return channels.s;
+    case 'l': return channels.l;
+    case 'alpha': return channels.alpha;
+    default: return undefined;
+  }
+}
+
+/** Binds `channels` for a colour's channels, and evaluates each of them, typed, with those bound. */
+export type ChannelBinder = (channels: ColorChannels) => (slot: ValueSlot) => MaybePromise<ValueGroup>;
+
+/** A colour's computed `h`, `s`, `l` and alpha: degrees, then 0–1. */
+export type Hsla = readonly [h: number, s: number, l: number, alpha: number];
 
 /** `hsl()`/`hsla()` written in one space-separated slot: `hsl(120 50% 40%)`, `hsl(from C h s l / 0.5)`. */
 export function isModernHsl(node: FunctionCall): boolean {
@@ -57,10 +78,9 @@ export function isModernHsl(node: FunctionCall): boolean {
  * naming one) is read from it, never evaluated again; the channels are
  * evaluated again with the origin's values bound, since the call evaluated
  * them unbound. Each level of nesting is evaluated at most twice, never once
- * per enclosing level. A channel that fails only bound (`calc(l / 0)`, CSS math
- * the browser rejects) is not known.
+ * per enclosing level.
  */
-export function resolveHsl(node: FunctionCall, slot: ValueGroup, evaluate: ChannelEval, written: WrittenCall): MaybePromise<Color | WrittenCall> {
+export function resolveHsl(node: FunctionCall, slot: ValueGroup, bind: ChannelBinder, written: WrittenCall): MaybePromise<Color | WrittenCall> {
   const nodes = node.args[0]!.value;
   if (!isValueSlotArray(nodes)) {
     return written;
@@ -72,18 +92,35 @@ export function resolveHsl(node: FunctionCall, slot: ValueGroup, evaluate: Chann
   if (relative && origin === undefined) {
     return written;
   }
+  return mapMaybe(hslaOf(node, nodes, relative ? origin : undefined, bind), hsla =>
+    hsla === undefined ? written : makeHslColor([hsla[0], hsla[1], hsla[2]], hsla[3], true, { src: written.bytes }));
+}
+
+/**
+ * What a form's `hsl(from origin …)` computes over an `origin` that is known, or
+ * `undefined` when a channel is not ({@link hslaOf}).
+ */
+export function relativeHsla(node: FunctionCall, origin: Color, bind: ChannelBinder): MaybePromise<Hsla | undefined> {
+  const nodes = node.args[0]!.value;
+  return isValueSlotArray(nodes) ? hslaOf(node, nodes, origin, bind) : undefined;
+}
+
+/**
+ * A channel that fails only bound (`calc(l / 0)`, CSS math the browser rejects)
+ * is not known.
+ */
+function hslaOf(node: FunctionCall, nodes: readonly ValueSlot[], origin: OriginColor | undefined, bind: ChannelBinder): MaybePromise<Hsla | undefined> {
   const hsl = origin === undefined ? undefined : originHsl(origin);
-  const bound = origin === undefined || hsl === undefined ? UNBOUND : hslChannels(hsl, origin.alpha);
+  const read = bind(origin === undefined || hsl === undefined ? UNBOUND : hslChannels(hsl, origin.alpha));
   const alpha = colorAlphaSlash(node);
-  const items = relative ? nodes.slice(2) : nodes;
+  const items = origin === undefined ? nodes : nodes.slice(2);
   const channels = alpha === null ? items : [...items.slice(0, -1), alpha.left, alpha.right];
-  let resolved: MaybePromise<Color | undefined>;
   try {
-    resolved = combineAll(channels.map(channel => evaluate(channel, bound)), values => hslOf(values, hsl, bound.get('alpha')?.number ?? 1, alpha !== null, written.bytes));
+    const resolved = combineAll(channels.map(read), values => hslOf(values, channels, hsl, origin?.alpha ?? 1, alpha !== null));
+    return isThenable(resolved) ? resolved.catch(() => undefined) : resolved;
   } catch {
-    resolved = undefined;
+    return undefined;
   }
-  return mapMaybe(isThenable(resolved) ? resolved.catch(() => undefined) : resolved, color => color ?? written);
 }
 
 /**
@@ -128,27 +165,28 @@ export function channelFunction(name: string, args: readonly ValueGroup[]): Dime
     return undefined;
   }
   return calcType(low.unit) === calcType(value.unit) && calcType(value.unit) === calcType(high.unit)
-    ? makeDimension(Math.max(low.number, Math.min(value.number, high.number)), value.unit)
+    ? new DimensionValueNode(Math.max(low.number, Math.min(value.number, high.number)), value.unit, '') as Dimension
     : undefined;
 }
 
 const isDimension = (value: ValueGroup | undefined): value is Dimension =>
   value !== undefined && !isValueGroupArray(value) && value.type === 'Dimension';
 
-/**
- * The origin's channels, from its sRGB value as the browser takes them
- * ("after conversion, if required, to sRGB", css-color-5 §4.4): a grey's hue
- * is powerless and reads as 0, whatever hue a built-in carried (Q9). A chromatic
- * colour's authored HSL is that conversion's value (V5), exactly.
- */
-function originHsl(origin: { readonly rgb: readonly number[]; readonly hsl?: readonly [number, number, number] | undefined }): readonly number[] {
-  const carried = origin.hsl;
-  return carried !== undefined && carried[1] !== 0 && carried[2] !== 0 && carried[2] !== 1 ? carried : rgbToHsl(origin.rgb[0]!, origin.rgb[1]!, origin.rgb[2]!);
-}
+type OriginColor = Pick<Color, 'rgb' | 'hsl' | 'alpha'>;
 
-function hslChannels([h, s, l]: readonly number[], alpha: number): ColorChannels {
-  return new Map([['h', makeDimension(h!)], ['s', makeDimension(s! * 100)], ['l', makeDimension(l! * 100)], ['alpha', makeDimension(alpha)]]);
-}
+/**
+ * The origin's channels. An `hsl()` origin's are its own, a grey's hue and
+ * saturation included, and any other's are read through sRGB, so a grey's hue
+ * is 0 (Chrome 152, docs/design/CSS-NATIVE-BUILTINS.md Q9).
+ */
+const originHsl = (origin: OriginColor): readonly number[] =>
+  origin.hsl ?? rgbToHsl(origin.rgb[0], origin.rgb[1], origin.rgb[2]);
+
+/** The computed channels are read, never written out, so they are spelled with no bytes. */
+const channelNumberValue = (number: number): Dimension => new DimensionValueNode(number, '', '');
+
+const hslChannels = ([h, s, l]: readonly number[], alpha: number): ColorChannels =>
+  ({ h: channelNumberValue(h!), s: channelNumberValue(s! * 100), l: channelNumberValue(l! * 100), alpha: channelNumberValue(alpha) });
 
 /**
  * The colour of evaluated `h s l [/ alpha]` channels, or `undefined` when one
@@ -157,7 +195,7 @@ function hslChannels([h, s, l]: readonly number[], alpha: number): ColorChannels
  * omitted alpha is `alpha`: the origin's in a relative colour, else 1
  * (css-color-5 §4.1).
  */
-function hslOf(values: readonly ValueGroup[], origin: readonly number[] | undefined, alpha: number, slashed: boolean, src: string): Color | undefined {
+function hslOf(values: readonly ValueGroup[], slots: readonly ValueSlot[], origin: readonly number[] | undefined, alpha: number, slashed: boolean): Hsla | undefined {
   const last = values[values.length - 1];
   const listed = !slashed && values.length === 3 && last !== undefined && !isValueGroupArray(last) && last.type === 'List' && groupSeparator(last) === '/';
   const channels = listed ? [values[0]!, values[1]!, ...groupItems(last)] : values;
@@ -168,20 +206,69 @@ function hslOf(values: readonly ValueGroup[], origin: readonly number[] | undefi
   const s = channelNumber(channels[1]!, '%');
   const l = channelNumber(channels[2]!, '%');
   const a = channels[3] === undefined ? alpha : channelNumber(channels[3], 'alpha');
-  if (h === undefined || s === undefined || l === undefined || a === undefined || s < 0 || s > 100 || l < 0 || l > 100) {
+  if (h === undefined || s === undefined || l === undefined || a === undefined) {
     return undefined;
   }
-  const hue = h % 360;
-  return makeHslColor([hue < 0 ? hue + 360 : hue, fraction(s, origin?.[1]), fraction(l, origin?.[2])], Math.min(Math.max(a, 0), 1), true, { src });
+  const saturation = fraction(s, origin?.[1], slots[1]!);
+  const lightness = fraction(l, origin?.[2], slots[2]!);
+  return saturation === undefined || lightness === undefined
+    ? undefined
+    : [hueOf(h, origin?.[0], slots[0]!), saturation, lightness, Math.min(Math.max(a, 0), 1)];
+}
+
+/** Whether a channel's math multiplies or divides, so that what it changes is a share of what it reads. */
+function scalesChannel(slot: ValueSlot): boolean {
+  if (isValueSlotArray(slot)) {
+    return slot.some(scalesChannel);
+  }
+  switch (slot.type) {
+    case 'Operation': return slot.operator === '*' || slot.operator === '/' || scalesChannel(slot.left) || scalesChannel(slot.right);
+    case 'FunctionCall': return slot.args.some(arg => scalesChannel(arg.value));
+    default: return false;
+  }
 }
 
 /**
- * A saturation or lightness on 0–1: exactly the origin's when the channel kept
- * it, which going through the 0–100 scale would round, and 0 for a value within
- * V4's tolerance of it, which math on the scale can leave.
+ * A channel's new value from the origin's exact one, on the origin's own scale.
+ * The scale's rounding is no part of what the channel wrote (V4 trims it),
+ * whether that is a change (`s + 10` is `s + 0.1` on 0–1), a share of the
+ * channel (`l - l * 10 / 100` is `l - l * 0.1`), or a number of its own.
  */
-const fraction = (value: number, origin: number | undefined): number =>
-  origin !== undefined && origin * 100 === value ? origin : Math.abs(value) < 1e-10 ? 0 : value / 100;
+function moved(value: number, origin: number, scale: number, slot: ValueSlot): number {
+  const scaled = origin * scale;
+  if (!isValueSlotArray(slot) && slot.type === 'Dimension') {
+    return value / scale;
+  }
+  return scaled !== 0 && scalesChannel(slot)
+    ? origin + origin * (trimNumber((value - scaled) / scaled * 100) / 100)
+    : origin + trimNumber(value - scaled) / scale;
+}
+
+/** A hue in degrees, wrapped into 0–360 when the channel changed it. */
+function hueOf(value: number, origin: number | undefined, slot: ValueSlot): number {
+  if (value === origin) {
+    return value;
+  }
+  const hue = (origin === undefined ? value : moved(value, origin, 1, slot)) % 360;
+  return hue < 0 ? hue + 360 : hue;
+}
+
+/**
+ * A saturation or lightness on 0–1, or `undefined` when a channel outside the
+ * 0–100 the browser takes unclamped is not one this computes. A channel that
+ * kept the origin's value keeps it exactly, in range or not.
+ */
+function fraction(value: number, origin: number | undefined, slot: ValueSlot): number | undefined {
+  if (origin !== undefined && value === origin * 100) {
+    return origin;
+  }
+  if (value < 0 || value > 100) {
+    return undefined;
+  }
+  return origin === undefined || value === 0 || value === 100
+    ? value / 100
+    : Math.min(Math.max(moved(value, origin, 100, slot), 0), 1);
+}
 
 /**
  * A channel as the number CSS reads (css-color-4 §7, css-color-5 §4): `none`

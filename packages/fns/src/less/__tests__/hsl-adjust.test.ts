@@ -15,7 +15,7 @@ describe('Less HSL channel adjustment', () => {
     expect(call(desaturateFn, makeColorRgb([136, 136, 136], 1, HEX), percent(10)).bytes).toBe('#888888');
     expect(call(desaturateFn, makeColorRgb([153, 153, 153], 1, HEX), percent(10)).bytes).toBe('#999999');
     const lowerBound = call(desaturateFn, makeColorHsl([120, 0.05, 0.5], 1, HSL), percent(10));
-    expect(lowerBound.bytes).toBe('hsl(0, 0%, 50%)');
+    expect(lowerBound.bytes).toBe('hsl(120, 0%, 50%)');
     expect(colorHsl(lowerBound)[1]).toBe(0);
 
     const upperBound = call(saturateFn, makeColorHsl([120, 0.8, 0.5], 1, HSL), percent(50));
@@ -25,11 +25,11 @@ describe('Less HSL channel adjustment', () => {
 
   it('clamps absolute lightness changes to the HSL channel domain', () => {
     const upperBound = call(lightenFn, makeColorHsl([120, 0.5, 0.95], 1, HSL), percent(10));
-    expect(upperBound.bytes).toBe('hsl(0, 0%, 100%)');
+    expect(upperBound.bytes).toBe('hsl(120, 50%, 100%)');
     expect(colorHsl(upperBound)[2]).toBe(1);
 
     const lowerBound = call(darkenFn, makeColorHsl([120, 0.5, 0.05], 1, HSL), percent(10));
-    expect(lowerBound.bytes).toBe('hsl(0, 0%, 0%)');
+    expect(lowerBound.bytes).toBe('hsl(120, 50%, 0%)');
     expect(colorHsl(lowerBound)[2]).toBe(0);
   });
 
