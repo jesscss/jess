@@ -46,6 +46,7 @@ import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
 import { jessCollection, jessCurlyList, type ListSpeller } from './emit-jess-list.js';
 import { renderCombinator } from './node.js';
+import { isCustomPropertyName } from './serialize.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { WHITESPACE, runSeparator } from './emit-jess-run.js';
 import { MEMBER_CALL, moduleImportText, selectorParseCall, unquoteLiteral } from './emit-jess-module.js';
@@ -455,10 +456,7 @@ class JessPrinter {
     const name = typeof node.name === 'string'
       ? this.propertyName(node.name)
       : this.template(node.name, 'name');
-    const opening = typeof node.name === 'string' ? node.name : node.name.parts[0];
-    const custom = typeof opening === 'string'
-      ? opening.startsWith('--')
-      : opening !== undefined && 'lit' in opening && opening.lit.startsWith('--');
+    const custom = isCustomPropertyName(node.name);
     if (!custom && !isSlotArray(node.value) && node.value.type === 'Any' && node.value.src === '') {
       gap('Declaration', 'an empty declaration value (`margin: ;`): the `.jess` `Declaration` rule requires a value');
     }
