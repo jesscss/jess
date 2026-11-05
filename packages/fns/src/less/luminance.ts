@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { colorRgbRounded, makeDimension, defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { colorRgbRounded, makeDimension, defineFunction } from '@jesscss/core/value';
 import { requireColor } from './color-helper.js';
 
 /** `luminance(color)` — perceptual luminance × alpha as a percentage. Byte-faithful to `less/luminance`. */

@@ -6,7 +6,7 @@
  * @example
  * map.keys((a: 1, b: 2)) // a, b
  */
-import { defineFunction, makeList } from '@jesscss/core';
+import { defineFunction, makeList } from '@jesscss/core/value';
 
 const keys = defineFunction(
   'keys',
