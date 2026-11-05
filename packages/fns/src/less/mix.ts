@@ -1,13 +1,12 @@
-import { defineFunction } from '@jesscss/core/value';
-import type { Fn } from '@jesscss/core/value';
-import { mixColors, requireColor } from './color-helper.js';
-import { requireDimension } from '../shared/math/math-helper.js';
+import { defineForm } from '@jesscss/core/form';
+import { RGB, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { COLOR_ARG } from './color-form.js';
+import * as forms from './css-forms.generated.js';
+import { WEIGHT_ARG, mixForm, type Weight } from './mix-form.js';
 
-/** `mix(color1, color2, weight?)` — weighted blend (default 50%). Byte-faithful to `less/mix`. */
-export const mix: Fn = defineFunction('mix', {
-  params: [{ type: 'Color' }, { type: 'Color' }, { type: 'Dimension', optional: true }],
-  body: (c1, c2, weight) => {
-    const w = weight === undefined ? 50 : requireDimension(weight).number;
-    return mixColors(requireColor(c1), requireColor(c2), w);
-  }
+/** `mix(color1, color2, weight = 50%)`: `color-mix(in srgb, color1 weight, color2)`, in `rgb()` once translucent. */
+export const mix: Fn = /* @__PURE__ */ defineForm('mix', {
+  params: [COLOR_ARG, COLOR_ARG, WEIGHT_ARG],
+  format: RGB,
+  form: (a: ValueGroup, b: ValueGroup, weight?: Weight) => weight === undefined ? [forms.average, a, b] : mixForm(a, b, weight)
 });

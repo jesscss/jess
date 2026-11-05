@@ -49,6 +49,18 @@ export class FunctionDeclined extends Error {
   }
 }
 
+/**
+ * No CSS form holds this call over what only the browser knows. It fails as any
+ * call does, except that one reading an exposed variable runs on the runtime
+ * instead (docs/design/CSS-NATIVE-BUILTINS.md §3.4a, rung 4).
+ */
+export class NoCssForm extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoCssForm';
+  }
+}
+
 export function dispatchFn(fn: Fn, value: ValueGroup, ctx: FnCtx): MaybePromise<ValueGroup> {
   return fn(value, ctx);
 }

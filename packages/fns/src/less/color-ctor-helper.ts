@@ -50,3 +50,7 @@ export const isModern = (value: ValueGroup): boolean => {
   const separator = groupSeparator(value);
   return separator === ' ' || separator === '/';
 };
+
+/** Whether a slot's form means what this value computes to: anything but a dimension of another unit. */
+export const inUnits = (value: ValueGroup, units: readonly string[]): boolean =>
+  isValueGroupArray(value) || value.type !== 'Dimension' || units.includes(value.unit.toLowerCase());

@@ -1,7 +1,7 @@
 import { defineForm, type FormCall } from '@jesscss/core/form';
 import type { Color, Dimension, FnCtx, FunctionCall, ValueGroup, Fn } from '@jesscss/core/value';
 import { colorRawRgb, defineFunction, FunctionDeclined, groupItems, isValueGroupArray, makeColorRgb, makeDimension, RGB } from '@jesscss/core/value';
-import { clamp01, isColor, isModern, percentOf } from './color-ctor-helper.js';
+import { clamp01, inUnits, isColor, isModern, percentOf } from './color-ctor-helper.js';
 import { COLOR_ARG, fractionOf } from './color-form.js';
 import { fade as form } from './css-forms.generated.js';
 import { requireDimension } from '../shared/math/math-helper.js';
@@ -89,8 +89,9 @@ export const rgbBody = (list: ValueGroup, ctx: FnCtx): ReturnType<Fn> => {
 const SLOT_TYPES = ['List', 'Color', 'Dimension', 'FunctionCall'] as const;
 
 /* No spread: a bundler keeps a pure call whose argument spreads, and this one reaches the evaluator. */
-const RGB_SLOT = { type: SLOT_TYPES, formUnits: CHANNEL_UNITS } as const;
-const RGB_OPTIONAL_SLOT = { type: SLOT_TYPES, formUnits: CHANNEL_UNITS, optional: true } as const;
+const fitsChannel = (value: ValueGroup): boolean => inUnits(value, CHANNEL_UNITS);
+const RGB_SLOT = { type: SLOT_TYPES, fits: fitsChannel } as const;
+const RGB_OPTIONAL_SLOT = { type: SLOT_TYPES, fits: fitsChannel, optional: true } as const;
 
 /** The slots of `rgb()` and `rgba()`. */
 export const RGB_PARAMS = [RGB_SLOT, RGB_OPTIONAL_SLOT, RGB_OPTIONAL_SLOT, RGB_OPTIONAL_SLOT] as const;
