@@ -163,6 +163,7 @@ import { mixinReferenceBaseFrom } from './mixin-reference-base.js';
 import { operatorRun, runOperand } from './delim-runs.js';
 import { lessParenListFrom } from './paren-list.js';
 import { plainUrlBodyFrom } from './url-argument.js';
+import { atRuleAfterReferenceCall, atRuleBlockTailFrom, unknownAtRuleBlockTailFrom } from './reference-call-at-rule.js';
 import type {
   BodyExtendFact,
   CustomValuePart,
@@ -270,6 +271,7 @@ type LessRules = {
   MixinReference: Combinator<ValueNode>;
   MixinReferenceChain: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
+  ReferenceCallOrAtRule: Combinator<Reference | AtRuleBlock | UnknownAtRuleBlock | AtRuleStatement>;
   MixinGuard: Combinator<MixinGuard>;
   MixinGuardTopOr: Combinator<MixinGuard>;
   MixinGuardTopAnd: Combinator<MixinGuard>;
@@ -3489,20 +3491,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * first call may follow the name after whitespace (`@detached ();`).
    */
   const referenceLookupTail = choice(ReferenceBracketTail, ReferenceDotTail);
+  const referenceCallHead = sequence(
+    noTrivia(sequence(
+      literal('@'), not(word(
+        'supports',
+        IDENT_BOUNDARY,
+        { caseInsensitive: true }
+      )), lessVariableName, many(referenceLookupTail)
+    )),
+    ReferenceCallTail,
+    noTrivia(many(sequence(many(referenceLookupTail), ReferenceCallTail)))
+  );
   const ReferenceCall = node(
     'VarCall',
-    sequence(
-      noTrivia(sequence(
-        literal('@'), not(word(
-          'supports',
-          IDENT_BOUNDARY,
-          { caseInsensitive: true }
-        )), lessVariableName, many(referenceLookupTail)
-      )),
-      ReferenceCallTail,
-      noTrivia(many(sequence(many(referenceLookupTail), ReferenceCallTail))),
-      optional(literal(';'))
-    ),
+    sequence(referenceCallHead, optional(literal(';'))),
     (children, _fields, span) => {
       const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
       return withSourceSpan(referenceWithTails(variableReference(name, 'scoped'), `@${name}`, children.filter(isReferenceTailFact)), span);
@@ -3659,6 +3661,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.VarDeclaration,
     g.SupportsBlock,
     g.MediaContainerBlock,
+    g.ReferenceCallOrAtRule,
     g.ReferenceCall,
     g.Keyframes,
     g.AtRuleBlock,
@@ -4895,6 +4898,60 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       );
     }
   );
+  /** The block of an at-rule whose prelude opened as a call head (`ReferenceCallOrAtRule`). */
+  const AtRuleBlockAfterCall = node(
+    'AtRuleBlock',
+    atRuleBlockBody,
+    (children, _fields, _span, rawChildren) => atRuleBlockTailFrom(children, rawChildren)
+  );
+  /** The rest of the prelude and the opaque body of the same at-rule, when its body is not a block. */
+  const UnknownAtRuleBlockAfterCall = node(
+    'UnknownAtRuleBlock',
+    noTrivia(sequence(
+      g.UnknownAtPrelude,
+      literal('{'),
+      unknownAtRuleBody,
+      literal('}')
+    )),
+    children => unknownAtRuleBlockTailFrom(children)
+  );
+  /**
+   * `@name (…)`, and any lookups and further calls glued to it, read once as a
+   * call head whatever it turns out to be. The next token decides. `;`, `}` or
+   * the end of input leaves a call. A `{` or more prelude makes it an at-rule,
+   * whose prelude starts with the head's bytes (ledger P2, and P52 for what this
+   * reading changes). An opaque body takes the last arm, as `UnknownAtRuleBlock`
+   * follows `AtRuleBlock`.
+   *
+   * The names `StaticAtRuleStatementName` refuses have statements of their own
+   * and never take a generic at-rule reading; they stay on `ReferenceCall`.
+   * Arguments a call cannot read, as in `@foo (a > b) { … }`, fail the head and
+   * reach `AtRuleBlock` as they always did.
+   *
+   * The node keeps the `VarCall` label so a call's CST does not move; the at-rule
+   * forms nest their own labels inside it.
+   */
+  const ReferenceCallOrAtRule = node(
+    'VarCall',
+    sequence(
+      not(NonStatementAtKeyword),
+      not(charsetAtRuleName),
+      referenceCallHead,
+      optional(choice(
+        literal(';'),
+        sequence(
+          g.AtRulePrelude,
+          choice(AtRuleBlockAfterCall, literal(';'))
+        ),
+        UnknownAtRuleBlockAfterCall
+      ))
+    ),
+    (children, _fields, span, rawChildren) => {
+      const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
+      const atRule = atRuleAfterReferenceCall(`@${name}`, children, rawChildren, span);
+      return atRule ?? withSourceSpan(referenceWithTails(variableReference(name, 'scoped'), `@${name}`, children.filter(isReferenceTailFact)), span);
+    }
+  );
   /*
    * CSS @charset is a single static token. Less 4 interpolated inside it, but
    * Less 5 deliberately rejects that legacy form. Recognize the authored form
@@ -6119,6 +6176,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     MixinReference,
     MixinReferenceChain,
     ReferenceCall,
+    ReferenceCallOrAtRule,
     MixinGuard,
     MixinGuardTopOr,
     MixinGuardTopAnd,

@@ -41,6 +41,7 @@ function mixinArgumentSource(value: CallValue): string {
       ? `@${typeof value.name === 'string' ? value.name : mixinArgumentSource(value.name)}`
       : value.raw;
     case 'Reference': return value.raw;
+    case 'Interpolation': return value.parts.map(part => 'lit' in part ? part.lit : `@{${mixinArgumentSource(part.ref).slice(1)}}`).join('');
     case 'FunctionCall': return `${value.name}(${value.args.map(callArgumentSource).join(', ')})`;
     /* A curly list written without its braces is Less's `~( … )` (ledger P51). */
     case 'Block': return value.escaped === true
