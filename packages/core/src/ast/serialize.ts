@@ -225,7 +225,7 @@ import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
-import { mathOperand, negatedCall, operated as mathOperated, writtenPercent } from './math-operand.js';
+import { mathOperand, negatedCall, slashOperated, writtenPercent } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type FnOrigin, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -5636,11 +5636,11 @@ const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => gr
 const keepsOperation = (node: Operation, e: Lane): boolean =>
   e.keepsMath || (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right);
 
-/** An operation over its operands: two known numbers are the operation's, and a slash no group asked to divide is CSS's separator; anything else may be CSS's math. */
+/** An operation over its operands: two known numbers are the operation's, anything else may be CSS's math ({@link operatedOn}). */
 const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
-  (left.type === 'Dimension' && right.type === 'Dimension') || ev.sassCalculations === true || (node.operator === '/' && node.mathOutsideParens)
+  (left.type === 'Dimension' && right.type === 'Dimension') || ev.sassCalculations === true
     ? ev.operate(node.operator, left, right, e.modes)
-    : mathOperated(node.operator, left, right, e.modes, keepsOperation(node, e));
+    : slashOperated(node, left, right, e.modes, keepsOperation(node, e));
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,

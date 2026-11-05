@@ -76,7 +76,7 @@ describe('a math built-in or operator over what only the browser knows is its CS
     await expect(value('var(--a) * 2', { mathMode: 'always' })).resolves.toBe('calc(var(--a) * 2)');
     await expect(value('var(--a) * 2', { mathMode: 'parens-division' })).resolves.toBe('calc(var(--a) * 2)');
     await expect(value('var(--a) * 2', { mathMode: 'parens' })).resolves.toBe('var(--a) * 2');
-    await expect(value('var(--a) / 2', { mathMode: 'always' })).resolves.toBe('var(--a) / 2');
+    await expect(value('var(--a) / 2', { mathMode: 'always' })).resolves.toBe('calc(var(--a) / 2)');
     await expect(value('var(--a) / 2', { mathMode: 'parens-division' })).resolves.toBe('var(--a) / 2');
   });
 
@@ -346,14 +346,8 @@ describe('a bare slash under `math: always`', () => {
     ['grid-column: var(--a) / span 2;', 'grid-column: var(--a) / span 2;'],
     ['grid: @x / auto-flow;', 'grid: var(--x) / auto-flow;'],
     ['content: "a" / @x;', 'content: "a" / var(--x);'],
-    ['font: 12px / var(--lh) Arial;', 'font: 12px / var(--lh) Arial;'],
-    ['border-radius: var(--a) / var(--b);', 'border-radius: var(--a) / var(--b);'],
-    ['border-image: url(a.png) 30 / var(--w);', 'border-image: url(a.png) 30 / var(--w);'],
-    ['grid-template: 100px / var(--c);', 'grid-template: 100px / var(--c);'],
-    ['grid-row: 1 / var(--x);', 'grid-row: 1 / var(--x);'],
-    ['grid-row: var(--y) / var(--x);', 'grid-row: var(--y) / var(--x);'],
-    ['width: 1 / -var(--x);', 'width: 1 / -var(--x);'],
-    ['width: attr(a) / 2;', 'width: attr(a) / 2;']
+    ['grid-row: 1 / var(--x);', 'grid-row: calc(1 / var(--x));'],
+    ['grid-row: var(--y) / var(--x);', 'grid-row: calc(var(--y) / var(--x));']
   ])('%s', async (source, written) => {
     await expect(css(`@x: var(--x); .a { ${source} }`, { mathMode: 'always' })).resolves.toContain(written);
   });
@@ -536,13 +530,54 @@ describe('known gap: an all-known math function written out under `@use`', () =>
   });
 });
 
-describe('a slash under `math: always` with an operand only the browser knows', () => {
-  it('stays as written, known numbers beside it still dividing', async () => {
+describe('a slash under `math: always` is math only over numbers', () => {
+  it.each([
+    '1 / var(--c) / span 2 / span 3',
+    'var(--r) / var(--c) / span 2 / span 3',
+    'var(--a) / 2 / span 2',
+    'repeat(2, 1fr) / var(--x)',
+    'var(--x) / repeat(2, 1fr)',
+    'minmax(1px, 2px) / var(--x)',
+    'fit-content(10px) / var(--x)',
+    'linear-gradient(red, blue) / var(--x)'
+  ])('%s stays as written', async (source) => {
+    await expect(value(source, { mathMode: 'always' })).resolves.toBe(source);
+  });
+
+  it('two known numbers beside a chain still divide, as in `span 2 / 3`', async () => {
     await expect(value('1 / var(--c) / span 2 / 3', { mathMode: 'always' })).resolves.toBe('1 / var(--c) / span 0.6666666667');
   });
 
-  it('is math in a group', async () => {
-    await expect(value('(1 / var(--x))', { mathMode: 'always' })).resolves.toBe('calc(1 / var(--x))');
+  it.each([
+    ['1 / var(--x) / 2', 'calc(1 / var(--x) / 2)'],
+    ['var(--x) / env(--y)', 'calc(var(--x) / env(--y))'],
+    ['attr(a) / 2', 'calc(attr(a) / 2)'],
+    ['ceil(var(--x)) / 2', 'calc(round(up, var(--x), 1) / 2)']
+  ])('%s is math', async (source, math) => {
+    await expect(value(source, { mathMode: 'always' })).resolves.toBe(math);
+  });
+});
+
+describe('under `math: always` a Less file and its Jess conversion print the same', () => {
+  it.each([
+    'font: 12px/@x Arial;',
+    'b: 1 / @x;',
+    'b: @x / 2;',
+    'b: 100% - @x / 2;'
+  ])('%s', async (declaration) => {
+    const dir = mkdtempSync(join(tmpdir(), 'jess-form-round-trip-'));
+    try {
+      const compiler = new Compiler({ quiet: true, output: { collapseNesting: true }, compile: { mathMode: 'always' } });
+      const less = join(dir, 'entry.less');
+      writeFileSync(less, `@x: var(--x); .a { ${declaration} }`);
+      const { files, errors } = await compiler.convertToJess(less, { suppressWarnings: true });
+      expect(errors).toEqual([]);
+      const jess = join(dir, 'entry.jess');
+      writeFileSync(jess, files.flatMap(file => ('jess' in file ? [file.jess] : []))[0] ?? '');
+      await expect(compiler.render(jess, { suppressWarnings: true })).resolves.toBe(await compiler.render(less, { suppressWarnings: true }));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
