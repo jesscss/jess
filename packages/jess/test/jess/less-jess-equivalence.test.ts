@@ -1006,6 +1006,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'Param: rest/variadic parameter: `MixinParam` has no `...` form'
   }],
+  ['bootstrap@5.3.8:vendor/_rfs.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+4 more)'
+  }],
   ['foundation-sites@6.9.0:components/_badge.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -1286,6 +1291,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'For: tuple binding: `ForBinding` spells at most three comma names [in typography/_base.scss] (+4 more)'
   }],
+  ['foundation-sites@6.9.0:util/_color.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+6 more)'
+  }],
   ['foundation-sites@6.9.0:util/_direction.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -1296,10 +1306,25 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
   }],
+  ['foundation-sites@6.9.0:util/_math.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed) (+3 more)'
+  }],
   ['foundation-sites@6.9.0:util/_selector.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:util/_unit.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed) (+9 more)'
+  }],
+  ['foundation-sites@6.9.0:util/_value.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+4 more)'
   }],
   ['foundation-sites@6.9.0:xy-grid/_cell.scss', {
     cause: 'cannot-express',

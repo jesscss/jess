@@ -25,8 +25,9 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { scssSum } from './plus-chain.js';
+import { foldLogicalOperation } from './grammar-logical.js';
 import type { ConditionWord, MathOperatorFact, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -1644,20 +1645,29 @@ const scssFactory = (g: ScssInputRules) => {
     g.LogicalOr,
     children => conditionWord(children)
   );
+
+  /*
+   * `==`, `!=` and the relational operators read as this rung's operators, so an
+   * ordinary value pays one failed match and no frame. The reducer gives them the
+   * precedence Sass does: tighter than `and`, with `==` and `!=` looser than `<`
+   * (https://sass-lang.com/documentation/operators/#order-of-operations).
+   */
+  const comparisonOperator = regex(/==|!=|[<>]=?/);
   const ValueLogicalAnd = node<ValueNode>(
     'ValueLogicalAnd',
     noTrivia(sequence(
       g.MathTopSum,
       many(sequence(
-        valueTrivia,
+        optional(valueTrivia),
         choice(
           {
             gate: state => isIfTest(state),
             combinator: ConditionAnd
           },
-          g.LogicalAnd
+          g.LogicalAnd,
+          comparisonOperator
         ),
-        valueTrivia,
+        optional(valueTrivia),
         g.MathTopSum
       ))
     )),
@@ -1753,34 +1763,6 @@ const scssFactory = (g: ScssInputRules) => {
       many(ValueTail)
     )),
     scssSlashGroupedTerm
-  );
-
-  /*
-   * ONE definition of what a call argument is, referenced by both argument
-   * sites (`Call`'s head and `ArgumentPair`'s tail) so the two cannot drift.
-   *
-   * A call argument is VALUE position (§4.5.2), so a comparison written there
-   * needs the `$( … )` computation boundary — and that is exactly what this
-   * builds: `Expression` over a `Condition`, the same pair the unary `not` rung
-   * above already produces. Sass's own source has no `$( … )` to write, so the
-   * boundary is supplied by the LOWERING, which is what §4.5.2 means by a call
-   * argument needing the marker. No new AST kind: `Expression` (a computation
-   * boundary) and `Condition` (a guard tree in value position) both exist.
-   *
-   * LEFT-FACTORED on purpose. Spelling this `choice(comparison, ValueTerm)`
-   * would parse `ValueTerm`, fail to find an operator, backtrack, and parse
-   * `ValueTerm` AGAIN for every ordinary positional argument — doubling the
-   * cost of the overwhelmingly common case to serve the rare one. The operand
-   * is parsed once and the operator tail is `optional`, so a positional
-   * argument pays one failed operator match and nothing else.
-   */
-  const comparisonOperator = choice(
-    literal('=='),
-    literal('!='),
-    literal('>='),
-    literal('<='),
-    literal('>'),
-    literal('<')
   );
 
   /**

@@ -308,7 +308,8 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'mixins/_text-truncate.scss',
   'mixins/_transition.scss',
   'mixins/_visually-hidden.scss',
-  'utilities/_api.scss'
+  'utilities/_api.scss',
+  'vendor/_rfs.scss'
 ];
 
 /** Entry points known to evaluate end-to-end. Add each one as it graduates. */

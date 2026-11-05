@@ -16,7 +16,7 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout, lookupStep, guardCompare, guardLogical, guardNot, guardValue, withWrite, withParens } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout, lookupStep, guardLogical, guardNot, guardValue, withWrite, withParens } from '@jesscss/core/ast';
 import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
@@ -543,24 +543,12 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
     }
     return value === undefined ? callArg(argumentRun(children)) : callArg(value, left.name, false, '$');
   }
-  const at = children.findIndex(child => isToken(child) && !isScssValue(child) && COMPARISON_OPERATORS.has(child.value));
-  const operator = requireToken(children[at]).value;
-  const right = requireValueSlot(children[children.length - 1]);
-  if (holdsDelim(left) || holdsDelim(right)) {
-    return callArg(argumentRun(children));
-  }
 
   /*
-   * `==` / `!=` lower to the named primitive `sass-equal`, NOT to an
-   * operator (§5.1) — the SAME lowering `IfComparison` performs, because a
-   * comparison must not mean one thing in a guard and another in an
-   * argument. `!=` is that comparison under `not`.
+   * A comparison the value rung did not read (its right side is no operand, as
+   * in `a == ~b`) is the CSS run it is.
    */
-  const comparison = guardCompare('cmp', operator === '==' || operator === '!=' ? 'sass-equal' : operator, requireValue(left), requireValue(right), false);
-  return callArg(expression(condition(
-    operator === '!=' ? guardNot(comparison, 'not', NO_SPAN, 0) : comparison,
-    `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
-  )));
+  return callArg(argumentRun(children));
 }
 
 function isComparisonToken(child: unknown): boolean {
@@ -650,11 +638,6 @@ export function leadingSeparatorValue(children: readonly unknown[], span: { read
   const operator = any(requireToken(children[0]).value);
   reportRecovered(new LeadingSeparatorValueError(span.start, span.end, operator.src, operator), state);
   return [operator, customValueFromChildren(children.slice(1))];
-}
-
-/** A space list holding a delim component — the `Any` a `PunctuationValue` builds. */
-function holdsDelim(value: ValueSlot): boolean {
-  return isValueSlotArray(value) && value.some(item => !isValueSlotArray(item) && item.type === 'Any');
 }
 
 /**
@@ -1070,50 +1053,8 @@ export function conditionWord(children: readonly unknown[]): ConditionWord {
   return { conditionWord: requireToken(children[0]).value.trim() };
 }
 
-function isConditionWord(child: unknown): child is ConditionWord {
+export function isConditionWord(child: unknown): child is ConditionWord {
   return typeof child === 'object' && child !== null && 'conditionWord' in child;
-}
-
-/**
- * Fold one logical rung left-associatively onto `Operation` nodes carrying the
- * word itself as the operator. The operator token is kept out of the fold by
- * shape (only values participate), so the rung reduces the same way whether it
- * spelled `and` or `or`.
- *
- * In a CSS `if()` condition the keyword arrives as authored ({@link
- * ConditionWord}); one not in lower case (`AND`) folds to the condition
- * written as authored ({@link Condition}, its `word` kept, ledger J20), which
- * {@link ifCondition} reads as the condition's own `and` / `or` (ledger P38:
- * "in CSS it comes out as written"). Its truth is Sass's `and` / `or`'s, so a
- * Sass `if()` that consumes it decides as before.
- */
-export function foldLogicalOperation(children: readonly unknown[]): ValueNode {
-  const values = children.filter(isScssValue);
-  const words: string[] = [];
-  for (const child of children) {
-    if (isConditionWord(child)) {
-      words.push(child.conditionWord);
-    } else if (isToken(child)) {
-      const word = child.value.trim().toLowerCase();
-      if (word === 'and' || word === 'or') {
-        words.push(word);
-      }
-    }
-  }
-  let result = requireValue(values[0]);
-  for (let index = 1; index < values.length; index += 1) {
-    const word = words[index - 1]!;
-    const right = values[index]!;
-    if (word === 'and' || word === 'or') {
-      result = operation(word, result, right, false, cssBaseMathOutsideParens(word));
-    } else {
-      const guard: GuardNode = guardLogical(word.toLowerCase() === 'and' ? 'and' : 'or', scssTruth(result), scssTruth(right), word, NO_SPAN);
-
-      /* Written from its guard (`word`, ledger J20), so no source text is kept: an operand may be one `scssConditionSource` cannot spell (`#{$a}`). */
-      result = condition(guard, '');
-    }
-  }
-  return result;
 }
 
 export function scssOptionalValue(value: unknown): ValueNode | null {
