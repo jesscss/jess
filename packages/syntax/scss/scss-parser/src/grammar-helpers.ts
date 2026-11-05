@@ -16,7 +16,7 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, block, keyword, interpolation, appendInterpolationLiteral, interpolatedSimpleSelector, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout, lookupStep, guardLogical, guardNot, guardValue, withWrite, withParens } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, keyword, interpolation, appendInterpolationLiteral, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, withSourceSpan, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout, lookupStep, guardLogical, guardNot, guardValue, withWrite, withParens } from '@jesscss/core/ast';
 import type { Any, AstSourceSpan, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
@@ -137,82 +137,6 @@ export function scssRelativeCombinator(value: unknown): '>' | '+' | '~' {
 
 export function isScssImportTarget(value: unknown): value is Quoted | Url | Interpolation {
   return isQuoted(value) || isUrl(value) || isInterpolation(value);
-}
-
-/**
- * An `:nth-*()` pseudo from its glued opener (`:nth-child(`) and reduced
- * argument: structured when the argument is an `An+B`, the opaque raw text it
- * always was otherwise.
- */
-export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
-  if (isNthArgument(arg)) {
-    return pseudoSelector(opener.slice(0, -1), arg.of, null, null, arg.nth);
-  }
-  return functionalPseudoFrom(opener, typeof arg === 'string' ? arg.trim() : isInterpolation(arg) ? unspacedNth(arg) : arg);
-}
-
-const AN_PLUS_B_TEXT: ReadonlySet<string> = new Set('-+0123456789nN \t\n\r\f');
-const AN_PLUS_B_SPACE: ReadonlySet<string> = new Set(' \t\n\r\f');
-
-function isAnPlusBText(text: string): boolean {
-  for (const char of text) {
-    if (!AN_PLUS_B_TEXT.has(char)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
- * An An+B with a hole reads as the one without: whitespace in it is not part of
- * its value (css-syntax-3 §6), and An+B is written unspaced (`-n + #{$n}` is
- * `-n+2`). Whitespace alone between two holes separates them (`#{$a} #{$b}` may
- * be `2n of`, or a descendant combinator), and any other text is left as written.
- */
-function unspacedNth(arg: Interpolation): Interpolation {
-  const last = arg.parts.length - 1;
-  return interpolation(arg.parts.map((part, index) => {
-    if (!('lit' in part) || !isAnPlusBText(part.lit) || (part.lit.trim() === '' && index > 0 && index < last)) {
-      return part;
-    }
-    return { lit: [...part.lit].filter(char => !AN_PLUS_B_SPACE.has(char)).join('') };
-  }));
-}
-
-/** A pseudo argument's source text, or its interpolation when a `#{…}` stands in it. */
-export function pseudoArgumentFrom(children: readonly unknown[]): string | Interpolation {
-  if (!children.some(isInterpolation)) {
-    return joinSourceText(children);
-  }
-  const parts: Interpolation['parts'] = [];
-  for (const child of children) {
-    if (isInterpolation(child)) {
-      parts.push(...child.parts);
-    } else {
-      appendInterpolationLiteral(parts, scssSourceText(child));
-    }
-  }
-  return interpolation(parts);
-}
-
-/** `:name(` and its argument as one simple selector, interpolated when the argument is. */
-export function functionalPseudoFrom(opener: string, arg: unknown): SimpleSelector {
-  if (typeof arg === 'string') {
-    return simpleSelector(`${opener}${arg})`);
-  }
-  if (!isInterpolation(arg)) {
-    throw new TypeError('SCSS pseudo lost its argument.');
-  }
-  const parts: Interpolation['parts'] = [{ lit: opener }];
-  for (const part of arg.parts) {
-    if ('lit' in part) {
-      appendInterpolationLiteral(parts, part.lit);
-    } else {
-      parts.push(part);
-    }
-  }
-  appendInterpolationLiteral(parts, ')');
-  return interpolatedSimpleSelector(interpolation(parts));
 }
 
 /**
@@ -585,6 +509,9 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
     return callArg(argumentRun(isToken(last) && last.value === '>' && !isArgumentDelim(children[0]) ? [dataTypeRun(requireValueSlot(children[0])), ...children.slice(1)] : children));
   }
   const left = requireValueSlot(children[0]);
+  if (isSpreadMark(last)) {
+    return withSourceSpan(callArg(left, undefined, true), last.spreadAt);
+  }
 
   /*
    * `$name: value` is a KEYWORD argument (§4.5.2) — the same construct
@@ -652,6 +579,15 @@ function isComparisonToken(child: unknown): boolean {
 /** The padding a call argument holds between its parts, by its node, so no delim reads as one. */
 export interface ScssArgumentGap {
   readonly gap: string;
+}
+
+/** A spread argument's `...`, by its node. */
+export interface ScssSpreadMark {
+  readonly spreadAt: AstSourceSpan;
+}
+
+function isSpreadMark(child: unknown): child is ScssSpreadMark {
+  return typeof child === 'object' && child !== null && 'spreadAt' in child;
 }
 
 function isArgumentGap(child: unknown): child is ScssArgumentGap {

@@ -936,6 +936,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'Plugin: `@-plugin` parses only as an inert at-rule statement; `.jess` script integration is `@-use`/`@-from` [in less/_functions.less] (+104 more)'
   }],
+  ['bootstrap@5.3.8:_functions.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names (+5 more)'
+  }],
   ['bootstrap@5.3.8:_mixins.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',

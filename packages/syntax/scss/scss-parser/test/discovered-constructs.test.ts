@@ -312,8 +312,8 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     });
   });
 
-  it('PINNED DEFECT — rejects a Sass call argument form (spread argument)', () => {
-    expect(() => parse('a { b: f($x...) }')).toThrow();
+  it('admits a Sass call argument form (spread argument)', () => {
+    expect(() => parse('a { b: f($x...) }')).not.toThrow();
   });
 
   it('admits a bare variable as an @if condition', () => {
