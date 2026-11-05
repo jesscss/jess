@@ -668,14 +668,19 @@ const scssFactory = (g: ScssInputRules) => {
       'live'
     )
   );
+
+  /** `#{…}`: a whole value, padded or not (`#{ $a }`, `#{a b}`), wherever it stands. */
   const SassInterpolation = node<Interpolation>(
     'Interpolation',
-    sequence(
+    parser({ trivia: whitespace }, sequence(
       literal('#{'),
       g.Value,
       literal('}')
-    ),
-    children => interpolation([{ ref: requireValue(children[1]), unquote: true }])
+    )),
+    (children) => {
+      const value = requireValueSlot(children[1]);
+      return interpolation([{ ref: isValueSlotArray(value) ? spaced(value.filter(isScssValue)) : value, unquote: true }]);
+    }
   );
 
   /*
@@ -717,7 +722,7 @@ const scssFactory = (g: ScssInputRules) => {
       noTrivia(sequence(
         literal('"'),
         many(choice(
-          parser({ trivia: whitespace }, g.SassInterpolation),
+          g.SassInterpolation,
           regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/)
         )),
         literal('"')
@@ -725,7 +730,7 @@ const scssFactory = (g: ScssInputRules) => {
       noTrivia(sequence(
         literal('\''),
         many(choice(
-          parser({ trivia: whitespace }, g.SassInterpolation),
+          g.SassInterpolation,
           regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/)
         )),
         literal('\'')
@@ -825,10 +830,10 @@ const scssFactory = (g: ScssInputRules) => {
   const InterpolatedValue = node<Interpolation>(
     'InterpolatedValue',
     noTrivia(sequence(
-      parser({ trivia: whitespace }, g.SassInterpolation),
+      g.SassInterpolation,
       many(choice(
         regex(/[-_a-zA-Z0-9\u0080-\uffff]+/),
-        parser({ trivia: whitespace }, g.SassInterpolation)
+        g.SassInterpolation
       ))
     )),
     children => interpolation(children.flatMap(child => isInterpolation(child)
@@ -1286,7 +1291,7 @@ const scssFactory = (g: ScssInputRules) => {
       routed(),
       many(choice(
         regex(/[-_a-zA-Z0-9\u0080-\uffff]+/),
-        parser({ trivia: whitespace }, g.SassInterpolation)
+        g.SassInterpolation
       ))
     ),
     (children) => {
@@ -2013,7 +2018,7 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const customPropertyNameRest = many(choice(
     propertyNameChunk,
-    parser({ trivia: whitespace }, g.SassInterpolation)
+    g.SassInterpolation
   ));
   const CustomPropertyName = node<string | Interpolation>(
     'CustomPropertyName',
@@ -3612,10 +3617,10 @@ const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       routed(choice(
         g.Identifier,
-        parser({ trivia: whitespace }, g.SassInterpolation)
+        g.SassInterpolation
       )),
       many(choice(
-        parser({ trivia: whitespace }, g.SassInterpolation),
+        g.SassInterpolation,
         regex(/[-_a-zA-Z0-9\u0080-\uffff]+/)
       ))
     )),
@@ -3794,7 +3799,7 @@ const scssFactory = (g: ScssInputRules) => {
       sequence(
         literal('"'),
         many(choice(
-          parser({ trivia: whitespace }, g.SassInterpolation),
+          g.SassInterpolation,
           regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/)
         )),
         literal('"')
@@ -3802,7 +3807,7 @@ const scssFactory = (g: ScssInputRules) => {
       sequence(
         literal('\''),
         many(choice(
-          parser({ trivia: whitespace }, g.SassInterpolation),
+          g.SassInterpolation,
           regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/)
         )),
         literal('\'')
@@ -3819,7 +3824,7 @@ const scssFactory = (g: ScssInputRules) => {
   const GeneralTemplate = node<Interpolation>(
     'GeneralTemplate',
     noTrivia(many(choice(
-      parser({ trivia: whitespace }, g.SassInterpolation),
+      g.SassInterpolation,
       g.GeneralTemplateGroup,
       g.GeneralTemplateQuoted,
       customValueBlockCommentRun,
