@@ -74,6 +74,8 @@ describe('the export runtime', () => {
     ['@less.mix(red, @brand, 25%)', '#c00', 'color-mix(in srgb, red 25%, var(--brand, #c00))'],
     ['@less.mix(red, blue, @brand)', '25%', 'color-mix(in srgb, red var(--brand, 25%), blue)'],
     ['@less.average(@brand, red)', '#c00', 'color-mix(in srgb, var(--brand, #c00), red)'],
+    ['@less.contrast(@brand)', '#c00', 'contrast-color(var(--brand, #c00))'],
+    ['@less.contrast(@brand, #111, #eee)', '#c00', 'rgb(from contrast-color(var(--brand, #c00)) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) / calc(1 + 0 * r / 255))'],
     ['@less.tint(@brand, 13%)', '#c00', 'color-mix(in srgb, white 13%, var(--brand, #c00))'],
     ['@less.tint(red, @brand)', '13%', 'color-mix(in srgb, white var(--brand, 13%), red)'],
     ['@less.shade(@brand)', '#c00', 'color-mix(in srgb, black 50%, var(--brand, #c00))'],
@@ -103,6 +105,8 @@ describe('the export runtime', () => {
     ['@less.mix(red, blue, @brand)', '150%', '25%'],
     ['@less.mix(red, blue, @brand)', '25', '50%'],
     ['@less.tint(#777, @brand)', '-13%', '13%'],
+    ['@less.contrast(@brand, #111, #eee, 50%)', '#999', '#222'],
+    ['@less.contrast(#999, @brand, #eee)', '#111', '#222'],
     ['@less.lightness(@less.mix(@brand, red))', '#c00', '#08f']
   ])('runs %s of %s on the runtime, where no form holds it', async (expression, value, later) => {
     const exported = await compile(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`);

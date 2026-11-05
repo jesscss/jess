@@ -291,7 +291,7 @@ This time the grey's lightness looks about the same as the green, though its val
 
 > Choose which of two colors provides the greatest contrast with another.
 
-This is useful for ensuring that a color is readable against a background, which is also useful for accessibility compliance. This function works the same way as the [contrast function in Compass for SASS](http://compass-style.org/reference/compass/utilities/color/contrast/). In accordance with [WCAG 2.0](http://www.w3.org/TR/2008/REC-WCAG20-20081211/#relativeluminancedef), colors are compared using their gamma-corrected [luma](./color-channel#luma) value, not their lightness.
+This is useful for ensuring that a color is readable against a background, which is also useful for accessibility compliance. It picks the color with the larger [WCAG 2.1 contrast ratio](https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio), which compares gamma-corrected [luma](./color-channel#luma) values, not lightness. On a color only the browser knows, such as `var(--c)`, it is the CSS function `contrast-color()`.
 
 The light and dark parameters can be supplied in either order - the function will calculate their luma values and assign light and dark automatically, which means you can't use this function to select the *least* contrasting color by reversing the order.
 
@@ -300,7 +300,7 @@ Parameters:
 * `color`: A color object to compare against.
 * `dark`: optional - A designated dark color (defaults to black).
 * `light`: optional - A designated light color (defaults to white).
-* `threshold`: optional - A percentage 0-100% specifying where the transition from "dark" to "light" is (defaults to 43%, matching SASS). This is used to bias the contrast one way or another, for example to allow you to decide whether a 50% grey background should result in black or white text. You would generally set this lower for 'lighter' palettes, higher for 'darker' ones.
+* `threshold`: optional - A percentage 0-100% specifying where the transition from \"dark\" to \"light\" is, by luma instead of by contrast ratio. It needs a color known at compile time, because `contrast-color()` has no threshold. This is used to bias the contrast one way or another, for example to allow you to decide whether a 50% grey background should result in black or white text. You would generally set this lower for 'lighter' palettes, higher for 'darker' ones.
 
 Returns: `color`
 

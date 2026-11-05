@@ -195,7 +195,7 @@
       "css": "contrast-color(C)",
       "withColors": "rgb(from contrast-color(C) calc(Dr + (Lr - Dr) * r / 255) calc(Dg + (Lg - Dg) * r / 255) calc(Db + (Lb - Db) * r / 255) / calc(Da + (La - Da) * r / 255))",
       "spec": "css-color-5 §8",
-      "notes": "ruled 2026-11-01: a known input picks dark/light by the larger WCAG 2.1 contrast ratio (not the 43% luma rule), so contrast(#999) = black; an explicit threshold keeps the luma-threshold rule for a known input and has no CSS form for an unknown one. Still approx: contrast-color() uses a UA-defined algorithm. D and L must be known for the withColors form"
+      "notes": "built: slice 7. Ruled 2026-11-01 (Q13): a known input picks dark/light by the larger WCAG 2.1 contrast ratio, so contrast(#999) = black; an explicit threshold keeps the luma rule for a known input and has no CSS form for an unknown one (written as it was, or on the runtime). Black and white agree with contrast-color() in Chrome 152 on every origin of the grid; a custom pair can disagree, because the form switches where black and white do. Dark and light must be known for the withColors form"
     },
     {
       "dialect": "less",
