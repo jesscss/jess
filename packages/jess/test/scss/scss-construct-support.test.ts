@@ -132,13 +132,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'selectors', name: 'explicit & with combinator', src: '.a { & > :last-child { margin: 0; } }', supported: true },
   { group: 'selectors', name: 'leading combinator (implicit &)', src: '.a { > .b { margin: 0; } }', supported: true },
   { group: 'selectors', name: 'interpolation as a standalone compound', src: '#{$x} .b { color: red; }', supported: true },
-  {
-    group: 'selectors',
-    name: 'interpolated pseudo-element',
-    src: '.a { &::#{$x} { color: red; } }',
-    supported: false,
-    note: 'also fails for `:#{$x}` and without the leading &'
-  },
+  { group: 'selectors', name: 'interpolated pseudo-element', src: '.a { &::#{$x} { color: red; } }', supported: true },
 
   // ── custom properties ──────────────────────────────────────────────────────
   { group: 'custom properties', name: 'plain custom property declaration', src: '.a { --x: red; }', supported: true },

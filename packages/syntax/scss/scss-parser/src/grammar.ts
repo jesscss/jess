@@ -25,7 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { functionalPseudoFrom, pseudoArgumentFrom, conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { scssSum } from './plus-chain.js';
 import { foldLogicalOperation } from './grammar-logical.js';
 import type { ConditionWord, MathOperatorFact, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -164,8 +164,8 @@ type ScssRules = {
   NestedLayerBlock: Combinator<AtRuleBlock>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
-  PseudoArgument: Combinator<string>;
-  PseudoArgumentGroup: Combinator<string>;
+  PseudoArgument: Combinator<string | Interpolation>;
+  PseudoArgumentGroup: Combinator<string | Interpolation>;
   PseudoSelector: Combinator<SimpleToken>;
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
@@ -4717,7 +4717,7 @@ const scssFactory = (g: ScssInputRules) => {
   const InterpolatedSimple = node<SimpleSelector>(
     'InterpolatedSimple',
     noTrivia(sequence(
-      optional(regex(/[.#](?!\{)/)),
+      optional(regex(/[.#](?!\{)|::?/)),
       many(selectorTextRun),
       g.SassInterpolation,
       many(choice(
@@ -4777,34 +4777,43 @@ const scssFactory = (g: ScssInputRules) => {
     children => simpleSelector(`\\\\${requireToken(children[0]).value.slice(1)}`)
   );
 
+  /**
+   * The shared gate on a broken An+B, where SCSS's `#{` does not break one: the `#`
+   * of `:nth-child(-n + #{$num})` (Foundation `util/_mixins.scss`) opens the offset.
+   * One character class differs from `parser-shared`'s rule, and nothing else.
+   */
+  const MalformedPseudoSelectorNumericArgument = regex(/(?:[-+]?\d*\.\d|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*(?:\)|[^0-9 \t\n\r\f#]|#(?!\{)|\d+[_a-zA-Z\u0080-\uffff\\]))|[+-][ \t\n\r\f]+(?:\d*n|n)|[-+]?\d+[ \t\n\r\f]+n|[-+]?\d+[ \t\n\r\f]*[+-][ \t\n\r\f]*n)/i);
+
   /*
    * A static functional pseudo is still a canonical SimpleSelector leaf. Its
    * argument is grammar-recognized (including balanced groups, brackets,
    * strings, and comments) rather than post-parse text recovery. Every chunk
-   * excludes a real SCSS `#{` opener, so interpolation cannot be flattened into
-   * this static spelling while selector-valued arguments retain their existing
-   * canonical spelling inside the containing SimpleSelector.
+   * excludes a real SCSS `#{` opener, so an interpolation stays a typed part of
+   * the argument (`pseudoArgumentFrom`) and is never flattened into this static
+   * spelling, while selector-valued arguments retain their existing canonical
+   * spelling inside the containing SimpleSelector.
   */
   const staticPseudoChunk = regex(/(?:[^()\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
 
   /* Parenthesis and bracket nesting are the same opaque pseudo-argument fact. */
-  const PseudoArgumentGroup = node<string>(
+  const PseudoArgumentGroup = node<string | Interpolation>(
     'PseudoArgumentGroup',
-    choice(
-      sequence(literal('('), many(choice(g.PseudoArgumentGroup, g.LiteralQuoted, g.BlockCommentToken, staticPseudoChunk)), literal(')')),
-      sequence(literal('['), many(choice(g.PseudoArgumentGroup, g.LiteralQuoted, g.BlockCommentToken, staticPseudoChunk)), literal(']'))
-    ),
-    joinSourceText
+    noTrivia(choice(
+      sequence(literal('('), many(choice(g.PseudoArgumentGroup, g.LiteralQuoted, g.BlockCommentToken, g.SassInterpolation, staticPseudoChunk)), literal(')')),
+      sequence(literal('['), many(choice(g.PseudoArgumentGroup, g.LiteralQuoted, g.BlockCommentToken, g.SassInterpolation, staticPseudoChunk)), literal(']'))
+    )),
+    pseudoArgumentFrom
   );
-  const PseudoArgument = node<string>(
+  const PseudoArgument = node<string | Interpolation>(
     'PseudoArgument',
-    oneOrMore(choice(
+    noTrivia(oneOrMore(choice(
       g.PseudoArgumentGroup,
       g.LiteralQuoted,
       g.BlockCommentToken,
+      g.SassInterpolation,
       staticPseudoChunk
-    )),
-    joinSourceText
+    ))),
+    pseudoArgumentFrom
   );
 
   /*
@@ -5046,7 +5055,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.PseudoArgument,
       literal(')')
     ),
-    children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
+    children => functionalPseudoFrom(requireToken(children[0]).value, children[1])
   );
   const GenericFunctionPseudo = node<SimpleSelector>(
     'GenericPseudo',
@@ -5061,7 +5070,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.PseudoArgument,
       literal(')')
     ),
-    children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
+    children => functionalPseudoFrom(requireToken(children[0]).value, children[1])
   );
   const GenericBarePseudo = node<SimpleSelector>(
     'GenericPseudo',
@@ -5505,6 +5514,7 @@ const scssFactory = (g: ScssInputRules) => {
     UnknownAtRuleBlock,
     InterpolatedSimple,
     Placeholder,
+    MalformedPseudoSelectorNumericArgument,
     PseudoArgument,
     PseudoArgumentGroup,
     PseudoSelector,

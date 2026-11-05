@@ -981,6 +981,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'GuardNode: comparison operator `sass-equal`'
   }],
+  ['bootstrap@5.3.8:mixins/_forms.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Interpolation: a `IfValue` spliced into a selector: `${…}` takes a variable name (+2 more)'
+  }],
   ['bootstrap@5.3.8:mixins/_gradients.scss', {
     cause: 'cannot-express',
     outcome: 'arm-b-parse',
@@ -1020,6 +1025,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_button-group.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed) (+4 more)'
   }],
   ['foundation-sites@6.9.0:components/_callout.scss', {
     cause: 'cannot-express',
@@ -1171,10 +1181,20 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
   }],
+  ['foundation-sites@6.9.0:grid/_grid.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` [in grid/_row.scss] (+13 more)'
+  }],
   ['foundation-sites@6.9.0:grid/_gutter.scss', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:grid/_layout.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names (+2 more)'
   }],
   ['foundation-sites@6.9.0:grid/_position.scss', {
     cause: 'cannot-express',
@@ -1230,6 +1250,16 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_prototype.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` [in prototype/_relation.scss] (+28 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_relation.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
   }],
   ['foundation-sites@6.9.0:prototype/_rotate.scss', {
     cause: 'p35',
@@ -1310,6 +1340,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed) (+3 more)'
+  }],
+  ['foundation-sites@6.9.0:util/_mixins.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed) (+5 more)'
   }],
   ['foundation-sites@6.9.0:util/_selector.scss', {
     cause: 'cannot-express',

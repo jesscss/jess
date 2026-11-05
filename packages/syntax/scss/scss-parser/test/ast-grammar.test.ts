@@ -1974,13 +1974,11 @@ describe('SCSS canonical-AST grammar', () => {
     }
 
     /*
-     * `:nth-child` is the genuinely-unrepresented one and stays rejected. Its
-     * argument is `<An+B>` — a static token grammar, not a selector list — so
-     * an interpolated An+B has no node to live in, and the `of S` tail is the
-     * only selector-valued part of it. Representing it needs an interpolation
-     * carrier on the nth argument, which does not exist.
+     * An interpolated An+B is one interpolated simple selector: its value is
+     * unknown until it evaluates, so the argument keeps the hole as a typed part.
      */
-    expect(accepted('.card:nth-child(#{$n}) { color: blue; }')).toBe(false);
+    expect(accepted('.card:nth-child(#{$n}) { color: blue; }')).toBe(true);
+    expect(accepted('.card:part(icon-#{$name}) { color: blue; }')).toBe(true);
     for (const source of ['.x:global(.a) { color: blue; }', '.x:local(.a) { color: blue; }']) {
       expect(accepted(source), source).toBe(true);
     }
@@ -2027,8 +2025,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card:nth-child(1 - n) { color: blue; }',
       '.card:nth-child(2 n + 2) { color: blue; }',
       '.card:nth-child(- 2n) { color: blue; }',
-      '.card:lang(#{$locale}) { color: blue; }',
-      '.card:part(icon-#{$name}) { color: blue; }'
+      '.card:lang(#{$locale}) { color: blue; }'
     ]) {
       const direct = run(scssGrammar.Stylesheet, invalid, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
