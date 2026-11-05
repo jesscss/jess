@@ -21321,7 +21321,7 @@ function evalStatementCall(node: FunctionCall, frame: Frame, e: Emit): MaybeProm
       throw ERR.invalidStatement({
         node,
         ...callSiteLocation(node, e.s),
-        meta: { what: `The result of "${node.name}()", ${isValueGroupArray(value) ? 'a value list' : `a ${value.type}`} \`${emitValue(value)}\`,` }
+        meta: { what: `The result of "${node.name}()", ${isValueGroupArray(value) ? 'a value list' : `a ${value.type === 'FunctionCall' ? 'Keyword' : value.type}`} \`${emitValue(value)}\`,` }
       });
     }
     return value;

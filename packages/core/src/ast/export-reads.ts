@@ -549,7 +549,11 @@ const lone = (v: ValueGroup): ValueGroup => isValueGroupArray(v) && v.length ===
 
 /** Whether every export a call read is an argument its CSS form takes as what only the browser knows. */
 function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>): boolean {
-  return fn !== undefined && inputs.every(input => fn.params[vals.findIndex(v => lone(v) === input.value)]?.type?.includes('FunctionCall') === true);
+  if (fn === undefined) {
+    return false;
+  }
+  const taken = new Set(vals.filter((_, index) => fn.params[index]?.type?.includes('FunctionCall') === true).map(lone));
+  return inputs.every(input => taken.has(input.value));
 }
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */

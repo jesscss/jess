@@ -146,10 +146,17 @@ or needs JS) to decide what ships in the bundle.
   mixin argument `@w 2` a function reads), a function that has no import to name
   (a plugin's, a user function), and a computed result read outside a CSS value
   (a guard).
-- **Every computed function takes rung 4 today**, also one with a CSS-native
-  form. When the CSS-native-built-ins task builds a function's form
-  (`docs/design/CSS-NATIVE-BUILTINS.md` §3.4a, rungs 2–3), an exposed variable input
-  takes that form instead; the one seam is `exportCall`.
+- **A function with a CSS form takes that form**
+  (`docs/design/CSS-NATIVE-BUILTINS.md` §3.4a, rungs 2–3): an exposed variable
+  in an argument the form takes prints the form over its `var()`,
+  `hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100))`, the browser
+  recomputes it, and the function is in no recipe. Built for Less `lighten`
+  `darken` `saturate` `desaturate` `spin` `greyscale`; the one seam is
+  `exportCall`. Every other computed function takes rung 4, and so does one with
+  an exposed variable in an argument its form does not take yet (`@less.darken(#c00, @a)`,
+  that task's slice 5). An input of a function on rung 4 stays computed, as the
+  runtime reads it: `@less.lightness(@less.darken(@brand, 10%))` is one recipe
+  that runs both.
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent

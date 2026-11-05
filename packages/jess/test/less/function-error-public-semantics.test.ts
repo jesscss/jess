@@ -98,7 +98,7 @@ describe('Less built-in argument errors through the public AST route', () => {
      */
     const demandedSource = '.entry { color: lighten(rgb(from red r g b), 10%); }';
     await expect(lenient.renderString(demandedSource, { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toContain('lighten(rgb(from red r g b), 10%)');
+      .resolves.toContain('hsl(from rgb(from red r g b) h s clamp(0, l + 10, 100))');
     await expect(strict.renderString(demandedSource, { filePath: 'entry.less', extension: '.less' }))
       .rejects.toMatchObject({ code: 'eval/invalid-function' });
 
