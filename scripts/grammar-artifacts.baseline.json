@@ -8,9 +8,9 @@
       "sourceBytes": 182789,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 391164,
-          "ratio": 2.14,
-          "assemblyFunctions": 156
+          "bytes": 381704,
+          "ratio": 2.09,
+          "assemblyFunctions": 153
         },
         "lib/grammar/ast/positions.js": {
           "bytes": 138064,
@@ -64,9 +64,9 @@
       "sourceBytes": 277595,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 601573,
-          "ratio": 2.17,
-          "assemblyFunctions": 62
+          "bytes": 599587,
+          "ratio": 2.16,
+          "assemblyFunctions": 60
         },
         "lib/grammar/ast/positions.js": {
           "bytes": 468292,
@@ -110,9 +110,9 @@
       "sourceBytes": 201553,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 398635,
-          "ratio": 1.98,
-          "assemblyFunctions": 57
+          "bytes": 394269,
+          "ratio": 1.96,
+          "assemblyFunctions": 60
         },
         "lib/grammar/ast/positions.js": {
           "bytes": 306776,

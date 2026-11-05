@@ -20,6 +20,12 @@ const COMPOSE_EXTERNAL = [
   /^@jesscss\/core(\/|$)/
 ];
 
+/*
+ * The budget is a share of the module's code, comments and whitespace aside. This
+ * one keeps SCSS's duplicate count and its bytes at or under parseman 0.61.2's.
+ */
+const ASSEMBLY = { assemblyBudget: 0.612 };
+
 export default defineConfig([
   parserEntryBuild({
     entry: {
@@ -29,7 +35,7 @@ export default defineConfig([
       'cst/positions': './src/cst/positions.ts'
     },
     external: COMPOSE_EXTERNAL,
-    plugins: [parseman.rolldown({})]
+    plugins: [parseman.rolldown(ASSEMBLY)]
   }),
-  ...grammarVariantBuilds({ external: COMPOSE_EXTERNAL, plugins: [parseman.rolldown({})] })
+  ...grammarVariantBuilds({ external: COMPOSE_EXTERNAL, plugins: [parseman.rolldown(ASSEMBLY)] })
 ]);
