@@ -29,6 +29,7 @@ export type JessErrorCode =
   | 'parse/source-import-css-syntax'
   | 'parse/invalid-mixin-argument'
   | 'parse/ambiguous-not'
+  | 'parse/unresolved-prelude-interpolation'
   | 'parse/expose-declaration'
   | 'parse/malformed-expose'
   | 'parse/condition-keyword-case'
@@ -298,6 +299,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '@expose takes a comma-separated list of variable names',
       reason: '@expose is followed by one or more variable names without their @, separated by commas, and ends at a semicolon.',
       fix: 'Write the names it exposes, for example: @expose brand, gap;'
+    }
+  ],
+  [
+    'parse/unresolved-prelude-interpolation',
+    {
+      summary: 'This `@{…}` cannot be resolved in an at-rule prelude that opens with a group.',
+      reason: 'After a parenthesized group opens an at-rule prelude, a `@{…}` resolves only outside strings, functions and further groups.',
+      fix: 'Write the `@{…}` on its own in the prelude, or put it in a variable that holds the whole prelude.'
     }
   ],
   [

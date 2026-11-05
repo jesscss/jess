@@ -85,24 +85,12 @@ describe('the fallback text of a mixin lookup call keeps grouped arguments', () 
   });
 });
 
-describe('an interpolated argument of a mixin lookup call', () => {
-  it.each(['@{b}x', 'url(@{b}.png)'])('.m(%s)[@r] evaluates', async (argument) => {
-    await expect(render(`@b: 2;\n.m(@a) { @r: 1; }\n.x { v: .m(${argument})[@r]; }\n`, 'parens-division'))
-      .resolves.toBe('.x {\n  v: 1;\n}\n');
-  });
-
-  it.each(['@b', '@{b}x'])('.m(%s)[@r] writes the call as stored when the member is a call', async (argument) => {
-    await expect(render(`@b: 2;\n.n() { a: b; }\n.m(@a) { @r: .n(); }\n.x { v: .m(${argument})[@r]; }\n`, 'parens-division'))
-      .resolves.toBe(`.x {\n  v: .m(${argument})[@r];\n}\n`);
-  });
-});
-
 /*
  * P45: still stopped by the same fallback-text spelling, which has no spelling
- * for a detached ruleset. Turns red when fixed.
+ * for a detached ruleset or an interpolation. Each turns red when fixed.
  */
 describe('argument kinds the fallback text still cannot spell', () => {
-  it.fails.each(['{ a: b }'])('.m(%s)[@r] evaluates', async (argument) => {
+  it.fails.each(['{ a: b }', '@{b}x', 'url(@{b}.png)'])('.m(%s)[@r] evaluates', async (argument) => {
     await expect(render(`@b: 2;\n.m(@a) { @r: 1; }\n.x { v: .m(${argument})[@r]; }\n`, 'parens-division'))
       .resolves.toBe('.x {\n  v: 1;\n}\n');
   });

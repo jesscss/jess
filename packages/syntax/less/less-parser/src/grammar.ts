@@ -608,6 +608,7 @@ const compoundSelectorTrivia = classifiedTrivia({
   blockComment
 });
 const atPreludeCommentTrivia = classifiedTrivia({ blockComment });
+const atPreludeTrivia = classifiedTrivia({ lineComment, blockComment });
 /*
  * The trivia of a `@supports selector(…)` argument. General-enclosed content
  * is otherwise read with no trivia, its `//` kept as written (F13: a custom
@@ -3662,7 +3663,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.SupportsBlock,
     g.MediaContainerBlock,
     g.ReferenceCallOrAtRule,
-    g.ReferenceCall,
     g.Keyframes,
     g.AtRuleBlock,
     g.UnknownAtRuleBlock,
@@ -4722,6 +4722,32 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => atRulePreludeFrom(children, triviaLog)
   );
+  /*
+   * The slashes a group after a call head may hold. A `//` where a token could start
+   * is a comment, so its `)` closes nothing; anywhere else, as in `(http://a)`, a slash
+   * is text. `withoutLineComments` draws the same line when the text is built.
+   */
+  const afterCallGroupSlash = { skip: [regex(/(?<=[ \t\n\r\f()[\],"'])(?<![uU][rR][lL]\()\/\/[^\n\r]*|\/(?!\*)/)] };
+  /** The prelude run after a call head, the one with no typed reading in front of it to take a `//` as a comment. */
+  const AtRulePreludeAfterCall = node(
+    'AtRulePrelude',
+    parser(
+      { trivia: atPreludeTrivia },
+      many(choice(
+        atPreludeWhitespace,
+        atPreludeComma,
+        noTrivia(choice(
+          token(balanced('(', ')', afterCallGroupSlash)),
+          token(balanced('[', ']', afterCallGroupSlash))
+        )),
+        atPreludeQuoted,
+        g.VariableInterpolation,
+        g.BareVariableInterpolation,
+        atPreludeText
+      ))
+    ),
+    (children, _fields, _span, _rawChildren, triviaLog) => atRulePreludeFrom(children, triviaLog, true)
+  );
   const lessUnknownAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|@(?!\{)|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
   const lessUnknownAtPreludeCapture = many(choice(
     atPreludeWhitespace,
@@ -4861,9 +4887,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * included, so `@media\61 x {…}` is the unknown at-rule `@media\61 x`, as css
    * reads it (P39, P40).
    */
+  /** The at-rule names with a statement of their own, which never take the generic statement or call-head reading. */
+  const ReservedAtRuleName = token(noTrivia(choice(NonStatementAtKeyword, charsetAtRuleName)));
   const StaticAtRuleStatementName = token(noTrivia(sequence(
-    not(NonStatementAtKeyword),
-    not(charsetAtRuleName),
+    not(ReservedAtRuleName),
     g.AtIdentifier
   )));
   const AtRuleName = token(noTrivia(sequence(
@@ -4871,17 +4898,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     not(g.LayerAtKeyword),
     g.AtIdentifier
   )));
+  const opaqueAtRuleBody = sequence(literal('{'), unknownAtRuleBody, literal('}'));
   const UnknownAtRuleBlock = node(
     'UnknownAtRuleBlock',
     sequence(
       g.AtRuleName,
       not(regex(/[ \t\n\r\f]*:/)),
-      noTrivia(sequence(
-        g.UnknownAtPrelude,
-        literal('{'),
-        unknownAtRuleBody,
-        literal('}')
-      ))
+      noTrivia(sequence(g.UnknownAtPrelude, opaqueAtRuleBody))
     ),
     (children) => {
       const prelude = children[1];
@@ -4904,52 +4927,45 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     atRuleBlockBody,
     (children, _fields, _span, rawChildren) => atRuleBlockTailFrom(children, rawChildren)
   );
-  /** The rest of the prelude and the opaque body of the same at-rule, when its body is not a block. */
+  /** The opaque body of the same at-rule, when its body is not a block. */
   const UnknownAtRuleBlockAfterCall = node(
     'UnknownAtRuleBlock',
-    noTrivia(sequence(
-      g.UnknownAtPrelude,
-      literal('{'),
-      unknownAtRuleBody,
-      literal('}')
-    )),
+    noTrivia(opaqueAtRuleBody),
     children => unknownAtRuleBlockTailFrom(children)
   );
   /**
    * `@name (…)`, and any lookups and further calls glued to it, read once as a
-   * call head whatever it turns out to be. The next token decides. `;`, `}` or
-   * the end of input leaves a call. A `{` or more prelude makes it an at-rule,
-   * whose prelude starts with the head's bytes (ledger P2, and P52 for what this
-   * reading changes). An opaque body takes the last arm, as `UnknownAtRuleBlock`
-   * follows `AtRuleBlock`.
+   * call head, and the token after it decides, with no second read (ledger P52).
+   * `;`, `}` or the end of input leaves a call. An at-keyword leaves a call too:
+   * a new statement starts there, so `@d()` then `@media (a) { … }` is two
+   * statements. A `{` makes the head an at-rule's prelude. Anything else continues
+   * that prelude, which ends at `;`, `{`, `}` or the end of input. A name with a
+   * statement of its own never takes that reading, so `(…)` after it stays a call.
    *
-   * The names `StaticAtRuleStatementName` refuses have statements of their own
-   * and never take a generic at-rule reading; they stay on `ReferenceCall`.
    * Arguments a call cannot read, as in `@foo (a > b) { … }`, fail the head and
-   * reach `AtRuleBlock` as they always did.
-   *
-   * The node keeps the `VarCall` label so a call's CST does not move; the at-rule
-   * forms nest their own labels inside it.
+   * reach `AtRuleBlock` as they always did. The node keeps the `VarCall` label a
+   * call has always had; lint reads an at-rule form from its children.
    */
   const ReferenceCallOrAtRule = node(
     'VarCall',
-    sequence(
-      not(NonStatementAtKeyword),
-      not(charsetAtRuleName),
-      referenceCallHead,
-      optional(choice(
-        literal(';'),
-        sequence(
-          g.AtRulePrelude,
-          choice(AtRuleBlockAfterCall, literal(';'))
-        ),
-        UnknownAtRuleBlockAfterCall
-      ))
+    choice(
+      sequence(peek(ReservedAtRuleName), referenceCallHead, optional(literal(';'))),
+      sequence(
+        referenceCallHead,
+        optional(choice(
+          literal(';'),
+          sequence(
+            not(regex(/@(?!\{)|\}|$/)),
+            AtRulePreludeAfterCall,
+            optional(choice(AtRuleBlockAfterCall, UnknownAtRuleBlockAfterCall, literal(';')))
+          )
+        ))
+      )
     ),
-    (children, _fields, span, rawChildren) => {
+    (children, _fields, span, rawChildren, _triviaLog, state) => {
       const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
-      const atRule = atRuleAfterReferenceCall(`@${name}`, children, rawChildren, span);
-      return atRule ?? withSourceSpan(referenceWithTails(variableReference(name, 'scoped'), `@${name}`, children.filter(isReferenceTailFact)), span);
+      return atRuleAfterReferenceCall(children, rawChildren, span, state)
+        ?? withSourceSpan(referenceWithTails(variableReference(name, 'scoped'), `@${name}`, children.filter(isReferenceTailFact)), span);
     }
   );
   /*

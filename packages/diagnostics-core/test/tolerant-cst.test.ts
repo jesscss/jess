@@ -23,6 +23,20 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it.each([
+    ['a: --x;'],
+    ['-webkit-a: b;']
+  ])('lints the body of `@foo (a)` as it does `@foo z`: %s', (body) => {
+    const codes = (prelude: string) => collectTolerantDiagnostics({ source: `@foo ${prelude} { ${body} }`, language: 'less' })
+      .diagnostics.map(diagnostic => diagnostic.code).sort();
+    expect(codes('(a)')).toEqual(codes('z'));
+  });
+
+  it('leaves a custom property in a call\'s argument alone', () => {
+    const codes = collectTolerantDiagnostics({ source: '@d(--x);', language: 'less' }).diagnostics.map(diagnostic => diagnostic.code);
+    expect(codes).not.toContain(LINT_CODES.customPropertyMissingVarFunction);
+  });
+
   it('marks consecutive duplicate properties as a shared diagnostic qualifier', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { color: red; color: blue; margin: 0; color: green; }',
