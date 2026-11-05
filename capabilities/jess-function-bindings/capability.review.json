@@ -11,5 +11,5 @@
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "The equivalence suite gains KNOWN rows for SCSS files that now parse. It does not change which module or export a conversion binds."
+  "rationale": "The equivalence suite gains KNOWN rows for SCSS files that now parse. It does not change which module or export a converted .jess file imports, so the bindings and their consumers are unchanged."
 }

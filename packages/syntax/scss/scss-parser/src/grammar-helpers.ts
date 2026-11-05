@@ -555,7 +555,7 @@ function isComparisonToken(child: unknown): boolean {
  */
 /** The padding a call argument's tokens carry between its parts: a token that is no value, comparison or `:`. */
 function isArgumentGap(child: unknown): boolean {
-  return isToken(child) && !isScssValue(child) && ' \t\n\r\f/'.includes(child.value[0]!);
+  return isToken(child) && !isScssValue(child) && (child.value[0] === '/' || child.value.trim() === '');
 }
 
 function argumentRun(children: readonly unknown[]): ValueSlot {
