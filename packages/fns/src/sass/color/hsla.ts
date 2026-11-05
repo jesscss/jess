@@ -1,5 +1,5 @@
-import type { Fn, ValueGroup } from '@jesscss/core';
-import { defineFunction, groupItems } from '@jesscss/core';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
+import { defineFunction, groupItems } from '@jesscss/core/value';
 import { isModern, makeHsl } from './kernels.js';
 
 /** Sass `hsla()` — the same construction kernel as `hsl()` under its own dispatch name. */

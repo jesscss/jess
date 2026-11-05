@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { defineFunction } from '@jesscss/core/value';
 import { degreesOf, noExcess, requireColor, requireDimension } from './kernels.js';
 import { rotateHue } from '../../shared/color/kernels.js';
 

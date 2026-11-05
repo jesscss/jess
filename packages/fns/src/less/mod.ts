@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { makeDimension, defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { makeDimension, defineFunction } from '@jesscss/core/value';
 import { requireDimension } from '../shared/math/math-helper.js';
 
 /** `mod(a, b)` — `a % b`, keeping `a`'s unit. */
