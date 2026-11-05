@@ -443,6 +443,16 @@ export const denoRunArgs = (
     '--no-prompt',
     `--allow-read=${list(readSet)}`,
     '--ignore-read',
+
+    /*
+     * Bare imports read the `node_modules` above the importing file and nothing
+     * else, wherever the packages are installed. Left to itself, Deno picks a
+     * mode from the configs above this script: a global install has none and
+     * cannot find its own packages, and a `deno.json` asking for npm packages
+     * has it fetch and write them. An `npm:` import of a package not installed
+     * is refused, with or without `allowHttp`.
+     */
+    '--node-modules-dir=manual',
     ...net,
     ...imports,
     '--unstable-bare-node-builtins',
