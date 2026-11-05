@@ -357,12 +357,12 @@ const whitespace = classifiedTrivia({
  * A comment is trivia wherever whitespace is trivia (css-syntax-3 §4), so an
  * operator's padding is spelled `ws* (comment ws*)*` rather than a bare
  * whitespace run — the bare run is why `1px /* c *\/ * 2` was rejected outright.
- * The comment and whitespace arms open on disjoint characters, so the match
- * stays linear. `sumPad` requires real whitespace, which a comment does not
+ * A `//` is one as well, in SCSS: `1 + // c` + newline + `2`. The arms open on
+ * disjoint characters, so the match stays linear. `sumPad` requires real whitespace, which a comment does not
  * supply, and is the shape Sass's list-vs-math discrimination is written in.
  */
-const productPad = regex(/[ \t\n\r\f]*(?:\/\*(?:[^*]|\*(?!\/))*\*\/[ \t\n\r\f]*)*/);
-const sumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/)*[ \t\n\r\f]+(?:\/\*(?:[^*]|\*(?!\/))*\*\/[ \t\n\r\f]*)*/);
+const productPad = regex(/[ \t\n\r\f]*(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
+const sumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/)*[ \t\n\r\f]+(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
 
 /*
  * Each pad is its own term rather than part of the operator regex, so the
@@ -403,7 +403,7 @@ const sumOperator = choice(
   ))
 );
 const space = regex(/[ \t\n\r\f]+/);
-const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
+const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)+/);
 
 /**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that SCSS gives no

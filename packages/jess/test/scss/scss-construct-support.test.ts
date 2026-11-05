@@ -52,13 +52,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'maps', name: 'nested paren list, single line', src: '$e: (("<", "%3c"), (">", "%3e"));', supported: true },
   { group: 'maps', name: 'nested paren list, multiline', src: '$e: (\n  ("<", "%3c"),\n  (">", "%3e")\n);', supported: true },
   { group: 'maps', name: 'multiline paren list as a function argument', src: '$u: f(\n  $x,\n  (\n    "a",\n    "b"\n  )\n);', supported: true },
-  {
-    group: 'maps',
-    name: 'line comment inside a paren list',
-    src: '$m: (\n  // c\n  a: 1\n);',
-    supported: false,
-    note: 'comments parse fine at top level and inside rule bodies'
-  },
+  { group: 'maps', name: 'line comment inside a paren list', src: '$m: (\n  // c\n  a: 1\n);', supported: true },
 
   // ── control flow ───────────────────────────────────────────────────────────
   { group: 'control flow', name: '@if with a comparison', src: '@if $x == 1 { c: red; }', supported: true },

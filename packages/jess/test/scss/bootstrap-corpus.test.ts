@@ -263,6 +263,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   '_tooltip.scss',
   '_transitions.scss',
   '_type.scss',
+  '_utilities.scss',
   '_variables-dark.scss',
   '_variables.scss',
   'bootstrap-grid.scss',

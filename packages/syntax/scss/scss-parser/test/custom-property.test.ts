@@ -205,13 +205,10 @@ describe('SCSS custom properties', () => {
   });
 
   /*
-   * PINNED DEFECT — a `//` in a `var()` fallback of an ordinary declaration. The
-   * fallback is a SassScript argument there, where `//` is a silent comment:
-   * dart-sass 1.101.7 compiles `var(--x, // b` + newline + `red)` to
-   * `var(--x, red)`. SCSS rejects it, because its `var()` (inherited from the css
-   * base) skips only whitespace and block comments.
+   * A `//` in a `var()` fallback of an ordinary declaration: the fallback is a
+   * SassScript argument there, where `//` is a silent comment.
    */
-  it('PINNED DEFECT — rejects a line comment in a var() fallback', () => {
-    expect(() => parse('a {\n  color: var(--x, // b\n    red);\n}')).toThrow();
+  it('reads a line comment in a var() fallback', () => {
+    expect(() => parse('a {\n  color: var(--x, // b\n    red);\n}')).not.toThrow();
   });
 });

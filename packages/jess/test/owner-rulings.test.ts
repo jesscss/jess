@@ -64,7 +64,7 @@ describe('P45 (owner 2026-10-09): well-formed input never stops the pipeline', (
     await expect(compile('@foo 1 + 2;', '.jess')).resolves.toContain('@foo');
   });
 
-  it.fails('P45 (owner 2026-10-09): SCSS parses a line comment inside a call, `max(1px, // c` then `2px)`', async () => {
+  it('P45 (owner 2026-10-09): SCSS parses a line comment inside a call, `max(1px, // c` then `2px)`', async () => {
     await expect(compile('.a { b: max(1px, // c\n 2px); }', '.scss')).resolves.toContain('b:');
   });
 
