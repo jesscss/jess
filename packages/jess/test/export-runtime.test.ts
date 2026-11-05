@@ -58,6 +58,63 @@ describe('the export runtime', () => {
       .rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 
+  it.each([
+    ['@less.rgba(@brand, .5)', '#c00', 'rgb(from var(--brand, #c00) r g b / 0.5)'],
+    ['@less.rgb(@brand, 50%)', '#c00', 'rgb(from var(--brand, #c00) r g b / 0.5)'],
+    ['@less.rgba(@brand, .5)', 'red', 'rgb(from var(--brand, red) r g b / 0.5)'],
+    ['@less.rgba(@brand, .5)', 'currentcolor', 'rgb(from var(--brand, currentcolor) r g b / 0.5)'],
+    ['@less.rgb(@brand)', '#c00', 'var(--brand, #c00)'],
+    ['@less.rgba(#c00, @brand)', '.5', 'rgb(from #c00 r g b / var(--brand, 0.5))'],
+    ['@less.rgb(@brand, 0, 0)', '10', 'rgb(var(--brand, 10), 0, 0)'],
+    ['@less.rgb(0, @brand, 0)', '10', 'rgb(0, var(--brand, 10), 0)'],
+    ['@less.rgba(1, 2, 3, @brand)', '.5', 'rgba(1, 2, 3, var(--brand, 0.5))']
+  ])('prints %s of %s over its var(), with no recipe', async (expression, value, printed) => {
+    const exported = await compile(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`);
+    expect(exported.css).toContain(`v: ${printed};`);
+    expect(exported.runtime!.derived).toEqual({});
+  });
+
+  it.each([
+    ['@less.rgba(@brand, .5)', '10'],
+    ['@less.rgb(@brand, 0, 0)', 'red'],
+    ['@less.rgb(0, @brand, 0)', 'foo']
+  ])('fails %s when the export is %s, which that slot cannot take', async (expression, value) => {
+    await expect(new Compiler({}).renderString(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`, { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/invalid-function' });
+  });
+
+  it('runs rgb() as a recipe inside a function with no CSS form', async () => {
+    const exported = await compile('@use "#less";\n@expose r;\n@r: 200;\n.a { v: @less.lightness(@less.rgb(@r, 0, 0)); }');
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ r: '100' });
+    expect(vars['--r-lightness']).toBe('19.607843137%');
+  });
+
+  it.each([
+    '@less.fade(var(--x), @a)',
+    '@less.fade(rgb(1 2 3), @a)',
+    '@less.fade(hsl(120, 50%, 50%), @a)',
+    '@less.hsva(var(--h), 50%, 50%, @a)',
+    '@less.hsv(var(--h), 50%, @a)',
+    '@less.mix(rgba(1, 2, 3, .5), red, @a)',
+    '@less.darken(var(--x), @a)'
+  ])('fails %s at its span, whose fixed argument the runtime cannot read', async (expression) => {
+    const source = `@use "#less";\n@expose a;\n@a: 25%;\n.x { v: ${expression}; }`;
+    await expect(new Compiler({}).renderString(source, { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/expose-not-a-value', line: 4, column: 9 });
+  });
+
+  it.each([
+    ['currentcolor', 'rgb(from currentcolor r g b / 0.5)'],
+    ['red', 'rgba(255, 0, 0, 0.5)'],
+    ['#c00', 'rgba(204, 0, 0, 0.5)']
+  ])('recomputes beside a fixed argument it can read: %s', async (color, printed) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.fade(${color}, @a); }`);
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '50%' });
+    expect(Object.values(vars)).toContain(printed);
+  });
+
   it('leaves nothing behind for a form over a form', async () => {
     const exported = await compile('@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.darken(@less.spin(@brand, 30), 10%); }');
     expect(exported.css).toContain('v: hsl(from hsl(from var(--brand, #c00) calc(h + 30) s l) h s clamp(0, l - 10, 100));');

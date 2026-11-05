@@ -97,7 +97,18 @@ describe('vite-plugin-jess', () => {
       const { js } = await built(root);
 
       /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. */
-      expect(js.length).toBeLessThan(200_000);
+      expect(js.length).toBeLessThan(100_000);
+    });
+  });
+
+  it('bundles no evaluator for rgb() over an exposed channel', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose r;\n@r: 10;\n.a { color: @less.rgb(@r, 0, 0); }\n`]
+    ], async (root) => {
+      const { css, js } = await built(root);
+      expect(css).toContain('rgb(var(--r, 10),0,0)');
+      expect(js.length).toBeLessThan(100_000);
     });
   });
 

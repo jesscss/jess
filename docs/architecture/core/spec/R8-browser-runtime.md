@@ -153,7 +153,11 @@ or needs JS) to decide what ships in the bundle.
   `hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100))`, the browser
   recomputes it, and the function is in no recipe. Built for Less `lighten`
   `darken` `saturate` `desaturate` `spin` `greyscale` `fade` `fadein` `fadeout`,
-  two-slot `rgba`, and the hue of `hsv` `hsva`; the one seam is `exportCall`. A
+  two-slot `rgb` `rgba`, and the hue of `hsv` `hsva`; the one seam is `exportCall`.
+  `rgb` and `rgba` with an exposed channel are valid CSS as written, and print so:
+  `@less.rgb(@r, 0, 0)` is `rgb(var(--r, 10), 0, 0)`; one exposed colour,
+  `@less.rgb(@brand)`, is `var(--brand, #c00)`. A wrong exposed value fails at the
+  compile, as its slot rejects it. A
   stylesheet that prints only forms adds no function: with no exposed variable it
   adds no JS at all, and with one it adds the runtime that sets it, `createRuntime`
   with no derived value (measured 2026-11-05 with Vite 6: 34.7 KB minified, 10.6 KB gzip). Every other computed function takes rung 4, and so does one with
@@ -161,6 +165,9 @@ or needs JS) to decide what ships in the bundle.
   that task's slice 5). An input of a function on rung 4 stays computed, as the
   runtime reads it: `@less.lightness(@less.darken(@brand, 10%))` is one recipe
   that runs both.
+  A fixed argument the runtime cannot read, because it holds a call
+  (`@less.fade(var(--x), @a)`, `@less.fade(rgb(1 2 3), @a)`), fails at the compile,
+  at the call's span (`eval/expose-not-a-value`), not in the browser.
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent
@@ -249,10 +256,12 @@ or needs JS) to decide what ships in the bundle.
   included. Whether a recipe should reach a form that way, at that size, is the
   owner's call and is not decided here.
   Measured again 2026-11-05 with Vite 6, after `fade` and `hsv` became forms:
-  `lightness(@brand)` is 72.7 KB minified, 20.3 KB gzip; a recipe that runs a form,
-  `lightness(spin(@brand, 30))` or `alpha(fade(@brand, 50%))`, is 500 KB minified,
-  133 KB gzip. That now includes `rgb()` and `rgba()` in a recipe, whose two-slot
-  overload is a form.
+  `lightness(@brand)` is LIGHTNESS; a page of `@less.rgb(@r, 0, 0)` or
+  `@less.rgba(@brand, .5)` has no function in its runtime and is PRINTED; a recipe
+  that runs a form, `lightness(spin(@brand, 30))` or `alpha(fade(@brand, 50%))`,
+  is FORM. So is `lightness(rgb(@r, 0, 0))`: `rgb()` nested inside a function with
+  no CSS form runs in the recipe, and its two-slot overload is a form, so it costs
+  the evaluator (NESTED).
 - ponytail: imports of a stylesheet are not watched (`loadedUrls` is empty);
   only the stylesheet itself is. Watch the render's loaded files when the
   compiler reports them.

@@ -16,6 +16,31 @@ const invalidCalls = [
   ['invalid rgba two-argument numeric call', 'rgba(1, 2)']
 ] as const;
 
+describe('a colour call with a channel written in parens of its own', () => {
+  const printed = async (value: string): Promise<string> =>
+    new Compiler({}).renderString(`.a { x: ${value}; }`, { filePath: 'entry.less', extension: '.less' });
+
+  it.each([
+    'fade(rgb((10) 20 30), 50%)',
+    'fade(rgb(10 (20) 30), 50%)',
+    'fade(hsl((120) 50% 50%), 50%)',
+    'fade(rgb(from #336699 (r) g b), 50%)',
+    'lightness(hsl(120 (50%) 50%))',
+    'red(rgb((10) 20 30))'
+  ])('computes none of %s, whose channel CSS does not read', async (value) => {
+    await expect(printed(value)).resolves.toContain(`x: ${value};`);
+  });
+
+  it('computes none of an alpha in parens', async () => {
+    await expect(printed('fade(rgb(10 20 30 / (0.5)), 50%)')).resolves.toContain('x: fade(rgb(10 20 30 / (0.5)), 50%);');
+  });
+
+  it('computes a group inside calc(), where CSS reads it', async () => {
+    await expect(printed('fade(rgb(calc((10)) 20 30), 50%)')).resolves.toContain('x: rgb(10 20 30 / 0.5);');
+    await expect(printed('fade(hsl(calc((120)) 50% 50%), 50%)')).resolves.toContain('x: rgb(64 191 64 / 0.5);');
+  });
+});
+
 describe('Less built-in argument errors through the public AST route', () => {
   it('evaluates a multiline final svg-gradient stop as one typed argument', async () => {
     const compiler = new Compiler({

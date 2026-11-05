@@ -1,5 +1,5 @@
 import { defineForm, type FormCall } from '@jesscss/core/form';
-import { percentToFraction } from '../util/decimal.js';
+import { mulExact, percentToFraction, subExact } from '../util/decimal.js';
 import { normalizeHue } from './color-ctor-helper.js';
 import { isValueGroupArray, makeDimension, textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 
@@ -20,8 +20,17 @@ export const hueOf = (hue: ValueGroup): ValueGroup =>
   !isValueGroupArray(hue) && hue.type === 'Dimension' ? makeDimension(normalizeHue(hue)) : hue;
 
 /** A value on 0–1: a percentage of 1, or a number as written. */
-export const fractionOf = (value: Dimension): Dimension =>
-  value.unit === '%' ? makeDimension(percentToFraction(value.number)) : makeDimension(value.number);
+export const fractionOf = (value: Dimension): number =>
+  value.unit === '%' ? percentToFraction(value.number) : value.number;
+
+/** S or V on 0–100: an authored percentage's own number, or a 0–1 number scaled. */
+const onHundred = (value: Dimension): number => value.unit === '%' ? value.number : mulExact(value.number, 100);
+
+/** `hsv`'s S and V as `hwb()` reads them: white `(1 - s)v`, black `1 - v`, exactly, in percent. */
+export function whiteBlack(s: Dimension, v: Dimension): readonly [white: Dimension, black: Dimension] {
+  const value = onHundred(v);
+  return [makeDimension(percentToFraction(mulExact(subExact(100, onHundred(s)), value)), '%'), makeDimension(subExact(100, value), '%')];
+}
 
 /** `name(color, amount, method?)` over its CSS form, and the form `method: relative` takes. */
 /* @__NO_SIDE_EFFECTS__ */

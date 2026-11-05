@@ -52,7 +52,8 @@ export function generate(parse, source) {
     const params = value.params.map(param => `{ name: ${text(param.name)} }`).join(', ');
     return `export const ${camel(name)} = /* @__PURE__ */ anonymousMixin([${value.rules.map(node).join(', ')}], [${params}]);`;
   });
-  return `// Generated from css-forms.jess by scripts/build-css-forms.mjs. Do not edit.\nimport { ${FACTORIES.join(', ')} } from '@jesscss/core/ast';\n\n${lines.join('\n')}\n`;
+  const factories = FACTORIES.filter(name => lines.some(line => line.includes(`${name}(`)));
+  return `// Generated from css-forms.jess by scripts/build-css-forms.mjs. Do not edit.\nimport { ${factories.join(', ')} } from '@jesscss/core/ast';\n\n${lines.join('\n')}\n`;
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {

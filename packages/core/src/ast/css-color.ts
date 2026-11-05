@@ -73,11 +73,11 @@ export type Rgba = readonly [r: number, g: number, b: number, alpha: number];
  * The colour a CSS colour call ({@link isCssColorCall}) computes, or `written`
  * (the call written out as-is, whose bytes the colour is spelled with) when it
  * is not known. `vals` are the call's arguments as the call evaluated them, so a
- * relative colour's origin (a colour, or a keyword naming one) and a comma call's
- * computed channels are read from them, never evaluated again; other channels are
- * evaluated again, with the origin's values bound, since the call evaluated them
- * unbound, and so is an origin that is a colour call of its own. Each level of
- * nesting is evaluated at most twice, never once per enclosing level.
+ * relative colour's origin (a colour, or a keyword naming one) and an absolute
+ * call's computed channels are read from them, never evaluated again; other
+ * channels are evaluated again, with the origin's values bound, since the call
+ * evaluated them unbound, and so is an origin that is a colour call of its own.
+ * Each level of nesting is evaluated at most twice, never once per enclosing level.
  */
 export function resolveColorCall(node: FunctionCall, vals: readonly ValueGroup[], bind: ChannelBinder, written: WrittenCall): MaybePromise<Color | WrittenCall> {
   const isRgb = node.name.toLowerCase().startsWith('rgb');
@@ -101,7 +101,7 @@ export function resolveColorCall(node: FunctionCall, vals: readonly ValueGroup[]
   const value = relative && isValueGroupArray(slot) ? slot[1] : undefined;
   const origin = value === undefined || isValueGroupArray(value) ? undefined : value.type === 'Color' ? value : value.type === 'Keyword' ? namedColor(value.text) : undefined;
   const computed = (from: OriginColor | undefined): MaybePromise<Color | WrittenCall> =>
-    mapMaybe((isRgb ? rgbaOf : hslaOf)(node, nodes, from, bind), channels => spelled(channels, true));
+    mapMaybe((isRgb ? rgbaOf : hslaOf)(node, nodes, from, bind, slot), channels => spelled(channels, true));
   if (relative && origin === undefined) {
     /* A colour call as the origin was written out, as it is an argument no callable reads, so this consumer asks for it. */
     const call = nodes[1]!;
@@ -158,10 +158,8 @@ export function formChannels(node: FunctionCall): FormChannels | undefined {
   }
   const first = nodes[0]!;
   const relative = !isValueSlotArray(first) && first.type === 'Keyword' && first.src === 'from';
-  const alpha = colorAlphaSlash(node);
-  const items = relative ? nodes.slice(2) : nodes;
-  const slots = alpha === null ? items : [...items.slice(0, -1), alpha.left, alpha.right];
-  return { space, relative, slots, kinds: slots.map(channelKind), slashed: alpha !== null };
+  const { slots, slashed } = colorSlots(node, nodes, relative);
+  return { space, relative, slots, kinds: slots.map(channelKind), slashed };
 }
 
 /** The channels a form reads, one value each, written anew for each call. */
@@ -169,28 +167,46 @@ export type MutableChannels = Record<'h' | 's' | 'l' | 'r' | 'g' | 'b' | 'alpha'
 
 export const formChannelValues = (): ColorChannels & MutableChannels => ({ h: channelNumberValue(0), s: channelNumberValue(0), l: channelNumberValue(0), r: channelNumberValue(0), g: channelNumberValue(0), b: channelNumberValue(0), alpha: channelNumberValue(0) }) as ColorChannels & MutableChannels;
 
-/** A space-separated colour's channels with its alpha, as they are read ({@link colorAlphaSlash}). */
+/** A space-separated colour's channels with its alpha, as they are read ({@link colorAlphaSlash}, or a `/` list the last channel is). */
 function colorSlots(node: FunctionCall, nodes: readonly ValueSlot[], relative: boolean): { readonly slots: readonly ValueSlot[]; readonly slashed: boolean } {
   const alpha = colorAlphaSlash(node);
   const items = relative ? nodes.slice(2) : nodes;
-  return { slots: alpha === null ? items : [...items.slice(0, -1), alpha.left, alpha.right], slashed: alpha !== null };
+  const last = items[items.length - 1];
+  const listed = alpha === null && items.length === 3 && last !== undefined && !isValueSlotArray(last) && last.type === 'List' && last.sep === '/' && last.value.length === 2;
+  return {
+    slots: alpha !== null ? [...items.slice(0, -1), alpha.left, alpha.right] : listed ? [items[0]!, items[1]!, ...last.value] : items,
+    slashed: alpha !== null || listed
+  };
 }
 
 /** The colour of a space-separated `hsl()`'s channels, the origin's bound in a relative one. */
-function hslaOf(node: FunctionCall, nodes: readonly ValueSlot[], origin: OriginColor | undefined, bind: ChannelBinder): MaybePromise<Hsla | undefined> {
+function hslaOf(node: FunctionCall, nodes: readonly ValueSlot[], origin: OriginColor | undefined, bind: ChannelBinder, evaluated: ValueGroup): MaybePromise<Hsla | undefined> {
   const hsl = origin === undefined ? undefined : originHsl(origin);
   const read = bind(origin === undefined || hsl === undefined ? UNBOUND : hslChannels(hsl, origin.alpha));
   const { slots, slashed } = colorSlots(node, nodes, origin !== undefined);
-  return channelsOf(slots, read, values => hslOf(values, slots.map(channelKind), hsl, origin?.alpha ?? 1, slashed));
+  return channelsOf(slots, channelReader(read, origin, evaluated, slashed), values => hslOf(values, slots.map(channelKind), hsl, origin?.alpha ?? 1, slashed));
 }
 
 /** The colour of a space-separated `rgb()`'s channels, the origin's bound in a relative one. */
-function rgbaOf(node: FunctionCall, nodes: readonly ValueSlot[], origin: OriginColor | undefined, bind: ChannelBinder): MaybePromise<Rgba | undefined> {
+function rgbaOf(node: FunctionCall, nodes: readonly ValueSlot[], origin: OriginColor | undefined, bind: ChannelBinder, evaluated: ValueGroup): MaybePromise<Rgba | undefined> {
   const rgb = origin === undefined ? undefined : originRgb(origin);
   const alpha = origin === undefined ? 1 : clamp(origin.alpha, 1);
   const read = bind(rgb === undefined ? UNBOUND : { ...UNBOUND, r: channelNumberValue(rgb[0]), g: channelNumberValue(rgb[1]), b: channelNumberValue(rgb[2]), alpha: channelNumberValue(alpha) });
   const { slots, slashed } = colorSlots(node, nodes, origin !== undefined);
-  return channelsOf(slots, read, values => rgbOf(values, slots.map(channelKind), rgb, alpha, slashed));
+  return channelsOf(slots, channelReader(read, origin, evaluated, slashed), values => rgbOf(values, slots.map(channelKind), rgb, alpha, slashed));
+}
+
+/** How an `hsl()` or `rgb()` reads its channels: an absolute call's that the call computed, as it computed them. `evaluated` holds its alpha in a `/` list after the channels ({@link colorChannels}). */
+function channelReader(read: (slot: ValueSlot) => MaybePromise<ValueGroup>, origin: OriginColor | undefined, evaluated: ValueGroup, slashed: boolean): (slot: ValueSlot, index: number) => MaybePromise<ValueGroup> {
+  if (origin !== undefined || !isValueGroupArray(evaluated)) {
+    return read;
+  }
+  const last = evaluated[evaluated.length - 1];
+  const values = slashed && last !== undefined ? [...evaluated.slice(0, -1), ...groupItems(last)] : evaluated;
+  return (slot, index) => {
+    const value = values[index];
+    return isDimension(value) ? value : read(slot);
+  };
 }
 
 /**

@@ -292,14 +292,29 @@ describe('a built-in is its CSS form', () => {
     expect(value('rgba(#f00 0.5)')).toBe('rgba(#f00 0.5)');
   });
 
+  it('keeps a known colour\'s alpha through the two-slot rgb()', () => {
+    expect(value('rgb(#c00, 0.5)')).toBe('rgba(204, 0, 0, 0.5)');
+    expect(value('rgb(#c00, 50%)')).toBe('rgba(204, 0, 0, 0.5)');
+  });
+
+  it('chains the alpha family in range', () => {
+    expect(value('fadeout(fadein(#336699, 10%), 5%)')).toBe('rgba(51, 102, 153, 0.95)');
+  });
+
+  it('leaves a colour given channels as well as a colour to the function mode', () => {
+    expect(value('alpha(rgb(#f00, 0.5, 0.5))')).toBe('alpha(rgb(#f00, 0.5, 0.5))');
+    expect(value('rgb(#f00, 0.5, 0.5)')).toBe('rgb(#f00, 0.5, 0.5)');
+  });
+
   it('leaves an alpha only the browser knows to be computed by a later form', () => {
     expect(value('fade(#336699, var(--a))')).toBe('fade(#336699, var(--a))');
     expect(value('fade(var(--c), var(--a))')).toBe('fade(var(--c), var(--a))');
   });
 
   it('prints hsv() over a hue only the browser knows, and writes out any other unknown', () => {
-    expect(value('hsv(var(--h), 50%, 50%)')).toBe('hwb(var(--h) calc((1 - 0.5) * 0.5 * 100%) calc((1 - 0.5) * 100%))');
-    expect(value('hsva(var(--h), 50%, 50%, 0.5)')).toBe('hwb(var(--h) calc((1 - 0.5) * 0.5 * 100%) calc((1 - 0.5) * 100%) / 0.5)');
+    expect(value('hsv(var(--h), 50%, 50%)')).toBe('hwb(var(--h) 25% 50%)');
+    expect(value('hsv(var(--h), 50%, 75%)')).toBe('hwb(var(--h) 37.5% 25%)');
+    expect(value('hsva(var(--h), 50%, 50%, 0.5)')).toBe('hwb(var(--h) 25% 50% / 0.5)');
     expect(value('hsv(90, var(--s), 50%)')).toBe('hsv(90, var(--s), 50%)');
     expect(value('hsva(90, 50%, 50%, var(--a))')).toBe('hsva(90, 50%, 50%, var(--a))');
   });
@@ -337,6 +352,38 @@ describe('a built-in is its CSS form', () => {
     expect(value('srgb(rgb(from #336699 h s l))')).toBe('-');
     expect(value('srgb(hsl(from #336699 r g b))')).toBe('-');
     expect(value('srgb(rgb(10 20 30 40))')).toBe('-');
+  });
+
+  it.each([
+    ['fade(rgb(tick() 2 3), 50%)', 'rgb(10 2 3 / 0.5)'],
+    ['fade(rgb(tick() 2 3 / 0.5), 50%)', 'rgb(10 2 3 / 0.5)'],
+    ['fade(rgb(1 2 3 / tick()), 50%)', 'rgb(1 2 3 / 0.5)'],
+    ['fade(hsl(tick() 50% 50%), 50%)', 'rgb(191 85 64 / 0.5)'],
+    ['fade(hsl(tick() 50% 50% / 0.5), 50%)', 'rgb(191 85 64 / 0.5)']
+  ])('evaluates the channels of %s once', (source, printed) => {
+    let calls = 0;
+    const counting = makeLessRegistry();
+    counting.register(defineFunction('tick', { params: [], body: () => makeDimension(++calls * 10) }));
+    const out = css(serialize(parseLess(`.a { x: ${source}; }`), { evaluator: buildEvaluator(counting) }));
+    expect(out).toContain(`x: ${printed};`);
+    expect(calls).toBe(1);
+  });
+
+  it('does not evaluate a known channel again, where it could fail', () => {
+    let calls = 0;
+    const counting = makeLessRegistry();
+    counting.register(defineFunction('boom', { params: [], body: () => {
+      if (++calls > 1) {
+        throw new Error('evaluated again');
+      }
+      return makeDimension(5);
+    } }));
+    expect(css(serialize(parseLess('.a { x: fade(rgb(boom() 2 3), 50%); }'), { evaluator: buildEvaluator(counting) }))).toContain('x: rgb(5 2 3 / 0.5);');
+    expect(calls).toBe(1);
+  });
+
+  it('evaluates a relative channel again, with the origin\'s keywords bound', () => {
+    expect(value('fade(rgb(from #336699 calc(r + 1) g b), 50%)')).toBe('rgb(52 102 153 / 0.5)');
   });
 
   it('evaluates a comma rgb()\'s computed arguments once', () => {

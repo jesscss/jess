@@ -7883,6 +7883,26 @@ function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean
 }
 
 /**
+ * Whether a space-separated colour call has a channel written in parens of its
+ * own. CSS reads no group there, only inside `calc()` (css-color-4 §5.1,
+ * css-values-4 §10.1), so no consumer computes the call.
+ */
+const isGroupedSlot = (slot: ValueSlot): boolean =>
+  isParenGroup(slot) || (!isValueSlotArray(slot) && slot.type === 'Expression' && isAuthoredGroupExpression(slot));
+
+function hasGroupedChannel(node: FunctionCall): boolean {
+  const slot = node.args.length === 1 ? node.args[0]!.value : undefined;
+  if (slot === undefined || !isValueSlotArray(slot)) {
+    return false;
+  }
+  const last = slot[slot.length - 1]!;
+  const alpha = colorAlphaSlash(node);
+  return slot.some(isGroupedSlot)
+    || (!isValueSlotArray(last) && last.type === 'List' && last.sep === '/' && last.value.some(isGroupedSlot))
+    || (alpha !== null && (isGroupedSlot(alpha.left) || isGroupedSlot(alpha.right)));
+}
+
+/**
  * Re-emit a call after resolving variable/interpolation bytes, without invoking
  * its callable: an F5 color call and every call on the non-evaluating byte
  * lane. Each argument is written as authored, keyword included
@@ -9025,7 +9045,7 @@ function evalCall(
    * functionMode policy instead of leaking authored invalid output.
    */
   const lessDocument = e.s.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true;
-  if (!demanded && shouldPreserveCssAuthoredCall(node, lessDocument)) {
+  if ((!demanded || hasGroupedChannel(node)) && shouldPreserveCssAuthoredCall(node, lessDocument)) {
     return preserveCall(node, frame, e);
   }
   const ev = e.ev;

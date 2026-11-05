@@ -5,11 +5,14 @@ import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Fn } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
+import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
-import { emitValue, isValueGroupArray, type EvalModes, type EvalValue, type ValueGroup } from './value-eval.js';
+import { isBrowserColor } from './value-dispatch.js';
+import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
 import type { ValueCheckLane } from './invalid-value-syntax.js';
-import { makeKeyword, makeList } from './value-factory.js';
+import { makeKeyword, makeList, withFields } from './value-factory.js';
+import { keepAsWritten } from './value-operate.js';
 
 /**
  * Ledger A4: a variable an `@expose` names (A20) publishes a custom property, so a
@@ -528,7 +531,7 @@ export function exportCall<F>(
     : mapMaybe(dispatch(vals), (computed) => {
         /* Whether the export's own value is one the form takes (§3.6): a wrong one has failed by now, or is written out. */
         if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed) && takesForm(fn, vals, inputs)) {
-          return dispatch(args(true));
+          return dispatch(args(true).map((read, index) => mapMaybe(read, written => typedRead(vals[index], written))));
         }
         markArgument(argument);
         const result: ValueGroup = typeof computed === 'string' ? makeKeyword(computed) : computed;
@@ -557,6 +560,29 @@ const isFormResult = (result: EvalValue): boolean =>
 
 const lone = (v: ValueGroup): ValueGroup => isValueGroupArray(v) && v.length === 1 ? v[0]! : v;
 
+/** The type of an export's own value, the one thing a form knows of it. */
+function exportResult(known: ValueGroup | undefined): CallResult {
+  const value = known === undefined ? known : lone(known);
+  if (value === undefined || isValueGroupArray(value)) {
+    return null;
+  }
+  switch (value.type) {
+    case 'Color': return 'color';
+    case 'Dimension': return 'numeric';
+    case 'Keyword': return namedColor(value.text) !== undefined || isBrowserColor(value.text) ? 'color' : null;
+    case 'FunctionCall': return value.result;
+    default: return null;
+  }
+}
+
+/** An export's `var()` has the type of the export's value, so it is not a substitution that may hold channels (docs/design/CSS-NATIVE-BUILTINS.md §3.8). */
+function typedRead(known: ValueGroup | undefined, written: ValueGroup): ValueGroup {
+  const call = lone(written);
+  return !isValueGroupArray(call) && call.type === 'FunctionCall' && call.name === 'var'
+    ? keepAsWritten(withFields(call, { result: exportResult(known) }))
+    : written;
+}
+
 /** Whether every export a call read is an argument its CSS form takes as what only the browser knows. */
 function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>): boolean {
   if (fn === undefined) {
@@ -578,7 +604,22 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
     exportNotWritten(node, `${node.name}()`, recipeExport(stray.recipe), e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
   }
   const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
-  return { fn: origin, args: vals.map(v => recipes.get(lone(v)) ?? emitValue(v)) };
+  return {
+    fn: origin,
+    args: vals.map((v) => {
+      const recipe = recipes.get(lone(v));
+      if (recipe !== undefined) {
+        return recipe;
+      }
+      const text = emitValue(v);
+
+      /* The runtime reads a fixed argument as a CSS literal, which holds no call (`packages/fns/src/runtime.ts`). */
+      if (text.includes('(')) {
+        exportNotWritten(node, `${node.name}()`, recipeExport(inputs[0]!.recipe), e, `beside \`${text}\`, a fixed argument the runtime cannot read`);
+      }
+      return text;
+    })
+  };
 }
 
 /** The first export a recipe reads. */
