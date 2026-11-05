@@ -1,7 +1,7 @@
 import { defineForm, formNumber, type FormCall } from '@jesscss/core/form';
 import { decimalStep, type Dimension, type Fn, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
 import { isDimension, NUMBER_ARG, plain, unitBeside } from './css-math-args.js';
-import { round as form, roundDeferred } from './css-forms.generated.js';
+import { round as form, roundDeferred, roundDeferredUnit } from './css-forms.generated.js';
 
 /**
  * Less `round(value, precision = 0)`: `calc(sign(value) * round(abs(value), step))`,
@@ -17,13 +17,11 @@ const round: Fn = /* @__PURE__ */ defineForm('round', {
     { name: 'precision', ...NUMBER_ARG, optional: true }
   ],
   form: (value: ValueGroup, precision?: Dimension | FunctionCall): FormCall => {
+    const unit = unitBeside(value);
     if (precision?.type !== 'FunctionCall') {
-      return [form, plain(value), formNumber(decimalStep(precision?.number), unitBeside(value))];
+      return [form, plain(value), formNumber(decimalStep(precision?.number), unit)];
     }
-    if (unitBeside(value) !== '') {
-      throw new TypeError('round: places only the browser knows have no step in a unit');
-    }
-    return [roundDeferred, value, precision];
+    return unit === '' ? [roundDeferred, value, precision] : [roundDeferredUnit, plain(value), precision, formNumber(1, unit)];
   }
 });
 

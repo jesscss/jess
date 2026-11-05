@@ -24,7 +24,7 @@ import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
 
 /** A form and the values its parameters bind to, the first of them the one its result's format follows. */
-export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, amount?: ValueGroup];
+export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, amount?: ValueGroup, one?: ValueGroup];
 
 type Lane = ReturnType<typeof formLane>;
 
@@ -88,6 +88,9 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane): MaybeP
   cells[0]!.evaluated = bound(call[1]);
   if (cells.length > 1) {
     cells[1]!.evaluated = bound(call[2]);
+    if (cells.length > 2) {
+      cells[2]!.evaluated = bound(call[3]);
+    }
   }
   const input = call[1];
   const amount = call[2];

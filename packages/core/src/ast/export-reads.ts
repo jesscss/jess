@@ -562,14 +562,17 @@ function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: N
   if (fn === undefined) {
     return false;
   }
-  const taken = new Set(vals.filter((_, index) => fn.params[index]?.type?.includes('FunctionCall') === true).map(lone));
-  return inputs.every(input => taken.has(input.value) && holdsFormUnit(fn, vals, input.value));
+  return inputs.every(input => holdsFormSlot(fn, vals, input.value));
 }
 
-/** Whether an export's value has the unit its slot's form takes what only the browser knows in (§3.6; {@link ParamSpec}), so the form means the same as the export's value computes to. */
-function holdsFormUnit(fn: Fn, vals: readonly ValueGroup[], value: ValueGroup): boolean {
-  const unit = fn.params[vals.findIndex(val => lone(val) === value)]?.formUnit;
-  return unit === undefined || isValueGroupArray(value) || value.type !== 'Dimension' || value.unit === unit;
+/** Whether a slot has a form, and an export's value there is what the form takes it to hold, so the form means what the value computes to. */
+function holdsFormSlot(fn: Fn, vals: readonly ValueGroup[], value: ValueGroup): boolean {
+  const slot = fn.params[vals.findIndex(val => lone(val) === value)]?.formSlot;
+  if (slot === undefined || isValueGroupArray(value) || value.type !== 'Dimension') {
+    return slot !== undefined;
+  }
+  const first = lone(vals[0]!);
+  return value.unit === (slot === 'first' && !isValueGroupArray(first) && first.type === 'Dimension' ? first.unit : slot);
 }
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */

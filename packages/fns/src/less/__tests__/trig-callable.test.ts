@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { invoke } from '../../__tests__/harness.js';
+import { call, invoke } from '../../__tests__/harness.js';
 import { makeDimension } from '@jesscss/core';
 import { asin } from '../asin.js';
 import { atan } from '../atan.js';
@@ -19,7 +19,7 @@ describe('canonical Less trigonometric callables', () => {
     expect(invoke(cos, makeDimension(2.4, 'px'))).toEqual({ type: 'Dimension', number: Math.cos(2.4), unit: '', bytes: '-0.7373937155' });
     expect(invoke(tan, makeDimension(2.4, 'px'))).toEqual({ type: 'Dimension', number: Math.tan(2.4), unit: '', bytes: '-0.9160142897' });
     expect(invoke(pow, makeDimension(3, 'px'), makeDimension(2))).toEqual({ type: 'Dimension', number: 9, unit: 'px', bytes: '9px' });
-    expect(invoke(mod, makeDimension(7, 'px'), makeDimension(4))).toEqual({ type: 'Dimension', number: 3, unit: 'px', bytes: '3px' });
+    expect(call(mod, makeDimension(7, 'px'), makeDimension(4))).toEqual({ type: 'Dimension', number: 3, unit: 'px', bytes: '3px' });
   });
 
   it('exposes callable metadata and rejects legacy/plain inputs', () => {

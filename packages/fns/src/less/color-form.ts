@@ -2,7 +2,7 @@ import { defineForm, formNumber, type FormCall } from '@jesscss/core/form';
 import { textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 
 /** A colour a form's relative colour reads as its origin, or what only the browser knows of one. */
-export const COLOR_ARG = { type: ['Color', 'FunctionCall'] } as const;
+export const COLOR_ARG = { type: ['Color', 'FunctionCall'], formSlot: 'color' } as const;
 
 /** An amount in a channel, written as a number on that channel's scale, whatever its unit (css-color-5 §4.4). */
 export const channelAmount = (amount: Dimension): Dimension => formNumber(amount.number);
@@ -11,7 +11,7 @@ export const channelAmount = (amount: Dimension): Dimension => formNumber(amount
 /* @__NO_SIDE_EFFECTS__ */
 export function defineAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0], absoluteDeferred: FormCall[0], relativeDeferred: FormCall[0]): Fn {
   return defineForm(name, {
-    params: [COLOR_ARG, { type: ['Dimension', 'FunctionCall'], formUnit: '%' }, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
+    params: [COLOR_ARG, { type: ['Dimension', 'FunctionCall'], formSlot: '%' }, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
     form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall => {
       if (method?.type === 'FunctionCall') {
         throw new TypeError(`${name}: a method only the browser knows cannot pick a form`);

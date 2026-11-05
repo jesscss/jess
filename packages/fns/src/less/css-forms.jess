@@ -23,4 +23,5 @@ $ceil: @($value, $step) > { result: round(up, $value, $step); }
 $floor: @($value, $step) > { result: round(down, $value, $step); }
 $round: @($value, $step) > { result: calc(sign($value) * round(abs($value), $step)); }
 $round-deferred: @($value, $places) > { result: calc(sign($value) * round(abs($value), pow(10, -1 * $places))); }
+$round-deferred-unit: @($value, $places, $one) > { result: calc(sign($value) * round(abs($value), pow(10, -1 * $places) * $one)); }
 $mod: @($value, $divisor) > { result: rem($value, $divisor); }

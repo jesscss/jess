@@ -5101,7 +5101,7 @@ function evalTyped(
        * keyword.
        */
       if (node.interp !== null) {
-        return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => !isLiteral(content)
+        return mapMaybe(mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => stringContent(content, node)), content => !isLiteral(content)
           ? content
           : node.escaped ? makeAny(content, node.quote) : quotedText(content, node.quote));
       }
@@ -5911,7 +5911,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
         : literal(e.compress === true ? compressDimensionBytes(node.src) : node.src);
     case 'Quoted':
       if (node.interp !== null) {
-        return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => isLiteral(content) && !node.escaped
+        return mapMaybe(mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => stringContent(content, node)), content => isLiteral(content) && !node.escaped
           ? literal(quotedBytes(content, node.quote))
           : content);
       }
@@ -6574,6 +6574,10 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: Lane): MaybePro
       : quotedFromLead(node.leadQuoting === true ? values[0] : undefined, literal(resolveEmergentInterp(bytes, frame, ei)));
   });
 }
+
+/** A lone interpolation of kept math in a string is that string's text: only an escaped string is the value it spells. */
+const stringContent = (content: EvalValue, node: Quoted): EvalValue =>
+  !node.escaped && !isLiteral(content) && !isValueGroupArray(content) && content.type === 'FunctionCall' ? literal(content.bytes) : content;
 
 /**
  * [compress] The context an interpolation splice evaluates in. Spliced bytes

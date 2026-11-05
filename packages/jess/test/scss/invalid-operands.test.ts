@@ -233,7 +233,6 @@ describe('less: math on a keyword, a call written out as-is or a string fails wh
   it.each([
     '.a { b: (foo + 1); }',
     '@w: auto; .a { b: (@w + 10px); }',
-    '.a { b: (var(--x) + 1px); }',
     '.a { b: (~"a" + 1); }',
     '.a { b: ("a" + 1); }',
     '.a { b: (foo * 2); }',
@@ -278,8 +277,12 @@ describe('scss and jess: - on a keyword, a call operand, and .scss colour math',
     await expect(render(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 
-  it.each(['.a { b: $(foo - bar); }', '$x: var(--x);\n.a { b: $($x + 1px); }'])('.jess fails the compile: %s', async (source) => {
-    await expect(render(source, '.jess')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  it('.jess fails the compile on a keyword operand', async () => {
+    await expect(render('.a { b: $(foo - bar); }', '.jess')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+
+  it('.jess writes math on what only the browser knows as calc()', async () => {
+    await expect(render('$x: var(--x);\n.a { b: $($x + 1px); }', '.jess')).resolves.toBe('.a {\n  b: calc(var(--x) + 1px);\n}\n');
   });
 
   it('keeps colour math in Less and in its .jess lowering', async () => {

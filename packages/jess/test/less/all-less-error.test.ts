@@ -29,6 +29,9 @@ const acceptedDivergences = new Map<string, string>([
    */
   ['tests-error/eval/color-func-invalid-color-2.less', 'lazy variables (R1): the failing call sits in an unreferenced variable'],
 
+  /* `percentage(var(--x))` is its CSS form, `calc(var(--x) * 100%)` (CSS-NATIVE-BUILTINS Q8). */
+  ['tests-error/eval/percentage-css-var.less', 'a built-in is its CSS form over an input only the browser knows'],
+
   /*
    * Escaped text is written as written (owner 2026-10-09: "everywhere that is text
    * should print AS WRITTEN"), and well-formed input never stops the pipeline (P45):
@@ -86,7 +89,6 @@ const callSiteErrorFixtures = new Map<string, string>([
   ['tests-error/eval/divide-mixed-units.less', 'eval/invalid-unit-arithmetic'],
   ['tests-error/eval/multiply-mixed-units.less', 'eval/invalid-unit-arithmetic'],
   ['tests-error/eval/color-func-invalid-color.less', 'eval/invalid-function'],
-  ['tests-error/eval/percentage-css-var.less', 'eval/invalid-function'],
   ['tests-error/eval/svg-gradient1.less', 'eval/invalid-function'],
   ['tests-error/eval/svg-gradient2.less', 'eval/invalid-function'],
   ['tests-error/eval/svg-gradient3.less', 'eval/invalid-function'],

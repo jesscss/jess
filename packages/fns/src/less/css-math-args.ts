@@ -2,7 +2,7 @@ import { formNumber } from '@jesscss/core/form';
 import { isValueGroupArray, type Dimension, type ValueGroup } from '@jesscss/core/value';
 
 /** A number a form reads, or what only the browser knows of one, taken to hold a number (Q3). */
-export const NUMBER_ARG = { type: ['Dimension', 'FunctionCall'], formUnit: '' } as const;
+export const NUMBER_ARG = { type: ['Dimension', 'FunctionCall'], formSlot: '' } as const;
 
 export const isDimension = (value: ValueGroup): value is Dimension =>
   !isValueGroupArray(value) && value.type === 'Dimension';
