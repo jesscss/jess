@@ -459,6 +459,20 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('reads the gap before a value and after a delim that leads a value run', () => {
+    for (const [source, value] of [
+      ['@media (a: a = /*c*/ b) { c { d: e } }', '/*c*/'],
+      ['a { b: /*c*/ U+26 }', 'U+26']
+    ] as const) {
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace, state: { ...LESS_TEST_STATE, source }
+      });
+
+      expect(result.ok, source).toBe(true);
+      expect(serialize(stylesheet(result.value)).css, source).toContain(value);
+    }
+  });
+
   it('keeps a block comment before a function argument comma as layout trivia', () => {
     const result = run(
       lessGrammar.Document,
@@ -4425,8 +4439,12 @@ describe('Less AST grammar facts', () => {
         }
 
         expect(cstIssueCount(cst), source).toBe(0);
-        expect(findCstNodes(cst.tree, 'FunctionScalarArgument'), source)
-          .toHaveLength(delimiter === ')' ? 1 : 2);
+        const scalarArguments = findCstNodes(cst.tree, 'FunctionArgument')
+          .filter((argument) => {
+            const first = argument.rules[0];
+            return first?._tag === 'node' && first.grammarType === 'MathValue';
+          });
+        expect(scalarArguments, source).toHaveLength(delimiter === ')' ? 1 : 2);
         expect(result.ok, source).toBe(true);
         expect(result.unconsumedFrom, source).toBeNull();
         expect(result.value, source).toMatchObject({

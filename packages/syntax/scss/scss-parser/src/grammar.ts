@@ -414,6 +414,40 @@ const delimRun = regex(/(?:[~|^?]|=(?!=))+/);
  */
 const gluedDelim = literal(':');
 
+/** A signed or negated value: the operand is the last child (`MathUnary`). */
+function mathUnary(children: readonly unknown[]): ValueNode {
+  const sign = requireToken(children[0]).value;
+  if (sign.toLowerCase() === 'not') {
+    const operand = requireValue(children[children.length - 1]);
+
+    /*
+     * The `Expression` computation boundary is what makes the condition
+     * EVALUATE rather than replay its own spelling: a bare `Condition` in a
+     * value lane is an un-consumed one, and core emits those verbatim on
+     * purpose. The boundary is the marker that says this position computes
+     * (§4.5.2).
+     */
+    return expression(condition(
+      scssNegation(operand, sign),
+      `not ${scssConditionSource(operand)}`
+    ));
+  }
+  const value = requireValue(children[children.length - 1]);
+  return sign === '-'
+    ? operation(
+        '*',
+        dimension(
+          -1,
+          '',
+          '-1'
+        ),
+        value,
+        false,
+        cssBaseMathOutsideParens('*')
+      )
+    : value;
+}
+
 /**
  * `.` joins a space list glued on both sides wherever a value is read — a
  * declaration, a call or mixin argument, a map value (`document.body.width`,
@@ -1426,25 +1460,26 @@ const scssFactory = (g: ScssInputRules) => {
    * identifier reduces to the identical `Interpolation` value. A standalone
    * `SassInterpolation` arm after it is therefore unreachable.
    */
-  const ValueAtom = node<ValueNode>(
-    'ValueAtom',
-    choice(
-      g.Quoted,
-      withCtx(state => leaveCalculation(state), g.InterpolatedValue),
-      g.VariableReference,
-      g.Color,
-      g.Dimension,
-      g.CustomPropertyValue,
-      g.UnicodeRange,
-      IdentifierOrFunction,
-      g.MapOrGroup,
-      g.EmptyList,
-      g.Paren,
-      g.Square,
-      ParentSelector
-    ),
-    children => requireValue(children[0])
-  );
+  const ValueAtom = choice(
+    g.Quoted,
+    withCtx(state => leaveCalculation(state), g.InterpolatedValue),
+    g.VariableReference,
+    g.Color,
+    g.Dimension,
+    g.CustomPropertyValue,
+    g.UnicodeRange,
+
+    /*
+     * A node so this arm always publishes one: a dispatch can't show that, and
+     * the frames of the ladder above open late only when their corner does.
+     */
+    node<ValueNode>('ValueAtom', IdentifierOrFunction, children => requireValue(children[0])),
+    g.MapOrGroup,
+    g.EmptyList,
+    g.Paren,
+    g.Square,
+    ParentSelector
+  ) as Combinator<ValueNode>;
 
   /*
    * Signed numerics are one Dimension leaf. Unary signs only own a variable or
@@ -1452,74 +1487,36 @@ const scssFactory = (g: ScssInputRules) => {
    * The sign may have trailing whitespace (`- $x`, `+ ($x)`), but it must be
    * at the current expression start: `1 -2` is still a space-list boundary.
    */
-  const MathUnary = node<ValueNode>(
-    'MathUnary',
-    choice(
+  const MathUnary = choice(
 
-      /*
-       * `not` is a PREFIX UNARY OPERATOR, and this arm goes FIRST so `not(0)`
-       * never reaches `IdentifierOrFunction`: there is no `not()` function to
-       * reach, which is why dart-sass answers `not(0)` and `not (0)` alike —
-       * the parens are the operand's GROUPING, not a call's argument list.
-       *
-       * It sits at the unary rung because that is where dart-sass binds it:
-       * `not 1px + 1px` is `(not 1px) + 1px` (measured: `false1px`), so `not`
-       * takes an operand tighter than a sum, and the recursion is what carries
-       * `not not 0`.
-       */
-      noTrivia(sequence(
-        g.LogicalNot,
-        optional(valueTrivia),
-        g.MathUnary
-      )),
-      noTrivia(sequence(
-        regex(/-(?=[ \t\n\r\f]*[\$(])/),
-        optional(space),
-        g.ValueAtom
-      )),
-      noTrivia(sequence(
-        regex(/\+(?=[ \t\n\r\f]*[\$(])/),
-        optional(space),
-        g.ValueAtom
-      )),
-      g.ValueAtom
+    /*
+     * `not` is a PREFIX UNARY OPERATOR, and this arm goes FIRST so `not(0)`
+     * never reaches `IdentifierOrFunction`: there is no `not()` function to
+     * reach, which is why dart-sass answers `not(0)` and `not (0)` alike —
+     * the parens are the operand's GROUPING, not a call's argument list.
+     *
+     * It sits at the unary rung because that is where dart-sass binds it:
+     * `not 1px + 1px` is `(not 1px) + 1px` (measured: `false1px`), so `not`
+     * takes an operand tighter than a sum, and the recursion is what carries
+     * `not not 0`.
+     */
+    node<ValueNode>(
+      'MathUnary',
+      noTrivia(sequence(g.LogicalNot, optional(valueTrivia), g.MathUnary)),
+      mathUnary
     ),
-    (children) => {
-      if (children.length === 1) {
-        return requireValue(children[0]);
-      }
-      const sign = requireToken(children[0]).value;
-      if (sign.toLowerCase() === 'not') {
-        const operand = requireValue(children[children.length - 1]);
-
-        /*
-         * The `Expression` computation boundary is what makes the condition
-         * EVALUATE rather than replay its own spelling: a bare `Condition` in a
-         * value lane is an un-consumed one, and core emits those verbatim on
-         * purpose. The boundary is the marker that says this position computes
-         * (§4.5.2).
-         */
-        return expression(condition(
-          scssNegation(operand, sign),
-          `not ${scssConditionSource(operand)}`
-        ));
-      }
-      const value = requireValue(children[children.length - 1]);
-      return sign === '-'
-        ? operation(
-            '*',
-            dimension(
-              -1,
-              '',
-              '-1'
-            ),
-            value,
-            false,
-            cssBaseMathOutsideParens('*')
-          )
-        : value;
-    }
-  );
+    node<ValueNode>(
+      'MathUnary',
+      noTrivia(sequence(regex(/-(?=[ \t\n\r\f]*[\$(])/), optional(space), g.ValueAtom)),
+      mathUnary
+    ),
+    node<ValueNode>(
+      'MathUnary',
+      noTrivia(sequence(regex(/\+(?=[ \t\n\r\f]*[\$(])/), optional(space), g.ValueAtom)),
+      mathUnary
+    ),
+    g.ValueAtom
+  ) as Combinator<ValueNode>;
 
   /*
    * Parenthesized SCSS arithmetic has the normal product-before-sum precedence,
@@ -1533,50 +1530,54 @@ const scssFactory = (g: ScssInputRules) => {
   const MathProductOperator = node<MathOperatorFact>('MathProductOperator', noTrivia(productOperator), mathOperatorFact);
   const MathTopProductOperator = node<MathOperatorFact>('MathTopProductOperator', noTrivia(topProductOperator), mathOperatorFact);
   const MathSumOperator = node<MathOperatorFact>('MathSumOperator', sumOperator, mathOperatorFact);
-  const MathProduct = node<ValueNode>(
+  const MathProduct = noTrivia(node<ValueNode>(
     'MathProduct',
-    noTrivia(sequence(
+    sequence(
       g.MathUnary,
       many(sequence(
         g.MathProductOperator,
         g.MathUnary
       ))
-    )),
-    scssFoldOperation
-  );
-  const MathSum = node<ValueNode>(
+    ),
+    scssFoldOperation,
+    { collapse: true }
+  ));
+  const MathSum = noTrivia(node<ValueNode>(
     'MathSum',
-    noTrivia(sequence(
+    sequence(
       g.MathProduct,
       many(sequence(
         g.MathSumOperator,
         g.MathProduct
       ))
-    )),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => scssSum(children, span, state)
-  );
-  const MathTopProduct = node<ValueNode>(
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => scssSum(children, span, state),
+    { collapse: true }
+  ));
+  const MathTopProduct = noTrivia(node<ValueNode>(
     'MathTopProduct',
-    noTrivia(sequence(
+    sequence(
       g.MathUnary,
       many(sequence(
         g.MathTopProductOperator,
         g.MathUnary
       ))
-    )),
-    scssFoldOperation
-  );
-  const MathTopSum = node<ValueNode>(
+    ),
+    scssFoldOperation,
+    { collapse: true }
+  ));
+  const MathTopSum = noTrivia(node<ValueNode>(
     'MathTopSum',
-    noTrivia(sequence(
+    sequence(
       g.MathTopProduct,
       many(sequence(
         g.MathSumOperator,
         g.MathTopProduct
       ))
-    )),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => scssSum(children, span, state)
-  );
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => scssSum(children, span, state),
+    { collapse: true }
+  ));
 
   /*
    * `and` / `or` in VALUE position (§4.5.5). They are NATIVE operators that
@@ -1608,9 +1609,9 @@ const scssFactory = (g: ScssInputRules) => {
     g.LogicalOr,
     children => conditionWord(children)
   );
-  const ValueLogicalAnd = node<ValueNode>(
+  const ValueLogicalAnd = noTrivia(node<ValueNode>(
     'ValueLogicalAnd',
-    noTrivia(sequence(
+    sequence(
       g.MathTopSum,
       many(sequence(
         valueTrivia,
@@ -1624,12 +1625,13 @@ const scssFactory = (g: ScssInputRules) => {
         valueTrivia,
         g.MathTopSum
       ))
-    )),
-    children => foldLogicalOperation(children)
-  );
-  const ValueLogicalOr = node<ValueNode>(
+    ),
+    children => foldLogicalOperation(children),
+    { collapse: true }
+  ));
+  const ValueLogicalOr = noTrivia(node<ValueNode>(
     'ValueLogicalOr',
-    noTrivia(sequence(
+    sequence(
       g.ValueLogicalAnd,
       many(sequence(
         valueTrivia,
@@ -1643,9 +1645,10 @@ const scssFactory = (g: ScssInputRules) => {
         valueTrivia,
         g.ValueLogicalAnd
       ))
-    )),
-    children => foldLogicalOperation(children)
-  );
+    ),
+    children => foldLogicalOperation(children),
+    { collapse: true }
+  ));
 
   /**
    * A delim SCSS gives no meaning, as the component css builds for it: the
@@ -1710,14 +1713,12 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => scssValueTail(children)
   );
-  const ValueTerm = node<ValueSlot>(
+  const ValueTerm = noTrivia(node<ValueSlot>(
     'ValueTerm',
-    noTrivia(sequence(
-      g.ValueLogicalOr,
-      many(ValueTail)
-    )),
-    scssSlashGroupedTerm
-  );
+    sequence(g.ValueLogicalOr, many(ValueTail)),
+    scssSlashGroupedTerm,
+    { collapse: true }
+  ));
 
   /*
    * ONE definition of what a call argument is, referenced by both argument
@@ -1787,18 +1788,18 @@ const scssFactory = (g: ScssInputRules) => {
    * component values (ledger N18). Labelled as the css rung it is; a lone space
    * list is that list, with no node of its own.
    */
-  const valueSequence = node<ValueSlot>(
+  const valueSequence = noTrivia(node<ValueSlot>(
     'ValueSequence',
-    noTrivia(sequence(
+    sequence(
       g.ValueTerm,
       many(sequence(
         gluedPunctuationDelim,
         g.ValueTerm
       ))
-    )),
+    ),
     children => gluedRun(children),
     { collapse: true }
-  );
+  ));
 
   /**
    * A `/` or `*` with nothing on its left: a punctuation-led value (ledger
