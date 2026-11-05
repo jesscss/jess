@@ -111,6 +111,7 @@ type ScssRules = {
   QueryValue: Combinator<ValueNode>;
   QueryFeatureName: Combinator<string | Interpolation>;
   MediaFeatureOpener: Combinator<unknown>;
+  MediaTypeTerm: Combinator<ValueNode>;
   QueryComparedHead: Combinator<unknown>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
@@ -325,7 +326,8 @@ type ScssInputRules =
   & ScssSharedSyntax
   & typeof cssSyntax
   & typeof cssPseudoSyntax
-  & typeof unknownAtRuleRecognition;
+  & typeof unknownAtRuleRecognition
+  & { QueryIdentOrFunctionTerm: Combinator<ValueNode> };
 
 /*
  * Sass `//` comments are trivia, not CSS comments: they must be recognized
@@ -3660,6 +3662,16 @@ const scssFactory = (g: ScssInputRules) => {
     g.queryFeatureName
   );
 
+  /**
+   * A `#{…}` is a media term as well (Foundation `util/_breakpoint.scss`,
+   * `@media print, screen and #{$str}`), and may be the whole query. css's term
+   * stays the last arm.
+   */
+  const MediaTypeTerm = choice(
+    g.InterpolatedValue,
+    g.QueryIdentOrFunctionTerm
+  );
+
   /*
    * css's compared-head dispatch, then a range name it cannot read: one an
    * interpolation opens (`400px <= #{$d}`), read once as the name.
@@ -5486,6 +5498,7 @@ const scssFactory = (g: ScssInputRules) => {
     QueryValue,
     QueryFeatureName,
     MediaFeatureOpener,
+    MediaTypeTerm,
     QueryComparedHead,
     QueryFeature,
     QueryFunction,

@@ -542,14 +542,9 @@ describe('SCSS canonical-AST grammar', () => {
      *    `@import` consistent with `@media` rather than newly wrong; tightening
      *    both is a separate, cross-dialect change (see the note on ImportTail).
      */
-    for (const source of [
-      '@import "theme.css" #{$media};',
-      '@import "theme.css" screen /* no raw/comment tail */ and (color);',
-      '@import "theme.css" screen, #{$media};'
-    ]) {
-      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
-    }
+    const comment = '@import "theme.css" screen /* no raw/comment tail */ and (color);';
+    const direct = run(scssGrammar.Stylesheet, comment, { trivia: scssGrammar.whitespace });
+    expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), comment).toBe(false);
   });
 
   /*
@@ -1389,18 +1384,11 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
-  it('rejects query interpolation until the AST has typed prelude segments', () => {
-    for (const source of [
-      '@media #{$query} { .card { color: red; } }',
-      '@container #{$container-query} { .card { color: red; } }'
-    ]) {
-      const cst = parseScssCst(source);
-      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
-
-      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
-      expect(() => parse(source), source).toThrow(SyntaxError);
-    }
+  it('reads a media query hole as a term, and leaves a container query without one', () => {
+    expect(parse('@media #{$query} { .card { color: red; } }')).toMatchObject({
+      rules: [{ prelude: { type: 'Interpolation' } }]
+    });
+    expect(() => parse('@container #{$container-query} { .card { color: red; } }')).toThrow(SyntaxError);
   });
 
   it('accepts `only` only as a media-type modifier', () => {
