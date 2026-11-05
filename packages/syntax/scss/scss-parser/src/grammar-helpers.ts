@@ -563,6 +563,9 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
     return callArg(argumentRun(children));
   }
   const left = requireValueSlot(children[0]);
+  if (isToken(last) && last.value === '...') {
+    return callArg(left, undefined, true);
+  }
 
   /*
    * `$name: value` is a KEYWORD argument (§4.5.2) — the same construct

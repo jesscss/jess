@@ -240,6 +240,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   '_containers.scss',
   '_dropdown.scss',
   '_forms.scss',
+  '_functions.scss',
   '_grid.scss',
   '_helpers.scss',
   '_images.scss',

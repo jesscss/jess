@@ -7132,7 +7132,11 @@ function invokeValueLambda(
    * synchronous value position; neither a parameter default nor binding its
    * arguments can suspend yet.
    */
-  const call = syntheticCall(args);
+  let call = syntheticCall(args);
+  if (callerFrame !== null) {
+    const expanded = settled(expandSpreadArgs(call, callerFrame, e), 'value-lambda argument spread', call, e);
+    call = isValueBearingSpreadCall(expanded) ? expanded.call : expanded;
+  }
   const bindings = settled(
     bindSyntheticCall(lambda, call, callerFrame, syntheticDefault(defFrame, e, 'lambda parameter default'), e),
     'value-lambda argument binding',
@@ -9055,14 +9059,16 @@ function dispatchCall(
   const ae = (argument === ARG_WRITTEN || isMathFunctionName(node.name)) === e.keepsMath
     ? e
     : deriveLane(e, e.keepsMath ? 'checkMath' : 'keepMath');
-  const dispatch = (vals: ValueGroup[]): MaybePromise<EvalValue> => {
+  const dispatch = (evaluated: ValueGroup[]): MaybePromise<EvalValue> => {
     let named = false;
+    let spread = false;
     for (let i = 0; i < node.args.length; i++) {
-      if (node.args[i]!.name !== undefined) {
-        named = true;
-        break;
-      }
+      named ||= node.args[i]!.name !== undefined;
+      spread ||= node.args[i]!.spread;
     }
+    const vals = spread && argument === ARG_INPUT
+      ? evaluated.flatMap((value, i) => (node.args[i]!.spread ? spreadItems(value) : [value]))
+      : evaluated;
     const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient) : vals;
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
 
@@ -9096,6 +9102,11 @@ function dispatchCall(
   return e.s.exports.runtime === undefined || argument !== ARG_INPUT
     ? combineAll(callArguments(node, alpha, frame, ae, argument), dispatch)
     : exportCall(e, node, selected, () => callArguments(node, alpha, frame, ae, argument), args => combineAll(args, dispatch));
+}
+
+/** The arguments a `$list...` stands for: its items, or itself when it is one value. */
+function spreadItems(value: ValueGroup): readonly ValueGroup[] {
+  return isValueGroupArray(value) ? value : value.type === 'List' ? value.value : [value];
 }
 
 /** A call's arguments, typed: each slot, or a colour call's channels with its alpha ({@link colorAlphaSlash}); a loop, so no closure per call. */

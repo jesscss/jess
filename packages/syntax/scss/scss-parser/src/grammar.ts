@@ -1807,17 +1807,22 @@ const scssFactory = (g: ScssInputRules) => {
       optional(sequence(
         optional(valueTrivia),
         choice(
-          comparisonOperator,
-          literal(':')
-        ),
-        optional(valueTrivia),
+          literal('...'),
+          sequence(
+            choice(
+              comparisonOperator,
+              literal(':')
+            ),
+            optional(valueTrivia),
 
-        /*
-         * A branch's value may be empty (`if(else:)`, css-values-5 §8.3
-         * `<declaration-value>?`); a comparison with nothing after it is the
-         * delim run it is (`scssCallArgument`).
-         */
-        optional(withCtx(state => leaveIfTest(state), g.ValueTerm))
+            /*
+             * A branch's value may be empty (`if(else:)`, css-values-5 §8.3
+             * `<declaration-value>?`); a comparison with nothing after it is the
+             * delim run it is (`scssCallArgument`).
+             */
+            optional(withCtx(state => leaveIfTest(state), g.ValueTerm))
+          )
+        )
       ))
     ))),
     children => scssCallArgument(children)
