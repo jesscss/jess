@@ -936,6 +936,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'Plugin: `@-plugin` parses only as an inert at-rule statement; `.jess` script integration is `@-use`/`@-from` [in less/_functions.less] (+104 more)'
   }],
+  ['bootstrap@5.3.8:_mixins.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` [in vendor/_rfs.scss] (+30 more)'
+  }],
   ['bootstrap@5.3.8:_variables-dark.scss', {
     cause: 'p35',
     outcome: 'p35',
@@ -1010,6 +1015,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'Param: rest/variadic parameter: `MixinParam` has no `...` form'
+  }],
+  ['bootstrap@5.3.8:mixins/_utilities.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
   }],
   ['bootstrap@5.3.8:vendor/_rfs.scss', {
     cause: 'cannot-express',
