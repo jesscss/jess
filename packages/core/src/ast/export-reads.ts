@@ -588,11 +588,7 @@ export function exportCall<F>(
             outer.push({ recipe, value: result, reads });
             return result;
           }
-          for (const read of reads) {
-            if (!x.runtime.defaults.has(read.name)) {
-              x.runtime.defaults.set(read.name, emitValue(read.value));
-            }
-          }
+          recordDefaults(x.runtime.defaults, reads);
           if (typeof checks !== 'object' && checks !== 'argument') {
             exportNotWritten(node, `@${recipeExport(recipe)}`, recipeExport(recipe), e,
               'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
@@ -600,21 +596,31 @@ export function exportCall<F>(
           return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe, node.name)), result], ','), e.modes);
         };
         if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed, vals) && takesForm(fn, knownSlots ?? vals.map(val => slotValue(val, e.ev)), vals, inputs, e.ev)) {
-          /* A value no form holds over what only the browser knows runs on the runtime (§3.4a, rung 4). */
-          const noForm = (error: unknown): EvalValue => {
-            if (isNoForm(error)) {
-              return recorded();
-            }
-            throw error;
-          };
           return mapMaybe(
-            recovering(() => dispatch(asWritten(e, checks, args).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value)))), noForm),
+            recovering(() => dispatch(asWritten(e, checks, args).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value)))), onNoForm(recorded)),
             form => isUnwrittenBuiltin(form) ? recorded() : form
           );
         }
         return recorded();
       }));
 }
+
+/** The compile-time value of each export a recipe reads, the first read standing. */
+function recordDefaults(defaults: Map<string, string>, reads: ReadonlyArray<{ name: string; value: ValueGroup }>): void {
+  for (const read of reads) {
+    if (!defaults.has(read.name)) {
+      defaults.set(read.name, emitValue(read.value));
+    }
+  }
+}
+
+/** A value no form holds over what only the browser knows runs on the runtime (§3.4a, rung 4). */
+const onNoForm = (recorded: () => EvalValue) => (error: unknown): EvalValue => {
+  if (isNoForm(error)) {
+    return recorded();
+  }
+  throw error;
+};
 
 /** A call's arguments with each export written as its `var()`, possibly after an await, where the lane no longer checks for this call ({@link probedAsValueOf}). */
 function asWritten<F>(e: ExportLane<F>, checks: ExportLane<F>['checks'], args: (asWritten: boolean) => Array<MaybePromise<ValueGroup>>): Array<MaybePromise<ValueGroup>> {

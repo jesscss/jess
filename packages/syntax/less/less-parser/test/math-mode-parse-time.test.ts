@@ -64,10 +64,14 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
     expect(answers).toEqual([true, true, false, false]);
   });
 
-  it('the mode actually reaches the grammar — `/` inside parens flips with it', () => {
+  it('a bare `/` computes outside parens only under `always`', () => {
+    expect(parseOperation('.a { k: 4px / 2; }', 'always').mathOutsideParens).toBe(true);
+  });
+
+  it('a group makes its `/` math in every mode, so it does not compute outside parens', () => {
     const answers = MODES.map(mathMode =>
       parseOperation('.a { k: (4px / 2); }', mathMode).mathOutsideParens);
-    expect(answers).toEqual([true, false, false, false]);
+    expect(answers).toEqual([false, false, false, false]);
   });
 
   /*

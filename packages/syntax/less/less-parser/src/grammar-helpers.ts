@@ -2864,9 +2864,10 @@ const LESS_SUM_OPERATORS: ReadonlySet<string> = new Set(['+', '-']);
  * Fold `operands[from..to]` left-associatively, product before sum. Each folded
  * pair records whether Less's configured `math:` policy computes it with no
  * enclosing math context, so the evaluator never reads that policy from ambient
- * config (§12.6b). With `kept`, no pair computes: the run is kept as written.
+ * config (§12.6b). `kept`: no pair computes, the run being kept as written.
+ * `group`: the group makes a slash math, so no slash computes outside parens.
  */
-function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown, kept: boolean, grouped = false): ValueNode {
+function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown, fold: 'value' | 'kept' | 'group'): ValueNode {
   if (from === to) {
     return run.operands[from]!;
   }
@@ -2888,7 +2889,7 @@ function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown
       const left = nextOperands.pop()!;
       const leftSpan = nextSpans.pop();
       const rightSpan = spans[index + 1];
-      const folded = operation(operator, left, operands[index + 1]!, false, !kept && !(grouped && operator === '/') && lessMathOutsideParens(state, operator));
+      const folded = operation(operator, left, operands[index + 1]!, false, fold !== 'kept' && !(fold === 'group' && operator === '/') && lessMathOutsideParens(state, operator));
       const span = leftSpan === undefined || rightSpan === undefined
         ? undefined
         : { start: leftSpan.start, end: rightSpan.end };
@@ -2909,7 +2910,7 @@ function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown
  * any math policy, so the slash is not one that computes outside parens.
  */
 function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueNode {
-  return isLessMathRun(value) ? foldLessMath(value, 0, value.operands.length - 1, state, false, true) : value;
+  return isLessMathRun(value) ? foldLessMath(value, 0, value.operands.length - 1, state, 'group') : value;
 }
 
 /**
@@ -2934,7 +2935,7 @@ function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueN
   }
   const last = value.operands.length - 1;
   if (lessMathOutsideParens(state, '/')) {
-    return lessComputation(foldLessMath(value, 0, last, state, false));
+    return lessComputation(foldLessMath(value, 0, last, state, 'value'));
   }
 
   /*
@@ -2948,11 +2949,11 @@ function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueN
   let from = 0;
   for (let index = 0; index < value.operators.length; index += 1) {
     if (value.operators[index] === '/') {
-      (sides ??= []).push(lessComputation(foldLessMath(value, from, index, state, true)));
+      (sides ??= []).push(lessComputation(foldLessMath(value, from, index, state, 'kept')));
       from = index + 1;
     }
   }
-  const tail = lessComputation(foldLessMath(value, from, last, state, sides !== undefined));
+  const tail = lessComputation(foldLessMath(value, from, last, state, sides === undefined ? 'value' : 'kept'));
   if (sides === undefined) {
     return tail;
   }
