@@ -353,6 +353,7 @@ svg.railroad-diagram rect {
     <a href="#rule-MathSum">MathSum</a>
     <a href="#rule-MathTopProduct">MathTopProduct</a>
     <a href="#rule-MathTopSum">MathTopSum</a>
+    <a href="#rule-ComparisonOperator">ComparisonOperator</a>
     <a href="#rule-ValueLogicalAnd">ValueLogicalAnd</a>
     <a href="#rule-ValueLogicalOr">ValueLogicalOr</a>
     <a href="#rule-CallArgument">CallArgument</a>
@@ -1886,10 +1887,15 @@ svg.railroad-diagram rect {
     <div class="diagram" data-rule="MathTopSum"></div>
     <div class="ebnf">MathTopSum ::= MathTopProduct (MathSumOperator MathTopProduct)*</div>
   </section>
+  <section class="rule" id="rule-ComparisonOperator">
+    <h2><a href="#rule-ComparisonOperator">§</a> ComparisonOperator</h2>
+    <div class="diagram" data-rule="ComparisonOperator"></div>
+    <div class="ebnf">ComparisonOperator ::= /==|!=|[&lt;&gt;]=?/</div>
+  </section>
   <section class="rule" id="rule-ValueLogicalAnd">
     <h2><a href="#rule-ValueLogicalAnd">§</a> ValueLogicalAnd</h2>
     <div class="diagram" data-rule="ValueLogicalAnd"></div>
-    <div class="ebnf">ValueLogicalAnd ::= MathTopSum (WHITESPACE or COMMENT? (LogicalAnd | LogicalAnd | /==|!=|[&lt;&gt;]=?/) WHITESPACE or COMMENT? MathTopSum)*</div>
+    <div class="ebnf">ValueLogicalAnd ::= MathTopSum (WHITESPACE or COMMENT? (LogicalAnd | LogicalAnd | ComparisonOperator) WHITESPACE or COMMENT? MathTopSum)*</div>
   </section>
   <section class="rule" id="rule-ValueLogicalOr">
     <h2><a href="#rule-ValueLogicalOr">§</a> ValueLogicalOr</h2>
@@ -3001,7 +3007,8 @@ svg.railroad-diagram rect {
   { name: "MathSum", dsl: function(){ return Diagram(Sequence(NonTerminal("MathProduct"), ZeroOrMore(Sequence(NonTerminal("MathSumOperator"), NonTerminal("MathProduct"))))); } },
   { name: "MathTopProduct", dsl: function(){ return Diagram(Sequence(NonTerminal("MathUnary"), ZeroOrMore(Sequence(NonTerminal("MathTopProductOperator"), NonTerminal("MathUnary"))))); } },
   { name: "MathTopSum", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopProduct"), ZeroOrMore(Sequence(NonTerminal("MathSumOperator"), NonTerminal("MathTopProduct"))))); } },
-  { name: "ValueLogicalAnd", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("LogicalAnd"), NonTerminal("LogicalAnd"), Terminal("/==|!=|[<>]=?/")), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("MathTopSum"))))); } },
+  { name: "ComparisonOperator", dsl: function(){ return Diagram(Terminal("/==|!=|[<>]=?/")); } },
+  { name: "ValueLogicalAnd", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("LogicalAnd"), NonTerminal("LogicalAnd"), NonTerminal("ComparisonOperator")), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("MathTopSum"))))); } },
   { name: "ValueLogicalOr", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueLogicalAnd"), ZeroOrMore(Sequence(Terminal("WHITESPACE or COMMENT"), Choice(0, NonTerminal("LogicalOr"), NonTerminal("LogicalOr")), Terminal("WHITESPACE or COMMENT"), NonTerminal("ValueLogicalAnd"))))); } },
   { name: "CallArgument", dsl: function(){ return Diagram(Sequence(Choice(0, NonTerminal("ValueTerm"), Sequence(Terminal("/[<>+~]=?|::?|\\.(?![0-9])|\\*|%|#[-_a-zA-Z0-9]*[g-zG-Z_-][-_a-zA-Z0-9]*/"), Optional(NonTerminal("ArgumentGap")), Optional(NonTerminal("ValueTerm")))), Optional(Terminal("/[<>]=?(?=[ \\t\\n\\r\\f]*[),])/")), Optional(Sequence(Optional(NonTerminal("ArgumentGap")), Choice(0, Terminal("/==|!=|[<>]=?/"), Terminal(":")), Optional(NonTerminal("ArgumentGap")), Optional(NonTerminal("ValueTerm")))))); } },
   { name: "ValuePair", dsl: function(){ return Diagram(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, Sequence(NonTerminal("ValueTerm"), ZeroOrMore(Sequence(Terminal(":"), NonTerminal("ValueTerm")))), Sequence(Terminal("/\\/(?![*/])|\\*/"), ZeroOrMore(Sequence(Sequence(Comment("not"), Terminal("{")), NonTerminal("CustomPart"))))))); } },
