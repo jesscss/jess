@@ -485,7 +485,6 @@ export function orderKeywordArgs(
     return vals;
   }
 
-  const positions = new Map(params.map((param, index) => [param, index]));
   const slots = new Array<ValueGroup | undefined>(params.length);
   const positional: ValueGroup[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -494,8 +493,8 @@ export function orderKeywordArgs(
       positional.push(vals[i]!);
       continue;
     }
-    const at = positions.get(argName);
-    if (at === undefined) {
+    const at = params.indexOf(argName);
+    if (at === -1) {
       return vals;
     }
     slots[at] = vals[i]!;

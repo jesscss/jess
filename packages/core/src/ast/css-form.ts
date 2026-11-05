@@ -11,24 +11,36 @@
  */
 import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { compressDimensionBytes } from './compress.js';
-import { isModernHsl, relativeHsla, type Hsla } from './css-color.js';
-import { isValueSlotArray } from './css-grammar-helpers.js';
+import { formChannelValues, relativeHsla, type Hsla, type MutableChannels } from './css-color.js';
 import { buildEvaluator } from './evaluator.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { AnonymousMixin } from './nodes.js';
-import { channelBinder, evalFormResult, formActivation, formLane, type FormActivation } from './serialize.js';
+import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type FormActivation } from './serialize.js';
 import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
 import { isValueGroupArray, type Color, type ValueGroup } from './value-eval.js';
 import { makeColorHsl, withFields } from './value-factory.js';
 import { groupItems } from './value-list.js';
-import { keepAsWritten } from './value-operate.js';
+import { insideParens, keepAsWritten } from './value-operate.js';
 
 /** A form and the values its parameters bind to, the first of them the one its result's format follows. */
-export type FormCall = readonly [form: AnonymousMixin, ...args: ValueGroup[]];
+export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, amount?: ValueGroup];
 
-type FormLane = ReturnType<typeof formLane>;
+type Lane = ReturnType<typeof formLane>;
+
+/** A form lane, and its one lane for a colour's channels with the values they read. */
+interface FormLane {
+  readonly lane: Lane;
+  readonly channelLane: Lane;
+  readonly channels: MutableChannels;
+}
 
 const lanes: Array<FormLane | undefined> = [undefined, undefined];
+
+function newLane(compress: boolean): FormLane {
+  const lane = formLane(buildEvaluator(createFnRegistry()), compress);
+  const channels = formChannelValues();
+  return { lane, channels, channelLane: formChannelLane(lane, channels) };
+}
 
 /**
  * The one place a resolved form's result takes its spelling: a colour keeps its
@@ -42,24 +54,31 @@ const spelled = (hsla: Hsla, input: Color): Color =>
 const deferred = (out: ValueGroup): ValueGroup =>
   !isValueGroupArray(out) && out.type === 'FunctionCall' ? keepAsWritten(withFields(out, { computed: true })) : out;
 
+/** What a form's parameter binds: the call inside any paren group, which is what a callable reads (J16). */
+const bound = (value: ValueGroup | undefined): ValueGroup | null =>
+  value === undefined ? null : !isValueGroupArray(value) && value.type === 'FunctionCall' ? insideParens(value) : value;
+
 /**
  * A built-in's CSS form over evaluated arguments: a stylesheet function with its
  * parameters bound to the values, so nothing is evaluated twice. A known origin
  * decides first: the colour needs no written-out call, which is what anything
  * not known prints.
  */
-function evalForm(form: FormActivation, args: readonly ValueGroup[], lane: FormLane): MaybePromise<ValueGroup> {
-  const { frame, cells, result } = form;
-  for (let i = 0; i < cells.length; i++) {
-    cells[i]!.evaluated = args[i] ?? null;
+function evalForm(form: FormActivation, call: FormCall, lanes: FormLane): MaybePromise<ValueGroup> {
+  const { frame, cells, channels } = form;
+  cells[0]!.evaluated = bound(call[1]);
+  if (cells.length > 1) {
+    cells[1]!.evaluated = bound(call[2]);
   }
-  const input = args[0];
-  if (input !== undefined && !isValueGroupArray(input) && input.type === 'Color' && !isValueSlotArray(result) && result.type === 'FunctionCall' && isModernHsl(result)) {
-    const hsla = relativeHsla(result, input, channelBinder(frame, lane));
+  const input = call[1];
+  if (channels !== undefined && !isValueGroupArray(input) && input.type === 'Color') {
+    const { channelLane } = lanes;
+    const hsla = relativeHsla(channels, input, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
     if (hsla !== undefined && !isThenable(hsla)) {
       return spelled(hsla, input);
     }
   }
+  const lane = lanes.lane;
   if (lane.compress === true) {
     for (const cell of cells) {
       const value = cell.evaluated;
@@ -82,15 +101,16 @@ export function defineForm(name: string, spec: { readonly params: readonly Param
     params: spec.params,
     variadic: true,
     body: (args: ValueGroup, ctx: { readonly modes: { readonly compress?: boolean } }): MaybePromise<ValueGroup> => {
-      const [form, ...values]: FormCall = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, groupItems(args)));
+      const call: FormCall = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, groupItems(args)));
+      const form = call[0];
       const slot = ctx.modes.compress === true ? 1 : 0;
-      const lane = lanes[slot] ?? (lanes[slot] = formLane(buildEvaluator(createFnRegistry()), slot === 1));
+      const lane = lanes[slot] ?? (lanes[slot] = newLane(slot === 1));
       let activation = activations.get(form);
       if (activation === undefined) {
         activation = formActivation(form);
         activations.set(form, activation);
       }
-      return evalForm(activation, values, lane);
+      return evalForm(activation, call, lane);
     }
   });
 }

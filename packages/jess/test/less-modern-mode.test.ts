@@ -108,6 +108,34 @@ describe('Less modern mode (P36)', () => {
         .resolves.toContain('color: hsl(from var(--x) h s clamp(0, l - 10, 100));');
     });
 
+    it('reads a comma hsl() as it does a space-separated one, and a Sass hsl() keeps its callable', async () => {
+      const out = await less('@use "#less";\na { h: @less.hue(hsl(120, 0%, 50%)); s: @less.saturate(hsl(120, 0%, 50%), 20%); d: @less.desaturate(hsl(120, 150%, 50%), 20%); e: @less.desaturate(hsl(120 150% 50%), 20%); }');
+      expect(out).toContain('h: 120;');
+      expect(out).toContain('s: hsl(120, 20%, 50%);');
+      expect(out).toContain('d: hsl(120, 80%, 50%);');
+      expect(out).toContain('e: hsl(120, 100%, 50%);');
+
+      /* Invalid CSS in the comma spelling (Chrome 152), so not known. */
+      await expect(less('@use "#less";\na { h: @less.hue(hsl(120, 50, 50)); }')).rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function' }));
+      await expect(less('@use "#less";\na { h: @less.hue(hsl(none, 50%, 50%)); }')).rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function' }));
+      await expect(compiler().renderString('@use "sass:color";\na { h: color.hue(hsl(120, 0%, 50%)); }', { extension: '.scss' }))
+        .resolves.toContain('h: 120deg;');
+    });
+
+    it('reads the call inside a paren group', async () => {
+      await expect(less('@use "#less";\na { color: @less.lighten((var(--x)), 5%); }'))
+        .resolves.toContain('color: hsl(from var(--x) h s clamp(0, l + 5, 100));');
+      await expect(less('@use "#less";\n@expose brand;\n@brand: #c00;\na { color: @less.darken((@brand), 10%); }'))
+        .resolves.toContain('color: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));');
+      await expect(compiler().renderString('@-use "#less";\na {\n  color: $less.lighten((var(--x)), 5%);\n}\n', { extension: '.jess' }))
+        .resolves.toContain('color: hsl(from var(--x) h s clamp(0, l + 5, 100));');
+    });
+
+    it('is an eval error for a method only the browser knows', async () => {
+      await expect(less('@use "#less";\na { color: @less.darken(var(--c), 10%, var(--m)); }'))
+        .rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function' }));
+    });
+
     it('is an eval error for a declined argument shape that a CSS call would keep', async () => {
       await expect(less('@use "#less";\na { w: @less.min(1px, 1em); }'))
         .rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function' }));

@@ -162,28 +162,6 @@ export function makeColorHsl(
   return c;
 }
 
-/**
- * An `hsl()` colour (h in degrees, s and l on 0–1). A consumer reads the h, s
- * and l it was given, a grey's, black's or white's included
- * (docs/design/CSS-NATIVE-BUILTINS.md Q9). Until one does, those print as the
- * colour they are in sRGB, hue and saturation 0, with no authored hue unit
- * (css-color-4 §4.4.1). `src` is the colour's spelling while no operation has
- * consumed it.
- */
-export function makeHslColor(
-  hsl: readonly [number, number, number],
-  alpha: number,
-  modernSyntax: boolean,
-  opts?: { hueUnit?: string; alphaPct?: number; src?: string }
-): Color {
-  const [h, s, l] = hsl;
-  if (s !== 0 && l !== 0 && l !== 1) {
-    return makeColorHsl(hsl, alpha, HSL, modernSyntax, opts);
-  }
-  const alphaOpts = opts?.alphaPct !== undefined ? { alphaPct: opts.alphaPct } : {};
-  return makeColorHsl(hsl, alpha, HSL, modernSyntax, { ...alphaOpts, src: opts?.src ?? makeColorRgb(hslToRgb(h, s, l), alpha, HSL, { modernSyntax, ...alphaOpts }).bytes });
-}
-
 export function makeQuoted(value: string, quote: string, escaped: boolean): Quoted {
   const q: Mutable<Quoted> = new QuotedValueNode(value, quote, escaped, '');
   q.bytes = serializeQuoted(q);

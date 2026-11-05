@@ -2,6 +2,10 @@
  * Parses `src/less/css-forms.jess` once and writes the parse tree as
  * `src/less/css-forms.generated.ts`, constructor-built, so the package ships the
  * tree and no parser. `pnpm build:forms` writes it; a test keeps it fresh.
+ *
+ * The forms are the CSS forms of Less's colour built-ins
+ * (docs/design/CSS-NATIVE-BUILTINS.md §3.3). `$amount` is a number on the
+ * channel's scale (css-color-5 §4.4).
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 

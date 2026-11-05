@@ -8,7 +8,7 @@ import { isValueGroupArray, type ValueGroup } from '../value-eval.js';
 import { parse as parseLess } from '../../../../syntax/less/less-parser/src/index.js';
 
 /*
- * A modern `hsl()` a built-in consumes is the colour its CSS definition
+ * An `hsl()` a built-in consumes is the colour its CSS definition
  * computes (docs/design/CSS-NATIVE-BUILTINS.md §2, §3.4, Q12). `srgb()` writes
  * the colour it received as its sRGB channels on 0–1; anything else as `-`.
  */
@@ -45,7 +45,7 @@ const BROWSER: readonly (readonly [string, readonly number[]])[] = [
   ['hsl(from red calc(h + 30) s l)', [1, 0.5, 0, 1]]
 ];
 
-describe('a modern hsl() a built-in consumes', () => {
+describe('an hsl() a built-in consumes', () => {
   it.each(BROWSER)('%s is the colour the browser computes', (source, expected) => {
     const channels = value(`srgb(${source})`)?.split(/ \/? ?/).map(Number);
     expect(channels).toHaveLength(4);
@@ -165,10 +165,15 @@ describe('a built-in is its CSS form', () => {
     expect(css(serialize(parseLess('@a: hsl(120, 0%, 50%); .a { m: fade(@a, 50%); }'), { evaluator }))).toContain('m: rgba(128, 128, 128, 0.5);');
   });
 
-  it('prints an authored grey as its rgb until something reads it', () => {
-    const source = parseLess('.m(@c) { x: @c; } .a { .m(hsl(120, 0%, 50%)); }');
-    expect(css(serialize(source, { evaluator }))).toContain('x: hsl(0, 0%, 50%);');
-    expect(css(serialize(source, { evaluator, compress: true }))).toContain('x:hsl(0,0%,50%)');
+  it('prints an authored grey, black or white as written', () => {
+    const printed = (color: string, compress: boolean): string | undefined =>
+      css(serialize(parseLess(`.m(@c) { x: @c; } .a { .m(${color}); }`), { evaluator, compress }))?.match(/x: ?([^;}]*)/)?.[1];
+    expect(printed('hsl(120, 0%, 50%)', false)).toBe('hsl(120, 0%, 50%)');
+    expect(printed('hsl(120, 50%, 100%)', false)).toBe('hsl(120, 50%, 100%)');
+    expect(printed('hsl(120, 50%, 0%)', false)).toBe('hsl(120, 50%, 0%)');
+    expect(printed('hsl(0.25turn, 0%, 50%)', false)).toBe('hsl(0.25turn, 0%, 50%)');
+    expect(printed('hsl(120, 0%, 50%)', true)).toBe('hsl(120,0%,50%)');
+    expect(printed('hsla(120, 0%, 50%, 0.5)', true)).toBe('hsla(120,0%,50%,.5)');
   });
 
   it('keeps white white, and black black', () => {
@@ -177,11 +182,31 @@ describe('a built-in is its CSS form', () => {
     expect(value('darken(hsl(193, 82%, 3%), 10%)')).toBe('hsl(193, 82%, 0%)');
   });
 
-  it('computes a known input, whatever its raw channels', () => {
+  it('reads a known origin by the channels it prints: clamped sRGB, as Chrome 152 does', () => {
     expect(value('spin(#fff + #111, 10)')).toBe('#ffffff');
-    expect(value('darken(#7249ff + #111, 25%)')).toBe('#2600ff');
-    expect(value('darken(rgb(300, 0, 0), 10%)')).toBe('rgb(255, 0, 0)');
-    expect(value('saturate(rgb(300, 0, 0), 10%)')).toBe('rgb(255, 45, 45)');
+    expect(value('darken(#7249ff + #111, 25%)')).toBe(value('darken(#835aff, 25%)'));
+    expect(value('darken(rgb(300, 0, 0), 10%)')).toBe('rgb(204, 0, 0)');
+    expect(value('saturate(rgb(300, 0, 0), 10%)')).toBe('rgb(255, 0, 0)');
+    expect(value('darken(rgb(120%, 0%, 0%), 10%)')).toBe('rgb(204, 0, 0)');
+  });
+
+  it('computes a comma hsl() a consumer demands, as it does a space-separated one', () => {
+    expect(value('saturate(hsl(120, 0%, 50%), 20%)')).toBe('hsl(120, 20%, 50%)');
+    expect(value('darken(hsla(120, 50%, 40%, 0.5), 10%)')).toBe('hsla(120, 50%, 30%, 0.5)');
+    expect(value('srgb(hsl(0.25turn, 60%, 40%))')).toBe(value('srgb(hsl(0.25turn 60 40))'));
+    expect(value('srgb(hsl(var(--h), 60%, 40%))')).toBe('-');
+  });
+
+  it('reads a channel above 100 as Chrome 152 does: comma clamps it, space-separated keeps it', () => {
+    expect(value('desaturate(hsl(120, 150%, 50%), 20%)')).toBe('hsl(120, 80%, 50%)');
+    expect(value('desaturate(hsl(120 150% 50%), 20%)')).toBe('hsl(120, 100%, 50%)');
+    expect(value('desaturate(hsl(120 -10% 50%), 0%)')).toBe('hsl(120, 0%, 50%)');
+  });
+
+  it('leaves a call written out when only the browser knows its method', () => {
+    for (const name of ['darken', 'lighten', 'saturate', 'desaturate']) {
+      expect(value(`${name}(var(--c), 10%, var(--m))`)).toBe(`${name}(var(--c), 10%, var(--m))`);
+    }
   });
 
   it('prints a form\'s amount as a compressed number', () => {
@@ -190,9 +215,14 @@ describe('a built-in is its CSS form', () => {
     expect(compressed('spin(var(--x), -0.5)')).toBe('hsl(from var(--x) calc(h + -.5) s l)');
   });
 
-  it('reads a paren group around a call as its call, its parens kept (J16)', () => {
-    expect(value('lighten((var(--x)), 5%)')).toBe('hsl(from (var(--x)) h s clamp(0, l + 5, 100))');
+  it('reads the call inside a paren group, and keeps the parens around a written-out form (J16, V38)', () => {
+    expect(value('lighten((var(--x)), 5%)')).toBe('hsl(from var(--x) h s clamp(0, l + 5, 100))');
+    expect(value('lighten(((var(--x))), 5%)')).toBe('hsl(from var(--x) h s clamp(0, l + 5, 100))');
+    expect(value('lighten((foo(1)), 5%)')).toBe('hsl(from foo(1) h s clamp(0, l + 5, 100))');
+    expect(value('lighten((darken(var(--x), 1%)), 5%)')).toBe('hsl(from hsl(from var(--x) h s clamp(0, l - 1, 100)) h s clamp(0, l + 5, 100))');
+    expect(value('(darken(var(--x), 1%))')).toBe('(hsl(from var(--x) h s clamp(0, l - 1, 100)))');
     expect(value('iskeyword((var(--x)))')).toBe('true');
+    expect(css(serialize(parseLess('.m(@c) { x: lighten(@c, 5%); } .a { .m((var(--x))); }'), { evaluator }))).toContain('x: hsl(from var(--x) h s clamp(0, l + 5, 100));');
   });
 
   it('is a colour and no keyword', () => {

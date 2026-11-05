@@ -211,7 +211,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { channelFunction, channelMath, channelOf, isModernHsl, rejectChannelMath, resolveHsl, type ChannelBinder, type ColorChannels } from './css-color.js';
+import { channelFunction, channelMath, channelOf, formChannels, isHslCall, rejectChannelMath, resolveHsl, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
 import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
@@ -7210,15 +7210,18 @@ export interface FormActivation {
   readonly frame: Frame;
   readonly cells: BindingCell[];
   readonly result: ValueSlot;
+  readonly channels: FormChannels | undefined;
 }
 
 export function formActivation(lambda: AnonymousMixin): FormActivation {
   const bindings = new Map<string, Binding>(lambda.params?.map(param => [param.name ?? '', NULL_NODE]));
   const cells = cellsForParams(bindings)!;
+  const result = lambdaResultValue(lambda.rules)!;
   return {
     frame: makeFrame(null, lambda.rules, null, collectDeclIndex(lambda.rules, bindings, cells), cells),
     cells: [...cells.values()],
-    result: lambdaResultValue(lambda.rules)!
+    result,
+    channels: !isValueSlotArray(result) && result.type === 'FunctionCall' && isHslCall(result) ? formChannels(result) : undefined
   };
 }
 
@@ -7230,6 +7233,13 @@ export const channelBinder = (frame: Frame | null, e: Lane): ChannelBinder => (c
   const lane = deriveLane(e, 'channels', undefined, undefined, channels);
   return slot => evalTypedSlot(slot, frame, lane, true, ARG_INPUT);
 };
+
+/** The lane a form's channels read: `channels` bound, already in CSS math, so a math function in a channel derives none. */
+export const formChannelLane = (e: Lane, channels: ColorChannels): Lane =>
+  deriveLane(deriveLane(deriveLane(e, 'channels', undefined, undefined, channels), 'calc'), 'keepMath');
+
+/** One channel of a form, on {@link formChannelLane}. */
+export const evalFormChannel = (slot: ValueSlot, frame: Frame, e: Lane): MaybePromise<ValueGroup> => evalTypedSlot(slot, frame, e, true, ARG_INPUT);
 
 /** A form's `result:` over the values its cells hold. */
 export const evalFormResult = (form: FormActivation, e: Lane): MaybePromise<ValueGroup> => evalTypedSlot(form.result, form.frame, e);
@@ -7836,7 +7846,7 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: Lane): Ev
  * written into a `calc()` keeps the groups it carries ({@link textGroup}).
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromise<EvalValue> {
-  const ce = deriveLane(e, 'calc');
+  const ce = e.channels !== undefined && e.calcDepth > 0 ? e : deriveLane(e, 'calc');
   const arg = node.args[0]!.value;
   const authored = writtenParens(arg, frame, ce);
   return mapMaybe(evalTypedSlot(arg, frame, ce), (v) => {
@@ -7863,7 +7873,7 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: Lane): MaybePromis
     if (isValueGroupArray(v) || v.type !== 'Dimension') {
       return keepAsWritten(makeKeyword(`calc(${isValueGroupArray(v) ? emitValueC(v, e) : mathText(v, emitValueC(v, e))})`));
     }
-    return e.ev?.sassCalculations === true ? v : makeSpelledDimension(v, v.preserved ?? v.bytes);
+    return e.ev?.sassCalculations === true || e.channels !== undefined ? v : makeSpelledDimension(v, v.preserved ?? v.bytes);
   });
 }
 
@@ -9070,16 +9080,20 @@ function evalCall(
   return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
 }
 
-/** One `functionMode: 'error'` copy per render's modes, for imported calls (ruling J1). */
-const erroringModesCache = new WeakMap<EvalModes, EvalModes>();
+/**
+ * One copy per render's modes with its `functionMode` the other way: `error` for
+ * imported calls (ruling J1), `preserve` for a CSS colour call a consumer demands
+ * under `error` (docs/design/CSS-NATIVE-BUILTINS.md §3.6).
+ */
+const otherFunctionModesCache = new WeakMap<EvalModes, EvalModes>();
 
-function erroringModes(modes: EvalModes): EvalModes {
-  let erroring = erroringModesCache.get(modes);
-  if (erroring === undefined) {
-    erroring = { ...modes, functionMode: 'error' };
-    erroringModesCache.set(modes, erroring);
+function otherFunctionMode(modes: EvalModes): EvalModes {
+  let other = otherFunctionModesCache.get(modes);
+  if (other === undefined) {
+    other = { ...modes, functionMode: modes.functionMode === 'error' ? 'preserve' : 'error' };
+    otherFunctionModesCache.set(modes, other);
   }
-  return erroring;
+  return other;
 }
 
 /**
@@ -9113,8 +9127,8 @@ function dispatchCall(
    * (docs/design/CSS-NATIVE-BUILTINS.md §3.6).
    */
   const modes = reach === 'imported' && e.modes.functionMode !== 'error'
-    ? erroringModes(e.modes)
-    : demanded && e.modes.functionMode === 'error' && isCssColorCall(node) ? { ...e.modes, functionMode: 'preserve' as const } : e.modes;
+    ? otherFunctionMode(e.modes)
+    : demanded && e.modes.functionMode === 'error' && isCssColorCall(node) ? otherFunctionMode(e.modes) : e.modes;
   const sep = node.modern ? ' ' : ',';
 
   /*
@@ -9132,7 +9146,7 @@ function dispatchCall(
    * not bound in it ({@link Lane.channels}). The math in a math function a
    * channel holds is CSS's, whatever the math policy (css-values-4 §10).
    */
-  const be = e.channels === undefined ? e : isCssColorFunction(node) ? deriveLane(e, 'channels') : isMathFunctionName(node.name) ? deriveLane(e, 'calc') : e;
+  const be = e.channels === undefined ? e : isCssColorFunction(node) ? deriveLane(e, 'channels') : isMathFunctionName(node.name) && e.calcDepth === 0 ? deriveLane(e, 'calc') : e;
   const ae = (argument === ARG_WRITTEN || isMathFunctionName(node.name)) === be.keepsMath
     ? be
     : deriveLane(be, be.keepsMath ? 'checkMath' : 'keepMath');
@@ -9166,7 +9180,7 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   };
-  const call = demanded && selected === undefined && isModernHsl(node)
+  const call = demanded && selected === undefined && isHslCall(node)
     ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
         : resolveHsl(node, vals[0]!, channelBinder(frame, be), out))

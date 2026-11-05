@@ -590,6 +590,15 @@ export function groupText(v: Any | Keyword | FunctionCall): Value {
 /** `value` spelled `bytes`, the parens written around it. A call in parens is the same call, read as itself (J16). */
 export const inParens = (value: Value, bytes: string): Value => withFields(value, { bytes });
 
+/** A call spelled as it is inside the parens {@link inParens} wrote around it, which is what a callable reads (J16). */
+export function insideParens(call: FunctionCall): FunctionCall {
+  let depth = 0;
+  while (call.bytes.charCodeAt(depth) === 40 /* ( */) {
+    depth++;
+  }
+  return depth === 0 ? call : keepAsWritten(withFields(call, { bytes: call.bytes.slice(depth, -depth) }));
+}
+
 /**
  * `bytes`, the spelling of `v` ({@link emitValue}: an escaped string's already
  * in its groups), as `v` is written into math: an unquoted `.scss` string in the

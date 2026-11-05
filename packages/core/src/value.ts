@@ -44,7 +44,6 @@ export {
   makeDimension,
   makeColorRgb,
   makeColorHsl,
-  makeHslColor,
   makeQuoted,
   makeKeyword,
   makeAny,

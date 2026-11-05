@@ -1,6 +1,3 @@
-// The CSS forms of Less's colour built-ins (docs/design/CSS-NATIVE-BUILTINS.md §3.3).
-// Parsed once by `pnpm build:forms` into css-forms.generated.ts.
-// `$amount` is a number on the channel's scale (css-color-5 §4.4).
 $darken: @($color, $amount) > { result: hsl(from $color h s clamp(0, l - $amount, 100)); }
 $darken-relative: @($color, $amount) > { result: hsl(from $color h s clamp(0, l - l * $amount / 100, 100)); }
 $lighten: @($color, $amount) > { result: hsl(from $color h s clamp(0, l + $amount, 100)); }

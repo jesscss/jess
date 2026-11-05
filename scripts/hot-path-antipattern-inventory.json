@@ -1017,6 +1017,13 @@
       "snippet": "sourceText.slice(injected, authoredEnd)"
     },
     {
+      "file": "packages/core/src/ast/value-dispatch.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "4194fde10645db5e",
+      "ordinal": 0,
+      "snippet": "params.indexOf(argName)"
+    },
+    {
       "file": "packages/core/src/ast/value-operate.ts",
       "rule": "no-node-keyed-side-map",
       "fingerprint": "1194ac044eb73853",

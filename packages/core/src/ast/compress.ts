@@ -10,9 +10,8 @@
  */
 import { parseHex } from './literal-tag.js';
 import { shortestColorName } from './color-names.js';
-import { colorRgb, HEX, HSL, serializeColor } from './color.js';
+import { colorRgb, HEX, serializeColor } from './color.js';
 import { formatNumber } from './format-number.js';
-import { makeColorRgb } from './value-factory.js';
 import { delimiterClose, delimiterOpen, isValueGroupArray, joinGroup, sepGlue, writtenText, type EvalValue } from './value-eval.js';
 
 const hx = (v: number): string => {
@@ -117,20 +116,9 @@ export function emitCompressed(v: EvalValue): string {
     case 'Dimension':
       return compressDimensionBytes(v.bytes);
     case 'Color': {
-      /*
-       * A color still spelled by its NAME is a named-color keyword: verbatim. So
-       * is a relative form. An authored grey's spelling is its rgb's (makeHslColor),
-       * which folds like any other computed colour.
-       */
+      /* A color still spelled by its NAME is a named-color keyword: verbatim. */
       if (v.src !== undefined && v.src.charCodeAt(0) !== 35 /* # */) {
-        if (v.hsl === undefined) {
-          return v.src;
-        }
-        const printed = makeColorRgb(v.rgb, v.alpha, HSL, {
-          ...(v.modernSyntax === true ? { modernSyntax: true } : {}),
-          ...(v.alphaPct !== undefined ? { alphaPct: v.alphaPct } : {})
-        });
-        return printed.bytes === v.src ? serializeColor(printed, compressedNumber, ',') : v.src;
+        return v.src;
       }
       if (v.format === HEX) {
         const [r, g, b] = colorRgb(v);

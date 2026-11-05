@@ -10,13 +10,14 @@
 import type { Color } from './value-eval.js';
 import { round } from './round.js';
 import { formatNumber } from './format-number.js';
+import { convertValue } from './value-units.js';
 
 /* color-format enum, mirrored from the legacy engine's ColorFormat (opaque `number`). */
 export const HEX = 0;
 export const RGB = 1;
 export const HSL = 2;
 
-const clamp = (v: number, max: number): number => Math.min(Math.max(v, 0), max);
+export const clamp = (v: number, max: number): number => Math.min(Math.max(v, 0), max);
 
 /** HSL(h deg, s 0-1, l 0-1) -> RGB 0-255, byte-identical to Color._rgb HSL branch. */
 export function hslToRgb(h: number, s: number, l: number): [number, number, number] {
@@ -152,7 +153,7 @@ export function serializeColor(c: Color, num: (v: number) => string = formatNumb
   if (format === HSL) {
     const [h, s, l] = c.hsl ?? rgbToHsl(c.rgb[0], c.rgb[1], c.rgb[2]);
     const a = clamp(c.alpha, 1);
-    const hue = num(h);
+    const hue = num(c.hueUnit === undefined || c.hueUnit === 'deg' ? h : convertValue(h, 'deg', c.hueUnit));
     const S = num(clamp(s, 1) * 100);
     const L = num(clamp(l, 1) * 100);
     const modern = c.modernSyntax === true;
