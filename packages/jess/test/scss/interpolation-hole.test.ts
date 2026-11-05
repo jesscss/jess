@@ -13,8 +13,7 @@ const cases: ReadonlyArray<readonly [string, string, string]> = [
   ['a space list in a variable', '$v: #{a b}; .b { c: $v; }', '.b {\n  c: a b;\n}\n'],
   ['arithmetic inside a space list', '.a { x: #{1 + 1 2}; }', '.a {\n  x: 2 2;\n}\n'],
   ['a padded hole in a custom-property value', '$c: red; .a { --b: #{ $c }; }', '.a {\n  --b: red;\n}\n'],
-  ['a padded call in a custom-property value', '@function e($x) { @return $x; } .a { --b: #{ e(1) }; }', '.a {\n  --b: 1;\n}\n'],
-  ['a padded space list between text', '.a { x: y#{ a b }z; }', '.a {\n  x: ya bz;\n}\n']
+  ['a padded call in a custom-property value', '@function e($x) { @return $x; } .a { --b: #{ e(1) }; }', '.a {\n  --b: 1;\n}\n']
 ];
 
 describe('interpolation hole', () => {

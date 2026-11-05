@@ -43,6 +43,12 @@ import type { UnitMode } from '../types/modes.js';
 export const SASS_EQUAL = 'sass-equal';
 
 /**
+ * A `.scss` comparison a slash list split (`1/2 == 0.5`). `/` binds tighter than a
+ * comparison in Sass and is a list separator here, so it has no reading: it raises.
+ */
+export const SASS_SLASH_COMPARISON = 'sass-slash';
+
+/**
  * §4.1's last row: the operand pair shares NO common ground (`1px > red`).
  *
  * Distinct from `undefined`, which means "there IS a ground and the pair is not
@@ -640,6 +646,20 @@ export function compareOrder(left: ValueGroup, right: ValueGroup, unitMode?: Uni
 }
 
 /**
+ * The order `.scss` value comparison (`sass<`, …) answers from: Sass orders numbers
+ * only, on units that convert, and anything else raises rather than answering a
+ * boolean (§4.2's lexicographic order is not Sass's).
+ */
+function sassOrder(c: Compared, left: ValueGroup, right: ValueGroup): -1 | 0 | 1 {
+  if (c === undefined || c === NO_GROUND || !isNumericPair(left, right)) {
+    throw new IncomparableOperandsError(
+      `Incomparable operands. '${groupBytes(left)}' and '${groupBytes(right)}' are not numbers on convertible units, so they cannot be ordered.`
+    );
+  }
+  return c;
+}
+
+/**
  * The ANSWER table over a settled {@link Compared} — the one definition of what
  * each operator makes of the ground, read by both {@link compare} and
  * {@link compareMatch} so the two positions cannot drift.
@@ -672,6 +692,15 @@ function answer(op: string, c: Compared, left: ValueGroup, right: ValueGroup): b
      * and the pair is redundant (§4.4.3).
      */
     case '==': return c === 0 && sameType(left, right);
+
+    case 'sass>': return sassOrder(c, left, right) === 1;
+    case 'sass<': return sassOrder(c, left, right) === -1;
+    case 'sass>=': return sassOrder(c, left, right) !== -1;
+    case 'sass<=': return sassOrder(c, left, right) !== 1;
+    case SASS_SLASH_COMPARISON:
+      throw new IncomparableOperandsError(
+        `'${groupBytes(left)}' and '${groupBytes(right)}' are a '/' list with a comparison in it. Parenthesize the division: (a / b) == c.`
+      );
 
     case '>': return c === 1;
     case '<': return c === -1;

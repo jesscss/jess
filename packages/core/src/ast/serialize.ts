@@ -3717,7 +3717,7 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
        * configuration seeds a cell whose value belongs to the importer. */
       const owner = liveCellOwnerFrame(frame, node.name, e);
       if (!owner) {
-        throw new ReferenceError(`live variable $${node.name} is undefined`);
+        throw ERR.nameNotFound({ node, ctx: { file: e.s.context?.sourceContext?.file }, meta: { symbol: `$${node.name}` } });
       }
       const cells = owner.cells!;
       cells.set(node.name, {
@@ -3728,7 +3728,7 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
     }
     const found = lookupScopedBinding(frame, node.name, e);
     if (!found) {
-      throw new ReferenceError(`scoped variable $^${node.name} is undefined`);
+      throw ERR.nameNotFound({ node, ctx: { file: e.s.context?.sourceContext?.file }, meta: { symbol: `$${node.name}` } });
     }
     (found.frame.reassign ??= new Map()).set(node.name, node);
     return;
@@ -4290,6 +4290,9 @@ interface Lane {
 interface EvalSession {
   /** Context supplies document source only on genuine cold diagnostic paths. */
   context: Context | undefined;
+
+  /** The render's context, kept on a scratch session (whose `context` is unset) so a statement run there can locate its error. */
+  locating: Context | undefined;
 
   /** Parser-owned source trivia for comment/spacing emission. */
   trivia: TriviaMap | undefined;
@@ -7128,14 +7131,6 @@ function invokeValueLambda(
       meta: { callee: 'function', expectedCount: lambda.params?.length ?? 0, gotCount: args.length }
     });
   }
-  const result = lambdaResultValue(lambda.rules);
-  if (result === undefined) {
-    throw ERR.invalidFunction({
-      node: lambda,
-      ...callSiteLocation(lambda, e.s),
-      meta: { name: 'function', reason: 'its body assigns no `result:`, so the call has no value to yield' }
-    });
-  }
   const activation = makeFrame(defFrame, lambda.rules, collectMixins(lambda.rules), collectDeclIndex(lambda.rules, bindings), cellsForParams(bindings));
   activation.sourceOwner = defFrame ? definitionOwner(lambda.rules, defFrame, e) : null;
   if (callerFrame && callerFrame !== defFrame) {
@@ -7153,6 +7148,14 @@ function invokeValueLambda(
   const body = makePlacement(null, [], MOOT_FLUSH, activation);
   body.lambdaBody = true;
   settled(walkBody(lambda.rules, activation, body, scratchEmit(e)), 'value-lambda body', lambda, e);
+  const result = lambdaResultValue(lambda.rules);
+  if (result === undefined) {
+    throw ERR.invalidFunction({
+      node: lambda,
+      ...callSiteLocation(lambda, e.s),
+      meta: { name: 'function', reason: 'its body assigns no `result:`, so the call has no value to yield' }
+    });
+  }
   return { value: result, frame: activation };
 }
 
@@ -10940,6 +10943,7 @@ function scratchEmit(e: Lane): Emit {
   return {
     s: {
       context: undefined,
+      locating: e.s.locating,
       trivia: e.s.trivia,
       pseudoElementLists: e.s.pseudoElementLists,
       resolvedSelectors: e.s.resolvedSelectors,
@@ -14048,6 +14052,7 @@ function createRenderSession(
   const e: Emit = {
     s: {
       context: options?.context,
+      locating: options?.context,
       trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
       pseudoElementLists: new Map(), // [nesting] parents ending with a pseudo-element
       resolvedSelectors: new Map(), // [extend/selector-interp] the pre-pass's resolved lists
@@ -20126,25 +20131,30 @@ function writeHoistedCssImport(node: AtRuleStatement, root: boolean, frame: Fram
  * and for now stays passthrough.
  */
 
-/**
- * The directive's message is the prelude value, evaluated like any Sass value
- * (so `1 + 2` computes and `"need #{$x}"` interpolates). A top-level authored
- * string literal reports its UNQUOTED text; every other prelude — a list, map,
- * number, bare keyword, or bare `#{…}` — reports its serialized bytes verbatim,
- * INCLUDING any inner quotes. The discriminator is the prelude's AST SHAPE, not
- * its serialized bytes: stripping the quotes off the whole message
- * would wrongly unwrap the list `"a", "b"` to `a", "b`, whereas testing the
- * node keeps the list intact.
- *
- * A string literal is a `Quoted` node, whether or not it carries `#{…}`; its
- * message is its content. A bare `#{x}` is not a string literal.
- */
-function diagnosticMessage(prelude: ValueNode, frame: Frame, e: Emit): string {
-  return prelude.type === 'Quoted' ? quotedContentSync(prelude, frame, e) : evalBytesSync(prelude, frame, e);
-}
 function emitDiagnosticDirective(node: AtRuleStatement, frame: Frame, e: Emit): void {
-  const message = node.prelude === null ? '' : diagnosticMessage(node.prelude, frame, e);
   const name = node.name.toLowerCase();
+
+  /* The grammar lowered every `@return` a function can read; this one has no value to yield. */
+  if (name === '@return') {
+    throw ERR.returnPlacement({ node, ...callSiteLocation(node, { context: e.s.locating }) });
+  }
+
+  /*
+   * The directive's message is the prelude value, evaluated like any Sass value
+   * (so `1 + 2` computes and `"need #{$x}"` interpolates). A top-level authored
+   * string literal reports its UNQUOTED text; every other prelude — a list, map,
+   * number, bare keyword, or bare `#{…}` — reports its serialized bytes verbatim,
+   * INCLUDING any inner quotes. The discriminator is the prelude's AST SHAPE, not
+   * its serialized bytes: stripping the quotes off the whole message
+   * would wrongly unwrap the list `"a", "b"` to `a", "b`, whereas testing the
+   * node keeps the list intact.
+   *
+   * A string literal is a `Quoted` node, whether or not it carries `#{…}`; its
+   * message is its content. A bare `#{x}` is not a string literal.
+   */
+  const message = node.prelude === null
+    ? ''
+    : node.prelude.type === 'Quoted' ? quotedContentSync(node.prelude, frame, e) : evalBytesSync(node.prelude, frame, e);
   if (name === '@error') {
     throw ERR.scssError({
       node,

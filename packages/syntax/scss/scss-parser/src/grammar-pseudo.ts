@@ -14,17 +14,23 @@ export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
   return functionalPseudoFrom(opener, typeof arg === 'string' ? arg.trim() : isInterpolation(arg) ? unspacedNth(arg) : arg);
 }
 
+const AN_PLUS_B_TEXT: ReadonlySet<string> = new Set('-+0123456789nN \t\n\r\f');
+const AN_PLUS_B_SPACE: ReadonlySet<string> = new Set(' \t\n\r\f');
+
 /**
  * An An+B with a hole reads as the one without: whitespace in it is not part of
  * its value (css-syntax-3 §6), and An+B is written unspaced (`-n + #{$n}` is
- * `-n+2`). Text that is not An+B, an `of S` tail, is left as written.
+ * `-n+2`). Whitespace alone between two holes separates them (`#{$a} #{$b}` may
+ * be `2n of`, or a descendant combinator), and any other text is left as written.
  */
 function unspacedNth(arg: Interpolation): Interpolation {
-  const anb = new Set('-+0123456789nN \t\n\r\f');
-  const gap = new Set(' \t\n\r\f');
-  return interpolation(arg.parts.map(part => 'lit' in part && [...part.lit].every(char => anb.has(char))
-    ? { lit: [...part.lit].filter(char => !gap.has(char)).join('') }
-    : part));
+  const last = arg.parts.length - 1;
+  return interpolation(arg.parts.map((part, index) => {
+    if (!('lit' in part) || [...part.lit].some(char => !AN_PLUS_B_TEXT.has(char)) || (part.lit.trim() === '' && index > 0 && index < last)) {
+      return part;
+    }
+    return { lit: [...part.lit].filter(char => !AN_PLUS_B_SPACE.has(char)).join('') };
+  }));
 }
 
 /** A pseudo argument's source text, or its interpolation when a `#{…}` stands in it. */

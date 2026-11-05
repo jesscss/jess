@@ -1909,8 +1909,11 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('restricts `of` to nth-child and rejects non-selector selector-pseudo args', () => {
     const accepted = (source: string): boolean => {
-      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace, state: { source } });
-      return result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
+      try {
+        return isStylesheet(parse(source));
+      } catch {
+        return false;
+      }
     };
 
     /*
@@ -2015,8 +2018,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card:nth-child(- 2n) { color: blue; }',
       '.card:lang(#{$locale}) { color: blue; }'
     ]) {
-      const direct = run(scssGrammar.Stylesheet, invalid, { trivia: scssGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
+      expect(() => parse(invalid), invalid).toThrow();
     }
   });
 
