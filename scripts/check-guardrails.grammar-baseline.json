@@ -202,8 +202,8 @@
       "line": 43,
       "const": "PreprocessorUnknownAtRulePreludeCapture",
       "construct": "scanTo(choice(literal('$'), literal('{'), literal(';')), { skip: preprocessorSkip })",
-      "resolved": "7d2e28bbf87b14c6",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `scanTo(choice(literal('$'), literal('{'), literal(';')), { skip: preprocessorSkip })`",
+      "resolved": "f9cf3b057b091721",
+      "why": "this arm starts by reading past one token: `scanTo(choice(literal('$'), literal('{'), literal(';')), { skip: preprocessorSkip })`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -221,8 +221,8 @@
       "line": 738,
       "const": "unknownAtRulePrelude",
       "construct": "scanTo(choice(literal('{'), literal(';')), { skip: unknownAtRuleSkip })",
-      "resolved": "b1a6e8a53b673fd8",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `scanTo(choice(literal('{'), literal(';')), { skip: unknownAtRuleSkip })`",
+      "resolved": "4999e6e17e2cd7c5",
+      "why": "this arm starts by reading past one token: `scanTo(choice(literal('{'), literal(';')), { skip: unknownAtRuleSkip })`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -320,8 +320,8 @@
       "line": 3057,
       "const": "ImportTailRaw",
       "construct": "importTailText",
-      "resolved": "75d6403511149985",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/[^()[\\]\"'\\/; \\t\\n\\r\\f]+/)`",
+      "resolved": "3f985ea5838e592a",
+      "why": "this arm starts by reading past one token: `regex(/[^()[\\]\"'\\/; \\t\\n\\r\\f]+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -390,8 +390,8 @@
       "line": 4385,
       "const": "EnclosedContent",
       "construct": "EnclosedRaw",
-      "resolved": "b2f5b0be663dcbe7",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:\\\\[\\s\\S]|\\/(?!\\*)|[^\\\\/'\"()[\\]{}]+)+/)`",
+      "resolved": "2253a14d402e31cf",
+      "why": "this arm starts by reading past one token: `regex(/(?:\\\\[\\s\\S]|\\/(?!\\*)|[^\\\\/'\"()[\\]{}]+)+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -470,8 +470,8 @@
       "line": 1888,
       "const": "UrlInterpolatedValue",
       "construct": "unquotedUrlText",
-      "resolved": "eb1ce83517079291",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\"'()\\\\$ \\t\\n\\r\\f\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\$(?!\\{)|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/)`",
+      "resolved": "1de73f3ab4606982",
+      "why": "this arm starts by reading past one token: `regex(/(?:[^\"'()\\\\$ \\t\\n\\r\\f\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\$(?!\\{)|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -480,8 +480,8 @@
       "line": 1891,
       "const": "UrlInterpolatedValue",
       "construct": "unquotedUrlText",
-      "resolved": "eb1ce83517079291",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\"'()\\\\$ \\t\\n\\r\\f\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\$(?!\\{)|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/)`",
+      "resolved": "1de73f3ab4606982",
+      "why": "this arm starts by reading past one token: `regex(/(?:[^\"'()\\\\$ \\t\\n\\r\\f\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\$(?!\\{)|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -520,8 +520,8 @@
       "line": 2515,
       "const": "SelectorCapture",
       "construct": "InvalidSelectorCaptureArgument",
-      "resolved": "c3ef12e2440071cf",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `scanTo(literal(')'), { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets, balancedBraces] })`",
+      "resolved": "2a8cab225e7109ab",
+      "why": "this arm starts by reading past one token: `scanTo(literal(')'), { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets, balancedBraces] })`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -530,8 +530,8 @@
       "line": 3345,
       "const": "InterpolatedValue",
       "construct": "interpolatedValueTail",
-      "resolved": "d2342dfb65f06e78",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/[-_a-zA-Z0-9\\u0080-\\uffff%]+/)`",
+      "resolved": "c91318495fbcd83f",
+      "why": "this arm starts by reading past one token: `regex(/[-_a-zA-Z0-9\\u0080-\\uffff%]+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -540,8 +540,8 @@
       "line": 3882,
       "const": "DollarBraceValue",
       "construct": "interpolatedValueTail",
-      "resolved": "d2342dfb65f06e78",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/[-_a-zA-Z0-9\\u0080-\\uffff%]+/)`",
+      "resolved": "c91318495fbcd83f",
+      "why": "this arm starts by reading past one token: `regex(/[-_a-zA-Z0-9\\u0080-\\uffff%]+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -711,8 +711,8 @@
       "line": 1279,
       "const": "plainUrlArgument",
       "construct": "field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))",
-      "resolved": "f5a6bf62178216ad",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
+      "resolved": "5347feb07d71a200",
+      "why": "this arm starts by reading past one token: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -721,8 +721,8 @@
       "line": 1297,
       "const": "UrlInterpolation",
       "construct": "staticUrlText",
-      "resolved": "f5a6bf62178216ad",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
+      "resolved": "e904a69713183236",
+      "why": "this arm starts by reading past one token: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -731,8 +731,8 @@
       "line": 1298,
       "const": "UrlInterpolation",
       "construct": "staticUrlText",
-      "resolved": "f5a6bf62178216ad",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
+      "resolved": "e904a69713183236",
+      "why": "this arm starts by reading past one token: `regex(/(?!@(?:-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*|\\{))(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\…`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -741,8 +741,8 @@
       "line": 1355,
       "const": "ImportTailParen",
       "construct": "staticTailText",
-      "resolved": "1603088d4f4d4166",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/[^()\\[\\]{};@'\"]+/)`",
+      "resolved": "884b0d6df850866d",
+      "why": "this arm starts by reading past one token: `regex(/[^()\\[\\]{};@'\"]+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -751,8 +751,8 @@
       "line": 1360,
       "const": "ImportTailText",
       "construct": "staticTailText",
-      "resolved": "1603088d4f4d4166",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/[^()\\[\\]{};@'\"]+/)`",
+      "resolved": "884b0d6df850866d",
+      "why": "this arm starts by reading past one token: `regex(/[^()\\[\\]{};@'\"]+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -798,11 +798,21 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 2279,
+      "const": "BacktickJavaScript",
+      "construct": "{ gate: state => state === 'less-at-rule-inline-javascript', combinator: atRuleInlineJavaScriptBody }",
+      "resolved": "6eec8fb750721a8d",
+      "why": "this arm starts by reading past one token: `scanTo(literal('`'), { recoverAt: inlineJavaScriptRecoveryBoundary, stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration), skip:…`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
       "line": 2627,
       "const": "valueRunEndAhead",
       "construct": "nestedAtRuleValueStart",
-      "resolved": "605ee11c0115292a",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/@[^;{}()'\"]*\\{/)`",
+      "resolved": "e1d2d18bc7601514",
+      "why": "this arm starts by reading past one token: `regex(/@[^;{}()'\"]*\\{/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -851,8 +861,18 @@
       "line": 3535,
       "const": "MixinGuardOperand",
       "construct": "mixinGuardDefaultOperand",
-      "resolved": "7a94e76a5bdd32bb",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/default[ \\t\\n\\r\\f]*\\([ \\t\\n\\r\\f]*\\)(?![-_a-zA-Z0-9\\u0080-\\uffff\\\\])/)`",
+      "resolved": "88d09d40a9f2d506",
+      "why": "this arm starts by reading past one token: `regex(/default[ \\t\\n\\r\\f]*\\([ \\t\\n\\r\\f]*\\)(?![-_a-zA-Z0-9\\u0080-\\uffff\\\\])/)`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 3574,
+      "const": "unparenthesizedMixinGuard",
+      "construct": "sequence(optional(lessCaseWord('not')), choice(mixinGuardDefaultOperand, g.Call), optional(sequence(mixinGuardOperator, g.MixinGuardOperand)))",
+      "resolved": "2af12adb8b0708b6",
+      "why": "this arm starts by reading past one token: `regex(/default[ \\t\\n\\r\\f]*\\([ \\t\\n\\r\\f]*\\)(?![-_a-zA-Z0-9\\u0080-\\uffff\\\\])/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -861,8 +881,8 @@
       "line": 3576,
       "const": "unparenthesizedMixinGuard",
       "construct": "mixinGuardDefaultOperand",
-      "resolved": "7a94e76a5bdd32bb",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/default[ \\t\\n\\r\\f]*\\([ \\t\\n\\r\\f]*\\)(?![-_a-zA-Z0-9\\u0080-\\uffff\\\\])/)`",
+      "resolved": "88d09d40a9f2d506",
+      "why": "this arm starts by reading past one token: `regex(/default[ \\t\\n\\r\\f]*\\([ \\t\\n\\r\\f]*\\)(?![-_a-zA-Z0-9\\u0080-\\uffff\\\\])/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -891,8 +911,8 @@
       "line": 3961,
       "const": "enclosedRaw",
       "construct": "enclosedText",
-      "resolved": "eba1639a35c64cde",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:\\\\[\\s\\S]|\\/(?![*/])|@(?!\\{)|[^\\\\/'\"@()[\\]{}]+)+/)`",
+      "resolved": "4d87586bf3fdbcc3",
+      "why": "this arm starts by reading past one token: `regex(/(?:\\\\[\\s\\S]|\\/(?![*/])|@(?!\\{)|[^\\\\/'\"@()[\\]{}]+)+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -901,8 +921,8 @@
       "line": 3983,
       "const": "enclosedContentItems",
       "construct": "enclosedRaw",
-      "resolved": "eba1639a35c64cde",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:\\\\[\\s\\S]|\\/(?![*/])|@(?!\\{)|[^\\\\/'\"@()[\\]{}]+)+/)`",
+      "resolved": "aa60bac2a3f11be6",
+      "why": "this arm starts by reading past one token: `regex(/(?:\\\\[\\s\\S]|\\/(?![*/])|@(?!\\{)|[^\\\\/'\"@()[\\]{}]+)+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -979,8 +999,8 @@
       "line": 5182,
       "const": "capturedArgument",
       "construct": "InvalidSelectorCaptureArgument",
-      "resolved": "d657980a0c4f8283",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `scanTo(literal(')'), { skip: [captureParens, captureBrackets, unknownAtRuleBrace] })`",
+      "resolved": "9588caa03f4a83d5",
+      "why": "this arm starts by reading past one token: `scanTo(literal(')'), { skip: [captureParens, captureBrackets, unknownAtRuleBrace] })`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -1105,8 +1125,8 @@
       "line": 791,
       "const": "InterpolatedUrlValue",
       "construct": "plainUrlChunk",
-      "resolved": "1946784dcfa864dc",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
+      "resolved": "194acb3a8ed37af2",
+      "why": "this arm starts by reading past one token: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -1115,8 +1135,8 @@
       "line": 794,
       "const": "InterpolatedUrlValue",
       "construct": "plainUrlChunk",
-      "resolved": "1946784dcfa864dc",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
+      "resolved": "194acb3a8ed37af2",
+      "why": "this arm starts by reading past one token: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -1125,8 +1145,8 @@
       "line": 1062,
       "const": "UrlFunction",
       "construct": "choice(g.Quoted, g.InterpolatedUrlValue, plainUrlChunk)",
-      "resolved": "1946784dcfa864dc",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
+      "resolved": "14ce0607885f385c",
+      "why": "this arm starts by reading past one token: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
       "issue": "jesscss/jess#576"
     },
     {
@@ -1185,8 +1205,8 @@
       "line": 2360,
       "const": "ImportUrl",
       "construct": "choice(g.Quoted, plainUrlChunk)",
-      "resolved": "1946784dcfa864dc",
-      "why": "this arm starts by scanning past one token, then rewinds if it fails: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
+      "resolved": "7807b43093a74197",
+      "why": "this arm starts by reading past one token: `regex(/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/)`",
       "issue": "jesscss/jess#576"
     },
     {

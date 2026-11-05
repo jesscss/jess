@@ -647,7 +647,9 @@ that shape intentionally and fail with the richer diagnostic.
     `pnpm check:guardrails` (assertion 8) fails on a lookahead whose width it
     cannot show to be one token, on such a lookaround, on a `dispatch` selector
     wider than one token, on a non-last `choice` arm or an `optional` that starts
-    with a wide regex or a `scanTo`, on `attempt(...)`, on a combinator imported under
+    with a wide regex or a `scanTo`, on a repeat or a `balanced` that starts a scan
+    with a required term after it, on a hand-written `{ parse() }` object, on
+    `attempt(...)`, on a combinator imported under
     another name, and on a dialect-prefixed rule name (item 16). "One token" is
     a lexical shape, not a meaning: one name or number with sigils and at most a
     glued `(` or `%`, a run of operator characters, one structural character, a
@@ -669,16 +671,19 @@ that shape intentionally and fail with the richer diagnostic.
     Known limits. A consuming arm that starts with a rule reference and fails
     several tokens in is backtracking this scan does not see; parseman's backtrack
     probe measures it, and the ratchet follows its release
-    (matthew-dean/parseman#246). A widening deep under an `attempt` isn't noticed.
-    A hand-written `{ parse() }` object and a reducer that reads the input are not
-    combinators, so only a `not`/`peek` directly over one is caught.
-    `verify:parser-runtime-boundary` catches them in CI when they use `charCodeAt`,
-    `test`, `exec` or the like, or a string method on a value it can tell is text;
-    `input.indexOf(...)` on a parameter passes both. A `token()` in a `dispatch`
-    selector is trusted. Calling parseman's `compile` is not flagged. The
-    stray-grammar check knows parseman by name, so an npm alias outside the scanned
-    sources escapes it. `scripts/`, `tools/` and `docs/` are exempt, so a grammar
-    importing a helper from `scripts/` passes this gate; `tsc -p
+    (matthew-dean/parseman#246). So is an arm with a one-token lead, as in
+    `sequence(literal('.'), regex(WIDE), literal('x'))`, which can't be caught
+    without flagging quoted strings. A lone or last arm, a conditional-expression
+    arm, `ref()` and the `trivia()` wrapper are not read as arms. A widening deep
+    under an `attempt` isn't noticed, and neither is widening a bare const behind a
+    dialect's override. A `state` predicate that reads the source, as in
+    `gate(state => state.source.indexOf(...))`, is not a combinator, so this scan
+    doesn't read it; `verify:parser-runtime-boundary` catches `charCodeAt`, `test`,
+    `exec` and the like, and a string method only on a value it can tell is text. A
+    `token()` in a `dispatch` selector is trusted. Calling parseman's `compile` is
+    not flagged. The stray-grammar check knows parseman by name, so an npm alias
+    outside the scanned sources escapes it. `scripts/`, `tools/` and `docs/` are
+    exempt, so a grammar importing a helper from `scripts/` passes this gate; `tsc -p
     tsconfig.build.json` rejects it with TS6059. `less…` with no capital after the
     prefix and a rule returned from a function declaration are not read as rule
     names. Finally, the gate and its baseline live in the tree they check, so one

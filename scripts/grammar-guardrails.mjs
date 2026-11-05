@@ -13,9 +13,10 @@
  *                   a pre-scan: a workaround for a missing parseman capability.
  *                   So is a lookaround past one token inside a consuming
  *                   `regex()`, a `regex()` whose pattern is not a literal, a
- *                   `dispatch` selector wider than one token, and a non-last
- *                   `choice` arm or an `optional` that starts with a wide regex
- *                   or a `scanTo`.
+ *                   `dispatch` selector wider than one token, a non-last `choice`
+ *                   arm or an `optional` that starts with a wide regex or a
+ *                   `scanTo`, a `balanced` or a repeated scan with a required term
+ *                   after it, and a hand-written `{ parse() }` combinator.
  *   dialect-prefix  A rule name carries no dialect name (`css…`, `LESS…`,
  *                   `DeclarationScss`, …) and no `Ast`/`Cst`. Exported whole
  *                   grammars (`rules`/`compose`/`composeLeaf` results) are not
@@ -66,11 +67,11 @@
  * scan, or a lookaround past the token are never one token, whatever wraps them.
  *
  * WHAT THIS SCAN DOES NOT SEE. A consuming `choice` arm or `optional` that starts
- * with a rule reference and fails several tokens in is backtracking too: parseman's
- * backtrack probe measures that (parseman#246). A hand-written `{ parse() }` object
- * and a reducer that reads the input are not combinators, so only a `not`/`peek`
- * directly over one is caught; `verify:parser-runtime-boundary` covers both in CI.
- * Regex width counts lexical shapes, not meaning: `=` then a name reads as one token.
+ * with a rule reference, or with one token and then a scan, and fails several tokens
+ * in is backtracking too: parseman's backtrack probe measures that (parseman#246). A
+ * predicate that reads the source (`gate(state => state.source.indexOf(...))`) is
+ * not a combinator, so this scan does not read it. Regex width counts lexical
+ * shapes, not meaning: `=` then a name reads as one token.
  */
 
 import { createHash } from 'node:crypto';
@@ -103,8 +104,11 @@ const MATCHER_FACTORIES = new Set(['makeWord', 'makeWhen']);
 const TRANSPARENT = new Set([
   'node', 'field', 'label', 'leaf', 'sourceLeaf', 'transform', 'noTrivia', 'attempt', 'expect', 'withCtx', 'optional', 'parser', 'routed'
 ]);
-const REPEATS = new Set(['many', 'oneOrMore', 'oneOrMoreSep']);
+const REPEATS = new Set(['many', 'oneOrMore', 'oneOrMoreSep', 'sepBy']);
 const SCANS = new Set(['scanTo', 'balanced', 'dispatch']);
+
+/* Zero-width checks whose width the scan does not model; a consuming arm can start with one. */
+const GUARDS = new Set(['gate', 'adjacent', 'notAdjacent']);
 
 /* `rules`/`compose`/`composeLeaf` build whole grammars, not rules. */
 const GRAMMAR_BUILDERS = new Set(['rules', 'compose', 'composeLeaf']);
@@ -121,8 +125,8 @@ export const RULE_MESSAGES = {
     '  Parseman never backtracks, re-parses or pre-scans: a grammar decides on the CURRENT',
     '  token. `not(...)` / `peek(...)` over a regex, a multi-token sequence, a repetition or',
     '  a whole production looks past it, and so does a lookaround past one token inside a',
-    '  `regex()`, and so does a `choice` arm or `optional` that starts by scanning and then',
-    '  rewinds. That is a MISSING PARSEMAN CAPABILITY, not a grammar problem: file a',
+    '  `regex()`, and so does a `choice` arm or `optional` that starts by scanning, and a',
+    '  hand-written `{ parse() }`. That is a MISSING PARSEMAN CAPABILITY, not a grammar problem: file a',
     '  parseman issue (github.com/matthew-dean/parseman) describing the decision the',
     '  grammar cannot make on one token, and do NOT land a grammar workaround. One-token',
     '  lookahead (`not(literal(\'{\'))`, `peek(keywords([...]))`) stays allowed.',
@@ -1104,6 +1108,14 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
   };
   const importRule = (node, why) => hit('parseman-import', node, why);
 
+  /* What can come before the first token of a consuming arm: a guard, an optional, or anything zero-width. */
+  const canPrecedeLead = (arg) => {
+    const call = unwrap(ts, arg);
+    const name = ts.isCallExpression(call) ? calleeName(ts, call) : undefined;
+    return name === 'optional' || GUARDS.has(name) || width(arg).width === 0;
+  };
+  const wrappedArguments = call => [...call.arguments].filter(a => !ts.isStringLiteralLike(a) && !ts.isFunctionLike(a));
+
   /*
    * The wide regex or `scanTo` a consuming arm starts with, read through bare consts
    * and wrappers. A `g.Rule` is not followed: where a rule fails is not a pre-scan
@@ -1137,7 +1149,7 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
     if (name === 'sequence') {
       for (const arg of args) {
         const lead = leadingScan(arg, depth + 1);
-        if (lead || width(arg).width !== 0) {
+        if (lead || !canPrecedeLead(arg)) {
           return lead;
         }
       }
@@ -1146,19 +1158,79 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
     if (name === 'choice') {
       return firstOf(args);
     }
-    return TRANSPARENT.has(name) || REPEATS.has(name) || name === 'token'
-      ? firstOf(args.filter(a => !ts.isStringLiteralLike(a) && !ts.isFunctionLike(a)).slice(0, 1))
-      : null;
+    return TRANSPARENT.has(name) || REPEATS.has(name) || name === 'token' ? firstOf(wrappedArguments(n)) : null;
   };
+
+  /* The scan or `balanced` an arm starts with, when a required term follows it, so that a failure rewinds. */
+  const scanThenRequired = (arm, depth = 0) => {
+    const n = arm && unwrap(ts, arm);
+    if (!n || depth > 6) {
+      return null;
+    }
+    const firstOf = list => list.map(a => scanThenRequired(a, depth + 1)).find(Boolean) ?? null;
+    if (ts.isIdentifier(n)) {
+      return isParameter(ts, n) ? null : firstOf(defs.get(n.text) ?? baseDefs.get(n.text) ?? []);
+    }
+    if (ts.isObjectLiteralExpression(n)) {
+      return firstOf(n.properties.filter(p => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'combinator').map(p => p.initializer));
+    }
+    if (!ts.isCallExpression(n)) {
+      return null;
+    }
+    const name = calleeName(ts, n);
+    if (name === 'choice') {
+      return firstOf([...n.arguments]);
+    }
+    if (TRANSPARENT.has(name) || name === 'token') {
+      return firstOf(wrappedArguments(n));
+    }
+    if (name !== 'sequence') {
+      return null;
+    }
+    const args = [...n.arguments];
+    for (const [i, arg] of args.entries()) {
+      const call = unwrap(ts, arg);
+      const scan = leadingScan(arg) ?? (ts.isCallExpression(call) && calleeName(ts, call) === 'balanced' ? call : null);
+      if (scan) {
+        const isOptional = (a) => {
+          const c = unwrap(ts, a);
+          return ts.isCallExpression(c) && (calleeName(ts, c) === 'optional' || calleeName(ts, c) === 'many');
+        };
+        return args.slice(i + 1).some(a => !isOptional(a) && !canPrecedeLead(a)) ? scan : null;
+      }
+      if (!canPrecedeLead(arg)) {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  /* An arm's entry moves when the scan or anything else in the arm does, so a baselined arm cannot grow a tail unseen. */
+  const armsHit = new Set();
+  const armHit = (site, scan, why) => {
+    if (!armsHit.has(site)) {
+      armsHit.add(site);
+      hit('lookahead', site, why, {
+        resolved: createHash('sha256').update(`${fingerprint(site, { shallow: true })}${fingerprint(scan)}`).digest('hex').slice(0, 16)
+      });
+    }
+  };
+  const describe = scan => clip(collapse(scan.getText(scan.getSourceFile())));
   const checkConsumingArms = (node, name) => {
-    if ((name !== 'choice' && name !== 'optional') || insideLookahead(node)) {
+    if (insideLookahead(node)) {
       return;
     }
-    const arms = name === 'optional' ? node.arguments.slice(0, 1) : node.arguments.slice(0, -1);
-    for (const arm of arms) {
-      const lead = leadingScan(arm);
-      if (lead) {
-        hit('lookahead', arm, `this arm starts by scanning past one token, then rewinds if it fails: \`${clip(collapse(lead.getText(lead.getSourceFile())))}\``, { resolved: fingerprint(lead) });
+    if (REPEATS.has(name)) {
+      const scan = scanThenRequired(node.arguments[0]);
+      if (scan) {
+        armHit(node, scan, `each iteration starts by reading past one token, and a failed one rewinds: \`${describe(scan)}\``);
+      }
+    } else if (name === 'choice' || name === 'optional') {
+      for (const arm of name === 'optional' ? node.arguments.slice(0, 1) : node.arguments.slice(0, -1)) {
+        const scan = leadingScan(arm) ?? scanThenRequired(arm);
+        if (scan) {
+          armHit(arm, scan, `this arm starts by reading past one token: \`${describe(scan)}\``);
+        }
       }
     }
   };
@@ -1262,6 +1334,8 @@ export function scanGrammarSource(ts, rel, text, baseDefs = new Map()) {
     } else if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier && PARSEMAN_MODULE.test(node.moduleSpecifier.text)
       && !(node.exportClause && ts.isNamedExports(node.exportClause) && node.exportClause.elements.every(e => e.isTypeOnly || !COMBINATORS.has((e.propertyName ?? e.name).text)))) {
       importRule(node, 'a re-export of parseman, which hides the combinator names from the importing file');
+    } else if (ts.isObjectLiteralExpression(node) && node.properties.some(m => m.name?.text === 'parse')) {
+      hit('lookahead', node, 'a hand-written `parse` member is a combinator this scan cannot read');
     } else if (ts.isBindingElement(node)) {
       const bound = (node.propertyName ?? node.name).getText(sourceFile);
       if (REBIND_WATCHED.has(bound)) {

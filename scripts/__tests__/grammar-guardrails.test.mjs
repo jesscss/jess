@@ -25,7 +25,7 @@ const scan = (source, base = new Map()) => scanGrammarSource(ts, FILE, source, b
 const rulesOf = (source, base) => scan(source, base).map(h => `${h.rule}:${h.const}`);
 
 const CLEAN = String.raw`
-import { attempt, choice, classifiedTrivia, dispatch, keywords, literal, makeWord, many, node, noTrivia, not, optional, parser, peek, regex, rules, scanTo, sequence, token, word, composeLeaf } from 'parseman' with { type: 'macro' };
+import { adjacent, attempt, balanced, choice, classifiedTrivia, dispatch, field, gate, keywords, literal, makeWord, many, node, notAdjacent, oneOrMore, oneOrMoreSep, sepBy, noTrivia, not, optional, parser, peek, regex, rules, scanTo, sequence, token, word, composeLeaf } from 'parseman' with { type: 'macro' };
 const trivia = classifiedTrivia({ whitespace: regex(/[ \t\n\r\f]+/), comment: regex(/\/\*(?:[^*]|\*(?!\/))*\*\//) });
 const identWord = makeWord({ boundary: '-_a-zA-Z0-9' });
 const identifier = regex(/-?(?:[_a-zA-Z\u0080-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
@@ -152,6 +152,65 @@ test('lookahead: a consuming arm that starts by scanning past one token is caugh
   passes(`const probe = choice(sequence(g.Declaration, ${WIDE}), literal('y'));`);
   const base = grammarDefinitions(ts, 'base.ts', `import { regex } from 'parseman'; const map = { WideRule: ${WIDE} };`);
   assert.deepEqual(scan(planted(`const probe = choice(sequence(g.WideRule, literal('x')), literal('y'));`), base).filter(h => h.rule === 'lookahead'), [], 'a rule reference stays with the backtrack probe');
+});
+
+test('lookahead: wrappers, guards and optional leads do not hide a consuming arm', () => {
+  const WIDE = String.raw`regex(/[-\w]+[ \t]*:/)`;
+  const SEQ = `sequence(${WIDE}, literal('x'))`;
+  const caught = body => assert.deepEqual(scan(planted(body)).filter(h => h.const === 'probe').map(h => h.rule), ['lookahead'], body);
+  caught(`const probe = choice(parser({ trivia: whitespace }, ${SEQ}), literal('y'));`);
+  caught(`const probe = optional(parser({ trivia: null }, ${SEQ}));`);
+  caught(`const name = 'A';\nconst probe = choice(node(name, ${SEQ}, c => c), literal('y'));`);
+  caught(`const probe = choice(field('a', ${SEQ}), literal('y'));`);
+  caught(`const probe = choice(sequence(gate(s => s), ${WIDE}, literal('x')), literal('y'));`);
+  caught(`const probe = choice(sequence(notAdjacent(), ${WIDE}, literal('x')), literal('y'));`);
+  caught(`const probe = choice(sequence(adjacent(), ${WIDE}, literal('x')), literal('y'));`);
+  caught(`const probe = choice(many(${SEQ}), literal('y'));`);
+  caught(`const probe = choice(sequence(optional(literal('.')), ${WIDE}, literal('x')), literal('y'));`);
+});
+
+test('lookahead: a repeat or balanced that starts a scan counts only when a required term follows it', () => {
+  const WIDE = String.raw`regex(/[-\w]+[ \t]*:/)`;
+  const SEQ = `sequence(${WIDE}, literal('x'))`;
+  const hits = body => scan(planted(body)).filter(h => h.rule === 'lookahead').length;
+  for (const body of [
+    `const probe = many(${SEQ});`,
+    `const probe = oneOrMore(${SEQ});`,
+    `const probe = oneOrMoreSep(${SEQ}, literal(','));`,
+    `const probe = sepBy(${SEQ}, literal(','));`,
+    `const probe = choice(sequence(balanced('(', ')'), literal('{')), literal('y'));`,
+    `const probe = optional(sequence(balanced('(', ')'), literal('{')));`
+  ]) {
+    assert.equal(hits(body), 1, body);
+  }
+  for (const body of [
+    `const probe = many(${WIDE});`,
+    `const probe = many(sequence(${WIDE}, optional(literal('x'))));`,
+    `const probe = sepBy(sequence(literal('a'), literal('x')), literal(','));`,
+    `const probe = choice(balanced('(', ')'), literal('y'));`,
+    `const probe = choice(sequence(balanced('(', ')'), optional(literal('{'))), literal('y'));`,
+    `const probe = sequence(balanced('(', ')'), literal('{'));`
+  ]) {
+    assert.equal(hits(body), 0, body);
+  }
+});
+
+test('lookahead: an object with a parse member is a hand-written combinator; other objects are not', () => {
+  const caught = body => assert.deepEqual(scan(planted(body)).filter(h => h.const === 'probe').map(h => h.rule), ['lookahead'], body);
+  caught(`const probe = { parse(input, pos) { return input.indexOf(':', pos); } };`);
+  caught(`const probe = { parse: (input: string, pos: number) => pos };`);
+  caught(`const parse = () => 1;\nconst probe = { parse };`);
+  caught(`const probe = { 'parse': (input: string, pos: number) => pos };`);
+  assert.deepEqual(scan(planted(`const probe = { parsed: 1, value: x => x.parse() };`)).filter(h => h.rule === 'lookahead'), []);
+});
+
+test('fingerprint: a baselined arm cannot grow a required tail with nothing moving', () => {
+  const WIDE = String.raw`regex(/[-\w]+[ \t]*:/)`;
+  const hash = arm => scan(`${CLEAN}\nconst text = ${WIDE};\nconst probe = choice(${arm}, literal('y'));\n`).find(h => h.const === 'probe').resolved;
+  assert.notEqual(hash('text'), hash(`sequence(text, literal(':'))`));
+  assert.match(hash('text'), /^[0-9a-f]{16}$/);
+  const lead = source => scan(`${CLEAN}\nconst text = regex(${source});\nconst probe = choice(sequence(text, literal('x')), literal('y'));\n`).find(h => h.const === 'probe').resolved;
+  assert.notEqual(lead(String.raw`/[-\w]+[ \t]*:/`), lead(String.raw`/[^;]*;/`));
 });
 
 test('literal, keywords and word: text with more than one token in it is not one token', () => {
