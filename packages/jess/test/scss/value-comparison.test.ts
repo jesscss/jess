@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
 /**
- * A comparison means the same in a value as in `@if`, with the precedence Sass
- * gives it: https://sass-lang.com/documentation/operators/#order-of-operations.
+ * A comparison in a value has the precedence Sass gives it, and `==` means what it
+ * means in `@if` (a relational does not yet: jess#591): https://sass-lang.com/documentation/operators/#order-of-operations.
  * Every expectation is what `sass --no-source-map` 1.101.7 writes for the source.
  * Sources follow Bootstrap 5.3.8 `mixins/_utilities.scss` and `vendor/_rfs.scss`,
  * and Foundation 6.9.0's `util/_value.scss` and sassy-lists `_true.scss`.
@@ -52,9 +52,18 @@ describe('ordering what has no order', () => {
     ['a slash before a comparison, glued', 'a {\n  x: 1/2 == 0.5;\n}', 2],
     ['a slash before a comparison, spaced', 'a {\n  x: 1 / 2 == 0.5;\n}', 2],
     ['a slash after a comparison', 'a {\n  x: a == 1/2;\n}', 2],
-    ['a slash under `and`', 'a {\n  x: 1/2 == 0.5 and b;\n}', 2]
+    ['a slash under `and`', 'a {\n  x: 1/2 == 0.5 and b;\n}', 2],
+    ['a slash in `if()`', '$a: 4;\nb {\n  c: if($a/2 > 1, x, y);\n}', 3],
+    ['a slash before a comparison in `@if`, glued', '$a: 4;\n@if $a/2 == 2 {\n  b { c: d; }\n}', 2],
+    ['a slash before a comparison in `@if`, spaced', '$a: 4;\n@if $a / 2 == 2 {\n  b { c: d; }\n}', 2],
+    ['a slash after a comparison in `@if`', '$a: 4;\n@if 2 == $a/2 {\n  b { c: d; }\n}', 2],
+    ['a slash before a comparison in `@while`', '$a: 4;\n@while $a/2 > 9 {\n  b { c: d; }\n}', 2]
   ])('%s', async (_label, source, line) => {
     await expect(compile(source)).rejects.toMatchObject({ code: 'eval/incomparable-operands', line });
+  });
+
+  it('reads the division a group holds in `@if`', async () => {
+    expect(await compile('$a: 4;\n@if ($a/2) == 2 {\n  b { c: d; }\n}')).toBe('b {\n  c: d;\n}\n');
   });
 
   it('orders numbers on units that convert, and a unitless number with any', async () => {

@@ -17,10 +17,12 @@ function comparisonSite(children: readonly unknown[]): ComparisonSite {
 /*
  * A comparison in value position needs the `$( … )` computation boundary (§4.5.2),
  * so it is an `Expression` over a `Condition`, the pair the unary `not` rung builds.
- * Sass `==` lowers to the named primitive `sass-equal`, not an operator (§5.1): the
- * same lowering `IfComparison` performs. `!=` is that comparison under `not`. A
- * relational lowers to Sass's own (`sass<`, …), which orders numbers and raises on
- * anything else. Written from its guard, so no source text is kept.
+ * Sass `==` lowers to the named primitive `sass-equal`, not an operator (§5.1), as
+ * `IfComparison` lowers it. `!=` is that comparison under `not`. A relational lowers
+ * to Sass's own (`sass<`, …), which orders numbers and raises on anything else.
+ * `IfComparison` keeps the guard's own relational, which does not raise, so
+ * `@if 1px < 1em` is false where `if(1px < 1em, a, b)` is an error (jess#591). Written
+ * from its guard, so no source text is kept.
  */
 function scssComparison(left: ValueNode, operator: string, right: ValueNode, at: ComparisonSite): ValueNode {
   const comparison = guardCompare('cmp', operator === '==' || operator === '!=' ? 'sass-equal' : `sass${operator}`, left, right, false);
@@ -120,6 +122,22 @@ function slashList(items: ValueSlot[]): ValueNode {
   return comparison === undefined
     ? list(items, '/')
     : expression(withSourceSpan(condition(guardCompare('cmp', 'sass-slash', items[0]!, items[1]!, false), ''), { start: sourceStartOf(comparison), end: sourceEndOf(comparison) }));
+}
+
+/** The `/` and divisor `ComparisonSlash` reads after an `@if` comparison's operand. */
+export interface ComparisonSlashTail {
+  readonly divisor: ValueNode;
+  readonly at: AstSourceSpan;
+}
+
+const isComparisonSlash = (tail: unknown): tail is ComparisonSlashTail => typeof tail === 'object' && tail !== null && 'divisor' in tail;
+
+/** A `/` in an `@if` comparison's operand has the same no-reading {@link slashList} gives a value's: it raises where it is read, at the `/`. */
+export function slashInComparison(dividend: ValueNode, tail: unknown): ValueNode {
+  if (!isComparisonSlash(tail)) {
+    throw new TypeError('SCSS comparison operand lost its slash.');
+  }
+  return expression(withSourceSpan(condition(guardCompare('cmp', 'sass-slash', dividend, tail.divisor, false), ''), tail.at));
 }
 
 /**

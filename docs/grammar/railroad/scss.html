@@ -2072,7 +2072,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-IfComparison">
     <h2><a href="#rule-IfComparison">§</a> IfComparison</h2>
     <div class="diagram" data-rule="IfComparison"></div>
-    <div class="ebnf">IfComparison ::= MathTopSum (&quot;.&quot; MathTopSum)* (&quot;==&quot; | &quot;!=&quot; | &quot;&gt;=&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&lt;&quot;) MathTopSum (&quot;.&quot; MathTopSum)*</div>
+    <div class="ebnf">IfComparison ::= MathTopSum (&quot;.&quot; MathTopSum)* (&quot;/&quot; MathTopSum (&quot;.&quot; MathTopSum)*)? (&quot;==&quot; | &quot;!=&quot; | &quot;&gt;=&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&lt;&quot;) MathTopSum (&quot;.&quot; MathTopSum)* (&quot;/&quot; MathTopSum (&quot;.&quot; MathTopSum)*)?</div>
   </section>
   <section class="rule" id="rule-IfBody">
     <h2><a href="#rule-IfBody">§</a> IfBody</h2>
@@ -3055,7 +3055,7 @@ svg.railroad-diagram rect {
   { name: "IfAnd", dsl: function(){ return Diagram(Sequence(NonTerminal("IfTerm"), ZeroOrMore(Sequence(NonTerminal("LogicalAnd"), NonTerminal("IfTerm"))))); } },
   { name: "IfTerm", dsl: function(){ return Diagram(Sequence(Optional(NonTerminal("LogicalNot")), NonTerminal("IfAtom"))); } },
   { name: "IfAtom", dsl: function(){ return Diagram(Choice(0, NonTerminal("IfComparison"), Sequence(Terminal("("), NonTerminal("IfCondition"), Terminal(")")), Terminal("true"), Terminal("false"), NonTerminal("MathTopSum"))); } },
-  { name: "IfComparison", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("."), NonTerminal("MathTopSum"))), Choice(0, Terminal("=="), Terminal("!="), Terminal(">="), Terminal("<="), Terminal(">"), Terminal("<")), NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("."), NonTerminal("MathTopSum"))))); } },
+  { name: "IfComparison", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("."), NonTerminal("MathTopSum"))), Optional(Sequence(Terminal("/"), NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("."), NonTerminal("MathTopSum"))))), Choice(0, Terminal("=="), Terminal("!="), Terminal(">="), Terminal("<="), Terminal(">"), Terminal("<")), NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("."), NonTerminal("MathTopSum"))), Optional(Sequence(Terminal("/"), NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("."), NonTerminal("MathTopSum"))))))); } },
   { name: "IfBody", dsl: function(){ return Diagram(Sequence(Terminal("{"), NonTerminal("nestedBody"), Terminal("}"))); } },
   { name: "IfRule", dsl: function(){ return Diagram(Sequence(NonTerminal("IfCondition"), NonTerminal("IfBody"), ZeroOrMore(Sequence(Terminal("@else"), Choice(0, Sequence(Terminal("if"), NonTerminal("IfCondition"), NonTerminal("IfBody")), NonTerminal("IfBody")))))); } },
   { name: "WhileRule", dsl: function(){ return Diagram(Sequence(NonTerminal("IfCondition"), NonTerminal("IfBody"))); } },

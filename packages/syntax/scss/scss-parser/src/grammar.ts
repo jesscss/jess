@@ -30,7 +30,8 @@ import { functionalPseudoFrom, nthPseudoFrom, pseudoArgumentFrom } from './gramm
 import { conditionWord, gluedTerm, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { RETURN_DIRECTIVE, directivePrelude, lowerFunctionReturns } from './grammar-return.js';
 import { scssSum } from './plus-chain.js';
-import { foldLogicalOperation, scssSlashGroupedTerm } from './grammar-logical.js';
+import { foldLogicalOperation, scssSlashGroupedTerm, slashInComparison } from './grammar-logical.js';
+import type { ComparisonSlashTail } from './grammar-logical.js';
 import type { ComparisonWord, ConditionWord, MathOperatorFact, ScssArgumentGap, ScssSpreadMark, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -3404,10 +3405,31 @@ const scssFactory = (g: ScssInputRules) => {
       : withValueLayout(spaced(children.filter(isScssValue)), children.slice(1).map(() => '')),
     { collapse: true }
   );
+
+  /** A `/` and what follows it in an `@if` comparison's operand; `comparisonSide` gives it no reading. */
+  const ComparisonSlash = node<ComparisonSlashTail>(
+    'ComparisonSlash',
+    sequence(
+      literal('/'),
+      comparisonOperand
+    ),
+    (children, _fields, span) => ({ divisor: requireValue(children[1]), at: span })
+  );
+
+  /** One side of an `@if` comparison: an operand, or one with a `/`, which raises where it is read. */
+  const comparisonSide = node<ValueNode>(
+    'ValueSequence',
+    sequence(
+      comparisonOperand,
+      optional(ComparisonSlash)
+    ),
+    children => children.length === 1 ? requireValue(children[0]) : slashInComparison(requireValue(children[0]), children[1]),
+    { collapse: true }
+  );
   const IfComparison = node<GuardNode>(
     'IfComparison',
     sequence(
-      comparisonOperand,
+      comparisonSide,
       choice(
         literal('=='),
         literal('!='),
@@ -3416,7 +3438,7 @@ const scssFactory = (g: ScssInputRules) => {
         literal('>'),
         literal('<')
       ),
-      comparisonOperand
+      comparisonSide
     ),
     (children) => {
       const left = requireValue(children[0]);
@@ -5157,7 +5179,7 @@ const scssFactory = (g: ScssInputRules) => {
        * here, so the structured arg normalizes them away (`:not( .b )` is
        * `:not(.b)`) via `pseudoCanonical`, matching the other dialects
        * (Selectors-4; the residual SCSS surrounding-whitespace divergence). A
-       * comment before the argument is not: `:not( /*x*\/ .a)` stops.
+       * comment before the argument is not: `:not( /*x*\/ .a)` is `InvalidPseudo`.
        */
     sequence(
       routed(),
