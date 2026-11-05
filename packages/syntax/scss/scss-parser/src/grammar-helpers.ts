@@ -157,9 +157,11 @@ export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
  * `-n+2`). Text that is not An+B, an `of S` tail, is left as written.
  */
 function unspacedNth(arg: Interpolation): Interpolation {
-  const isAnb = (text: string): boolean => [...text].every(char => '-+0123456789nN \t\n\r\f'.includes(char));
-  const unspaced = (text: string): string => [...text].filter(char => !' \t\n\r\f'.includes(char)).join('');
-  return interpolation(arg.parts.map(part => 'lit' in part && isAnb(part.lit) ? { lit: unspaced(part.lit) } : part));
+  const anb = new Set('-+0123456789nN \t\n\r\f');
+  const gap = new Set(' \t\n\r\f');
+  return interpolation(arg.parts.map(part => 'lit' in part && [...part.lit].every(char => anb.has(char))
+    ? { lit: [...part.lit].filter(char => !gap.has(char)).join('') }
+    : part));
 }
 
 /** A pseudo argument's source text, or its interpolation when a `#{…}` stands in it. */
@@ -611,7 +613,7 @@ function isComparisonToken(child: unknown): boolean {
  */
 /** The padding a call argument's tokens carry between its parts: a token that is no value, comparison or `:`. */
 function isArgumentGap(child: unknown): boolean {
-  return isToken(child) && !isScssValue(child) && ' \t\n\r\f/'.includes(child.value[0]!);
+  return isToken(child) && !isScssValue(child) && (child.value[0] === '/' || child.value.trim() === '');
 }
 
 function argumentRun(children: readonly unknown[]): ValueSlot {
