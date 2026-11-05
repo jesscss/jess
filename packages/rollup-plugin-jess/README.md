@@ -85,6 +85,10 @@ Each value is keyed by the variable's name with dash-case turned to camelCase:
 Values are CSS literals (`#08f`, `8px`, `red`). The runtime recomputes each
 derived value with the same function the compile ran.
 
+The module imports the runtime from `@jesscss/fns`, so a Rollup build of such a
+stylesheet needs [`@rollup/plugin-node-resolve`](https://github.com/rollup/plugins/tree/master/packages/node-resolve)
+to bundle it. Vite resolves it on its own.
+
 ## Options
 
 The plugin forwards options to the `jess` compiler. See `jess`’s `ConfigOptions`.

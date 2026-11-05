@@ -28,7 +28,9 @@ export default {
 import css from './theme.less';
 ```
 
-The module's default export is the CSS.
+The module's default export is the CSS. `./theme.less?inline` is that CSS as a
+string, with nothing injected. Import a stylesheet from JavaScript: a `<link>`
+to a `.less` or `.jess` file is not served in dev.
 
 ## CSS Modules
 
@@ -36,6 +38,9 @@ A `.module.less` (or `.module.jess`) stylesheet goes through Vite's CSS
 Modules, as a `.module.css` file does: Jess evaluates it, then Vite scopes its
 class names. The default export is the class map, and Vite's `css.modules`
 options apply.
+
+A stylesheet that also exposes variables has named exports `vars` and `set`, so
+a class named `.vars` or `.set` is read from the default export.
 
 ```less
 // card.module.less

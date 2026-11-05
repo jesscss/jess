@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Compiler, type ConfigOptions } from 'jess';
-import type { Plugin, RollupLog } from 'rollup';
+import type { Plugin, PluginContext, RollupLog } from 'rollup';
 
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
 type ExportRuntimeData = NonNullable<RenderResult['runtime']>;
@@ -29,14 +29,32 @@ export type JessRollupPluginOptions = {
   cssFileName?: (id: string) => string;
 };
 
+/** The part of Vite's hot-update context this plugin reads. */
+type HotUpdate<M> = {
+  readonly file: string;
+  readonly modules: readonly M[];
+  readonly server: { readonly moduleGraph: { getModuleById(id: string): M | undefined } };
+};
+
 const LANGUAGES: ReadonlyMap<string, string> = new Map([['.jess', 'jess'], ['.less', 'less']]);
 
-/** A stylesheet's JS module (`<prefix><file>.js`), and its CSS under Vite: ids no CSS plugin claims. */
+/** A stylesheet's JS module (`<prefix><file>.js`): an id no CSS plugin claims. */
 const MODULE = '\0jess:';
 
-/** A CSS Modules stylesheet; under Vite its CSS id keeps the `.module.css` ending, so Vite's CSS Modules scope it. */
+/** A CSS Modules stylesheet. */
 const MODULES = /\.module\.[^./]+$/;
-const CSS = '\0jess-css:';
+
+/** What a stylesheet's import asks for when it wants the CSS as a string: Vite's CSS plugin reads it off the CSS id. */
+const INLINE = '?inline';
+
+/**
+ * A stylesheet's CSS under Vite: a path beside the stylesheet, so `url()`,
+ * `@import` and `composes` in it resolve from the stylesheet's directory, and
+ * the `.module.css` ending sends a CSS Modules stylesheet through Vite's CSS
+ * Modules. It keeps the stylesheet's whole name, so `a.module.less` and
+ * `a.module.jess` stay two stylesheets. No such file exists; {@link load} serves it.
+ */
+const cssId = (file: string): string => `${file}${MODULES.test(file) ? '.module.css' : '.css'}`;
 
 /** Where the runtime's own imports (`@jesscss/fns/…`) resolve from: this package, which depends on them. */
 const ANCHOR = fileURLToPath(import.meta.url);
@@ -49,61 +67,101 @@ const ANCHOR = fileURLToPath(import.meta.url);
  * target?)` from `@jesscss/fns/runtime`, which recompute what depends on them
  * (docs/architecture/core/spec/R8-browser-runtime.md).
  */
-export default function jessRollupPlugin(options: JessRollupPluginOptions = {}): Plugin & { enforce: 'pre'; configResolved(): void } {
+export default function jessRollupPlugin(options: JessRollupPluginOptions = {}): Plugin & { enforce: 'pre'; configResolved(config: { readonly root: string }): void; handleHotUpdate<M>(context: HotUpdate<M>): M[] } {
   const compiler = new Compiler();
   const emitCss = options.emitCss ?? true;
   const cssFileName = options.cssFileName ?? ((id: string) => `${path.basename(id, path.extname(id))}.css`);
-  const styles = new Map<string, string>();
-  let vite = false;
+  const sheets = new Map<string, string>();
+  const renders = new Map<string, { source: string; result: RenderResult }>();
+
+  /** Under Vite, the project root its dev server's URLs start from. */
+  let viteRoot: string | undefined;
+
+  /** The CSS id a request names (dev URLs are root-relative), carrying the request's query. */
+  const sheetOf = (source: string): string | undefined => {
+    const [request = source] = source.split('?', 1);
+    const id = sheets.has(request) ? request : `${viteRoot}${request}`;
+    return sheets.has(id) ? `${id}${source.slice(request.length)}` : undefined;
+  };
+
+  /** The render of a stylesheet's current source; its module and its CSS share one. */
+  const render = async (context: PluginContext, file: string): Promise<RenderResult> => {
+    context.addWatchFile(file);
+    const source = await readFile(file, 'utf8');
+    let rendered = renders.get(file);
+    if (rendered?.source !== source) {
+      const result = await compiler.renderToResult(
+        { filePath: file, source, language: LANGUAGES.get(path.extname(file))! },
+        { ...options.config, suppressWarnings: true }
+      );
+      rendered = { source, result };
+      renders.set(file, rendered);
+      for (const warning of result.warnings) {
+        context.warn(log(warning, file));
+      }
+    }
+    const [error] = rendered.result.errors;
+    if (error !== undefined) {
+      context.error(log(error, file));
+    }
+    return rendered.result;
+  };
 
   return {
     name: 'jess',
     enforce: 'pre',
 
     /* Vite calls this; Rollup does not. */
-    configResolved() {
-      vite = true;
+    configResolved(config) {
+      viteRoot = config.root;
+    },
+
+    /* A CSS id is no file, so Vite's watcher can't reach it: an edit to the stylesheet updates it too. */
+    handleHotUpdate({ file, modules, server }) {
+      const css = server.moduleGraph.getModuleById(cssId(file));
+      return css === undefined ? [...modules] : [...modules, css];
     },
 
     async resolveId(source, importer) {
-      if (source.startsWith(CSS)) {
-        return source;
+      const sheet = sheetOf(source);
+      if (sheet !== undefined) {
+        return sheet;
       }
       if (importer?.startsWith(MODULE)) {
         const file = importer.slice(MODULE.length, -'.js'.length);
         return (await this.resolve(source, file, { skipSelf: true })) ?? this.resolve(source, ANCHOR, { skipSelf: true });
       }
-      if (!LANGUAGES.has(path.extname(source))) {
+      const inline = viteRoot !== undefined && source.endsWith(INLINE);
+      const request = inline ? source.slice(0, -INLINE.length) : source;
+      if (!LANGUAGES.has(path.extname(request))) {
         return null;
       }
-      const resolved = await this.resolve(source, importer, { skipSelf: true });
-      return resolved === null || resolved.external ? resolved : `${MODULE}${resolved.id}.js`;
+      const resolved = await this.resolve(request, importer, { skipSelf: true });
+      if (resolved === null || resolved.external) {
+        return resolved;
+      }
+      if (inline) {
+        sheets.set(cssId(resolved.id), resolved.id);
+        return `${cssId(resolved.id)}${INLINE}`;
+      }
+      return `${MODULE}${resolved.id}.js`;
     },
 
     async load(id) {
-      if (id.startsWith(CSS)) {
-        return styles.get(id) ?? null;
+      const [css = id] = id.split('?', 1);
+      const sheet = sheets.get(css);
+      if (sheet !== undefined) {
+        return (await render(this, sheet)).css;
       }
       if (!id.startsWith(MODULE)) {
         return null;
       }
       const file = id.slice(MODULE.length, -'.js'.length);
-      this.addWatchFile(file);
-      const result = await compiler.renderToResult(
-        { filePath: file, source: await readFile(file, 'utf8'), language: LANGUAGES.get(path.extname(file))! },
-        { ...options.config, suppressWarnings: true }
-      );
-      for (const warning of result.warnings) {
-        this.warn(log(warning, file));
-      }
-      const [error] = result.errors;
-      if (error !== undefined) {
-        this.error(log(error, file));
-      }
+      const result = await render(this, file);
       let cssImport: string | undefined;
-      if (vite) {
-        cssImport = MODULES.test(file) ? `${CSS}${file.slice(0, -path.extname(file).length)}.css` : `${CSS}${file}.css`;
-        styles.set(cssImport, result.css);
+      if (viteRoot !== undefined) {
+        cssImport = cssId(file);
+        sheets.set(cssImport, file);
       } else if (emitCss) {
         this.emitFile({ type: 'asset', fileName: cssFileName(file), source: result.css });
       }

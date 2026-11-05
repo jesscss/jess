@@ -200,17 +200,25 @@ or needs JS) to decide what ships in the bundle.
   (`renderToResult`); one plugin serves Rollup and Vite (`enforce: 'pre'`).
   **`vite-plugin-jess`** is that plugin under Vite's name and `Plugin` type,
   so there is one implementation.
-- **CSS Modules.** Under Vite, a `.module.*` stylesheet's CSS is the virtual
-  `\0jess-css:<name>.module.css`, so Vite's CSS Modules scope it after Jess
+- **CSS Modules.** Under Vite, a `.module.*` stylesheet's CSS has the id
+  `<file>.module.css`, so Vite's CSS Modules scope it after Jess
   has evaluated it (`&__el` is scoped as the name it builds). The module
   re-exports Vite's class map as its default export and each class as a named
   export, as `import styles from './x.module.css'` does; `vars`/`set` are
-  unchanged. Under plain Rollup the CSS is emitted unscoped.
+  unchanged, so a class named `.vars` or `.set` is read from the default
+  export. Under plain Rollup the CSS is emitted unscoped.
   The stylesheet's module is the virtual id `\0jess:<file>.js`, so no CSS
   plugin claims it.
 - **CSS.** Rollup: emitted as the asset `<name>.css` (`emitCss`,
-  `cssFileName`). Vite: the module imports the virtual `\0jess-css:<file>.css`,
-  so Vite injects it in dev and bundles it in a build.
+  `cssFileName`). Vite: the module imports `<file>.css`, an id beside the
+  stylesheet that no file backs, so Vite injects it in dev and bundles it in a
+  build, and `url()`, `@import` and `composes` in it resolve from the
+  stylesheet's directory. The plugin's `handleHotUpdate` adds that id to an
+  edit of the stylesheet. `<file>?inline` is the same CSS as a string. A
+  `<link>` to a `.less` or `.jess` file is not served in dev.
+- **Resolving the runtime.** The module's `@jesscss/fns` imports resolve from
+  the stylesheet, then from the plugin. Vite resolves bare imports itself; a
+  Rollup build needs `@rollup/plugin-node-resolve`.
 - **Module.** `export default` is the CSS. A stylesheet with runtime data also
   has `export const { vars, set } = createRuntime({ defaults, derived })`, each
   recipe function imported by name from its module (`@jesscss/fns/less`).
