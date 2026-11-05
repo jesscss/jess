@@ -2207,7 +2207,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const VarFallbackCall = node(
     'VarFallbackCall',
-    sequence(
+    noTrivia(sequence(
       routed(),
       optional(cssValueTrivia),
       optional(sequence(
@@ -2228,7 +2228,7 @@ const cssFactory = (g: GrammarSelf) => {
         ))
       )),
       literal(')')
-    ),
+    )),
     children => fallbackCall(children)
   );
 

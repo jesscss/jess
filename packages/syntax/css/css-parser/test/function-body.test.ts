@@ -77,6 +77,8 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['a comment before a comma inside a branch value', 'if(a: 1 /* c */, 2; else: 3)'],
   ['a comment after a `;` before a comma group', 'foo(a; /* c */ b , c)', 'foo(a; /* c */ b, c)'],
   ['a comment before a `;` in a var() fallback group', 'var(--x, (a /* c */ ; b))'],
+  ['a comment before a `;` in a var() fallback call', 'var(--x, foo(a /* c */ ; b))'],
+  ['a comment in a branch value in a var() fallback call', 'var(--x, foo(a: 1 /* c */, 2; else: 3))'],
   ['a var() fallback function with `;` groups and empty groups', 'var(--x, foo(a;; b))'],
   ['a var() fallback function whose body is a branch list', 'var(--x, if(media(print): a; else: b))'],
   ['a var() fallback function whose first argument is followed by a `:`, a branch (P38)', 'var(--x, foo(a: b))'],
