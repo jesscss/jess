@@ -203,7 +203,7 @@ describe('an authored calc() a built-in takes', () => {
     await expect(value('percentage(calc(1px + 1em))')).resolves.toBe('percentage(calc(1px + 1em))');
     await expect(value('percentage(calc(1 + 1px))')).resolves.toBe('percentage(calc(1 + 1px))');
     await expect(value('percentage(calc(1 / 0))')).resolves.toBe('percentage(calc(1 / 0))');
-    await expect(value('percentage(calc(var(--a) + 1))')).resolves.toBe('calc(calc(var(--a) + 1) * 100%)');
+    await expect(value('percentage(calc(var(--a) + 1))')).resolves.toBe('calc((var(--a) + 1) * 100%)');
   });
 
   it('prints as written where nothing takes it', async () => {
@@ -219,9 +219,176 @@ describe('other dialects', () => {
       .rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 
+  it.each([
+    ['.css', '.a { b: calc(var(--a) % 3); }', '.a {\n  b: calc(var(--a) % 3);\n}\n'],
+    ['.scss', '.a { b: calc(var(--a) % 3); }', '.a {\n  b: calc(var(--a) % 3);\n}\n'],
+    ['.css', '.a { b: translate((var(--a) * 2), 1px); }', '.a {\n  b: translate((var(--a) * 2), 1px);\n}\n'],
+    ['.scss', '.a { b: translate((var(--a) * 2), 1px); }', '.a {\n  b: translate((var(--a) * 2), 1px);\n}\n']
+  ])('%s keeps %s', async (extension, source, out) => {
+    const compiler = new Compiler({});
+    await expect(compiler.renderString(source, { filePath: `entry${extension}`, extension })).resolves.toBe(out);
+  });
+
   it('.scss keeps its own math functions', async () => {
     const compiler = new Compiler({});
     await expect(compiler.renderString('.a { b: ceil(var(--a)); c: percentage(var(--a)); }', { filePath: 'entry.scss', extension: '.scss' }))
       .resolves.toBe('.a {\n  b: ceil(var(--a));\n  c: percentage(var(--a));\n}\n');
+  });
+});
+
+describe('what only the browser knows, whatever its shape', () => {
+  it('an unknown precision behaves as `var()` does', async () => {
+    await expect(value('round(1.5, (var(--p) + 1))')).resolves.toBe('calc(sign(1.5) * round(abs(1.5), pow(10, -1 * (var(--p) + 1))))');
+    await expect(value('round(1.5, var(--p))')).resolves.toBe('calc(sign(1.5) * round(abs(1.5), pow(10, -1 * var(--p))))');
+  });
+
+  it('`%` is `rem()`, as `mod()` is, and never `calc(... % ...)`', async () => {
+    await expect(css('@a: var(--a); .x { y: (@a % 3); }')).resolves.toContain('y: rem(var(--a), 3);');
+    await expect(value('(var(--a) % 3)')).resolves.toBe('rem(var(--a), 3)');
+    await expect(value('(var(--a) % 3 * 2)')).resolves.toBe('calc(rem(var(--a), 3) * 2)');
+    await expect(value('calc(var(--a) % 3)')).resolves.toBe('calc(rem(var(--a), 3))');
+    await expect(value('max(var(--a) % 3, 1)')).resolves.toBe('max(rem(var(--a), 3), 1)');
+  });
+
+  it.each([
+    ['(-var(--x) + 1)', 'calc(-1 * var(--x) + 1)'],
+    ['(2 * -var(--x))', 'calc(2 * -1 * var(--x))'],
+    ['-percentage(var(--x))', 'calc(-1 * var(--x) * 100%)'],
+    ['(-percentage(var(--x)) + 1)', 'calc(-1 * var(--x) * 100% + 1)']
+  ])('a glued minus is `-1 *` inside a form: %s', async (source, form) => {
+    await expect(value(source)).resolves.toBe(form);
+  });
+
+  it.each([
+    ['ceil(asin(var(--x)))', 'round(up, asin(var(--x)), 1)'],
+    ['percentage(asin(var(--x)))', 'calc(asin(var(--x)) * 100%)'],
+    ['ceil(hypot(var(--x),1px))', 'round(up, hypot(var(--x), 1px), 1)'],
+    ['ceil(attr(x px))', 'round(up, attr(x px), 1)'],
+    ['ceil((1px * var(--x) * 1px))', 'round(up, (1px * var(--x) * 1px), 1)'],
+    ['percentage((1px / 1em * var(--x)))', 'calc((1px / 1em * var(--x)) * 100%)'],
+    ['ceil((var(--x) + 1px))', 'round(up, (var(--x) + 1px), 1px)'],
+    ['ceil((var(--x) * 2px / 2))', 'round(up, (var(--x) * 2px / 2), 1px)']
+  ])('a unit is claimed only where the expression proves it: %s', async (source, form) => {
+    await expect(value(source)).resolves.toBe(form);
+  });
+
+  it.each(['unit(var(--x), foo)', 'convert(var(--x), foo)'])('a unit CSS does not define has no form: %s', async (source) => {
+    await expect(value(source)).resolves.toBe(source);
+  });
+});
+
+describe('an operand math has no meaning for fails', () => {
+  it('units a strict compile rejects, before the unknown part takes them', async () => {
+    await expect(value('(1px * 1em * var(--x))', { unitMode: 'strict' })).rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
+    await expect(value('(1px * 1em * var(--x))')).resolves.toBe('calc(1px * 1em * var(--x))');
+  });
+
+  it.each([
+    '@d: 1 / var(--x); .x { y: (@d + 1); }',
+    '.x { y: ((1, 2) * var(--x)); }',
+    '@l: 1, 2; .x { y: (@l * var(--x)); }'
+  ])('a list: %s', async (source) => {
+    await expect(css(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+
+  it('a slash list stays a list where nothing asks for its quotient', async () => {
+    await expect(value('percentage(1 / var(--x))')).resolves.toBe('percentage(1 / var(--x))');
+  });
+});
+
+describe('a `calc()` inside math or a form splices by structure', () => {
+  it.each([
+    ['((var(--b) + 1) / calc(var(--a) * 3))', 'calc((var(--b) + 1) / (var(--a) * 3))'],
+    ['(2 / calc(var(--a) * 3))', 'calc(2 / (var(--a) * 3))'],
+    ['(2px / calc(2px / 3))', 'calc(2px / (2px / 3))'],
+    ['(2 - calc(var(--a) - 3))', 'calc(2 - (var(--a) - 3))'],
+    ['(2 - calc(var(--a) + 3))', 'calc(2 - (var(--a) + 3))'],
+    ['(2 * calc(var(--a) + 3))', 'calc(2 * (var(--a) + 3))'],
+    ['(calc(var(--a) + 3) * 2)', 'calc((var(--a) + 3) * 2)'],
+    ['(calc(var(--a) - 3) - 2)', 'calc((var(--a) - 3) - 2)'],
+    ['(2 / calc(1px + 1em))', 'calc(2 / (1px + 1em))'],
+    ['(calc(1px + 1em) + var(--x))', 'calc((1px + 1em) + var(--x))'],
+    ['percentage(calc(var(--x) * 2))', 'calc(var(--x) * 2 * 100%)'],
+    ['calc(convert(var(--a), px) / 2)', 'calc(var(--a) / 2)']
+  ])('%s', async (source, form) => {
+    await expect(value(source)).resolves.toBe(form);
+  });
+
+  it('a reference holding a `calc()` too', async () => {
+    await expect(css('@x: var(--x); .y { z: percentage(calc(@x * 2)); }')).resolves.toContain('z: calc(var(--x) * 2 * 100%);');
+  });
+});
+
+describe('a `calc()` resolves for a built-in only where CSS math types it', () => {
+  it.each([
+    'percentage(calc(1px * 2px))',
+    'percentage(calc(10 % 3))',
+    'ceil(calc(1px * 1em))',
+    'ceil(calc(4px / 2em))',
+    'floor(calc(1px * 1px))',
+    'percentage(calc(1px * 1em))'
+  ])('%s stays as written', async (source) => {
+    await expect(value(source)).resolves.toBe(source);
+  });
+
+  it('`min()` reads a resolved `calc()` as it reads the number', async () => {
+    await expect(value('min(calc(3px),3px)')).resolves.toBe('3px');
+    await expect(value('min(calc(1px + 1px),3px)')).resolves.toBe('2px');
+  });
+});
+
+describe('a bare slash under `math: always`', () => {
+  it.each([
+    ['background: url(a.png) center / var(--s) no-repeat;', 'background: url(a.png) center / var(--s) no-repeat;'],
+    ['grid-column: var(--a) / span 2;', 'grid-column: var(--a) / span 2;'],
+    ['grid: @x / auto-flow;', 'grid: var(--x) / auto-flow;'],
+    ['content: "a" / @x;', 'content: "a" / var(--x);'],
+    ['grid-row: 1 / var(--x);', 'grid-row: calc(1 / var(--x));'],
+    ['grid-row: var(--y) / var(--x);', 'grid-row: calc(var(--y) / var(--x));']
+  ])('%s', async (source, written) => {
+    await expect(css(`@x: var(--x); .a { ${source} }`, { mathMode: 'always' })).resolves.toContain(written);
+  });
+
+  it.each(['parens-division', 'parens', 'strict'])('stays a separator under %s', async (mathMode) => {
+    await expect(css('.a { grid-row: 1 / var(--x); }', { mathMode })).resolves.toContain('grid-row: 1 / var(--x);');
+  });
+});
+
+describe('a group of math in a call written out', () => {
+  it('is a `calc()`, there being no `(...)` in CSS', async () => {
+    await expect(value('translate((var(--a)*2),1px)')).resolves.toBe('translate(calc(var(--a) * 2), 1px)');
+    await expect(css('@v: (var(--x) * 2); .a { y: foo(@v); }')).resolves.toContain('y: foo(calc(var(--x) * 2));');
+  });
+
+  it('in a space or slash list too', async () => {
+    await expect(value('image-set((var(--a) * 2) 1x)')).resolves.toBe('image-set(calc(var(--a) * 2) 1x)');
+    await expect(value('foo(1px / (var(--a) * 2))')).resolves.toBe('foo(1px / calc(var(--a) * 2))');
+    await expect(value('lch(50% 20 (var(--h) + 1))')).resolves.toBe('lch(50% 20 calc(var(--h) + 1))');
+  });
+
+  it.each([
+    ['darken', ', 5%', 'hsl(from hsl(calc(var(--h, 10) + 1) 50% 50%) h s clamp(0, l - 5, 100))'],
+    ['spin', ', 5', 'hsl(from hsl(calc(var(--h, 10) + 1) 50% 50%) calc(h + 5) s l)'],
+    ['greyscale', '', 'hsl(from hsl(calc(var(--h, 10) + 1) 50% 50%) h 0 l)']
+  ])('in a colour channel an exposed variable reaches: %s', async (name, rest, form) => {
+    await expect(css(`@use "#less"; @expose h; @h: 10; .x { v: @less.${name}(hsl((@h + 1) 50% 50%)${rest}); }`)).resolves.toContain(`v: ${form};`);
+  });
+
+  it('math the author wrote bare, or in a prefixed `calc()`, stays as written', async () => {
+    await expect(value('foo(var(--a) * 2)')).resolves.toBe('foo(var(--a) * 2)');
+    await expect(value('-webkit-calc((var(--x) + 1) * 2)')).resolves.toBe('-webkit-calc((var(--x) + 1) * 2)');
+    await expect(value('-webkit-calc((var(--x) + 1))')).resolves.toBe('-webkit-calc((var(--x) + 1))');
+  });
+});
+
+describe('compress and type reads over kept math', () => {
+  it('kept math writes its numbers compressed', async () => {
+    await expect(value('(var(--x) * 0.5)', { compress: true })).resolves.toBe('calc(var(--x) * .5)');
+    await expect(value('(var(--a) % 0.5)', { compress: true })).resolves.toBe('rem(var(--a),.5)');
+  });
+
+  it('`isnumber` answers math and its form alike', async () => {
+    await expect(value('isnumber((var(--a) * 100%))')).resolves.toBe('true');
+    await expect(value('isnumber(percentage(var(--a)))')).resolves.toBe('true');
   });
 });

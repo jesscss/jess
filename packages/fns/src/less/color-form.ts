@@ -17,7 +17,7 @@ export function defineAdjuster(name: string, absolute: FormCall[0], relative: Fo
         throw new TypeError(`${name}: a method only the browser knows cannot pick a form`);
       }
       const isRelative = method !== undefined && textOf(method) === 'relative';
-      if (amount.type !== 'FunctionCall') {
+      if (amount.type === 'Dimension') {
         return [isRelative ? relative : absolute, color, channelAmount(amount)];
       }
       const unit = knownUnit(amount);

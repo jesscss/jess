@@ -19,6 +19,7 @@ import type { AnonymousMixin } from './nodes.js';
 import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type BindingCell, type FormActivation } from './serialize.js';
 import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
 import { isValueGroupArray, type Color, type ValueGroup } from './value-eval.js';
+import { DimensionValueNode } from './node-ctors.js';
 import { makeColorHsl, makeDimension, withFields } from './value-factory.js';
 import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
@@ -55,9 +56,21 @@ const spelled = (hsla: Hsla, input: Color): Color =>
 const deferred = (out: ValueGroup): ValueGroup =>
   !isValueGroupArray(out) && out.type === 'FunctionCall' ? keepAsWritten(withFields(out, { computed: true })) : out;
 
-/** What a form's parameter binds: the call inside any paren group, which is what a callable reads (J16). */
-const bound = (value: ValueGroup | undefined): ValueGroup | null =>
-  value === undefined ? null : !isValueGroupArray(value) && value.type === 'FunctionCall' ? insideParens(value) : value;
+/**
+ * What a form's parameter binds: the call inside any paren group, which is what a
+ * callable reads (J16). The form's math is written around a `calc()` it reads, so
+ * no `calc()` prints inside it.
+ */
+function bound(value: ValueGroup | undefined): ValueGroup | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (isValueGroupArray(value) || value.type !== 'FunctionCall') {
+    return value;
+  }
+  const call = insideParens(value);
+  return call.name === 'calc' && !call.computed ? keepAsWritten(withFields(call, { computed: true })) : call;
+}
 
 /** A form's math over numbers it knows, the channels it reads standing unbound; a number that cannot be spelled fails the call. */
 const computed = (out: ValueGroup): ValueGroup =>
@@ -69,7 +82,7 @@ function spellCells(cells: readonly BindingCell[], compress: boolean): void {
     const value = cell.evaluated;
     if (value !== null && isDimension(value) && (compress || value.bytes === '')) {
       const bytes = value.bytes === '' ? makeDimension(value.number, value.unit).bytes : value.bytes;
-      cell.evaluated = withFields(value, { bytes: compress ? compressDimensionBytes(bytes) : bytes });
+      cell.evaluated = new DimensionValueNode(value.number, value.unit, compress ? compressDimensionBytes(bytes) : bytes);
     }
   }
 }

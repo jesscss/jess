@@ -577,8 +577,13 @@ function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: N
 /** Whether a slot has a form, and an export's value there is what the form takes it to hold, so the form means what the value computes to. */
 function holdsFormSlot(fn: Fn, vals: readonly ValueGroup[], value: ValueGroup): boolean {
   const slot = fn.params[vals.findIndex(val => lone(val) === value)]?.formSlot;
-  if (slot === undefined || isValueGroupArray(value) || value.type !== 'Dimension') {
-    return slot !== undefined;
+  if (slot === undefined || isValueGroupArray(value)) {
+    return false;
+  }
+
+  /* A value it cannot judge, a list above all, has no form: the call keeps its recipe. */
+  if (value.type !== 'Dimension') {
+    return value.type === 'Color' || value.type === 'Keyword' || value.type === 'FunctionCall' || value.type === 'Arithmetic';
   }
   const first = lone(vals[0]!);
   const unit = slot === 'first' && !isValueGroupArray(first) && first.type === 'Dimension' ? first.unit : slot;

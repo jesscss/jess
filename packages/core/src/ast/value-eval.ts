@@ -88,6 +88,9 @@ export interface Dimension {
    */
   readonly preserved?: string;
 
+  /** Whether {@link preserved} holds a `+` or `-`, so it is grouped as an operand. */
+  readonly preservedSum?: boolean;
+
   /** Canonical emitted bytes (byte-faithful; produced by the free serializer). */
   readonly bytes: string;
 }

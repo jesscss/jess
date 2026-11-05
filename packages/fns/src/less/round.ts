@@ -1,6 +1,6 @@
 import { defineForm, formNumber, type FormCall } from '@jesscss/core/form';
-import { decimalStep, type Dimension, type Fn, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
-import { isDimension, NUMBER_ARG, plain, unitBeside } from './css-math-args.js';
+import { decimalStep, type Arithmetic, type Dimension, type Fn, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
+import { isDimension, plain, unitBeside } from './css-math-args.js';
 import { round as form, roundDeferred, roundDeferredUnit } from './css-forms.generated.js';
 
 /**
@@ -13,12 +13,12 @@ import { round as form, roundDeferred, roundDeferredUnit } from './css-forms.gen
  */
 const round: Fn = /* @__PURE__ */ defineForm('round', {
   params: [
-    { name: 'value', ...NUMBER_ARG },
-    { name: 'precision', ...NUMBER_ARG, optional: true }
+    { name: 'value', type: ['Dimension', 'FunctionCall'], formSlot: '' },
+    { name: 'precision', type: ['Dimension', 'FunctionCall'], formSlot: '', optional: true }
   ],
-  form: (value: ValueGroup, precision?: Dimension | FunctionCall): FormCall => {
+  form: (value: ValueGroup, precision?: Dimension | FunctionCall | Arithmetic): FormCall => {
     const unit = unitBeside(value);
-    if (precision?.type !== 'FunctionCall') {
+    if (precision === undefined || isDimension(precision)) {
       return [form, plain(value), formNumber(decimalStep(precision?.number), unit)];
     }
     return unit === '' ? [roundDeferred, value, precision] : [roundDeferredUnit, plain(value), precision, formNumber(1, unit)];

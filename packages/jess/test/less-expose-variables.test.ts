@@ -24,6 +24,12 @@ async function runtime(source: string): Promise<unknown> {
 }
 
 describe('Less @expose variables (A4)', () => {
+  it('a built-in reading an exposed slash list keeps its recipe', async () => {
+    const css = await render('@use "#less";\n@expose a;\n@a: 1/2;\n.x { b: @less.percentage(@a); c: @less.ceil(@a); }');
+    expect(css).toContain('b: var(--a-percentage, 50%);');
+    expect(css).toContain('c: var(--a-ceil, 1);');
+  });
+
   it.each([
     ['@expose brand;\n@brand: #c00;\n.btn { color: @brand; }', 'color: var(--brand, #c00);'],
     ['@-expose brand;\n@brand: #c00;\n.btn { color: @brand; }', 'color: var(--brand, #c00);'],

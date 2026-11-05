@@ -15,9 +15,10 @@ import Big from 'big.js';
 import { DimensionValueNode } from './node-ctors.js';
 import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Arithmetic, type Color, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
 import { groupItems } from './value-list.js';
+import { compressDimensionBytes } from './compress.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { HEX } from './color.js';
-import { colorRawRgb, makeAny, makeArithmetic, makeCalc, makeColorRgb, makeCompoundDimension, makeDimension, makeGroupedKeyword, makeKeyword, makeQuoted, withFields } from './value-factory.js';
+import { colorRawRgb, makeAny, makeArithmetic, makeCalc, makeColorRgb, makeCompoundDimension, makeComputedCall, makeDimension, makeGroupedKeyword, makeKeyword, makeList, makeQuoted, withFields } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { convertValue, convertible, foldUnit, unitMultisetKey } from './value-units.js';
 
@@ -131,6 +132,10 @@ function colorOperate(a: Color, b: Value, op: string): Color {
    */
   return makeColorRgb(out, newAlpha, HEX);
 }
+
+/** A number as compressed output spells it, in kept math (docs/design/CSS-NATIVE-BUILTINS.md §3.5). */
+export const spelledCompressed = (v: Value): Value =>
+  v.type === 'Dimension' && v.preserved === undefined ? withFields(v, { bytes: compressDimensionBytes(v.bytes) }) : v;
 
 /* ------------------------------------------------------ unit multiset */
 
@@ -354,7 +359,7 @@ export function findFinalValue(value: ValueGroup, test: (value: Value) => boolea
  * `strictUnits` and Sass do: `strict` rejects only two different real units
  * (owner 2026-10-06, ledger V27).
  */
-function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes, sassUnits: boolean): Dimension {
+function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes, sassUnits: boolean): Dimension | null {
   const isStrict = modes.unitMode === 'strict';
   if (b.number === 0 && op === '/') {
     throw new DivisionByZeroError(`${a.bytes} / ${b.bytes}`);
@@ -383,6 +388,9 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       const from = bu.num[0] ?? '';
       const bVal = convertValue(b.number, from, target);
       if ((isStrict || modes.unitMode === 'preserve') && !convertible(from, target)) {
+        if (!isStrict) {
+          return null;
+        }
         throw incompatibleUnits(a, b);
       }
       value = calculate(a.number, op, bVal);
@@ -392,6 +400,9 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
        * `+`/`-` is only defined on an identical multiset. Loose keeps the 4.x
        * fold on raw magnitudes under the LHS unit.
        */
+      if (!isStrict) {
+        return null;
+      }
       throw incompatibleUnits(a, b);
     }
   } else if (op === '*' || op === '/') {
@@ -413,8 +424,9 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
   if (u.num.length === 1 && u.den.length === 0) {
     return makeDimension(value, unit);
   }
-  return makeCompoundDimension(value, unit, u.num, u.den, u.backup,
-    modes.unitMode === 'preserve' && !expressible(u) ? preservedSpelling(a, op, b) : undefined);
+  const spelling = modes.unitMode === 'preserve' && !expressible(u) ? preservedSpelling(a, op, b) : undefined;
+  const out = makeCompoundDimension(value, unit, u.num, u.den, u.backup, spelling);
+  return spelling !== undefined && (op === '+' || op === '-' || a.preservedSum === true || b.preservedSum === true) ? withFields(out, { preservedSum: true }) : out;
 }
 
 /**
@@ -435,18 +447,6 @@ const sameMultiset = (u: UnitSet, bu: UnitSet): boolean =>
 function preservedSpelling(a: Dimension, op: string, b: Dimension): string {
   const right = b.preserved !== undefined && op === '/' ? `(${b.preserved})` : b.preserved ?? b.bytes;
   return `${a.preserved ?? a.bytes} ${op} ${right}`;
-}
-
-/**
- * An operand spliced into a preserved `calc(…)` by `operate`'s guards. A
- * preserved compound `Dimension` contributes its authored spelling (grouped by
- * `spliceInner` exactly as a nested calc keyword is), never its `bytes`, which
- * are already `calc(…)` and would nest: `(2em / 1px) + 20` is
- * `calc(2em / 1px + 20)`, not `calc(calc(2em / 1px) + 20)`. One value, one
- * spelling, whichever guard composes it.
- */
-function spliceOperand(v: Value): string {
-  return v.type === 'Dimension' && v.preserved !== undefined ? spliceInner(v.preserved) : mathText(v);
 }
 
 /** Dimension ⊕ Color: coerce the dimension to a color (unit ignored, per less.js
@@ -487,49 +487,6 @@ export const calcInner = (bytes: string): string | null => {
 /** The inside of a `calc()` a value spells: a keyword's bytes, or a call named `calc`. */
 export const writtenCalcInner = (v: Value): string | null =>
   v.type === 'Keyword' || (v.type === 'FunctionCall' && v.name.toLowerCase() === 'calc') ? calcInner(v.bytes) : null;
-
-/**
- * Whether `s` is a single fully-parenthesized group (`(a - b)`), so its leading
- * `(` closes only at the final `)`. Used so a spliced calc operand keeps ONE
- * paren layer (`calc((a - b)) + 1` → `(a - b)`) and is not re-wrapped.
- */
-function isParenGroup(s: string): boolean {
-  if (s.length < 2 || s[0] !== '(' || s[s.length - 1] !== ')') {
-    return false;
-  }
-  let depth = 0;
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === '(') {
-      depth++;
-    } else if (s[i] === ')' && --depth === 0) {
-      return i === s.length - 1;
-    }
-  }
-  return false;
-}
-
-/**
- * A calc operand's inner expression, parenthesized when it is a bare composite
- * (`2.25rem + 2px` → `(2.25rem + 2px)`) so precedence survives the splice into an
- * outer operation; an already-parenthesized or single-term inner is spliced as-is.
- * Preserved bytes always separate a top-level operator with surrounding spaces.
- */
-function spliceInner(inner: string): string {
-  if (isParenGroup(inner)) {
-    return inner;
-  }
-  const hasAdditive = / [-+] /.test(inner);
-
-  /*
-   * Keep an additive nested calc as one authored computation when it is spliced
-   * into another operation. CSS can flatten the wrapper, but Less retains this
-   * grouping (`calc(2.25rem + 2px) - 2px` → `(2.25rem + 2px) - 2px`).
-   */
-  if (hasAdditive) {
-    return `(${inner})`;
-  }
-  return inner;
-}
 
 /**
  * The values `operate` produced for an operation `preserve` kept unevaluated:
@@ -599,7 +556,16 @@ export function mathText(v: Value, bytes = emitValue(v)): string {
  * own parens are the `calc()`'s ({@link groupAsWritten}). `kept`: see {@link keptMathOf}.
  */
 function calcOf(spelling: string, op: string, left: Value, right: Value, kept: boolean): FunctionCall {
-  return carriedClash(makeCalc(makeArithmetic(op, left, right, kept, spelling), calcBytes(spelling, op)), left, right);
+  return carriedClash(makeCalc(makeArithmetic(op, left, right, kept, spelling), calcBytes(spelling, op), kept && (isComputedCall(left) || isComputedCall(right))), left, right);
+}
+
+/** Math whose two units do not convert, kept as a `calc()` (V18). */
+function keptClash(op: string, left: Value, right: Value, compress: boolean | undefined): FunctionCall {
+  const a = compress === true ? spelledCompressed(left) : left;
+  const b = compress === true ? spelledCompressed(right) : right;
+  const preserved = calcOf(`${mathSpelling(a, op, false)} ${op} ${mathSpelling(b, op, true)}`, op, left, right, true);
+  preservedUnitClashes.set(preserved, preserved);
+  return preserved;
 }
 
 const calcBytes = (spelling: string, op: string): string => op === '' ? `calc${spelling}` : `calc(${spelling})`;
@@ -648,7 +614,13 @@ const arithmeticOf = (call: FunctionCall): Arithmetic | undefined =>
  * `calc()`'s own parens: `(1px + 1em - 2px)` is `calc(1px + 1em - 2px)`,
  * `((1px + 1em) / 2)` is `calc((1px + 1em) / 2)`. Only a call pays the read.
  */
-export const keptMathOf = (v: Value): string | undefined => keptArithmetic(v)?.bytes;
+export const keptMathOf = (v: Value): string | undefined => keptMath(v)?.bytes;
+
+/** {@link keptArithmetic}, or the one call a built-in's form holds in its `calc()` (`convert(var(--a), px)` is `calc(var(--a))`). */
+function keptMath(v: Value): Arithmetic | FunctionCall | undefined {
+  const kept = keptArithmetic(v);
+  return kept === undefined && v.type === 'FunctionCall' && v.computed && v.name === 'calc' && !isValueGroupArray(v.args) && v.args.type === 'FunctionCall' ? v.args : kept;
+}
 
 function keptArithmetic(v: Value): Arithmetic | undefined {
   if (v.type !== 'FunctionCall') {
@@ -692,12 +664,12 @@ const precedence = (op: string): number => (op === '+' || op === '-' ? 1 : 2);
  * written in the groups written around it ({@link mathText}).
  */
 export function operandAsWritten(v: Value, op: string, isRight: boolean, bytes = emitValue(v), inMath = false): string {
-  const kept = keptArithmetic(v);
+  const kept = keptMath(v);
   if (kept !== undefined && !inMath) {
     return bytes;
   }
   const spelled = kept?.bytes ?? mathText(v, bytes);
-  const inner = v.type === 'Arithmetic' ? v.op : kept?.op ?? keptAsWritten.get(v);
+  const inner = v.type === 'Arithmetic' ? v.op : kept === undefined ? keptAsWritten.get(v) : kept.type === 'Arithmetic' ? kept.op : '';
   if (!inner) {
     return spelled;
   }
@@ -854,7 +826,7 @@ export function operandRule(op: string, left: ValueGroup, right: ValueGroup, ev:
   }
   const scss = sass && ev.sassCalculations === true;
   const leftKind = invalidOperand(left, sass, scss);
-  const kind = leftKind ?? invalidOperand(right, sass, scss) ?? (colourAndDeferred(left, right) ? 'function call' : null);
+  const kind = leftKind ?? invalidOperand(right, sass, scss) ?? ((!isValueGroupArray(left) && !isValueGroupArray(right) && (left.type === 'FunctionCall' || right.type === 'FunctionCall') && colourAndDeferred(left, right) ? 'function call' : null));
   if (kind !== null) {
     throw new InvalidOperandError(`\`${emitValue(left)} ${op} ${emitValue(right)}\`: \`${op}\` is not defined on a ${kind} (\`${emitValue(leftKind === null ? right : left)}\`).`);
   }
@@ -894,12 +866,64 @@ export function exposedOperand(value: ValueGroup): ValueGroup {
  * sugar an operator is (V38, owner 2026-11-01): `(var(--a) * 2)` is
  * `calc(var(--a) * 2)`.
  */
-export const mathOnDeferred = (op: string, left: Value, right: Value): Value =>
-  calcOf(`${operandAsWritten(left, op, false, left.bytes, true)} ${op} ${operandAsWritten(right, op, true, right.bytes, true)}`, op, left, right, true);
+export function mathOnDeferred(op: string, left: Value, right: Value): Value {
+  if (left.type === 'List' || right.type === 'List') {
+    throw new InvalidOperandError(`\`${op}\` is not defined on a list (\`${emitValue(left.type === 'List' ? left : right)}\`).`);
+  }
+  const spelling = `${mathSpelling(left, op, false)} ${op} ${mathSpelling(right, op, true)}`;
+  return carriedClash(makeCalc(makeArithmetic(op, left, right, true, spelling), calcBytes(spelling, op), true), left, right);
+}
+
+const isAdditive = (op: string | undefined): boolean => op === '+' || op === '-';
+
+/** A number's kept spelling as an operand: a sum stays one computation, and a product is grouped where it divides. */
+const preservedOperand = (v: Dimension, spelled: string, op: string, isRight: boolean): string =>
+  v.preservedSum === true || (isRight && v.numerator !== undefined && op === '/') ? `(${spelled})` : spelled;
+
+/**
+ * `v` as an operand of math written in one `calc()`, grouped from its structure
+ * so the value holds on either side of any operator: `2 / calc(a * 3)` is
+ * `calc(2 / (a * 3))`. An authored `calc()` is what it holds, and a sum in one
+ * stays one computation (`calc(a + 2px) - 2px` is `calc((a + 2px) - 2px)`). Text
+ * in a `calc()` has no structure to read, so it is grouped whatever it says. A
+ * number that spells kept math is that math, never a nested `calc()`.
+ */
+function mathSpelling(v: Value, op: string, isRight: boolean): string {
+  if (keptMath(v) === undefined) {
+    if (v.type === 'Dimension' && v.preserved !== undefined) {
+      return preservedOperand(v, v.preserved, op, isRight);
+    }
+    const inner = writtenCalcInner(v);
+    if (inner !== null) {
+      const body = v.type === 'FunctionCall' ? v.args : undefined;
+      if (body === undefined || isValueGroupArray(body) || (body.type !== 'Arithmetic' && body.type !== 'FunctionCall' && body.type !== 'Dimension')) {
+        return `(${inner})`;
+      }
+      return body.type === 'Arithmetic' && isAdditive(body.op) ? `(${body.bytes})` : body.type === 'Arithmetic' ? operandAsWritten(body, op, isRight, body.bytes, true) : body.bytes;
+    }
+  }
+  return operandAsWritten(v, op, isRight, v.bytes, true);
+}
+
+/**
+ * Less `%` over what only the browser knows: `rem()`, which takes the dividend's
+ * sign as `%` does (the reason `mod()` is `rem()`, Q4). CSS math has no `%`
+ * operator, so it is never written in a `calc()`.
+ */
+export function remOn(left: Value, right: Value, modes: EvalModes): Value {
+  const separator = modes.compress === true ? ',' : ', ';
+  return carriedClash(makeComputedCall('rem', makeList([left, right], ','), `rem(${mathSpelling(left, ',', false)}${separator}${mathSpelling(right, ',', false)})`), left, right);
+}
 
 /** Whether an operand is one only the browser knows, and neither is absent. */
 export const isMathOnDeferred = (left: Value, right: Value): boolean =>
   (isDeferredOperand(left) || isDeferredOperand(right)) && left.type !== 'Null' && right.type !== 'Null';
+
+const isComputedCall = (v: Value): boolean => v.type === 'FunctionCall' && v.computed;
+
+/** An operand as arithmetic writes it: a number that spells kept math is that math, its `calc()` being the arithmetic's. */
+const writtenOperand = (v: Value, op: string, isRight: boolean, inMath: boolean): string =>
+  inMath && v.type === 'Dimension' && v.preserved !== undefined ? preservedOperand(v, v.preserved, op, isRight) : operandAsWritten(v, op, isRight);
 
 /**
  * Binary operation. `sassUnits` is `.scss`'s unit rule for `*` and `/`
@@ -917,6 +941,10 @@ export const isMathOnDeferred = (left: Value, right: Value): boolean =>
  * `calc()` reads — answers `unitMode` exactly as it does anywhere else.
  */
 export function operate(op: string, left: Value, right: Value, modes: EvalModes, sassUnits = false): Value {
+  if (left.type === 'Dimension' && right.type === 'Dimension') {
+    return dimensionOperate(left, right, op, modes, sassUnits) ?? keptClash(op, left, right, modes.compress);
+  }
+
   /*
    * Guard 1: calc-wrapper keyword operand → flat calc splice.
    * byte-faithful: opaque operand, no structured node — at the seam a calc
@@ -953,15 +981,9 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
   left = coerceNamedColorKeyword(left);
   right = coerceNamedColorKeyword(right);
 
-  const leftKept = keptMathOf(left) !== undefined;
-  const rightKept = keptMathOf(right) !== undefined;
-  const leftInner = leftKept ? null : writtenCalcInner(left);
-  const rightInner = rightKept ? null : writtenCalcInner(right);
-  const kept = leftKept || rightKept;
-  if (kept || leftInner !== null || rightInner !== null) {
-    const lb = leftInner !== null ? spliceInner(leftInner) : operandAsWritten(left, op, false, left.bytes, true);
-    const rb = rightInner !== null ? spliceInner(rightInner) : operandAsWritten(right, op, true, right.bytes, true);
-    return calcOf(`${lb} ${op} ${rb}`, op, left, right, kept);
+  const kept = keptMathOf(left) !== undefined || keptMathOf(right) !== undefined;
+  if (kept || writtenCalcInner(left) !== null || writtenCalcInner(right) !== null) {
+    return calcOf(`${mathSpelling(left, op, false)} ${op} ${mathSpelling(right, op, true)}`, op, left, right, kept);
   }
 
   /*
@@ -972,7 +994,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
    */
   const written = left.type === 'FunctionCall' || right.type === 'FunctionCall' || left.type === 'Arithmetic' || right.type === 'Arithmetic';
   if (written || (left.type === 'Keyword' && left.groups === 0) || (right.type === 'Keyword' && right.groups === 0)) {
-    const bytes = `${operandAsWritten(left, op, false)} ${op} ${operandAsWritten(right, op, true)}`;
+    const bytes = `${writtenOperand(left, op, false, written)} ${op} ${writtenOperand(right, op, true, written)}`;
     return written ? carriedClash(makeArithmetic(op, left, right, false, bytes), left, right) : composedKeyword(bytes, left, right, op);
   }
 
@@ -993,9 +1015,6 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
    * unit at the consuming boundary. One computation, three spellings.
    */
   try {
-    if (left.type === 'Dimension' && right.type === 'Dimension') {
-      return dimensionOperate(left, right, op, modes, sassUnits);
-    }
     if (left.type === 'Dimension' && right.type === 'Color') {
       return dimensionAsColor(left, right, op);
     }
@@ -1005,11 +1024,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
     throw new UnoperableOperandError(`\`${op}\` is not defined on a ${left.type === 'Dimension' ? right.type : left.type}.`);
   } catch (err) {
     if (err instanceof TypeError && modes.unitMode === 'preserve') {
-      const preserved = calcOf(`${spliceOperand(left)} ${op} ${spliceOperand(right)}`, op, left, right, true);
-      if (err instanceof UnitArithmeticError) {
-        preservedUnitClashes.set(preserved, preserved);
-      }
-      return preserved;
+      return calcOf(`${mathSpelling(left, op, false)} ${op} ${mathSpelling(right, op, true)}`, op, left, right, true);
     }
     throw err;
   }

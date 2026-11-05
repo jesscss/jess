@@ -218,14 +218,14 @@ import { collectNestedProperty, isNestedPropertyValue } from './nested-property.
 import { callSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, isMathOnDeferred, keptInString, keptMathOf, mathOnDeferred, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptInString, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeWrittenMath, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
-import { mathOperand } from './math-operand.js';
+import { mathOperand, negatedCall, operated as operatedOn, slashSeparates, writtenPercent } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type FnOrigin, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -5633,11 +5633,11 @@ const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => gr
 const keepsOperation = (node: Operation, e: Lane): boolean =>
   e.keepsMath || (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right);
 
-/** An operation over its operands; math on what only the browser knows is a `calc()` wherever it is math, not CSS's own or a slash that separates (V38). */
+/** An operation over its operands: two known numbers are the operation's, anything else may be CSS's math ({@link operatedOn}). */
 const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
-  isMathOnDeferred(left, right) && ev.sassCalculations !== true && !keepsOperation(node, e) && !(node.operator === '/' && node.mathOutsideParens && e.parenFrames?.at(-1) !== true)
-    ? mathOnDeferred(node.operator, left, right)
-    : ev.operate(node.operator, left, right, e.modes);
+  (left.type === 'Dimension' && right.type === 'Dimension') || ev.sassCalculations === true
+    ? ev.operate(node.operator, left, right, e.modes)
+    : operatedOn(node.operator, left, right, e.modes, keepsOperation(node, e) || (node.operator === '/' && node.mathOutsideParens && slashSeparates(left, right)));
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
@@ -6269,6 +6269,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * exactly as before. It is dominated by the flag, so a `.css`/`.jess`
        * operation never consults it.
        */
+      const ev = e.ev;
       const shouldOperate = (!node.inMathFunction || e.channels !== undefined)
         && ((e.calcDepth ?? 0) > 0
           || node.mathOutsideParens
@@ -6287,10 +6288,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * `calc($val / 2)` came back as `8px / 2` with the wrapper dropped.
            * It is arithmetic, what the `calc()` around it holds.
            */
-          return node.inMathFunction ? carryKeptClash(makeWrittenMath(node, values[0]!, values[1]!, bytes), values[0]!, values[1]!) : literal(bytes);
+          return node.inMathFunction ? writtenPercent(node.operator, values[0]!, values[1]!, e.modes, ev) ?? carryKeptClash(makeWrittenMath(node, values[0]!, values[1]!, bytes), values[0]!, values[1]!) : literal(bytes);
         });
       }
-      const ev = e.ev;
 
       /*
        * Operands are materialized TYPED (tag sourced from the parse), not
@@ -9084,7 +9084,9 @@ function evalCall(
    * evaluator's unknown-call path, the one `.jess` reaches through its empty
    * registry (P17). The parser attached its document's scope to the node.
    */
-  return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
+  return node.name.charCodeAt(0) === 45 && selected === undefined && ev.has(node.name.slice(1)) && hasAmbientFunctions(node)
+    ? mapMaybe(evalCall(withFields(node, { name: node.name.slice(1) }), frame, e, demanded), value => negatedCall(value) ?? dispatchCall(node, frame, e, ev, selected, 'ambient', demanded))
+    : dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
 }
 
 /**

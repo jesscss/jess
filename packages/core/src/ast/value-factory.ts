@@ -205,8 +205,12 @@ export function arithmeticOperand(math: Arithmetic, side: 'left' | 'right'): Eva
 }
 
 /** A `calc()` over what it holds, spelled `bytes` ({@link FunctionCall}). */
-export const makeCalc = (args: ValueGroup, bytes: string): FunctionCall =>
-  new FunctionCallValueNode('calc', args, 'numeric', false, bytes);
+export const makeCalc = (args: ValueGroup, bytes: string, computed = false): FunctionCall =>
+  new FunctionCallValueNode('calc', args, 'numeric', computed, bytes);
+
+/** A CSS math function the compile wrote for math only the browser knows, spelled `bytes`. */
+export const makeComputedCall = (name: string, args: ValueGroup, bytes: string): FunctionCall =>
+  new FunctionCallValueNode(name, args, 'numeric', true, bytes);
 
 /** Opaque text; `escapedQuote` is set only for an escaped string (see {@link Any.escapedQuote}). */
 export const makeAny = (bytes: string, escapedQuote = '', groups = 0): Any => new AnyValueNode(bytes, escapedQuote, groups);
