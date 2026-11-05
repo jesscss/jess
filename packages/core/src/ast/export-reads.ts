@@ -535,24 +535,8 @@ export function exportCall<F>(
     x.writtenRead = outerWritten ?? written;
   }
 
-  /* A call that failed over an export written inside an argument says which, not only that it failed. */
-  const failed = (error: unknown): never => {
-    if (written !== undefined && isInvalidFunction(error)) {
-      exportNotWritten(node, `@${written}`, written, e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
-    }
-    throw error;
-  };
-  const computedOver = (vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> => {
-    if (written === undefined) {
-      return dispatch(vals);
-    }
-    try {
-      const result = dispatch(vals);
-      return isThenable(result) ? result.catch(failed) : result;
-    } catch (error) {
-      return failed(error);
-    }
-  };
+  const computedOver = (vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> =>
+    written === undefined ? dispatch(vals) : recovering(() => dispatch(vals), namingExport(e, node, written));
   if (inputs.length === 0 && !typed.some(isThenable)) {
     return computedOver(typed);
   }
@@ -590,15 +574,29 @@ export function exportCall<F>(
             }
             throw error;
           };
-          try {
-            const form = dispatch(args(true).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value))));
-            return isThenable(form) ? form.catch(noForm) : form;
-          } catch (error) {
-            return noForm(error);
-          }
+          return recovering(() => dispatch(args(true).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value)))), noForm);
         }
         return recorded();
       }));
+}
+
+/** A call that failed over an export written inside an argument says which, not only that it failed. */
+function namingExport<F>(e: ExportLane<F>, node: FunctionCall, written: string) {
+  return (error: unknown): never => {
+    if (isInvalidFunction(error)) {
+      exportNotWritten(node, `@${written}`, written, e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
+    }
+    throw error;
+  };
+}
+
+function recovering(run: () => MaybePromise<EvalValue>, recover: (error: unknown) => EvalValue): MaybePromise<EvalValue> {
+  try {
+    const result = run();
+    return isThenable(result) ? result.catch(recover) : result;
+  } catch (error) {
+    return recover(error);
+  }
 }
 
 const isInvalidFunction = (error: unknown): boolean =>

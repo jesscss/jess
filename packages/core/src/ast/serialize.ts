@@ -5551,29 +5551,27 @@ function isComputationSplice(node: Interpolation): boolean {
   return node.parts.length === 1 && first !== undefined && 'ref' in first && first.ref.type === 'Expression';
 }
 
+const insideGroups = (slot: ValueSlot): ValueSlot => isParenGroup(slot) ? insideGroups(slot.value) : slot;
+
 /**
  * Whether a paren group holds one value — not a list, a sequence, a feature
  * (`(min-width: 640px)`) or an operation — past any parens around it.
  */
 function groupsOneValue(node: Block): boolean {
-  let inner: ValueSlot = node.value;
-  while (isParenGroup(inner)) {
-    inner = inner.value;
-  }
+  const inner = insideGroups(node.value);
   return !isValueSlotArray(inner) && inner.type !== 'Operation' && inner.type !== 'List' && inner.type !== 'Sequence'
     && inner.type !== 'Condition' && inner.type !== 'Branch';
 }
 
 /** A paren group around math kept as written or around raw bytes: nothing in it computes. */
 /** A group around one variable: its read is the argument's own, an export's input ({@link exportInput}). */
-const readsOneVariable = (slot: ValueSlot): boolean =>
-  !isValueSlotArray(slot) && ((slot.type === 'Lookup' && slot.kind === 'var') || (isParenGroup(slot) && readsOneVariable(slot.value)));
+function readsOneVariable(slot: ValueSlot): boolean {
+  const inner = insideGroups(slot);
+  return !isValueSlotArray(inner) && inner.type === 'Lookup' && inner.kind === 'var';
+}
 
 function isInertGroup(node: Block): boolean {
-  let inner: ValueSlot = node.value;
-  while (isParenGroup(inner)) {
-    inner = inner.value;
-  }
+  const inner = insideGroups(node.value);
   return !isValueSlotArray(inner) && (inner.type === 'Any' || (inner.type === 'Operation' && inner.inMathFunction));
 }
 
@@ -9468,13 +9466,12 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: Lane): never
   if (error instanceof JessError) {
     throw error;
   }
-  const failure = (error instanceof EmptyListValueError ? ERR.emptyListValue : ERR.invalidFunction)({
+  throw (error instanceof EmptyListValueError ? ERR.emptyListValue : ERR.invalidFunction)({
     node,
     ...callSiteLocation(node, e.s),
-    meta: { name: node.name, reason: error instanceof Error ? error.message : String(error) }
+    meta: { name: node.name, reason: error instanceof Error ? error.message : String(error) },
+    cause: error
   });
-  failure.cause = error;
-  throw failure;
 }
 
 /**
