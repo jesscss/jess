@@ -675,7 +675,7 @@ export function leaveIfTest(state: unknown): unknown {
  * an attempt the parser abandons (`div:hover & { … }` is tried as a
  * declaration first), so without a sink the report is dropped, never thrown.
  */
-function reportRecovered(error: ScssRecoveredError, state: unknown): void {
+export function reportRecovered(error: ScssRecoveredError, state: unknown): void {
   const sink: unknown = typeof state === 'object' && state !== null && 'diagnostics' in state ? state.diagnostics : null;
   if (Array.isArray(sink)) {
     sink.push(error);

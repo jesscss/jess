@@ -956,8 +956,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { font: { @if true { family: fantasy; } } }',
       '.card { font: { @extend .base; } }'
     ]) {
-      const direct = run(scssGrammar.Stylesheet, unsupported, { trivia: scssGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), unsupported).toBe(false);
+      expect(() => parse(unsupported), unsupported).toThrow();
     }
   });
 
@@ -1037,18 +1036,14 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { font: { /* note */ weight: bold; } }'
     ];
     for (const source of unmodelled) {
-      const cst = parseScssCst(source);
-      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
+      expect(() => parse(source), source).toThrow();
     }
 
     for (const source of [
       '.card { font: { variant: { caps: small-caps; } } }',
       '.card { font: { @extend .base; } }'
     ]) {
-      const cst = parseScssCst(source);
-      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
+      expect(() => parse(source), source).toThrow();
     }
   });
 
@@ -1685,12 +1680,7 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
 
-    const rootRelative = run(
-      scssGrammar.Stylesheet,
-      '> .child { color: green; }',
-      { trivia: scssGrammar.whitespace }
-    );
-    expect(rootRelative.ok && rootRelative.unconsumedFrom === null && isStylesheet(rootRelative.value)).toBe(false);
+    expect(() => parse('> .child { color: green; }')).toThrow();
   });
 
   it('rejects whitespace-separated static pseudo colons on the direct AST path', () => {
@@ -1698,9 +1688,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card : hover { color: red; }',
       '.card: hover { color: red; }'
     ]) {
-      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-
-      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
+      expect(() => parse(source), source).toThrow();
     }
   });
 
@@ -2158,9 +2146,7 @@ describe('SCSS canonical-AST grammar', () => {
   });
 
   it('rejects interpolation-bearing placeholder names rather than flattening their source', () => {
-    const source = '%#{$name} { color: blue; }';
-    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+    expect(() => parse('%#{$name} { color: blue; }')).toThrow();
   });
 
   it('matches the public placeholder selector boundary', () => {

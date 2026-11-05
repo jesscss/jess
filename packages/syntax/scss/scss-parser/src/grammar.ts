@@ -25,6 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
+import { ruleFromPrelude, rulePreludeRest, type RulePreludeRestEnd } from './grammar-rule-prelude.js';
 import { functionalPseudoFrom, pseudoArgumentFrom, conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { scssSum } from './plus-chain.js';
 import { foldLogicalOperation } from './grammar-logical.js';
@@ -175,6 +176,7 @@ type ScssRules = {
   Extend: Combinator<ExtendInstruction>;
   ScssGenericAtRuleName: Combinator<string>;
   UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
+  RulePreludeRest: Combinator<RulePreludeRestEnd>;
   Ruleset: Combinator<Ruleset>;
   NestedRuleset: Combinator<Ruleset>;
   rw: Combinator<unknown>;
@@ -5312,57 +5314,48 @@ const scssFactory = (g: ScssInputRules) => {
     }
   );
 
+  /**
+   * What is left of a rule's prelude when no selector reads the current token:
+   * `font:bold 12px serif .title { … }`, `50% { … }`. The block makes this a rule, so
+   * it parses, and the error sits on the prelude (ledger P45). It reads component
+   * values up to the `{`, and a `;` or `}` ends it short of a rule.
+   */
+  const RulePreludeRest = node<RulePreludeRestEnd>(
+    'RulePreludeRest',
+    oneOrMore(choice(
+      g.SassInterpolation,
+      balanced('(', ')'),
+      balanced('[', ']'),
+      regex(/(?:[^{};"'()[\]#/\\]|#(?!\{)|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*|\/(?![/*])|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')+/)
+    )),
+    (_children, _fields, span) => rulePreludeRest(span)
+  );
+
   const Ruleset = node<Ruleset>(
     'Ruleset',
     sequence(
-      g.SelectorList,
+      choice(
+        sequence(g.SelectorList, optional(g.RulePreludeRest)),
+        sequence(not(literal('@')), g.RulePreludeRest)
+      ),
       literal('{'),
       ruleBody,
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => {
-      if (children.length < 3 || requireToken(children[1]).value !== '{' || requireToken(children[children.length - 1]).value !== '}') {
-        throw new TypeError('SCSS rule produced unexpected children.');
-      }
-      const extendInstructions = children.filter(isExtendInstruction);
-      return withBlockBody(rule(
-        requireSelectorList(children[0]),
-        statementChildren(
-          children.slice(
-            2,
-            -1
-          ),
-          true
-        ),
-        extendInstructions.length > 0 ? extendInstructions : undefined
-      ), rawChildren);
-    }
+    (children, _fields, span, rawChildren, _triviaLog, state) => ruleFromPrelude(children, span, rawChildren, state)
   );
   const NestedRuleset = node<Ruleset>(
     'NestedRuleset',
     sequence(
-      g.NestedSelector,
+      choice(
+        sequence(g.NestedSelector, optional(g.RulePreludeRest)),
+        sequence(not(literal('@')), g.RulePreludeRest)
+      ),
       literal('{'),
       ruleBody,
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => {
-      if (children.length < 3 || requireToken(children[1]).value !== '{' || requireToken(children[children.length - 1]).value !== '}') {
-        throw new TypeError('SCSS nested rule produced unexpected children.');
-      }
-      const extendInstructions = children.filter(isExtendInstruction);
-      return withBlockBody(rule(
-        requireSelectorList(children[0]),
-        statementChildren(
-          children.slice(
-            2,
-            -1
-          ),
-          true
-        ),
-        extendInstructions.length > 0 ? extendInstructions : undefined
-      ), rawChildren);
-    }
+    (children, _fields, span, rawChildren, _triviaLog, state) => ruleFromPrelude(children, span, rawChildren, state)
   );
   const Stylesheet = node<Stylesheet>(
     'Stylesheet',
@@ -5546,6 +5539,7 @@ const scssFactory = (g: ScssInputRules) => {
     ForgivingSelectorRest,
     NestedSelector,
     Extend,
+    RulePreludeRest,
     Ruleset,
     NestedRuleset,
     rw: whitespace,
