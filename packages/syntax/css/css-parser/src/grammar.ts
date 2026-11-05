@@ -342,6 +342,7 @@ type GrammarRuleName =
   | 'routedDeclarationListBody'
   | 'calcFunctionArguments'
   | 'functionArgument'
+  | 'functionArgumentGap'
   | 'branchLead'
   | 'varName'
   | 'VarFallbackOpener'
@@ -378,7 +379,7 @@ type GrammarSelf = {
  * The expected-set atom a refused `@charset` prelude reports, and the one public
  * spelling of it. `CharsetStatement` below is what emits it; the three
  * dialects' `expectedMessage` helpers recognize it by this exact string, the way
- * they already recognize `'")"'` and `'IdentToken'` — those helpers
+ * they already recognize `'")"'` — those helpers
  * deliberately hold no grammar import, and the parseman macro cannot read a
  * cross-module constant inside a combinator argument (it needs a literal), so
  * the less grammar spells the same string rather than importing this one. Each
@@ -426,9 +427,15 @@ const compoundTrivia = classifiedTrivia({ blockComment });
 const commentTrivia = classifiedTrivia({ blockComment });
 
 /*
- * The value ladder runs under `ValueSequence`'s `noTrivia`, and parseman scopes
- * trivia dynamically — clearing it covers every rule reached through a `g.`
- * reference, not just the terms written inside the wrapper. So every interior
+ * The value ladder runs under `ValueSequence`'s `noTrivia`. Clearing trivia reaches
+ * through a reference only to a target with no boundary of its own. A target that
+ * is a multi-term `sequence`, a `many`, `oneOrMore` or `sepBy`, or a `choice` with
+ * such an arm takes its ambient trivia back when it is entered from a cleared
+ * region (parseman's `hasOwnTriviaBoundary`), and the ambient skip then reads the
+ * padding before its own term can. A rule like that which needs its padding as
+ * bytes clears trivia itself, as `CurlyValue`, `BranchValues` and the `var()`
+ * fallback rules do; `ParenValue` and `SquareValue` don't, so the ambient skip can
+ * read theirs first. Every interior
  * that admits authored padding has to spell it, and it must spell `cssValueTrivia`
  * rather than a bare whitespace run: css-syntax-3 §4 makes a comment trivia
  * wherever whitespace is trivia. The `[ \t\n\r\f]+` spellings these replaced are
@@ -956,6 +963,7 @@ const cssFactory = (g: GrammarSelf) => {
    * boundary's authored layout, and needs the `;` among its children to tell an
    * empty group from a full one.
    */
+  /* A slot because Less has `//` comments too, and overrides it to read them. */
   const functionArgumentGap = optional(cssValueTrivia);
   const functionArgumentComma = noTrivia(sequence(
     literal(','),
@@ -970,7 +978,7 @@ const cssFactory = (g: GrammarSelf) => {
   const functionArgumentCommaRest = many(sequence(
     functionArgumentComma,
     g.functionArgument,
-    functionArgumentGap
+    g.functionArgumentGap
   ));
 
   /*
@@ -979,7 +987,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const functionArgumentGroup = optional(sequence(
     g.functionArgument,
-    functionArgumentGap,
+    g.functionArgumentGap,
     functionArgumentCommaRest
   ));
 
@@ -1009,7 +1017,7 @@ const cssFactory = (g: GrammarSelf) => {
   const genericFunctionArguments = optional(choice(
     sequence(
       g.branchLead,
-      functionArgumentGap,
+      g.functionArgumentGap,
       choice(
         g.BranchRest,
         plainArgumentsAfterFirst
@@ -1085,7 +1093,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const branchListGroup = optional(sequence(
     g.branchLead,
-    functionArgumentGap,
+    g.functionArgumentGap,
     choice(
       sequence(
         branchColon,
@@ -1102,13 +1110,13 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const BranchValues = node(
     'BranchValues',
-    sequence(
+    noTrivia(sequence(
       functionArgumentGroup,
       many(sequence(
         functionArgumentSemicolon,
         branchListGroup
       ))
-    ),
+    )),
     children => branchRest(children)
   );
   const BasicSelector = node(
@@ -1998,7 +2006,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackParen = node(
     'VarFallbackParen',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackParenCrossBracket,
         varFallbackParenCrossBrace
@@ -2006,7 +2014,7 @@ const cssFactory = (g: GrammarSelf) => {
       literal('('),
       optional(cssValueTrivia),
       optional(g.VarFallback),
-      functionArgumentGap,
+      g.functionArgumentGap,
       many(sequence(
         functionArgumentSemicolon,
 
@@ -2018,11 +2026,11 @@ const cssFactory = (g: GrammarSelf) => {
         optional(sequence(
           not(literal(')')),
           g.VarFallback,
-          functionArgumentGap
+          g.functionArgumentGap
         ))
       )),
       literal(')')
-    ),
+    )),
     children => parenGroupBlock(children)
   );
 
@@ -2034,7 +2042,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackBracket = node(
     'VarFallbackBracket',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackBracketCrossParen,
         varFallbackBracketCrossBrace
@@ -2047,12 +2055,12 @@ const cssFactory = (g: GrammarSelf) => {
         }
       ),
       literal(']')
-    ),
+    )),
     children => any(children.map(tokenText).join(''))
   );
   const VarFallbackBrace = node(
     'VarFallbackBrace',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackBraceCrossParen,
         varFallbackBraceCrossBracket
@@ -2065,7 +2073,7 @@ const cssFactory = (g: GrammarSelf) => {
         }
       ),
       literal('}')
-    ),
+    )),
     children => any(children.map(tokenText).join(''))
   );
 
@@ -2088,13 +2096,13 @@ const cssFactory = (g: GrammarSelf) => {
 
   const VarFallbackTerm = node(
     'VarFallbackTerm',
-    sequence(
+    noTrivia(sequence(
       varFallbackComponent,
       many(sequence(
         optional(cssValueTrivia),
         varFallbackComponent
       ))
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1 ? values[0]! : values;
@@ -2111,14 +2119,14 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackLead = node(
     'VarFallbackTerm',
-    sequence(
+    noTrivia(sequence(
       varFallbackComponent,
       many(sequence(
         optional(cssValueTrivia),
         not(literal(':')),
         varFallbackComponent
       ))
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1 ? values[0]! : values;
@@ -2146,10 +2154,10 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const VarFallback = node(
     'VarFallback',
-    oneOrMoreSep(
+    noTrivia(oneOrMoreSep(
       g.VarFallbackItem,
       varFallbackComma
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1
@@ -2173,7 +2181,7 @@ const cssFactory = (g: GrammarSelf) => {
   const fallbackItemCommaRest = many(sequence(
     varFallbackComma,
     optional(g.VarFallbackItem),
-    functionArgumentGap
+    g.functionArgumentGap
   ));
 
   /*
@@ -2186,12 +2194,12 @@ const cssFactory = (g: GrammarSelf) => {
   const fallbackGroup = choice(
     sequence(
       g.VarFallbackLead,
-      functionArgumentGap,
+      g.functionArgumentGap,
       choice(
         sequence(
           branchColon,
           optional(g.VarFallbackItem),
-          functionArgumentGap,
+          g.functionArgumentGap,
           fallbackItemCommaRest
         ),
         fallbackItemCommaRest
@@ -2204,7 +2212,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const VarFallbackCall = node(
     'VarFallbackCall',
-    sequence(
+    noTrivia(sequence(
       routed(),
       optional(cssValueTrivia),
       optional(sequence(
@@ -2225,7 +2233,7 @@ const cssFactory = (g: GrammarSelf) => {
         ))
       )),
       literal(')')
-    ),
+    )),
     children => fallbackCall(children)
   );
 
@@ -5560,6 +5568,7 @@ const cssFactory = (g: GrammarSelf) => {
     StyleTest,
     SupportsDeclaration,
     functionArgument,
+    functionArgumentGap,
     branchLead,
     VarFallbackOpener,
     VarFallbackLead,

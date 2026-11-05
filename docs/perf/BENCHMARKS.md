@@ -159,7 +159,7 @@ How to use it:
   - marginal instructions per pass, N 100 → 300 on the default runtime, median of 3.
 - `--jitless` measures N 2 → 6 under the speed gate's flags. It is a diagnostic. `--base <checkout>` measures another built checkout in the same run, twice for an A/A; that checkout needs the fixtures and the bench. One arm takes about 5 minutes at a load average of 100.
 - **Every file must parse whole, and a run refuses anything less.** It exits 1 and names the file. The CST entry reports a failed or partial parse in its result rather than throwing, so counting throws would miss it. The bench checks the result's `ok`, `errors` and `unconsumedFrom`, and that only trivia follows the end of each surface's span. The canary is in `scripts/__tests__/grammar-gates.test.mjs`.
-- **The run refuses on a checkout without the SCSS parse fixes in jesscss/jess#580 to #594.** At `6d9698623`, 48 of the 92 Bootstrap files and 16 of the 113 Foundation files do not parse.
+- **The run refuses on a checkout without the SCSS parse fixes in jesscss/jess#580 to #594.** At `75fd9b87c`, 48 of the 92 Bootstrap files and 16 of the 113 Foundation files do not parse.
 - **A pass is one parse per file, not one concatenated file**, because a compile parses each file on its own. Concatenating also changes the workload:
   - Foundation stops being valid input: its `@use "sass:color"` lands after rules, and the parse refuses it.
   - Bootstrap keeps its call count (−0.3% AST, −0.2% CST), but instructions rise 5.4% for AST and 54.5% for CST. The extra cost comes with file size and has not been attributed.
