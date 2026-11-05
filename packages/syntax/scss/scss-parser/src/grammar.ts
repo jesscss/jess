@@ -1788,10 +1788,13 @@ const scssFactory = (g: ScssInputRules) => {
    * so `type(<length>)` (the `attr()` type) is the run css builds, `<`,
    * `length`, `>` (ledger P45). Both are terminals: a choice whose arms are
    * the value rules costs the interpreter build an exponential analysis.
+   *
+   * `!important` is an argument as well (`if($e, !important, null)`), the one place
+   * it is a value: elsewhere it is the declaration's marker.
    */
   const CallArgument = node<ScssCallArg>(
     'CallArgument',
-    noTrivia(sequence(
+    choice(g.Important, noTrivia(sequence(
       choice(
         sequence(
           argumentDelim,
@@ -1816,7 +1819,7 @@ const scssFactory = (g: ScssInputRules) => {
          */
         optional(withCtx(state => leaveIfTest(state), g.ValueTerm))
       ))
-    )),
+    ))),
     children => scssCallArgument(children)
   );
 

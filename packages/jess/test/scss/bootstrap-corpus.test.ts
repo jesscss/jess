@@ -278,6 +278,8 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'forms/_labels.scss',
   'forms/_validation.scss',
   'helpers/_clearfix.scss',
+  'helpers/_color-bg.scss',
+  'helpers/_colored-links.scss',
   'helpers/_focus-ring.scss',
   'helpers/_icon-link.scss',
   'helpers/_position.scss',
@@ -312,6 +314,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'mixins/_table-variants.scss',
   'mixins/_text-truncate.scss',
   'mixins/_transition.scss',
+  'mixins/_utilities.scss',
   'mixins/_visually-hidden.scss',
   'utilities/_api.scss',
   'vendor/_rfs.scss'

@@ -549,7 +549,8 @@ export const COMPARISON_OPERATORS = new Set(['==', '!=', '>=', '<=', '>', '<']);
  */
 export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
   if (children.length === 1 && !isArgumentDelim(children[0])) {
-    return callArg(requireValueSlot(children[0]));
+    /* `!important` is an unquoted string where an argument stands: `if($e, !important, null)`. */
+    return callArg(children[0] === true ? any('!important') : requireValueSlot(children[0]));
   }
 
   /*
