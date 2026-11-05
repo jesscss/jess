@@ -29,7 +29,7 @@ import { functionalPseudoFrom, pseudoArgumentFrom, conditionWord, emptyParenList
 import { RETURN_DIRECTIVE, directivePrelude, lowerFunctionReturns } from './grammar-return.js';
 import { scssSum } from './plus-chain.js';
 import { foldLogicalOperation, scssSlashGroupedTerm } from './grammar-logical.js';
-import type { ConditionWord, MathOperatorFact, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
+import type { ComparisonWord, ConditionWord, MathOperatorFact, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
@@ -60,6 +60,7 @@ type ScssRules = {
   MathSum: Combinator<ValueNode>;
   MathTopProduct: Combinator<ValueNode>;
   MathTopSum: Combinator<ValueNode>;
+  ComparisonOperator: Combinator<ComparisonWord>;
   ValueLogicalAnd: Combinator<ValueNode>;
   ValueLogicalOr: Combinator<ValueNode>;
   ValueTerm: Combinator<ValueSlot>;
@@ -1659,6 +1660,13 @@ const scssFactory = (g: ScssInputRules) => {
    * (https://sass-lang.com/documentation/operators/#order-of-operations).
    */
   const comparisonOperator = regex(/==|!=|[<>]=?/);
+
+  /** A comparison's operator with its span, the error's site: only a comparison reduces this. */
+  const ComparisonOperator = node<ComparisonWord>(
+    'ComparisonOperator',
+    comparisonOperator,
+    (children, _fields, span) => ({ conditionWord: requireToken(children[0]).value, at: span })
+  );
   const ValueLogicalAnd = node<ValueNode>(
     'ValueLogicalAnd',
     noTrivia(sequence(
@@ -1671,13 +1679,13 @@ const scssFactory = (g: ScssInputRules) => {
             combinator: ConditionAnd
           },
           g.LogicalAnd,
-          field('comparison', comparisonOperator)
+          g.ComparisonOperator
         ),
         optional(valueTrivia),
         g.MathTopSum
       ))
     )),
-    (children, fields) => foldLogicalOperation(children, fields?.comparison)
+    children => foldLogicalOperation(children)
   );
   const ValueLogicalOr = node<ValueNode>(
     'ValueLogicalOr',
@@ -5416,6 +5424,7 @@ const scssFactory = (g: ScssInputRules) => {
     MathSum,
     MathTopProduct,
     MathTopSum,
+    ComparisonOperator,
     ValueLogicalAnd,
     ValueLogicalOr,
     ValueTerm,
