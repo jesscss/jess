@@ -4720,7 +4720,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         atPreludeUrl,
         atPreludeGroup,
         atPreludeQuoted,
-        noTrivia(sequence(g.VariableInterpolation, optional(atPreludeText))),
+        noTrivia(sequence(g.VariableInterpolation, optional(regex(/\/\/+/)))),
         g.BareVariableInterpolation,
         atPreludeText
       ))
