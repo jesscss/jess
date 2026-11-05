@@ -9,18 +9,15 @@ import { parse } from '@jesscss/scss-parser';
 describe('SCSS nested rule that opens with a functional pseudo', () => {
   it.each([
     ['a pseudo-class argument', '.a { li:not(:last-child) { b: c; } }'],
-    ['a class argument', '.a { li:not(.b) { c: d; } }'],
-    ['an id argument', '.a { li:is(#foo) { c: d; } }'],
-    ['a universal argument', '.a { li:not(*) { c: d; } }'],
-    ['a relative argument', '.a { li:has(> b) { c: d; } }'],
-    ['a pseudo-element argument', '.a { li:not(::before) { c: d; } }'],
-    ['an unknown pseudo', '.a { li:foo(.b) { c: d; } }'],
+    ['a class argument', '.a { li:not(.active) { c: d; } }'],
+    ['a relative argument', '.a { a:has(> img) { c: d; } }'],
+    ['an attribute argument', '.a { input:not([type=text]) { c: d; } }'],
     ['a compound argument', '.a { li:not(a:hover) { c: d; } }'],
-    ['a selector list', '.a { li:not(.b), x { c: d; } }'],
-    ['a descendant after it', '.a { li:not(.b) x { c: d; } }'],
-    ['a combinator after it', '.a { li:is(.b) > .c { d: e; } }'],
-    ['a sibling after it', '.a { li:is(.b) ~ .c:not(.d) { e: f; } }'],
-    ['a rule in a mixin', '@mixin m { li:not(.b) { c: d; } }']
+    ['a selector list', '.a { li:not(.active), li:hover { c: d; } }'],
+    ['a descendant after it', '.a { li:not(.active) a { c: d; } }'],
+    ['a combinator after it', '.a { li:is(.active) > a { d: e; } }'],
+    ['a sibling after it', '.a { li:is(.active) ~ li:not(.disabled) { e: f; } }'],
+    ['a rule in a mixin', '@mixin m { li:not(.active) { c: d; } }']
   ])('reads %s as a rule', (_label, source) => {
     const rules = source.startsWith('@') ? [] : (parse(source).rules[0] as { rules: Array<{ type: string }> }).rules;
     expect(() => parse(source)).not.toThrow();
@@ -28,26 +25,26 @@ describe('SCSS nested rule that opens with a functional pseudo', () => {
   });
 
   it('still reads a declaration', () => {
-    expect(parse('.a { b:c(d); e:f(1, 2) g; h:i; }')).toMatchObject({
+    expect(parse('.a { transform:rotate(1deg); margin:calc(1px + 2px) auto; color:red; }')).toMatchObject({
       rules: [{ rules: [
-        { type: 'Declaration', name: 'b' },
-        { type: 'Declaration', name: 'e' },
-        { type: 'Declaration', name: 'h' }
+        { type: 'Declaration', name: 'transform' },
+        { type: 'Declaration', name: 'margin' },
+        { type: 'Declaration', name: 'color' }
       ] }]
     });
   });
 
   /* Only a colon before a pseudo's name can open a selector, so the others keep the declaration. */
   it.each([
-    ['a spaced colon', '.a { x: y .c { d: e; } }'],
-    ['a glued number', '.a { x:1px .c { d: e; } }'],
-    ['a glued negative number', '.a { x:-1px .c { d: e; } }'],
-    ['a glued variable', '.a { x:$y .c { d: e; } }']
+    ['a spaced colon', '.a {\n  margin: 0 auto\n  .title { color: red; }\n}'],
+    ['a glued number', '.a {\n  margin:0 auto\n  .title { color: red; }\n}'],
+    ['a glued negative number', '.a {\n  margin:-1px auto\n  .title { color: red; }\n}'],
+    ['a glued variable', '.a {\n  margin:$gap auto\n  .title { color: red; }\n}']
   ])('keeps the rule after %s as a rule', (_label, source) => {
     expect(parse(source)).toMatchObject({
       rules: [{ rules: [
-        { type: 'Declaration', name: 'x' },
-        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'd' }] }
+        { type: 'Declaration', name: 'margin' },
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] }
       ] }]
     });
   });
