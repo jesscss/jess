@@ -12,8 +12,10 @@
  * (jesscss/jess#508).
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -205,6 +207,30 @@ test('a grammar missing from the measurement or the baseline fails', () => {
 test('the in-run self-test catches a doctored baseline, and reports blindness', () => {
   assert.equal(selfTest(speed(100_000_000, 400_000_000), speedBaseline), true);
   assert.equal(selfTest(speed(100_000_000, 400_000_000), { ...speedBaseline, tolerancePct: Number.NaN }), false);
+});
+
+test('the SCSS parse bench refuses a file that does not parse whole, on both surfaces', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'scss-parse-bench-'));
+  const bench = surface => (file, content) => {
+    const path = join(dir, file);
+    writeFileSync(path, content);
+    return spawnSync(process.execPath, [join(root, 'packages/syntax/scss/scss-parser/test/parse-bench.mjs'), 'canary', '0', '1'], {
+      encoding: 'utf8',
+      env: { ...process.env, BENCH_CASES: 'files', BENCH_SURFACES: surface, BENCH_FILES: path }
+    });
+  };
+  try {
+    for (const surface of ['ast', 'cst']) {
+      const run = bench(surface);
+      const whole = run('whole.scss', '.a { b: c; }\n// the end\n/* of the file */\n');
+      assert.equal(whole.status, 0, whole.stderr);
+      const partial = run('partial.scss', '.a { b: c; }\n!broken\n');
+      assert.equal(partial.status, 1);
+      assert.match(partial.stderr, new RegExp(`files/${surface}: REFUSED, .*partial\\.scss did not parse whole`));
+    }
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
 });
 
 test('both counters read their tool output', () => {
