@@ -95,7 +95,8 @@ export declare const CompoundDimensionValueNode: new (number: number, unit: stri
 export declare const ColorValueNode: new (rgb: V.Color['rgb'], alpha: number, format: number, bytes: string) => Pick<V.Color, 'type' | 'rgb' | 'alpha' | 'format' | 'bytes'>;
 export declare const HslColorValueNode: new (rgb: V.Color['rgb'], alpha: number, hsl: NonNullable<V.Color['hsl']>, format: number, bytes: string) => Pick<V.Color, 'type' | 'rgb' | 'alpha' | 'hsl' | 'format' | 'bytes'>;
 export declare const QuotedValueNode: new (value: string, quote: string, escaped: boolean, bytes: string) => Pick<V.Quoted, 'type' | 'value' | 'quote' | 'escaped' | 'bytes'>;
-export declare const KeywordValueNode: new (text: string, bytes: string, groups: number, call: V.KeywordCall | null) => Pick<V.Keyword, 'type' | 'text' | 'bytes' | 'groups' | 'call'>;
+export declare const KeywordValueNode: new (text: string, bytes: string, groups: number) => Pick<V.Keyword, 'type' | 'text' | 'bytes' | 'groups'>;
+export declare const FunctionCallValueNode: new (name: string, args: V.ValueGroup, result: V.CallResult, computed: boolean, bytes: string) => V.FunctionCall;
 export declare const AnyValueNode: new (bytes: string, escapedQuote: string, groups: number) => Pick<V.Any, 'type' | 'bytes' | 'escapedQuote' | 'groups'>;
 export declare const UrlValueNode: new (bytes: string) => Pick<V.UrlValue, 'type' | 'bytes'>;
 export declare const BoolValueNode: new (value: boolean, bytes: string) => Pick<V.Bool, 'type' | 'value' | 'bytes'>;

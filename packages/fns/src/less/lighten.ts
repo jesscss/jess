@@ -1,9 +1,6 @@
-import { defineFunction } from '@jesscss/core/value';
-import { hslAdjust } from './color-helper.js';
+import { defineAdjuster } from './color-form.js';
+import * as forms from './css-forms.generated.js';
 import type { Fn } from '@jesscss/core/value';
 
-/** `lighten(color, amount, method?)` — bump HSL lightness UP. Byte-faithful to `less/lighten`. */
-export const lighten: Fn = defineFunction('lighten', {
-  params: [{ type: 'Color' }, { type: 'Dimension' }, { type: ['Keyword', 'Quoted'], optional: true }],
-  body: hslAdjust(2, 1)
-});
+/** `lighten(color, amount, method?)`: `hsl(from color h s clamp(0, l + amount, 100))`; `relative` scales the amount by `l`. */
+export const lighten: Fn = /* @__PURE__ */ defineAdjuster('lighten', forms.lighten, forms.lightenRelative);

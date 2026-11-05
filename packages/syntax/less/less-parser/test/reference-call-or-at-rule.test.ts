@@ -235,6 +235,36 @@ describe('prelude bytes the head read past', () => {
     expect(preludeOf(first(source))).toMatchObject({ src: prelude });
   });
 
+  it.each([
+    ['@foo z (c: url(http://a)) { g: h }', 'z (c: url(http://a))'],
+    ['@foo (http://a) { c: d }', '(http://a)'],
+    ['@foo z (c // d\n e: f) { g: h }', 'z (c e: f)'],
+    ['@foo (a: b) // c\n { d: e }', '(a: b)'],
+    ['@foo a:b (c/d{e}) { f: g }', 'a:b (c/d{e})']
+  ])('reads a `//` the same way on the route with no call head: %j', (source, prelude) => {
+    expect(preludeOf(first(source))).toMatchObject({ src: prelude });
+  });
+
+  it('drops a `//` comment before `{ $$$ }` and beside `@{…}` with no call head', () => {
+    expect(first('@foo x // c\n y { $$$ }')).toMatchObject({ type: 'UnknownAtRuleBlock', prelude: 'x y' });
+    expect(preludeOf(first('@foo x // c\n @{y};'))).toMatchObject({ parts: [{ lit: 'x ' }, { ref: { name: 'y' } }] });
+  });
+
+  it.each([
+    ['@foo (a /* " */ "b   c") { d: e }', '(a /* " */ "b   c")'],
+    ['@foo (a /* it\'s */ "b   c" \'d   e\') { f: g }', '(a /* it\'s */ "b   c" \'d   e\')'],
+    ['@foo (a /* it\'s   b */ c   d) { e: f }', '(a /* it\'s   b */ c d)']
+  ])('reads a quote in a block comment as comment bytes: %j', (source, prelude) => {
+    expect(preludeOf(first(source))).toMatchObject({ src: prelude });
+  });
+
+  it.each([
+    ['@foo (a /* @{x} */) { c: d }', '(a /* @{x} */)'],
+    ['@foo ("\\@{x}") { c: d }', '("\\@{x}")']
+  ])('does not take a `@{` in a comment or an escape for an interpolation: %s', (source, prelude) => {
+    expect(preludeOf(first(source))).toMatchObject({ src: prelude });
+  });
+
   it('ends the statement at the `;` after a `//` in a group, with no block further on', () => {
     expect(parse('@foo url(http://a);\n.b { c: d }').rules.map(rule => rule.type)).toEqual(['AtRuleStatement', 'Ruleset']);
     expect(parse('@foo (a) url(http://b);\n.c { d: e }').rules.map(rule => rule.type)).toEqual(['AtRuleStatement', 'Ruleset']);
@@ -281,6 +311,16 @@ describe('Less `@name (…)` is a call before `;`, `}` or the end of input', () 
     expect(rules).toHaveLength(2);
     expect(rules[0]).toMatchObject({ type: 'Reference', raw: '@d()' });
     expect(rules[1]).toBeDefined();
+  });
+});
+
+describe('a `!` after the head', () => {
+  it.each(['.a { @d() !important; }', '.a { @d() ! important; }', '@d() !important;'])('stays a parse error: %s', (source) => {
+    expect(() => parse(source)).toThrow();
+  });
+
+  it('is no stop anywhere else in the prelude', () => {
+    expect(first('@d() x !important;')).toMatchObject({ type: 'AtRuleStatement', prelude: { src: '() x !important' } });
   });
 });
 

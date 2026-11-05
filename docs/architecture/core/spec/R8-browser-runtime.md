@@ -147,10 +147,17 @@ or needs JS) to decide what ships in the bundle.
   mixin argument `@w 2` a function reads), a function that has no import to name
   (a plugin's, a user function), and a computed result read outside a CSS value
   (a guard).
-- **Every computed function takes rung 4 today**, also one with a CSS-native
-  form. When the CSS-native-built-ins task builds a function's form
-  (`docs/design/CSS-NATIVE-BUILTINS.md` §3.4a, rungs 2–3), an exposed variable input
-  takes that form instead; the one seam is `exportCall`.
+- **A function with a CSS form takes that form**
+  (`docs/design/CSS-NATIVE-BUILTINS.md` §3.4a, rungs 2–3): an exposed variable
+  in an argument the form takes prints the form over its `var()`,
+  `hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100))`, the browser
+  recomputes it, and the function is in no recipe. Built for Less `lighten`
+  `darken` `saturate` `desaturate` `spin` `greyscale`; the one seam is
+  `exportCall`. Every other computed function takes rung 4, and so does one with
+  an exposed variable in an argument its form does not take yet (`@less.darken(#c00, @a)`,
+  that task's slice 5). An input of a function on rung 4 stays computed, as the
+  runtime reads it: `@less.lightness(@less.darken(@brand, 10%))` is one recipe
+  that runs both.
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent
@@ -231,6 +238,13 @@ or needs JS) to decide what ships in the bundle.
   `@jesscss/core` root, whose `node:fs` imports break a browser build, and
   `util/mime.ts` no longer imports `node:path`. Measured 2026-11-01 with
   Vite 6: `darken` + runtime is 60 KB minified, 17.6 KB gzip.
+  Measured again 2026-11-05 with Vite 6, after `darken` became a CSS form and left
+  the recipes: a stylesheet whose runtime runs a function with no form
+  (`lightness(@brand)`) is 76 KB minified, 21.2 KB gzip. One whose recipe runs a form
+  (`lightness(spin(@brand, 30))`) is 498 KB minified, 131.3 KB gzip, because a form
+  runs on the evaluator: the runtime then ships `@jesscss/core/form`, the serializer
+  included. Whether a recipe should reach a form that way, at that size, is the
+  owner's call and is not decided here.
 - ponytail: imports of a stylesheet are not watched (`loadedUrls` is empty);
   only the stylesheet itself is. Watch the render's loaded files when the
   compiler reports them.
@@ -246,7 +260,9 @@ or needs JS) to decide what ships in the bundle.
   esbuild: `@jesscss/core/value` alone is 7.3 KB gzip; importing three Less
   functions is 26.5 KB gzip, because `@jesscss/fns` builds each dialect as one
   chunk and `@jesscss/core` has no `sideEffects: false`. Making that tree-shake
-  per function is a size task of its own.
+  per function is a size task of its own. (2026-11-05: `@jesscss/core` now states
+  its `sideEffects`, and with esbuild one function with no form, `fade` or
+  `percentage`, is 18.7 KB gzip; one form, `lighten`, is 116 KB gzip.)
 - **Generated names are the exposed variable's namespace.** `@expose brand` publishes
   `--brand` and reserves `--brand-*` for values derived from it; an exposed variable and a
   generated name never share a name (numbered). Two exposures of one name are one

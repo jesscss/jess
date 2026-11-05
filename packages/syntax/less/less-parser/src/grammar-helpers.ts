@@ -396,9 +396,9 @@ function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: reado
  * bytes. A `@{…}` in it makes the prelude an interpolation over those bytes, as
  * `@{…}` is in every other Less prelude.
  */
-function atRulePreludeFrom(children: readonly unknown[], triviaLog: readonly number[], dropLineComments = false): Any | Interpolation | null {
+function atRulePreludeFrom(children: readonly unknown[], triviaLog: readonly number[]): Any | Interpolation | null {
   if (!children.some(isInterpolationFact)) {
-    const text = staticTextWithTriviaGaps(children, triviaLog, dropLineComments).trim();
+    const text = staticTextWithTriviaGaps(children, triviaLog, true).trim();
     return text === '' ? null : any(text);
   }
   const gapBefore = new Set<number>();
@@ -424,7 +424,7 @@ function atRulePreludeFrom(children: readonly unknown[], triviaLog: readonly num
       trimmed.push(part);
       continue;
     }
-    let lit = semanticGapText(dropLineComments ? withoutLineComments(part.lit) : part.lit);
+    let lit = semanticGapText(withoutLineComments(part.lit));
     lit = index === 0 ? lit.trimStart() : lit;
     lit = index === parts.length - 1 ? lit.trimEnd() : lit;
     if (lit !== '') {

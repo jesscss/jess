@@ -34,7 +34,7 @@ and excludes imported helper files from standalone error-case discovery. At
 failures, explicit `invalidLess` exclusions, or recursively nested deferred
 source-map/debug-output cases. The error corpus has 94 expected errors from 95
 standalone cases; the sole accepted case is the already-recorded v5 rule that
-preserves `darken(var(--x), …)` because a runtime CSS variable cannot be folded
+prints the CSS form of `darken(var(--x), …)`, as a runtime CSS variable cannot be folded
 at build time.
 
 ### `expectedFailureFixtures` disposition — derived, not hand-counted

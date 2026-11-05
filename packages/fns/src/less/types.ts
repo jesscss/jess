@@ -9,7 +9,7 @@ import type { Fn, ValueGroup } from '@jesscss/core/value';
  */
 function isColorLike(value: ValueGroup): boolean {
   return !isValueGroupArray(value)
-    && (value.type === 'Color' || (value.type === 'Keyword' && namedColor(value.text) !== undefined));
+    && (value.type === 'Color' || (value.type === 'Keyword' && namedColor(value.text) !== undefined) || (value.type === 'FunctionCall' && value.computed && value.result === 'color'));
 }
 
 /** Less `iscolor()` — true for a colour value or a named-color keyword. */
@@ -30,11 +30,11 @@ const isstring: Fn = defineFunction('isstring', {
   body: value => makeBool(!isValueGroupArray(value) && value.type === 'Quoted')
 });
 
-/** Less `iskeyword()` — true for a bare keyword that is NOT a named color
- * (a named-color keyword answers `iscolor`, matching pre-convergence Less). */
+/** Less `iskeyword()` — true for a bare keyword or a call written out that is NOT a colour: a
+ * named-color keyword and a built-in's colour form answer `iscolor` (Q10). */
 const iskeyword: Fn = defineFunction('iskeyword', {
   params: [{ type: 'any' }],
-  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Keyword' && namedColor(value.text) === undefined)
+  body: value => makeBool(!isValueGroupArray(value) && (value.type === 'FunctionCall' || value.type === 'Keyword') && !isColorLike(value))
 });
 
 /** Less `isurl()` — true only for a parser-owned `url(...)` value. */
