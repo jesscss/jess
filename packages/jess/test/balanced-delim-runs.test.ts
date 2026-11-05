@@ -98,11 +98,12 @@ describe('a delim between declaration components', () => {
 
 describe('a delim run in a call argument', () => {
   for (const dialect of ['css', 'less', 'scss', 'jess'] as const) {
-    it.each(ARGUMENT_RUNS)(`${dialect}: %s parses, then is invalid punctuation`, async (authored) => {
+    it.each(ARGUMENT_RUNS.filter(authored => dialect !== 'scss' || authored !== 'foo(a = b < c)'))(`${dialect}: %s parses, then is invalid punctuation`, async (authored) => {
       expect(await errorCodes(dialect, authored)).toEqual([CODE]);
     });
   }
 
+  /* `<` is a Sass operator in any value, which leaves the `name = value` of a legacy IE filter. */
   it.each(['css', 'less', 'jess'] as const)('%s: foo(a==b) parses, then is invalid punctuation', async (dialect) => {
     expect(await errorCodes(dialect, 'foo(a==b)')).toEqual([CODE]);
   });

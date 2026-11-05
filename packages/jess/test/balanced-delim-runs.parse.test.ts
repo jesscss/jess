@@ -101,12 +101,13 @@ describe('a delim run in a call argument parses into its components', () => {
     );
   });
 
-  it.each(['css', 'less', 'scss', 'jess'] as const)('%s: foo(a = b < c)', (dialect) => {
+  it.each(['css', 'less', 'jess'] as const)('%s: foo(a = b < c)', (dialect) => {
     expect(declarationValue(dialect, 'a { x: foo(a = b < c); }')).toMatchObject(
       call(arg([keyword('a'), delim('='), keyword('b'), delim('<'), keyword('c')]))
     );
   });
 
+  /* `<` is a Sass operator in any value: https://sass-lang.com/documentation/operators/relational/. */
   it.each(['css', 'less', 'jess'] as const)('%s: foo(a==b)', (dialect) => {
     expect(declarationValue(dialect, 'a { x: foo(a==b); }')).toMatchObject(
       call(arg([keyword('a'), delim('=='), keyword('b')]))

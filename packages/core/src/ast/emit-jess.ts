@@ -1174,10 +1174,13 @@ class JessPrinter {
         if ((node.g === 'match') !== mixin) {
           return gap('GuardNode', `a \`${node.g}\` comparison where \`.jess\` builds \`${mixin ? 'match' : 'cmp'}\``);
         }
-        if (!COMPARE_OPS.has(node.op)) {
+
+        /* `.scss`'s relational (`sass<`) orders numbers; on those it is `.jess`'s. */
+        const op = node.op.startsWith('sass') ? node.op.slice(4) : node.op;
+        if (!COMPARE_OPS.has(op)) {
           return gap('GuardNode', `comparison operator \`${node.op}\``);
         }
-        return wrap(`${this.value(node.left, At.Expr)} ${node.op} ${this.value(node.right, At.Expr)}`);
+        return wrap(`${this.value(node.left, At.Expr)} ${op} ${this.value(node.right, At.Expr)}`);
       }
       case 'and':
       case 'or':
