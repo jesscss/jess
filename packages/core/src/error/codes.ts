@@ -25,6 +25,7 @@ export type JessErrorCode =
   | 'parse/leading-separator-value'
   | 'parse/at-root-placement'
   | 'parse/invalid-rule-prelude'
+  | 'parse/return-placement'
   | 'parse/uncalled-mixin-reference'
   | 'parse/important-on-mixin-reference'
   | 'parse/import-postlude-on-compile-time-import'
@@ -308,6 +309,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '@expose takes a comma-separated list of variable names',
       reason: '@expose is followed by one or more variable names without their @, separated by commas, and ends at a semicolon.',
       fix: 'Write the names it exposes, for example: @expose brand, gap;'
+    }
+  ],
+  [
+    'parse/return-placement',
+    {
+      summary: '`@return` is outside a place a function can read it',
+      reason: 'A function yields a `@return` written directly in its body or in an `@if`/`@else` branch of it. Anywhere else, there is no value to yield and nothing for the compiler to write.',
+      fix: 'Write the `@return` directly in the function body or an `@if`/`@else` branch: assign in the loop, and return after it.'
     }
   ],
   [

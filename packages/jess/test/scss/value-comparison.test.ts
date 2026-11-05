@@ -29,3 +29,46 @@ describe('comparison in a value', () => {
     expect(await new Compiler({ output: { collapseNesting: true } }).renderString(source, { extension: '.scss' })).toBe(css);
   });
 });
+
+const compile = (source: string) => new Compiler({ output: { collapseNesting: true } }).renderString(source, { extension: '.scss' });
+
+describe('a comparison with an if() operand', () => {
+  it.each([
+    ['on the left', '$a: true; $x: if($a, b, c) == d; .a { y: $x; }', '.a {\n  y: false;\n}\n'],
+    ['on the right', '$a: true; .a { y: b == if($a, b, c); }', '.a {\n  y: true;\n}\n'],
+    ['in the CSS form', 'a { b: if(sass(false): c) == null; }', 'a {\n  b: true;\n}\n']
+  ])('%s', async (_label, source, css) => {
+    expect(await compile(source)).toBe(css);
+  });
+});
+
+/* `sass` rejects these too; none may come out as a boolean. */
+describe('ordering what has no order', () => {
+  it.each([
+    ['two keywords', 'a {\n  x: a < b;\n}', 2],
+    ['two strings', 'a {\n  x: "a" < "b";\n}', 2],
+    ['units that do not convert', 'a {\n  x: 1px < 1em;\n}', 2],
+    ['a nested property block whose value reads as a comparison', '.a {\n  b: hover > c { d: e; }\n}', 2],
+    ['a slash before a comparison, glued', 'a {\n  x: 1/2 == 0.5;\n}', 2],
+    ['a slash before a comparison, spaced', 'a {\n  x: 1 / 2 == 0.5;\n}', 2],
+    ['a slash after a comparison', 'a {\n  x: a == 1/2;\n}', 2],
+    ['a slash under `and`', 'a {\n  x: 1/2 == 0.5 and b;\n}', 2]
+  ])('%s', async (_label, source, line) => {
+    await expect(compile(source)).rejects.toMatchObject({ code: 'eval/incomparable-operands', line });
+  });
+
+  it('orders numbers on units that convert, and a unitless number with any', async () => {
+    expect(await compile('a { x: 1cm > 1mm; y: 1 < 2px; z: (1/2) == 0.5; }')).toBe('a {\n  x: true;\n  y: true;\n  z: true;\n}\n');
+  });
+});
+
+describe('a CSS data type in a call', () => {
+  it.each([
+    ['attr(x <length>)'],
+    ['attr(x <length>, 0)'],
+    ['attr(x type(<length>))'],
+    ['attr(x y <length>)']
+  ])('%s keeps its bytes', async (value) => {
+    expect(await compile(`a { b: ${value}; }`)).toBe(`a {\n  b: ${value};\n}\n`);
+  });
+});

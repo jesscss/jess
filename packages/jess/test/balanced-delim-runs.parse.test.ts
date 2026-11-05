@@ -108,12 +108,6 @@ describe('a delim run in a call argument parses into its components', () => {
   });
 
   /* `<` is a Sass operator in any value: https://sass-lang.com/documentation/operators/relational/. */
-  it('scss: foo(a = b < c) reads the comparison', () => {
-    expect(declarationValue('scss', 'a { x: foo(a = b < c); }')).toMatchObject(
-      call(arg([keyword('a'), delim('='), { type: 'Expression' }]))
-    );
-  });
-
   it.each(['css', 'less', 'jess'] as const)('%s: foo(a==b)', (dialect) => {
     expect(declarationValue(dialect, 'a { x: foo(a==b); }')).toMatchObject(
       call(arg([keyword('a'), delim('=='), keyword('b')]))

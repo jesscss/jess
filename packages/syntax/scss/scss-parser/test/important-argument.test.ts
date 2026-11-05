@@ -21,7 +21,8 @@ describe('`!important` as a call argument', () => {
     });
   });
 
-  it('rejects any other `!` word', () => {
+  /* Pinned so a change shows, not as a requirement: it is balanced, so it belongs to jess#592. */
+  it('PINNED DEFECT: rejects any other `!` word', () => {
     expect(() => parse('.a { x: f(!foo); }')).toThrow();
   });
 });

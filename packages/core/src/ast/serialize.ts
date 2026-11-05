@@ -186,6 +186,7 @@ import {
   runReplays,
   sepGlue,
   writtenArgument,
+  spreadArguments,
   type EvalModes,
   type FnScope,
   type PluginCallCtx,
@@ -201,7 +202,7 @@ import {
   type Any as TextValue,
   type Keyword as KeywordValue,
   type List as EvalList,
-  type WrittenArguments
+  type ArgumentKeyword
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { defineFunction, FunctionDeclined } from './value-dispatch.js';
@@ -3717,7 +3718,7 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
        * configuration seeds a cell whose value belongs to the importer. */
       const owner = liveCellOwnerFrame(frame, node.name, e);
       if (!owner) {
-        throw new ReferenceError(`live variable $${node.name} is undefined`);
+        throw ERR.nameNotFound({ node, ctx: { file: e.s.context?.sourceContext?.file }, meta: { symbol: `$${node.name}` } });
       }
       const cells = owner.cells!;
       cells.set(node.name, {
@@ -3728,7 +3729,7 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
     }
     const found = lookupScopedBinding(frame, node.name, e);
     if (!found) {
-      throw new ReferenceError(`scoped variable $^${node.name} is undefined`);
+      throw ERR.nameNotFound({ node, ctx: { file: e.s.context?.sourceContext?.file }, meta: { symbol: `$${node.name}` } });
     }
     (found.frame.reassign ??= new Map()).set(node.name, node);
     return;
@@ -4290,6 +4291,9 @@ interface Lane {
 interface EvalSession {
   /** Context supplies document source only on genuine cold diagnostic paths. */
   context: Context | undefined;
+
+  /** The render's context, kept on a scratch session (whose `context` is unset) so a statement run there can locate its error. */
+  locating: Context | undefined;
 
   /** Parser-owned source trivia for comment/spacing emission. */
   trivia: TriviaMap | undefined;
@@ -7128,14 +7132,6 @@ function invokeValueLambda(
       meta: { callee: 'function', expectedCount: lambda.params?.length ?? 0, gotCount: args.length }
     });
   }
-  const result = lambdaResultValue(lambda.rules);
-  if (result === undefined) {
-    throw ERR.invalidFunction({
-      node: lambda,
-      ...callSiteLocation(lambda, e.s),
-      meta: { name: 'function', reason: 'its body assigns no `result:`, so the call has no value to yield' }
-    });
-  }
   const activation = makeFrame(defFrame, lambda.rules, collectMixins(lambda.rules), collectDeclIndex(lambda.rules, bindings), cellsForParams(bindings));
   activation.sourceOwner = defFrame ? definitionOwner(lambda.rules, defFrame, e) : null;
   if (callerFrame && callerFrame !== defFrame) {
@@ -7153,6 +7149,14 @@ function invokeValueLambda(
   const body = makePlacement(null, [], MOOT_FLUSH, activation);
   body.lambdaBody = true;
   settled(walkBody(lambda.rules, activation, body, scratchEmit(e)), 'value-lambda body', lambda, e);
+  const result = lambdaResultValue(lambda.rules);
+  if (result === undefined) {
+    throw ERR.invalidFunction({
+      node: lambda,
+      ...callSiteLocation(lambda, e.s),
+      meta: { name: 'function', reason: 'its body assigns no `result:`, so the call has no value to yield' }
+    });
+  }
   return { value: result, frame: activation };
 }
 
@@ -9051,26 +9055,25 @@ function dispatchCall(
     ? be
     : deriveLane(be, be.keepsMath ? 'checkMath' : 'keepMath');
   const dispatch = (evaluated: ValueGroup[]): MaybePromise<EvalValue> => {
-    const named = node.args.some(isNamedArg);
-    const vals = argument === ARG_INPUT && node.args.some(a => a.spread)
-      ? evaluated.flatMap((value, i) => (node.args[i]!.spread ? spreadItems(value) : [value]))
-      : evaluated;
-    const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, reach === 'ambient') : vals;
-    const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
-
-    /*
-     * A call that names an argument also hands over its arguments as written,
-     * read only if the call is written out as-is (P23). The keywords are the
-     * call's own arguments; when nothing was rebound, the order is the authored
-     * one already. The authored arguments themselves ride along for the
-     * comments and line breaks a written-out call keeps (F11); nothing is
-     * looked up unless the call is written out.
-     */
-    const written: WrittenArguments | undefined = named
-      ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
-      : undefined;
     try {
-      const result = ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', written, node.args);
+      const named = node.args.some(isNamedArg);
+      const flat = argument === ARG_INPUT && node.args.some(isSpreadArg) ? spreadArguments(node.args, evaluated, selected === undefined ? node.name : undefined, isCssColorFunction(node)) : undefined;
+      const vals = flat === undefined ? evaluated : flat.vals;
+      const keywords = flat === undefined ? node.args : flat.keywords;
+      const ordered = named ? orderKeywordArgs(keywords, vals, ev, node.name, selected, reach === 'ambient') : vals;
+      const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
+
+      /*
+       * A call that names an argument also hands over its arguments as written,
+       * read only if the call is written out as-is (P23). The keywords are the
+       * call's own arguments; when nothing was rebound, the order is the authored
+       * one already. The authored arguments themselves ride along for the
+       * comments and line breaks a written-out call keeps (F11); nothing is
+       * looked up unless the call is written out.
+       */
+      const result = ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', named
+        ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords }
+        : undefined, keywords);
       if (isThenable(result)) {
         return result.then((value) => {
           warnConsumedKept(vals, value, node, e);
@@ -9098,10 +9101,8 @@ function dispatchCall(
 /** Whether a call argument is written by name (`$lightness: -10%`). */
 const isNamedArg = (arg: CallArg<ValueSlot>): boolean => arg.name !== undefined;
 
-/** The arguments a `$list...` stands for: its items, or itself when it is one value. */
-function spreadItems(value: ValueGroup): readonly ValueGroup[] {
-  return isValueGroupArray(value) ? value : value.type === 'List' ? value.value : [value];
-}
+/** Whether a call argument stands for a list's items (`$list...`). */
+const isSpreadArg = (arg: CallArg): boolean => arg.spread === true;
 
 /** A call's arguments, typed: each slot, or a colour call's channels with its alpha ({@link colorAlphaSlash}); a loop, so no closure per call. */
 function callArguments(node: FunctionCall, alpha: Operation | null, frame: Frame | null, e: Lane, argument: ArgumentMode): Array<MaybePromise<ValueGroup>> {
@@ -9330,7 +9331,7 @@ function writtenBlockBody(
  * silent wrong lowering this exists to prevent.
  */
 function orderKeywordArgs(
-  args: readonly CallArg<ValueSlot>[],
+  args: readonly ArgumentKeyword[],
   vals: ValueGroup[],
   ev: ValueEvaluator,
   name: string,
@@ -9433,7 +9434,7 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: Lane): never
   }
   throw (error instanceof EmptyListValueError ? ERR.emptyListValue : ERR.invalidFunction)({
     node,
-    ...callSiteLocation(node, e.s),
+    ...callSiteLocation(node.args.find(isSpreadArg) ?? node, e.s),
     meta: { name: node.name, reason: error instanceof Error ? error.message : String(error) }
   });
 }
@@ -10940,6 +10941,7 @@ function scratchEmit(e: Lane): Emit {
   return {
     s: {
       context: undefined,
+      locating: e.s.locating,
       trivia: e.s.trivia,
       pseudoElementLists: e.s.pseudoElementLists,
       resolvedSelectors: e.s.resolvedSelectors,
@@ -14048,6 +14050,7 @@ function createRenderSession(
   const e: Emit = {
     s: {
       context: options?.context,
+      locating: options?.context,
       trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
       pseudoElementLists: new Map(), // [nesting] parents ending with a pseudo-element
       resolvedSelectors: new Map(), // [extend/selector-interp] the pre-pass's resolved lists
@@ -18796,7 +18799,7 @@ function expandSpreadArgs(
   e: Lane
 ): MaybePromise<ExpandedSpreadArgs> {
   // The overwhelmingly common call has no spread at all and leaves here untouched.
-  if (!call.args.some(a => a.spread)) {
+  if (!call.args.some(isSpreadArg)) {
     return call;
   }
   const args: CallArg[] = [];
@@ -20127,25 +20130,30 @@ function writeHoistedCssImport(node: AtRuleStatement, root: boolean, frame: Fram
  * and for now stays passthrough.
  */
 
-/**
- * The directive's message is the prelude value, evaluated like any Sass value
- * (so `1 + 2` computes and `"need #{$x}"` interpolates). A top-level authored
- * string literal reports its UNQUOTED text; every other prelude — a list, map,
- * number, bare keyword, or bare `#{…}` — reports its serialized bytes verbatim,
- * INCLUDING any inner quotes. The discriminator is the prelude's AST SHAPE, not
- * its serialized bytes: stripping the quotes off the whole message
- * would wrongly unwrap the list `"a", "b"` to `a", "b`, whereas testing the
- * node keeps the list intact.
- *
- * A string literal is a `Quoted` node, whether or not it carries `#{…}`; its
- * message is its content. A bare `#{x}` is not a string literal.
- */
-function diagnosticMessage(prelude: ValueNode, frame: Frame, e: Emit): string {
-  return prelude.type === 'Quoted' ? quotedContentSync(prelude, frame, e) : evalBytesSync(prelude, frame, e);
-}
 function emitDiagnosticDirective(node: AtRuleStatement, frame: Frame, e: Emit): void {
-  const message = node.prelude === null ? '' : diagnosticMessage(node.prelude, frame, e);
   const name = node.name.toLowerCase();
+
+  /* The grammar lowered every `@return` a function can read; this one has no value to yield. */
+  if (name === '@return') {
+    throw ERR.returnPlacement({ node, ...callSiteLocation(node, { context: e.s.locating }) });
+  }
+
+  /*
+   * The directive's message is the prelude value, evaluated like any Sass value
+   * (so `1 + 2` computes and `"need #{$x}"` interpolates). A top-level authored
+   * string literal reports its UNQUOTED text; every other prelude — a list, map,
+   * number, bare keyword, or bare `#{…}` — reports its serialized bytes verbatim,
+   * INCLUDING any inner quotes. The discriminator is the prelude's AST SHAPE, not
+   * its serialized bytes: stripping the quotes off the whole message
+   * would wrongly unwrap the list `"a", "b"` to `a", "b`, whereas testing the
+   * node keeps the list intact.
+   *
+   * A string literal is a `Quoted` node, whether or not it carries `#{…}`; its
+   * message is its content. A bare `#{x}` is not a string literal.
+   */
+  const message = node.prelude === null
+    ? ''
+    : node.prelude.type === 'Quoted' ? quotedContentSync(node.prelude, frame, e) : evalBytesSync(node.prelude, frame, e);
   if (name === '@error') {
     throw ERR.scssError({
       node,
