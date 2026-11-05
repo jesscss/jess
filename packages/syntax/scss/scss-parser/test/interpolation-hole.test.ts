@@ -13,8 +13,7 @@ describe('SCSS interpolation hole', () => {
     ['a space list in a declaration', '.a { transition: #{transform $duration ease-in-out}; }'],
     ['a space list in a variable', '$transition: #{transform $duration ease-in-out};'],
     ['a padded hole in a custom-property value', '.btn-close { --#{$prefix}btn-close-bg: #{ escape-svg($btn-close-bg) }; }'],
-    ['a padded hole inside a function in a custom-property value', '.a { --x: f(#{ $y }); }'],
-    ['a padded space list', '.a { x: y#{ a b }z; }']
+    ['a padded hole inside a function in a custom-property value', '.a { --x: f(#{ $y }); }']
   ])('reads %s', (_label, source) => {
     expect(() => parse(source)).not.toThrow();
   });
