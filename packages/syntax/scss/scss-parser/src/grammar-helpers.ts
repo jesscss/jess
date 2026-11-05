@@ -566,6 +566,11 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * the run.
    */
   const last = children.findLast(child => !isArgumentGap(child));
+
+  /* A padded sign before a number is that number's sign (`abs(+ 1)`, `calc(+ 1px + 2px)`). */
+  if (isToken(children[0]) && children[0].value === '+' && isScssValue(last) && (last.type === 'Dimension' || last.type === 'Operation')) {
+    return callArg(last);
+  }
   if (isArgumentDelim(children[0]) || isComparisonToken(last)) {
     return callArg(argumentRun(isToken(last) && last.value === '>' && !isArgumentDelim(children[0]) ? [dataTypeRun(requireValueSlot(children[0])), ...children.slice(1)] : children));
   }
@@ -634,9 +639,13 @@ function isComparisonToken(child: unknown): boolean {
  * A call argument read as the css run of its components: each operator a
  * delim, each operand spliced in, with the padding written before it.
  */
-/** The padding a call argument's tokens carry between its parts: a token that is no value, comparison or `:`. */
-function isArgumentGap(child: unknown): boolean {
-  return isToken(child) && !isScssValue(child) && (child.value[0] === '/' || child.value.trim() === '');
+/** The padding a call argument holds between its parts, by its node, so no delim reads as one. */
+export interface ScssArgumentGap {
+  readonly gap: string;
+}
+
+function isArgumentGap(child: unknown): child is ScssArgumentGap {
+  return typeof child === 'object' && child !== null && 'gap' in child;
 }
 
 function argumentRun(children: readonly unknown[]): ValueSlot {
@@ -645,7 +654,7 @@ function argumentRun(children: readonly unknown[]): ValueSlot {
   let gap = '';
   for (const child of children) {
     if (isArgumentGap(child)) {
-      gap = requireToken(child).value;
+      gap = child.gap;
       continue;
     }
     if (isToken(child) && !isScssValue(child)) {

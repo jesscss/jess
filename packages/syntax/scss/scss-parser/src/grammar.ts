@@ -25,12 +25,12 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { RulePreludeRest as PreludeRest, ruleFromPrelude } from './grammar-rule-prelude.js';
+import { RulePreludeRest as PreludeRest, ruleFromPrelude, unreadablePseudo } from './grammar-rule-prelude.js';
 import { functionalPseudoFrom, pseudoArgumentFrom, conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { RETURN_DIRECTIVE, directivePrelude, lowerFunctionReturns } from './grammar-return.js';
 import { scssSum } from './plus-chain.js';
 import { foldLogicalOperation, scssSlashGroupedTerm } from './grammar-logical.js';
-import type { ConditionWord, MathOperatorFact, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
+import type { ConditionWord, MathOperatorFact, ScssArgumentGap, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
@@ -53,6 +53,7 @@ type ScssRules = {
   FunctionRule: Combinator<VariableDeclaration>;
   Square: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
+  ArgumentGap: Combinator<ScssArgumentGap>;
   MathUnary: Combinator<ValueNode>;
   MathProductOperator: Combinator<MathOperatorFact>;
   MathTopProductOperator: Combinator<MathOperatorFact>;
@@ -1783,6 +1784,13 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const argumentDelim = regex(/[<>+~]=?|::?|\.(?![0-9])|\*|%|#[-_a-zA-Z0-9]*[g-zG-Z_-][-_a-zA-Z0-9]*/);
 
+  /** The padding between a call argument's parts: labelled, so a run can tell it from a delim. */
+  const ArgumentGap = node<ScssArgumentGap>(
+    'ArgumentGap',
+    valueTrivia,
+    children => ({ gap: requireToken(children[0]).value })
+  );
+
   /**
    * A call argument: an operand, then a comparison or a keyword argument's
    * `:` and the operand after it. A comparison operator with no operand on
@@ -1796,21 +1804,21 @@ const scssFactory = (g: ScssInputRules) => {
     'CallArgument',
     noTrivia(sequence(
       choice(
+        g.ValueTerm,
         sequence(
           argumentDelim,
-          optional(valueTrivia),
+          optional(g.ArgumentGap),
           optional(g.ValueTerm)
-        ),
-        g.ValueTerm
+        )
       ),
       optional(regex(/[<>]=?(?=[ \t\n\r\f]*[),])/)),
       optional(sequence(
-        optional(valueTrivia),
+        optional(g.ArgumentGap),
         choice(
           comparisonOperator,
           literal(':')
         ),
-        optional(valueTrivia),
+        optional(g.ArgumentGap),
 
         /*
          * A branch's value may be empty (`if(else:)`, css-values-5 §8.3
@@ -2147,6 +2155,10 @@ const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
+  const declarationTail = sequence(
+    statementValue,
+    optional(g.Important)
+  );
   const Declaration = node<Declaration>(
     'Declaration',
     choice(
@@ -2193,14 +2205,12 @@ const scssFactory = (g: ScssInputRules) => {
           choice(
             sequence(
               regex(/:(?!-?[_a-zA-Z\\\u0080-\uffff]|-?#\{|:)/),
-              statementValue,
-              optional(g.Important),
+              declarationTail,
               not(regex(/[{,]/))
             ),
             sequence(
               regex(/:(?=-?[_a-zA-Z\\\u0080-\uffff]|-?#\{|:)/),
-              statementValue,
-              optional(g.Important),
+              declarationTail,
               not(regex(/[{,>+~.#:[&*%]/))
             )
           )
@@ -5022,7 +5032,7 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       routed(),
       optional(space),
-      expect(SelectorOnlyPseudoArgument, 'pseudo selector argument'),
+      SelectorOnlyPseudoArgument,
       optional(space),
       literal(')')
     ),
@@ -5089,29 +5099,45 @@ const scssFactory = (g: ScssInputRules) => {
     /*
        * Generic glued functions remain the general-any class. Known selector and
        * nth families are routed before this branch, so malformed arguments stay
-       * committed to the known branch and cannot fall through here.
+       * committed to the known branch and cannot fall through here. An empty
+       * argument is one (`x:f() .b`).
        */
     sequence(
       routed(),
-      g.PseudoArgument,
+      optional(g.PseudoArgument),
       literal(')')
     ),
-    children => functionalPseudoFrom(requireToken(children[0]).value, children[1])
+    children => functionalPseudoFrom(requireToken(children[0]).value, children.length === 3 ? children[1] : '')
   );
   const GenericBarePseudo = node<SimpleSelector>(
     'GenericPseudo',
     routed(),
     children => simpleSelector(requireToken(children[0]).value)
   );
+
+  /**
+   * A known pseudo its argument rule cannot read (`x:not(1)`, `:has()`, `:nth-child(2n+)`).
+   * Its block makes this a rule, and a routed arm has no way back to the prelude
+   * reading, so it parses here and the error sits on the pseudo (ledger P45).
+   */
+  const InvalidPseudo = node<SimpleSelector>(
+    'InvalidPseudo',
+    sequence(
+      routed(),
+      optional(g.RulePreludeRest),
+      literal(')')
+    ),
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => unreadablePseudo(span, state)
+  );
   const PseudoSelectorDispatch = dispatch(
     pseudoIdentOrFunction,
-    caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
-    caseInsensitive([':nth-of-type(', ':nth-last-of-type(', ':nth-col(', ':nth-last-col('], NthTypePseudo),
-    caseInsensitive([':is(', ':where('], ForgivingPseudo),
-    caseInsensitive([':not(', ':has(', ':matches(', ':host(', ':host-context(', '::slotted('], StructuredPseudo),
-    caseInsensitive([':global(', ':local('], GlobalLocalPseudo),
-    caseInsensitive(':lang(', LangPseudo),
-    caseInsensitive(':dir(', DirPseudo),
+    caseInsensitive([':nth-child(', ':nth-last-child('], choice(NthPseudo, InvalidPseudo)),
+    caseInsensitive([':nth-of-type(', ':nth-last-of-type(', ':nth-col(', ':nth-last-col('], choice(NthTypePseudo, InvalidPseudo)),
+    caseInsensitive([':is(', ':where('], choice(ForgivingPseudo, InvalidPseudo)),
+    caseInsensitive([':not(', ':has(', ':matches(', ':host(', ':host-context(', '::slotted('], choice(StructuredPseudo, InvalidPseudo)),
+    caseInsensitive([':global(', ':local('], choice(GlobalLocalPseudo, InvalidPseudo)),
+    caseInsensitive(':lang(', choice(LangPseudo, InvalidPseudo)),
+    caseInsensitive(':dir(', choice(DirPseudo, InvalidPseudo)),
     caseInsensitive([
       ':nth-child',
       ':nth-last-child',
@@ -5420,6 +5446,7 @@ const scssFactory = (g: ScssInputRules) => {
     FunctionRule,
     Square,
     ValueAtom,
+    ArgumentGap,
     MathUnary,
     MathProductOperator,
     MathTopProductOperator,

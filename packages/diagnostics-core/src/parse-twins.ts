@@ -400,6 +400,10 @@ export function pushParseTwinDiagnostics(
   if (language === 'scss' && (gt === 'Ruleset' || gt === 'NestedRuleset')) {
     pushInvalidRulePreludeTwin(node, source, push);
   }
+  if (language === 'scss' && gt === 'InvalidPseudo') {
+    const error = ERR.invalidRulePrelude();
+    push('parse/invalid-rule-prelude', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
   if (language === 'jess' && gt === 'Stylesheet') {
     pushBareArithmeticTwins(node, source, push);
   }
