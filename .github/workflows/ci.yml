@@ -127,10 +127,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The structure assertion (6) parses TypeScript, so the no-install runs
-      # above skip it. Here the parser is installed, and a skip would fail.
-      - name: Guardrails — structure only shrinks
-        run: node scripts/check-guardrails.mjs --require-structure
+      # A baseline entry added with its violation passes a same-tree comparison, so
+      # a pull request is also compared with its base branch: entries only go.
+      - name: Fetch the base branch for the baseline shrink check
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+
+      # The structure assertion (6) and the grammar scan (8) parse TypeScript, so
+      # the no-install runs above skip them. Here the parser is installed, and a
+      # skip would fail.
+      - name: Guardrails — structure and grammar scan
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-guardrails.mjs --require-structure ${BASE_REF:+--shrink-against=origin/$BASE_REF}
+
+      # Assertion 8's canaries: each grammar rule and each known way around one goes
+      # red on a planted violation and stays green on a clean grammar.
+      - name: Grammar guardrail canaries
+        run: node --test scripts/__tests__/grammar-guardrails.test.mjs
 
       # Clean build every run: delete every workspace lib then rebuild. Incremental
       # builds mask errors (a stale lib once masked a grammar compose failure).
@@ -223,6 +239,11 @@ jobs:
       # re-run lint + core-public-types a second time)
       - name: Lint
         run: pnpm run lint
+
+      # `as any`, `: any`, `@ts-ignore` and `@ts-nocheck` are absent from the
+      # parser packages, so the repo-wide absolute ban is blocking there.
+      - name: Absolute ban — parser packages
+        run: pnpm run lint:absolute:parsers
 
       - name: Strict production types
         run: pnpm run verify:types
