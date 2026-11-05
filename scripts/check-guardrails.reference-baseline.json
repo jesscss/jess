@@ -170,9 +170,6 @@
   "packages/fns/src/less/__tests__/round.test.ts": [
     "it('breaks an exact tie away from zero, at any precision, as Less 4.x does', () => {"
   ],
-  "packages/fns/src/less/color-helper.ts": [
-    "A `#`-hex input keeps HEX format ONLY when the literal already encoded an alpha channel (`#rgba` / `#rrggbbaa`); an opaque hex (`#rgb` / `#rrggbb`) turns to `rgba(…)` the moment it becomes translucent (Less 4.x/v5 parity — e.g."
-  ],
   "packages/fns/src/less/e.ts": [
     "The result is an escaped string, written with `\"` as Less 4.x writes it."
   ],

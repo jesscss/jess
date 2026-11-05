@@ -131,6 +131,18 @@ describe('Less modern mode (P36)', () => {
         .resolves.toContain('color: hsl(from var(--x) h s clamp(0, l + 5, 100));');
     });
 
+    it('prints the alpha family as relative rgb(), and computes it over any known spelling', async () => {
+      await expect(less('@use "#less";\na { color: @less.fade(var(--x), 50%); }'))
+        .resolves.toContain('color: rgb(from var(--x) r g b / 0.5);');
+      await expect(less('@use "#less";\n@expose brand;\n@brand: #c00;\na { color: @less.fade(@brand, 50%); }'))
+        .resolves.toContain('color: rgb(from var(--brand, #c00) r g b / 0.5);');
+      for (const color of ['#010203', 'rgb(1, 2, 3)', 'rgb(1 2 3)', 'rgb(from rgb(1 2 3) r g b)']) {
+        await expect(less(`@use "#less";\na { color: @less.red(@less.fade(${color}, 50%)); }`)).resolves.toContain('color: 1;');
+      }
+      await expect(less('@use "#less";\na { color: @less.fade(hsl(from hsl(120 50% 50%) h s l), 50%); }'))
+        .resolves.toContain('color: rgb(64 191 64 / 0.5);');
+    });
+
     it('is an eval error for a method only the browser knows', async () => {
       await expect(less('@use "#less";\na { color: @less.darken(var(--c), 10%, var(--m)); }'))
         .rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function' }));

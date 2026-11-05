@@ -93,18 +93,24 @@ describe('Less built-in argument errors through the public AST route', () => {
       .resolves.toContain('rgb(from red r g b)');
 
     /*
-     * The inner relative color is demanded by `lighten`, whose form reads it as
-     * what only the browser knows, in every functionMode (§3.6).
+     * The inner relative color is demanded by `lighten`: known, it computes; not
+     * known, its form reads it as what only the browser knows, in every
+     * functionMode (§3.6).
      */
-    const demandedSource = '.entry { color: lighten(rgb(from red r g b), 10%); }';
+    const knownSource = '.entry { color: lighten(rgb(from red r g b), 10%); }';
+    await expect(lenient.renderString(knownSource, { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toContain('color: rgb(255, 51, 51);');
+    await expect(strict.renderString(knownSource, { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toContain('color: rgb(255, 51, 51);');
+    const demandedSource = '.entry { color: lighten(rgb(from var(--c) r g b), 10%); }';
     await expect(lenient.renderString(demandedSource, { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toContain('hsl(from rgb(from red r g b) h s clamp(0, l + 10, 100))');
+      .resolves.toContain('hsl(from rgb(from var(--c) r g b) h s clamp(0, l + 10, 100))');
     await expect(strict.renderString(demandedSource, { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toContain('hsl(from rgb(from red r g b) h s clamp(0, l + 10, 100))');
+      .resolves.toContain('hsl(from rgb(from var(--c) r g b) h s clamp(0, l + 10, 100))');
     await expect(strict.renderString('.entry { color: darken(hsl(var(--h), 1%, 2%), 1%); }', { filePath: 'entry.less', extension: '.less' }))
       .resolves.toContain('hsl(from hsl(var(--h), 1%, 2%) h s clamp(0, l - 1, 100))');
-    await expect(strict.renderString('.entry { color: darken(rgb(10 20 30), 1%); }', { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toContain('hsl(from rgb(10 20 30) h s clamp(0, l - 1, 100))');
+    await expect(strict.renderString('.entry { color: darken(rgb(10 20 30), 5%); }', { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toContain('color: rgb(4, 7, 11);');
     await expect(strict.renderString('.entry { color: darken(10px, 1%); }', { filePath: 'entry.less', extension: '.less' }))
       .rejects.toMatchObject({ code: 'eval/invalid-function' });
     await expect(strict.renderString('.entry { color: lightness(hsl(var(--h), 1%, 2%)); }', { filePath: 'entry.less', extension: '.less' }))

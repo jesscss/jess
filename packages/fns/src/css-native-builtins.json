@@ -134,7 +134,8 @@
       "dialect": "less",
       "name": "rgb",
       "class": "already-css",
-      "spec": "css-color-4 §5"
+      "spec": "css-color-4 §5",
+      "notes": "3+ slots and one colour; its 2-slot overload is as Less rgba"
     },
     {
       "dialect": "less",

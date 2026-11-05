@@ -30,7 +30,7 @@ describe('vite-plugin-jess', () => {
     const first = [result].flat()[0];
     const output = first !== undefined && 'output' in first ? first.output : [];
     const css = output.find(item => item.type === 'asset' && item.fileName.endsWith('.css'));
-    expect(css?.type === 'asset' ? String(css.source) : '').toContain('var(--brand-fade,');
+    expect(css?.type === 'asset' ? String(css.source) : '').toContain('var(--brand-lightness,');
 
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vite-plugin-jess-'));
     try {
@@ -41,7 +41,7 @@ describe('vite-plugin-jess', () => {
       if (isRuntime(module)) {
         expect(module.css).toContain('var(--brand,');
         // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
-        expect(module.vars({ brand: '#08f' })).toEqual({ '--brand': '#08f', '--brand-fade': 'rgba(0, 136, 255, 0.5)' });
+        expect(module.vars({ brand: '#08f' })).toEqual({ '--brand': '#08f', '--brand-lightness': '50%' });
       }
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
@@ -86,6 +86,47 @@ describe('vite-plugin-jess', () => {
       fs.writeFileSync(file, js);
       const module: unknown = await import(file);
       expect(isRuntime(module) && module.vars({ brand: '#08f' })['--brand-lightness']).toBe('50%');
+    });
+  });
+
+  it('bundles a function with no CSS form without the evaluator a form runs on', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose brand;\n@brand: #c00;\n.a { opacity: @less.lightness(@brand); }\n`]
+    ], async (root) => {
+      const { js } = await built(root);
+
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. */
+      expect(js.length).toBeLessThan(200_000);
+    });
+  });
+
+  it('adds no function to the runtime of a page that prints only CSS forms', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose brand;\n@brand: #c00;\n.a { color: @less.fade(@brand, 50%); background: @less.darken(@brand, 10%); }\n`]
+    ], async (root) => {
+      const { css, js } = await built(root);
+      expect(css).toContain('rgb(from var(--brand, #c00) r g b / .5)');
+      expect(js).not.toContain('--brand-');
+      expect(js).not.toContain('hsl(from');
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+      expect(isRuntime(module) && module.vars({ brand: '#08f' })).toEqual({ '--brand': '#08f' });
+    });
+  });
+
+  it('adds no JS to a page that exposes nothing and prints only CSS forms', async () => {
+    await inProject([
+      ['main.js', `import './theme.less';\nexport const size = 1;\n`],
+      ['theme.less', `@use "#less";\n.a { color: @less.fade(var(--x), 50%); background: @less.darken(#c00, 10%); }\n`]
+    ], async (root) => {
+      const { css, js } = await built(root);
+      expect(css).toContain('rgb(from var(--x) r g b / .5)');
+      expect(js).not.toContain('createRuntime');
+      expect(js).not.toContain('rgb(from');
     });
   });
 
@@ -174,8 +215,8 @@ describe('vite-plugin-jess', () => {
         expect(module.card).toBe(module.classes.card);
         expect(module.classes.card).not.toBe('card');
         expect(text).toContain(`.${module.classes.card}{color:var(--brand, #c00)}`);
-        expect(text).toContain(`.${module.classes.card__title}{border-color:var(--brand-fade, rgba(204, 0, 0, .5))}`);
-        expect(module.vars({ brand: '#08f' })['--brand-fade']).toBe('rgba(0, 136, 255, 0.5)');
+        expect(text).toContain(`.${module.classes.card__title}{opacity:var(--brand-lightness, 40%)}`);
+        expect(module.vars({ brand: '#08f' })['--brand-lightness']).toBe('50%');
       }
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });

@@ -1,6 +1,9 @@
-import type { Color, Dimension, ValueGroup, Fn } from '@jesscss/core/value';
-import { colorRawRgb, defineFunction, groupItems, makeColorRgb, RGB } from '@jesscss/core/value';
+import { defineForm, type FormCall } from '@jesscss/core/form';
+import type { Color, Dimension, FnCtx, ValueGroup, Fn } from '@jesscss/core/value';
+import { colorRawRgb, defineFunction, groupItems, isValueGroupArray, makeColorRgb, makeDimension, RGB } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, percentOf } from './color-ctor-helper.js';
+import { COLOR_ARG, fractionOf } from './color-form.js';
+import { fade as form } from './css-forms.generated.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
@@ -34,15 +37,33 @@ export function makeRgb(value: ValueGroup): Color {
     return makeColorRgb([r, g, b], a, RGB, { modernSyntax, ...(rgbPct ? { rgbPct } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) });
   }
   if (isColor(first)) {
-    const c = first;
-    const a = items[1] !== undefined ? clamp01(percentOf(requireDimension(items[1]), 1)) : c.alpha;
-    return makeColorRgb(colorRawRgb(c), a, RGB, { modernSyntax });
+    return makeColorRgb(colorRawRgb(first), first.alpha, RGB, { modernSyntax });
   }
   throw new Error('Invalid arguments for rgb function');
 }
 
-export const rgb: Fn = defineFunction('rgb', {
+/**
+ * The two-slot `rgba(color, alpha)`: `rgb(from color r g b / alpha)`. A
+ * substitution or an unknown function may expand to the channels, so that call is
+ * CSS as written (docs/design/CSS-NATIVE-BUILTINS.md §3.8).
+ */
+const colorWithAlpha = /* @__PURE__ */ defineForm('rgba', {
+  params: [COLOR_ARG, { type: 'Dimension' }],
+  format: RGB,
+  form: (color: ValueGroup, alpha: Dimension): FormCall => {
+    if (!isValueGroupArray(color) && color.type === 'FunctionCall' && color.result !== 'color') {
+      throw new TypeError('rgba: a substitution may hold the channels, so the call is CSS as written');
+    }
+    return [form, color, makeDimension(clamp01(fractionOf(alpha).number))];
+  }
+});
+
+/** `rgb()`/`rgba()`: the two-slot overload's form, else the channels or one colour. */
+export const rgbBody = (list: ValueGroup, ctx: FnCtx): ReturnType<Fn> =>
+  groupItems(list).length === 2 && !isModern(list) ? colorWithAlpha(list, ctx) : makeRgb(list);
+
+export const rgb: Fn = /* @__PURE__ */ defineFunction('rgb', {
   params: [{ type: 'any' }, { type: 'any', optional: true }, { type: 'any', optional: true }, { type: 'any', optional: true }],
   variadic: true,
-  body: list => makeRgb(list)
+  body: rgbBody
 });

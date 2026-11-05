@@ -9,7 +9,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const FACTORIES = ['anonymousMixin', 'callArg', 'decl', 'dimension', 'funcCall', 'keyword', 'operation', 'variableReference'];
+const FACTORIES = ['anonymousMixin', 'block', 'callArg', 'decl', 'dimension', 'funcCall', 'keyword', 'list', 'operation', 'variableReference'];
 
 const text = value => JSON.stringify(value).replaceAll('"', '\'');
 
@@ -25,6 +25,10 @@ function node(value) {
       return `dimension(${value.number}, ${text(value.unit)}, ${text(value.src)})`;
     case 'Lookup':
       return `variableReference(${text(value.name)}, ${text(value.scope)})`;
+    case 'List':
+      return `list([${value.value.map(slot).join(', ')}], ${text(value.sep)})`;
+    case 'Block':
+      return `block(${slot(value.value)})`;
     case 'Operation':
       return `operation(${text(value.operator)}, ${node(value.left)}, ${node(value.right)}, ${value.inMathFunction}, ${value.mathOutsideParens})`;
     case 'FunctionCall':

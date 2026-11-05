@@ -34,7 +34,7 @@ describe('the export runtime', () => {
     ['@less.lightness(@brand)', '#08f'],
     ['@less.lightness(@brand)', 'rebeccapurple'],
     ['@less.luma(@less.multiply(@brand, #888))', '#3a7'],
-    ['@less.fade(@brand, 50%)', '#123456'],
+    ['@less.alpha(@less.fade(@brand, 50%))', '#123456'],
     ['@less.lightness(@less.spin(@brand, 30))', '#123']
   ])('writes what a compile writes: %s with %s', async (expression, value) => {
     const exported = await compile(`@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: ${expression}; }`);
