@@ -80,7 +80,11 @@ import serializerNodes, {
   isConditionOperand,
   colorAlphaSlash,
   copyNode,
-  withFields
+  withFields,
+  reference,
+  referenceCall,
+  lookupStep,
+  declarationReference
 } from './nodes.js';
 import {
   type CompoundIn,
@@ -269,7 +273,7 @@ import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { writtenListValue, writtenResult } from './empty-list.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, isGluedConditionKeyword, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, isGluedConditionKeyword, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withSourceSpan, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* The serializer-only node constructors: nodes.ts's default export, kept out of the public `@jesscss/core/ast` entry. */
@@ -7625,7 +7629,7 @@ function resolveReferenceResult(
       if (matched && map.byVar.get(matched.name) === matched) {
         matched = activatedVarMember(map.activation, matched.name, e);
       }
-      if (!statementCall && node.steps[stepIndex + 1]?.type === 'Call') {
+      if (!statementCall && node.steps[stepIndex + 1]?.type === 'Call' && (matched !== undefined || map.activation.mixins?.has(`.${missingSymbol}`))) {
         rejectComposedMemberCall(node, matched, missingSymbol);
       }
     }
@@ -7743,6 +7747,26 @@ function evalModuleReferenceCall(
   call._s = sourceStartOf(written);
   call._e = sourceEndOf(written);
   return dispatchCall(call, frame, deriveLane(e, 'call'), e.ev, selected.fn, 'imported');
+}
+
+/**
+ * A `.scss` call `ns.fn(…)` that no imported function answers is a read of the
+ * member `fn` of the module `ns`: the chain `ns.$var` is built as (ledger R7), so a
+ * stylesheet's `@function` is invoked, and a member or a namespace that does not
+ * exist is `resolve/name-not-found`.
+ */
+function namespaceMemberCall(node: FunctionCall): Reference | undefined {
+  const { name } = node;
+  const dot = name.indexOf('.');
+  if (dot <= 0 || name.charCodeAt(dot - 1) === 92) {
+    return undefined;
+  }
+  const span = { start: sourceStartOf(node), end: sourceEndOf(node) };
+  return withSourceSpan(reference(
+    withSourceSpan(declarationReference('$'), span),
+    [lookupStep('member', name.slice(0, dot)), lookupStep('member', name.slice(dot + 1)), referenceCall(node.args)],
+    name
+  ), span);
 }
 
 /**
@@ -9047,6 +9071,10 @@ function evalCall(
   const selected = e.s.scopedFunctionNames?.has(lname)
     ? lookupScopedFn(frame, lname, e.s)
     : undefined;
+  const member = selected === undefined ? namespaceMemberCall(node) : undefined;
+  if (member !== undefined) {
+    return evalReference(member, frame, e);
+  }
   const rawInvoker = e.pluginHost?.invokeRawFunction;
 
   /*
@@ -9089,7 +9117,7 @@ function evalCall(
    */
   return node.name.charCodeAt(0) === 45 && selected === undefined && ev.has(node.name.slice(1)) && hasAmbientFunctions(node)
     ? mapMaybe(evalCall(withFields(node, { name: node.name.slice(1) }), frame, e, demanded), value => negatedCall(value) ?? dispatchCall(node, frame, e, ev, selected, 'ambient', demanded))
-    : dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
+    : dispatchCall(node, frame, e, ev, selected, selected !== undefined && e.s.moduleFns?.has(selected) === true ? 'imported' : hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
 }
 
 /**
