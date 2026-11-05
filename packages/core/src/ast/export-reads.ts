@@ -5,7 +5,6 @@ import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
-import { exactHex } from './color.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { isBrowserColor } from './value-dispatch.js';
@@ -603,20 +602,6 @@ function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: N
   return inputs.every(input => taken.has(input.value));
 }
 
-const holdsCall = (v: ValueGroup): boolean => isValueGroupArray(v)
-  ? v.some(holdsCall)
-  : v.type === 'List' ? v.value.some(holdsCall) : v.type !== 'Quoted' && emitValue(v).includes('(');
-
-/**
- * A fixed argument as the runtime reads it, a CSS literal (`packages/fns/src/runtime.ts`),
- * or undefined when it holds a call. A known colour written as a call is its hex when
- * hex holds it exactly. ponytail: a runtime that parses colour calls would take the rest.
- */
-function runtimeLiteral(value: ValueGroup): string | undefined {
-  const v = lone(value);
-  return !isValueGroupArray(v) && v.type === 'Color' && holdsCall(v) ? exactHex(v) : holdsCall(v) ? undefined : emitValue(value);
-}
-
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */
 function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>, e: ExportLane<F>): ExportRecipe {
   const origin = fn?.origin;
@@ -629,20 +614,7 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
     exportNotWritten(node, `${node.name}()`, recipeExport(stray.recipe), e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
   }
   const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
-  return {
-    fn: origin,
-    args: vals.map((v) => {
-      const recipe = recipes.get(lone(v));
-      if (recipe !== undefined) {
-        return recipe;
-      }
-      const text = runtimeLiteral(v);
-      if (text === undefined) {
-        exportNotWritten(node, `${node.name}()`, recipeExport(inputs[0]!.recipe), e, `beside \`${emitValue(v)}\`, a fixed argument the runtime cannot read`);
-      }
-      return text;
-    })
-  };
+  return { fn: origin, args: vals.map(v => recipes.get(lone(v)) ?? emitValue(v)) };
 }
 
 /** The first export a recipe reads. */

@@ -98,10 +98,10 @@ describe('the export runtime', () => {
     '@less.hsva(var(--h), 50%, 50%, @a)',
     '@less.hsv(var(--h), 50%, @a)',
     '@less.darken(var(--x), @a)'
-  ])('fails %s at its span, whose fixed argument the runtime cannot read', async (expression) => {
-    const source = `@use "#less";\n@expose a;\n@a: 25%;\n.x { v: ${expression}; }`;
-    await expect(new Compiler({}).renderString(source, { filePath: 'entry.less', extension: '.less' }))
-      .rejects.toMatchObject({ code: 'eval/expose-not-a-value', line: 4, column: 9 });
+  ])('compiles %s, and says what the runtime cannot read if it is set', async (expression) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: 25%;\n.x { v: ${expression}; }`);
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '50%' })).toThrow('The runtime computes from CSS literals');
   });
 
   it.each([
@@ -152,14 +152,6 @@ describe('the export runtime', () => {
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars(values);
     expect(Object.values(vars)).toContain(result);
-  });
-
-  it.each([
-    '@less.mix(@a, hsl(0, 100%, 50%))',
-    '@less.mix(@a, @less.rgb(1, 2, 3))',
-    '@less.fade(rgb(1 2 3), 25%)'
-  ])('compiles %s, whose colour hex holds exactly', async (expression) => {
-    await expect(compile(`@use "#less";\n@expose a;\n@a: #c00;\n.x { v: ${expression}; }`)).resolves.toBeDefined();
   });
 
   it('recomputes a string with parens as a compile does', async () => {

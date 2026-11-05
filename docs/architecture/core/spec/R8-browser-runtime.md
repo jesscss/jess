@@ -169,13 +169,12 @@ or needs JS) to decide what ships in the bundle.
   `@less.rgb(@r, 0, 0)`). A call CSS reads as written over something only the browser
   knows prints so (`@less.rgb(@r, var(--x), 0)`, `@less.rgb(@c, 0, 0)` with
   `@c: var(--x)`).
-  A recipe's fixed argument that holds a call the runtime cannot read
-  (`@less.fade(var(--x), @a)`) fails at the compile, at the call's span
-  (`eval/expose-not-a-value`), not in the browser. A known colour written as a call
-  reads as its hex when hex holds it exactly (`hsl(0, 100%, 50%)`, `rgb(1 2 3)`), and a
-  quoted string may hold parens. A default the runtime cannot read is not checked,
-  since a recipe of one export never reads its own default: a recipe of two throws
-  from `vars()` when only the other is given.
+  The runtime reads a recipe's fixed arguments and other exports' defaults as CSS
+  literals, and a quoted string may hold parens. One holding a call
+  (`@less.fade(var(--x), @a)`, `@less.fade(hsl(120, 50%, 50%), @a)`) compiles, so the
+  stylesheet's CSS stands, and `vars()` throws saying so when that value is set. Hex
+  cannot stand in: it loses a grey's hue and rounds an alpha. OPEN for the owner:
+  whether this should be reported at the compile.
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent

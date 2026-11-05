@@ -126,11 +126,6 @@ function toHex(c: Color): string {
   return out;
 }
 
-/** A colour's hex when hex holds it exactly: whole channels, and an alpha of 0 or 1. */
-export function exactHex(c: Color): string | undefined {
-  return c.rgb.every(channel => Number.isInteger(channel) && channel >= 0 && channel <= 255) && (c.alpha === 1 || c.alpha === 0) ? toHex(c) : undefined;
-}
-
 /**
  * The serialized alpha text — the authored `%` spelling when the alpha was written
  * as a percent, else the decimal alpha. BOTH branches go through the shared output
