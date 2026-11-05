@@ -10,6 +10,7 @@ import { emitValue, isValueGroupArray, type EvalModes, type EvalValue, type Valu
 import { writeCall } from './evaluator.js';
 import type { ValueCheckLane } from './invalid-value-syntax.js';
 import { makeKeyword, makeList } from './value-factory.js';
+import { exposedOperand } from './value-operate.js';
 
 /**
  * Ledger A4: a variable an `@expose` names (A20) publishes a custom property, so a
@@ -415,9 +416,17 @@ export function exportInput<F, H extends { value: CallValue; frame: F }>(hit: H 
   return ref.source ?? hit;
 }
 
-/** The value a computed function's input read evaluated to, recorded when the read was an export's root binding ({@link exportInput}). */
-export function exportInputRead<F, V extends ValueGroup>(e: ExportLane<F>, hit: { value: CallValue; frame: F }, value: MaybePromise<V>): MaybePromise<V> {
+/**
+ * A variable's read, as what follows it reads it: the `var()` of an export is of
+ * its value's type ({@link exposedOperand}), and the value a computed function's
+ * input read evaluated to is recorded when the read was an export's root binding
+ * ({@link exportInput}).
+ */
+export function exportInputRead<F>(e: ExportLane<F>, hit: { value: CallValue; frame: F }, value: MaybePromise<ValueGroup>): MaybePromise<ValueGroup> {
   const x = exporting(e.s.exports);
+  if (x?.behind.has(hit.value) === true) {
+    return mapMaybe(value, exposedOperand);
+  }
   const inputs = x?.inputs;
   const name = inputs === undefined || x === undefined ? undefined : refOf(x, hit)?.name;
   return name === undefined || inputs === undefined

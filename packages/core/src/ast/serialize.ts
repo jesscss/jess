@@ -218,7 +218,7 @@ import { collectNestedProperty, isNestedPropertyValue } from './nested-property.
 import { callSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, carryKeptClash, exposedOperand, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, isMathOnDeferred, keptInString, keptMathOf, mathOnDeferred, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, isMathOnDeferred, keptInString, keptMathOf, mathOnDeferred, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeArithmetic, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
@@ -5142,14 +5142,13 @@ function evalTyped(
           return force(unresolvedRef(node, nm, e));
         }
         const bound = hit.value;
-        const read = exportInputRead(e, hit, hit.evaluated !== null
+        return exportInputRead(e, hit, hit.evaluated !== null
           ? reachedEvaluated(e, hit.evaluated)
           : isMixinReference(bound)
             ? readMixinReference(e, node, bound)
             : withExcluded(e, bound, () => isMixinCallValue(bound)
                 ? force(literal(''))
                 : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument), node));
-        return e.s.exports.runtime !== undefined && e.s.exports.behind.has(bound) ? mapMaybe(read, exposedOperand) : read;
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -5629,10 +5628,6 @@ const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | Keyword
  * `(e("x"))` ({@link readText}).
  */
 const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => groupText(v);
-
-/** An operand of math kept in a math function, a number written there as the number it is, so what reads the arithmetic reads no bytes. */
-const leafOf = (node: ValueNode, value: EvalValue, e: Lane): EvalValue =>
-  isLiteral(value) && node.type === 'Dimension' ? materializeNode(node, e) : value;
 
 /** Whether math on an operand a rule rejects is kept as written instead: it is CSS's, or not reached as math (V36, J16, V31). */
 const keepsOperation = (node: Operation, e: Lane): boolean =>
@@ -6290,9 +6285,18 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * back a bare string sends it through `force`, which reads
            * `8px / 2` as a slash LIST — and a List is not a calc argument, so
            * `calc($val / 2)` came back as `8px / 2` with the wrapper dropped.
-           * It is arithmetic, what the `calc()` around it holds.
+           * It is arithmetic, what the `calc()` around it holds, a number written
+           * there the number it is, so what reads the arithmetic reads no bytes.
            */
-          return node.inMathFunction ? carryKeptClash(makeArithmetic(node.operator, leafOf(node.left, values[0]!, e), leafOf(node.right, values[1]!, e), false, bytes), values[0]!, values[1]!) : literal(bytes);
+          return node.inMathFunction
+            ? carryKeptClash(makeArithmetic(
+                node.operator,
+                node.left.type === 'Dimension' ? materializeNode(node.left, e) : values[0]!,
+                node.right.type === 'Dimension' ? materializeNode(node.right, e) : values[1]!,
+                false,
+                bytes
+              ), values[0]!, values[1]!)
+            : literal(bytes);
         });
       }
       const ev = e.ev;
