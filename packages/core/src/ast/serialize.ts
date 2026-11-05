@@ -80,11 +80,7 @@ import serializerNodes, {
   isConditionOperand,
   colorAlphaSlash,
   copyNode,
-  withFields,
-  reference,
-  referenceCall,
-  lookupStep,
-  declarationReference
+  withFields
 } from './nodes.js';
 import {
   type CompoundIn,
@@ -226,7 +222,7 @@ import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, 
 import { makeAny, makeWrittenMath, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
-import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
+import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { mathOperand, negatedCall, slashOperated, writtenPercent } from './math-operand.js';
@@ -273,7 +269,7 @@ import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { writtenListValue, writtenResult } from './empty-list.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, isGluedConditionKeyword, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withSourceSpan, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, isGluedConditionKeyword, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* The serializer-only node constructors: nodes.ts's default export, kept out of the public `@jesscss/core/ast` entry. */
@@ -7750,26 +7746,6 @@ function evalModuleReferenceCall(
 }
 
 /**
- * A `.scss` call `ns.fn(…)` that no imported function answers is a read of the
- * member `fn` of the module `ns`: the chain `ns.$var` is built as (ledger R7), so a
- * stylesheet's `@function` is invoked, and a member or a namespace that does not
- * exist is `resolve/name-not-found`.
- */
-function namespaceMemberCall(node: FunctionCall): Reference | undefined {
-  const { name } = node;
-  const dot = name.indexOf('.');
-  if (dot <= 0 || name.charCodeAt(dot - 1) === 92) {
-    return undefined;
-  }
-  const span = { start: sourceStartOf(node), end: sourceEndOf(node) };
-  return withSourceSpan(reference(
-    withSourceSpan(declarationReference('$'), span),
-    [lookupStep('member', name.slice(0, dot)), lookupStep('member', name.slice(dot + 1)), referenceCall(node.args)],
-    name
-  ), span);
-}
-
-/**
  * A value reference that resolved to nothing is a failed resolution: an eval
  * error unless the read is optional, which gets its authored text as the
  * sentinel. The error names an unbound head by itself, as it was written
@@ -9071,10 +9047,6 @@ function evalCall(
   const selected = e.s.scopedFunctionNames?.has(lname)
     ? lookupScopedFn(frame, lname, e.s)
     : undefined;
-  const member = selected === undefined ? namespaceMemberCall(node) : undefined;
-  if (member !== undefined) {
-    return evalReference(member, frame, e);
-  }
   const rawInvoker = e.pluginHost?.invokeRawFunction;
 
   /*
@@ -9117,7 +9089,9 @@ function evalCall(
    */
   return node.name.charCodeAt(0) === 45 && selected === undefined && ev.has(node.name.slice(1)) && hasAmbientFunctions(node)
     ? mapMaybe(evalCall(withFields(node, { name: node.name.slice(1) }), frame, e, demanded), value => negatedCall(value) ?? dispatchCall(node, frame, e, ev, selected, 'ambient', demanded))
-    : dispatchCall(node, frame, e, ev, selected, selected !== undefined && e.s.moduleFns?.has(selected) === true ? 'imported' : hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
+    : selected === undefined && isNamespaceCall(node.name)
+      ? evalReference(namespaceMemberCall(node), frame, e)
+      : dispatchCall(node, frame, e, ev, selected, selected !== undefined && e.s.moduleFns?.has(selected) === true ? 'imported' : hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
 }
 
 /**

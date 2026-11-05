@@ -57,10 +57,10 @@ describe('.scss ns.fn() calls the member of the module `ns`', () => {
   it('calls a stylesheet module\'s @function, and a member it lacks is resolve/name-not-found', async () => {
     const dir = files([
       ['_sizes.scss', '@function double($x) { @return $x * 2; }\n'],
-      ['input.scss', '@use "sizes";\n@use "sizes" as s;\na { b: sizes.double(2px); c: s.double(3px); }\n'],
+      ['input.scss', '@use "sizes";\n@use "sizes" as s;\na { b: sizes.double(2px); c: s.double(3px); d: sizes.double(2px) + 1px; }\n'],
       ['missing.scss', '@use "sizes";\na { b: sizes.nope(1); }\n']
     ]);
-    await expect(render(dir, 'input.scss')).resolves.toBe('a {\n  b: 4px;\n  c: 6px;\n}\n');
+    await expect(render(dir, 'input.scss')).resolves.toBe('a {\n  b: 4px;\n  c: 6px;\n  d: 5px;\n}\n');
     await expect(render(dir, 'missing.scss')).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: 'Symbol "nope" is undefined in this scope.' });
   });
 
