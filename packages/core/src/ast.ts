@@ -52,6 +52,7 @@ export {
   selectorCaptureOf,
   selectorStringComponents,
   semanticGapText,
+  withoutLineComments, preludeLineComment, preludeUrlToken, holdsInterpolationOpener,
   withBlockBody
 } from './ast/grammar-helpers.js';
 export type { SelectorCaptureProblem, SourceSpan, SpannedToken, Token } from './ast/grammar-helpers.js';

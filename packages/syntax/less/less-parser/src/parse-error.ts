@@ -241,6 +241,29 @@ export class LessImportantMixinReferenceError extends SyntaxError {
   }
 }
 
+/**
+ * A `@{…}` in the prelude of `@name (…) …` that the prelude keeps as bytes (ledger
+ * P52). The at-rule is kept, so the rest of the document still evaluates (P45).
+ */
+export class LessUnresolvedPreludeInterpolationError extends SyntaxError {
+  readonly code = 'parse/unresolved-prelude-interpolation' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'After a parenthesized group opens an at-rule prelude, a `@{…}` resolves only outside strings, functions and further groups.';
+  readonly fix = 'Write the `@{…}` on its own in the prelude, or put it in a variable that holds the whole prelude.';
+
+  /** The at-rule the parse kept for it; a report whose at-rule is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, recoveredValue: object) {
+    super('This `@{…}` cannot be resolved in an at-rule prelude that opens with a group.');
+    this.name = 'LessUnresolvedPreludeInterpolationError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.recoveredValue = recoveredValue;
+  }
+}
+
 /** Ungrouped Less mixin guards are recognized so diagnostics can point at the guard. */
 export class LessUnparenthesizedMixinGuardError extends SyntaxError {
   readonly code = 'parse/unparenthesized-mixin-guard' as const;
@@ -426,7 +449,7 @@ export class LessSelectorCaptureArgumentError extends SyntaxError {
  */
 export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError | LessConditionKeywordCaseError
   | LessSelectorCaptureArgumentError | LessLeadingSeparatorValueError | LessImportantMixinReferenceError
-  | LessExposeDeclarationError | LessMalformedExposeError;
+  | LessExposeDeclarationError | LessMalformedExposeError | LessUnresolvedPreludeInterpolationError;
 
 /**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no

@@ -494,7 +494,7 @@ describe('public Less parse()', () => {
         expected: '")"'
       },
       {
-        source: '@namespace svg url(http://www.w3.org/2000/svg) .x {}',
+        source: '@layer a b',
         message: 'Missing semicolon.',
         expected: '";"'
       }
