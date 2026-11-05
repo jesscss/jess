@@ -401,3 +401,98 @@ describe('compress and type reads over kept math', () => {
     await expect(value('isnumber(percentage(var(--a)))')).resolves.toBe('true');
   });
 });
+
+describe('`%` over a list', () => {
+  const lists = ['(@l % var(--x))', '(var(--x) % @l)', '(var(--x) % (1, 2))', '((1, 2) % var(--x))'];
+  it.each(['always', 'parens-division', 'parens', 'strict'].flatMap(mathMode => lists.map(source => [mathMode, source])))('under %s: %s fails as `*` does', async (mathMode, source) => {
+    await expect(css(`@l: 1, 2; .a { b: ${source}; }`, { mathMode })).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+});
+
+describe('a glued minus in a slot of a form is the math it means', () => {
+  it.each([
+    ['ceil(-var(--x))', 'round(up, -1 * var(--x), 1)'],
+    ['percentage(-var(--x))', 'calc(-1 * var(--x) * 100%)'],
+    ['unit(-var(--x), px)', 'calc(-1 * var(--x) * 1px)'],
+    ['mod(-var(--x), 3)', 'rem(-1 * var(--x), 3)'],
+    ['darken(#c00, -var(--a))', 'hsl(from #c00 h s clamp(0, l - -1 * var(--a) / 1%, 100))'],
+    ['spin(#c00, -var(--a))', 'hsl(from #c00 calc(h + -1 * var(--a)) s l)'],
+    ['mix(#c00, #fff, -var(--a))', 'color-mix(in srgb, #c00 calc(-1 * var(--a)), #fff)']
+  ])('%s', async (source, form) => {
+    await expect(value(source)).resolves.toBe(form);
+  });
+});
+
+describe('an export inside a larger argument, by what the slot holds at compile time', () => {
+  const exposed = (held: string, source: string): string => `@use "#less"; @expose a; @a: ${held}; .x { v: ${source}; }`;
+
+  it.each([
+    ['5px', '@less.ceil((@a * 2))'],
+    ['5px', '@less.percentage((@a * 2))'],
+    ['5px', '@less.unit((@a * 2), em)'],
+    ['5px', '@less.round((@a * 2))'],
+    ['5', '@less.darken(#c00, (@a * 2))'],
+    ['5px', '@less.spin(#c00, (@a * 2))'],
+    ['5px', '@less.ceil(calc(@a * 2))']
+  ])('@a: %s; %s has no form that holds it and no recipe', async (held, source) => {
+    await expect(css(exposed(held, source))).rejects.toMatchObject({ code: 'eval/expose-not-a-value' });
+  });
+
+  it.each([
+    ['5px', '@less.mod((@a * 2), 3px)', 'rem((var(--a, 5px) * 2), 3px)'],
+    ['5', '@less.ceil((@a * 2))', 'round(up, (var(--a, 5) * 2), 1)'],
+    ['5%', '@less.darken(#c00, (@a * 2))', 'hsl(from #c00 h s clamp(0, l - (var(--a, 5%) * 2) / 1%, 100))']
+  ])('@a: %s; %s is its form', async (held, source, form) => {
+    await expect(css(exposed(held, source))).resolves.toContain(`v: ${form};`);
+  });
+
+  it('a bare dividend beside a divisor of its unit is the form too', async () => {
+    await expect(css(exposed('5px', '@less.mod(@a, 3px)'))).resolves.toContain('v: rem(var(--a, 5px), 3px);');
+  });
+});
+
+describe('an export of math over known numbers takes the path of the number', () => {
+  it.each([
+    ['min(.1, .2)', '@less.rgba(#c00, @a)', 'rgb(from #c00 r g b / var(--a, min(0.1, 0.2)))'],
+    ['min(1, 2)', '@less.hsv(@a, 50%, 50%)', 'hwb(var(--a, min(1, 2)) 25% 50%)'],
+    ['min(1px, 2px)', '@less.tint(#c00, @a)', 'var(--a-tint, #cd0303)'],
+    ['min(1px, 2px)', '@less.ceil(@a)', 'var(--a-ceil, 1px)']
+  ])('@a: %s; %s', async (held, source, written) => {
+    await expect(css(`@use "#less"; @expose a; @a: ${held}; .x { v: ${source}; }`)).resolves.toContain(`v: ${written};`);
+  });
+});
+
+describe('a slash under `math: always` is math only over numbers', () => {
+  it.each([
+    '1 / var(--c) / span 2 / span 3',
+    'var(--r) / var(--c) / span 2 / span 3',
+    'var(--a) / 2 / span 2',
+    'repeat(2, 1fr) / var(--x)',
+    'var(--x) / repeat(2, 1fr)',
+    'minmax(1px, 2px) / var(--x)',
+    'fit-content(10px) / var(--x)',
+    'linear-gradient(red, blue) / var(--x)'
+  ])('%s stays as written', async (source) => {
+    await expect(value(source, { mathMode: 'always' })).resolves.toBe(source);
+  });
+
+  it('two known numbers beside a chain still divide, as in `span 2 / 3`', async () => {
+    await expect(value('1 / var(--c) / span 2 / 3', { mathMode: 'always' })).resolves.toBe('1 / var(--c) / span 0.6666666667');
+  });
+
+  it.each([
+    ['1 / var(--x) / 2', 'calc(1 / var(--x) / 2)'],
+    ['var(--x) / env(--y)', 'calc(var(--x) / env(--y))'],
+    ['attr(a) / 2', 'calc(attr(a) / 2)'],
+    ['ceil(var(--x)) / 2', 'calc(round(up, var(--x), 1) / 2)']
+  ])('%s is math', async (source, math) => {
+    await expect(value(source, { mathMode: 'always' })).resolves.toBe(math);
+  });
+});
+
+describe('a `%` in a math function under compress', () => {
+  it('writes its numbers as `%` anywhere does', async () => {
+    await expect(css('.a{b:calc(var(--x) % 0.5)}', { compress: true })).resolves.toContain('calc(rem(var(--x),.5))');
+    await expect(css('.a{b:max(var(--x) % 0.5,0.25)}', { compress: true })).resolves.toContain('max(rem(var(--x),.5),.25)');
+  });
+});

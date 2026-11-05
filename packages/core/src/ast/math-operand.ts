@@ -17,9 +17,12 @@
  *
  * HARD MODULE BOUNDARY: the value domain and the operand rule only.
  */
+import { cssMath } from './css-math.js';
 import { isMathFunctionName } from './math-functions.js';
+import type { Operation } from './nodes.js';
 import { DivisionByZeroError, InvalidOperandError, emitValue, isValueGroupArray, joinGroup, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
-import { arithmeticOperand, makeDimension, withFields } from './value-factory.js';
+import { arithmeticOperand, makeDimension, makeKeyword, withFields } from './value-factory.js';
+import { groupItems } from './value-list.js';
 import { convertible } from './value-units.js';
 import { isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
 
@@ -126,7 +129,7 @@ function calcValue(value: EvalValue, ev: Divider): Dimension | undefined {
     case 'Dimension':
       return value.numerator !== undefined && (value.numerator.length > 1 || (value.denominator?.length ?? 0) > 0) ? undefined : value;
     case 'FunctionCall':
-      return value.name === 'calc' ? calcValue(value.args, ev) : undefined;
+      return value.name === 'calc' ? calcValue(value.args, ev) : mathCallValue(value, ev);
     case 'Arithmetic': {
       if (value.kept) {
         return undefined;
@@ -147,6 +150,12 @@ function calcValue(value: EvalValue, ev: Divider): Dimension | undefined {
   }
 }
 
+/** A CSS math function over numbers the compile knows (`min(.1, .2)`), which is written out where no built-in of that name is in scope. */
+function mathCallValue(call: FunctionCall, ev: Divider): Dimension | undefined {
+  const out = cssMath(call.name, groupItems(call.args).map(arg => calcValue(arg, ev) ?? arg));
+  return out === null ? undefined : makeDimension(out.number, out.unit);
+}
+
 /**
  * The whole argument of a parameter typed as a number: an authored `calc()` the
  * compile can compute is the number it computes to (`percentage(calc(0.5 + 0.5))`
@@ -158,7 +167,7 @@ export const calcOperand = (call: FunctionCall, ev: Divider): ValueGroup => calc
 const MINUS_ONE = /* @__PURE__ */ makeDimension(-1, '');
 
 /** What only the browser knows, written with a glued minus (`-var(--x)`, one function token to CSS), as the math it means: `calc(-1 * var(--x))`. */
-function negated(v: Value): Value {
+export function negated(v: Value): Value {
   if (v.type !== 'FunctionCall' || v.name.charCodeAt(0) !== 45) {
     return v;
   }
@@ -172,11 +181,24 @@ const negatedMath = (v: Value): Value => mathOnDeferred('*', MINUS_ONE, v);
 export const negatedCall = (value: EvalValue): Value | undefined =>
   typeof value === 'object' && !isValueGroupArray(value) && value.type === 'FunctionCall' && value.computed && value.result === 'numeric' ? negatedMath(value) : undefined;
 
-const isKnownOther = (v: Value): boolean =>
-  v.type !== 'Dimension' && v.type !== 'FunctionCall' && v.type !== 'Arithmetic';
+/** What only the browser knows by name, whatever it holds; a glued minus is the same value negated. */
+const RUNTIME_VALUE: ReadonlySet<string> = new Set(['var', '-var', 'env', '-env', 'attr', '-attr']);
 
-/** A `/` no group asked to divide (Less `math: always`) beside a known value that is no number is CSS's separator (`url(a.png) center / var(--s)`). */
-export const slashSeparates = (left: Value, right: Value): boolean => isKnownOther(left) || isKnownOther(right);
+/** What a `/` no group asked to divide reads as math: a number, or a function of one. */
+const isSlashMath = (v: Value): boolean =>
+  v.type === 'Dimension' || v.type === 'Arithmetic' || (v.type === 'FunctionCall' && (v.result === 'numeric' || RUNTIME_VALUE.has(v.name.toLowerCase())));
+
+/**
+ * A `/` no group asked to divide (Less `math: always`) beside anything else is
+ * CSS's separator (`url(a.png) center / var(--s)`, `repeat(2, 1fr) / var(--x)`).
+ * So is every `/` before it in the chain, and the math they made is as written
+ * (`1 / var(--c) / span`), a keyword never being in a `calc()`.
+ */
+export function slashOperated(node: Pick<Operation, 'operator' | 'left' | 'mathOutsideParens'>, left: Value, right: Value, modes: EvalModes, keeps: boolean): Value {
+  const separates = node.operator === '/' && node.mathOutsideParens && !(isSlashMath(left) && isSlashMath(right));
+  const inner = separates && node.left.type === 'Operation' && node.left.operator === '/' && node.left.mathOutsideParens ? writtenCalcInner(left) : null;
+  return operated(node.operator, inner === null ? left : makeKeyword(inner), right, modes, keeps || separates);
+}
 
 /**
  * A value in a call written out: a group of math on what only the browser knows
@@ -193,6 +215,10 @@ export function writtenCallValue(v: ValueGroup, emit: (v: ValueGroup) => string)
   return v.type === 'Arithmetic' && v.op === '' ? `calc${v.bytes}` : emit(v);
 }
 
+/** An operand of math kept for the browser: what a glued minus means, its numbers compressed under `compress` (§3.5). */
+const keptSpelling = (v: Value, modes: EvalModes): Value =>
+  modes.compress === true ? spelledCompressed(negated(v)) : negated(v);
+
 /**
  * An operation outside `.scss` over operands that are not two known numbers. Math
  * on what only the browser knows is a `calc()` wherever it is math (V38), under
@@ -207,8 +233,8 @@ export function operated(op: string, left: Value, right: Value, modes: EvalModes
   }
   validateFinalUnits(left, modes);
   validateFinalUnits(right, modes);
-  const l = modes.compress === true ? spelledCompressed(negated(left)) : negated(left);
-  const r = modes.compress === true ? spelledCompressed(negated(right)) : negated(right);
+  const l = keptSpelling(left, modes);
+  const r = keptSpelling(right, modes);
   if (op === '%') {
     return remOn(l, r, modes);
   }
@@ -218,6 +244,6 @@ export function operated(op: string, left: Value, right: Value, modes: EvalModes
 /** Arithmetic a math function holds as written, unless it is a `%` over what only the browser knows, which CSS math has no operator for ({@link remOn}). */
 export function writtenPercent(op: string, [left, right]: readonly EvalValue[], modes: EvalModes, ev: Pick<ValueEvaluator, 'sassCalculations'>): Value | undefined {
   return op === '%' && ev.sassCalculations !== true && typeof left === 'object' && typeof right === 'object' && !isValueGroupArray(left) && !isValueGroupArray(right) && isMathOnDeferred(left, right)
-    ? remOn(left, right, modes)
+    ? remOn(keptSpelling(left, modes), keptSpelling(right, modes), modes)
     : undefined;
 }

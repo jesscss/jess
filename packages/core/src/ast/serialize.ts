@@ -225,7 +225,7 @@ import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
-import { mathOperand, negatedCall, operated as operatedOn, slashSeparates, writtenPercent } from './math-operand.js';
+import { mathOperand, negatedCall, slashOperated, writtenPercent } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type FnOrigin, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -5640,7 +5640,7 @@ const keepsOperation = (node: Operation, e: Lane): boolean =>
 const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
   (left.type === 'Dimension' && right.type === 'Dimension') || ev.sassCalculations === true
     ? ev.operate(node.operator, left, right, e.modes)
-    : operatedOn(node.operator, left, right, e.modes, keepsOperation(node, e) || (node.operator === '/' && node.mathOutsideParens && slashSeparates(left, right)));
+    : slashOperated(node, left, right, e.modes, keepsOperation(node, e));
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,

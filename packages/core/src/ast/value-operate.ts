@@ -861,15 +861,20 @@ export function exposedOperand(value: ValueGroup): ValueGroup {
   return colour || result !== null ? keepAsWritten(withFields(value, { result: colour ? 'color' : result })) : value;
 }
 
+/** Math on what only the browser knows is defined over one value, and a list is not one (V36). */
+function rejectList(op: string, left: Value, right: Value): void {
+  if (left.type === 'List' || right.type === 'List') {
+    throw new InvalidOperandError(`\`${op}\` is not defined on a list (\`${emitValue(left.type === 'List' ? left : right)}\`).`);
+  }
+}
+
 /**
  * Math on an operand only the browser knows is CSS's math, in a `calc()`: the
  * sugar an operator is (V38, owner 2026-11-01): `(var(--a) * 2)` is
  * `calc(var(--a) * 2)`.
  */
 export function mathOnDeferred(op: string, left: Value, right: Value): Value {
-  if (left.type === 'List' || right.type === 'List') {
-    throw new InvalidOperandError(`\`${op}\` is not defined on a list (\`${emitValue(left.type === 'List' ? left : right)}\`).`);
-  }
+  rejectList(op, left, right);
   const spelling = `${mathSpelling(left, op, false)} ${op} ${mathSpelling(right, op, true)}`;
   return carriedClash(makeCalc(makeArithmetic(op, left, right, true, spelling), calcBytes(spelling, op), true), left, right);
 }
@@ -911,6 +916,7 @@ function mathSpelling(v: Value, op: string, isRight: boolean): string {
  * operator, so it is never written in a `calc()`.
  */
 export function remOn(left: Value, right: Value, modes: EvalModes): Value {
+  rejectList('%', left, right);
   const separator = modes.compress === true ? ',' : ', ';
   return carriedClash(makeComputedCall('rem', makeList([left, right], ','), `rem(${mathSpelling(left, ',', false)}${separator}${mathSpelling(right, ',', false)})`), left, right);
 }

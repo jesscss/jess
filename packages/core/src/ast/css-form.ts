@@ -24,6 +24,7 @@ import { DimensionValueNode } from './node-ctors.js';
 import { makeColorHsl, makeColorRgb, makeDimension, withFields } from './value-factory.js';
 import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
+import { negated } from './math-operand.js';
 
 /** A form and the values its parameters bind to, the first of them the one its result's format follows. */
 export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, ...rest: readonly ValueGroup[]];
@@ -90,7 +91,12 @@ function bound(value: ValueGroup | undefined): ValueGroup | null {
     return value;
   }
   const call = insideParens(value);
-  return call.name === 'calc' && !call.computed ? keepAsWritten(withFields(call, { computed: true })) : call;
+  if (call.name === 'calc' && !call.computed) {
+    return keepAsWritten(withFields(call, { computed: true }));
+  }
+
+  /* A glued minus is one function token to CSS, invalid here as anywhere it is read as a number. */
+  return negated(call);
 }
 
 /** A form's math over numbers it knows, the channels it reads standing unbound; a number that cannot be spelled fails the call. */

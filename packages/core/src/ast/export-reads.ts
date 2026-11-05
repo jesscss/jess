@@ -8,8 +8,9 @@ import type { Fn } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
+import { calcOperand } from './math-operand.js';
 import { isBrowserColor } from './value-dispatch.js';
-import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type ValueGroup } from './value-eval.js';
+import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
 import type { ValueCheckLane } from './invalid-value-syntax.js';
 import { makeKeyword, makeList, withFields } from './value-factory.js';
@@ -137,6 +138,9 @@ export interface ExportState<F> {
    */
   inputs: Array<ExportInput> | undefined;
 
+  /** Exports read as their compile-time values, for what fills a slot ({@link knownArguments}). */
+  knownReads: boolean;
+
   /** An export the arguments of the computed call being evaluated read inside a call written out, which names it if that call fails. */
   writtenRead: string | undefined;
 
@@ -200,6 +204,8 @@ function siteOf(at: ReturnType<typeof callSiteLocation>): string {
 
 /** What an export read needs from the evaluator's lane (serialize.ts `Lane`). */
 export interface ExportLane<F> {
+  readonly ev?: SlotEvaluator | null;
+
   /** The declaration whose value is being written, `'argument'` while a mixin argument is bound, else undefined. */
   readonly checks: Declaration | 'argument' | undefined;
   readonly modes: EvalModes;
@@ -212,12 +218,16 @@ export interface ExportLane<F> {
   readonly referenceImportDepth?: number;
 }
 
+type SlotEvaluator = Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>;
+
+const IN_LARGER_ARGUMENT = 'inside a larger argument of a function Jess computes, which the runtime cannot follow';
+
 /** The `reader` of a variable read that handles an exported binding itself. */
 export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
 export function exportState<F>(): ExportState<F> {
-  return { refs: new Map(), behind: new Map(), inputs: undefined, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map() };
+  return { refs: new Map(), behind: new Map(), inputs: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map() };
 }
 
 /**
@@ -386,7 +396,7 @@ export function exportChecked<F, H extends { value: CallValue; frame: F; evaluat
   if (x?.pendingNames.has(name) === true && reader !== READS_EXPORT) {
     settle(x);
   }
-  const ref = hit === undefined || reader === READS_EXPORT || x === undefined ? undefined : refOf(x, hit);
+  const ref = hit === undefined || reader === READS_EXPORT || x === undefined || x.knownReads ? undefined : refOf(x, hit);
   if (ref === undefined || x === undefined || hit === undefined) {
     return hit;
   }
@@ -421,7 +431,7 @@ export function exportInput<F, H extends { value: CallValue; frame: F }>(hit: H 
     exportNotWritten(reader, `@${name}`, name, e, 'as the input of a function the runtime cannot run');
   }
   if (ref === IN_ARGUMENTS) {
-    exportNotWritten(reader, `@${name}`, name, e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
+    exportNotWritten(reader, `@${name}`, name, e, IN_LARGER_ARGUMENT);
   }
   return ref.source ?? hit;
 }
@@ -544,7 +554,14 @@ export function exportCall<F>(
   }
 
   const computedOver = (vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> =>
-    written === undefined ? dispatch(vals) : recovering(() => dispatch(vals), namingExport(e, node, written));
+    written === undefined
+      ? dispatch(vals)
+      : mapMaybe(fitsWritten(x, fn, vals, args, e.ev), (fits) => {
+          if (!fits) {
+            exportNotWritten(node, `@${written}`, written, e, IN_LARGER_ARGUMENT);
+          }
+          return recovering(() => dispatch(vals), namingExport(e, node, written));
+        });
   if (inputs.length === 0 && !typed.some(isThenable)) {
     return computedOver(typed);
   }
@@ -574,7 +591,7 @@ export function exportCall<F>(
           }
           return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe, node.name)), result], ','), e.modes);
         };
-        if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed, vals) && takesForm(fn, vals, inputs)) {
+        if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed, vals) && takesForm(fn, vals, inputs, e.ev)) {
           /* A value no form holds over what only the browser knows runs on the runtime (§3.4a, rung 4). */
           const noForm = (error: unknown): EvalValue => {
             if (isNoForm(error)) {
@@ -595,7 +612,7 @@ export function exportCall<F>(
 function namingExport<F>(e: ExportLane<F>, node: FunctionCall, written: string) {
   return (error: unknown): never => {
     if (isInvalidFunction(error)) {
-      exportNotWritten(node, `@${written}`, written, e, `inside a larger argument of a function Jess computes, which the runtime cannot follow (${error.reason})`);
+      exportNotWritten(node, `@${written}`, written, e, `${IN_LARGER_ARGUMENT} (${error.reason})`);
     }
     throw error;
   };
@@ -656,17 +673,55 @@ function typedRead(known: ValueGroup | undefined, written: ValueGroup): ValueGro
 }
 
 /** Whether every export a call read is an argument its CSS form takes as what only the browser knows. */
-function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>): boolean {
+function takesForm<F>(fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>, ev: SlotEvaluator | null | undefined): boolean {
   if (fn === undefined) {
     return false;
   }
-  return inputs.every(input => holdsFormSlot(fn, vals, input.value));
+  const known = vals.map(val => slotValue(val, ev));
+  return inputs.every(input => fn.params[vals.findIndex(val => lone(val) === input.value)]?.fits?.(slotValue(input.value, ev), known) === true);
 }
 
-/** Whether a slot has a form, and an export's value there is what the form holds, so the form means what the value computes to. */
-function holdsFormSlot(fn: Fn, vals: readonly ValueGroup[], value: ValueGroup): boolean {
-  return fn.params[vals.findIndex(val => lone(val) === value)]?.fits?.(value, vals.map(lone)) === true;
+/** What fills a slot at compile time: the number a `calc()` or math over known numbers computes to. */
+function slotValue(val: ValueGroup, ev: SlotEvaluator | null | undefined): ValueGroup {
+  const value = lone(val);
+  return ev != null && !isValueGroupArray(value) && value.type === 'FunctionCall' ? calcOperand(value, ev) : value;
 }
+
+/** A call's arguments again, every export read as its compile-time value. */
+function knownArguments<F>(x: ExportState<F>, args: (asWritten: boolean) => Array<MaybePromise<ValueGroup>>): Array<MaybePromise<ValueGroup>> {
+  const { inputs, writtenRead } = x;
+  x.inputs = [];
+  x.knownReads = true;
+  try {
+    return args(false);
+  } finally {
+    x.inputs = inputs;
+    x.writtenRead = writtenRead;
+    x.knownReads = false;
+  }
+}
+
+/**
+ * Whether each slot holds the number an export read inside it computes to
+ * (`(@a * 2)`), as `fits` asks of a bare `@a`. No recipe follows such a read, so a
+ * slot that does not is the caller's to report.
+ */
+function fitsWritten<F>(x: ExportState<F>, fn: Fn | undefined, vals: ReadonlyArray<MaybePromise<ValueGroup>>, args: (asWritten: boolean) => Array<MaybePromise<ValueGroup>>, ev: SlotEvaluator | null | undefined): MaybePromise<boolean> {
+  if (fn?.params.some(param => param.fits !== undefined) !== true) {
+    return true;
+  }
+  return combineAll(knownArguments(x, args), (known) => {
+    const slots = known.map(val => slotValue(val, ev));
+    return slots.every((value, index) => {
+      const fits = fn.params[index]?.fits;
+      const read = vals[index];
+      const asKnown = read === undefined || isThenable(read) || (!isValueGroupArray(lone(read)) && isDimensionValue(lone(read)));
+      return fits === undefined || asKnown || !isDimensionValue(value) || fits(value, slots);
+    });
+  });
+}
+
+const isDimensionValue = (value: ValueGroup): boolean => !isValueGroupArray(value) && value.type === 'Dimension';
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */
 function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>, e: ExportLane<F>): ExportRecipe {
