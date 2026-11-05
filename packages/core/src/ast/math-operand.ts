@@ -17,7 +17,7 @@
  *
  * HARD MODULE BOUNDARY: the value domain and the operand rule only.
  */
-import { DivisionByZeroError, InvalidOperandError, emitValue, isValueGroupArray, type EvalModes, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
+import { DivisionByZeroError, InvalidOperandError, UnitArithmeticError, emitValue, isValueGroupArray, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { operandRule } from './value-operate.js';
 
 type Divider = Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>;
@@ -88,6 +88,50 @@ export function numberOperand(value: ValueGroup, ev: Divider, modes: EvalModes):
   } catch (error) {
     if (error instanceof DivisionByZeroError) {
       return value;
+    }
+    throw error;
+  }
+}
+
+/** CSS's own rule for the units in a `calc()`: two that do not convert have no value the compile knows. */
+const CSS_UNITS: EvalModes = { unitMode: 'strict' };
+
+/** What a `calc()`'s math computes to, or `undefined` when a leaf of it is not a number. */
+function calcValue(value: EvalValue, ev: Divider): Dimension | undefined {
+  if (typeof value === 'string' || isValueGroupArray(value)) {
+    return undefined;
+  }
+  switch (value.type) {
+    case 'Dimension':
+      return value;
+    case 'FunctionCall':
+      return value.name === 'calc' ? calcValue(value.args, ev) : undefined;
+    case 'Arithmetic': {
+      const left = calcValue(value.left, ev);
+      if (value.op === '') {
+        return left;
+      }
+      const right = left && calcValue(value.right, ev);
+      const out = right && left && ev.operate(value.op, left, right, CSS_UNITS);
+      return out?.type === 'Dimension' ? out : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The whole argument of a parameter typed as a number: an authored `calc()` the
+ * compile can compute is the number it computes to (`percentage(calc(0.5 + 0.5))`
+ * is `100%`). One with a leaf only the browser knows, or units that do not
+ * convert (`calc(1px + 1em)`, V18), stays the `calc()`.
+ */
+export function calcOperand(call: FunctionCall, ev: Divider): ValueGroup {
+  try {
+    return calcValue(call, ev) ?? call;
+  } catch (error) {
+    if (error instanceof DivisionByZeroError || error instanceof UnitArithmeticError) {
+      return call;
     }
     throw error;
   }

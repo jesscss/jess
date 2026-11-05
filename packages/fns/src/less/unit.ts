@@ -1,4 +1,4 @@
-import { defineForm, formNumber, type FormCall } from '@jesscss/core/form';
+import { asNumber, defineForm, formNumber, type FormCall } from '@jesscss/core/form';
 import { textOf, type Fn, type FunctionCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 import { isDimension, NUMBER_ARG } from './css-math-args.js';
 import { unit as form } from './css-forms.generated.js';
@@ -13,6 +13,6 @@ export const unit: Fn = /* @__PURE__ */ defineForm('unit', {
     if (to?.type === 'FunctionCall') {
       throw new TypeError('unit: a unit only the browser knows cannot pick a form');
     }
-    return [form, isDimension(value) ? formNumber(value.number) : value, formNumber(1, to === undefined ? '' : textOf(to))];
+    return [form, isDimension(value) ? formNumber(value.number) : asNumber(value), formNumber(1, to === undefined ? '' : textOf(to))];
   }
 });

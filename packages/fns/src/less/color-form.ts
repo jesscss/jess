@@ -1,4 +1,4 @@
-import { defineForm, formNumber, type FormCall } from '@jesscss/core/form';
+import { asNumber, defineForm, formNumber, knownUnit, type FormCall } from '@jesscss/core/form';
 import { textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 
 /** A colour a form's relative colour reads as its origin, or what only the browser knows of one. */
@@ -17,9 +17,13 @@ export function defineAdjuster(name: string, absolute: FormCall[0], relative: Fo
         throw new TypeError(`${name}: a method only the browser knows cannot pick a form`);
       }
       const isRelative = method !== undefined && textOf(method) === 'relative';
-      return amount.type === 'FunctionCall'
+      if (amount.type !== 'FunctionCall') {
+        return [isRelative ? relative : absolute, color, channelAmount(amount)];
+      }
+      const unit = knownUnit(amount);
+      return unit === undefined || unit === '%'
         ? [isRelative ? relativeDeferred : absoluteDeferred, color, amount]
-        : [isRelative ? relative : absolute, color, channelAmount(amount)];
+        : [isRelative ? relative : absolute, color, asNumber(amount, unit)];
     }
   });
 }

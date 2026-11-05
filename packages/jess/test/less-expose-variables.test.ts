@@ -126,6 +126,25 @@ describe('Less @expose variables (A4)', () => {
     await expect(render(source)).resolves.toContain(expected);
   });
 
+  it.each([
+    ['a colour', '@expose c;\n@c: #c00;\n.a { v: (@c * 2); }'],
+    ['a colour keyword', '@expose c;\n@c: red;\n.a { v: (@c * 2); }'],
+    ['a keyword', '@expose c;\n@c: foo;\n.a { v: (@c * 2); }'],
+    ['a string', '@expose c;\n@c: "s";\n.a { v: (@c * 2); }'],
+    ['a list', '@expose c;\n@c: 1px 2px;\n.a { v: (@c * 2); }'],
+    ['a colour bound as a mixin argument', '@expose c;\n@c: #c00;\n.m(@p) { v: (@p * 2); }\n.a { .m(@c); }']
+  ])('fails math on an exposed variable of a known wrong type: %s', async (_what, source) => {
+    await expect(render(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+
+  it.each([
+    ['a number', '@expose g;\n@g: 8;\n.a { v: @g + 1; }', 'v: calc(var(--g, 8) + 1);'],
+    ['what only the browser knows', '@expose g;\n@g: var(--z);\n.a { v: (@g * 2); }', 'v: calc(var(--g, var(--z)) * 2);'],
+    ['a mixin argument', '@expose g;\n@g: 8px;\n.m(@p) { v: (@p * 2); }\n.a { .m(@g); }', 'v: calc(var(--g, 8px) * 2);']
+  ])('keeps math on an exposed variable holding %s as calc()', async (_what, source, expected) => {
+    await expect(render(source)).resolves.toContain(expected);
+  });
+
   describe('through a function that reads a file', () => {
     /** A 17×9 PNG header beside the entry: enough for `image-width()`. */
     async function renderBesideImage(source: string): Promise<string> {

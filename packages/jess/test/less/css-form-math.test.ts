@@ -148,6 +148,69 @@ describe('a math built-in over a known input', () => {
   });
 });
 
+describe('a form over a value whose type its structure gives is valid CSS of that type', () => {
+  it.each([
+    ['ceil(var(--x) + 1px)', 'round(up, var(--x) + 1px, 1px)'],
+    ['ceil(percentage(var(--x)))', 'round(up, var(--x) * 100%, 1%)'],
+    ['floor(var(--x) * 1em)', 'round(down, var(--x) * 1em, 1em)'],
+    ['round(var(--x) + 1px)', 'calc(sign(var(--x) + 1px) * round(abs(var(--x) + 1px), 1px))'],
+    ['round(percentage(var(--x)), 1)', 'calc(sign(var(--x) * 100%) * round(abs(var(--x) * 100%), 0.1%))'],
+    ['mod(var(--x) + 1px, 3)', 'rem(var(--x) + 1px, 3px)'],
+    ['percentage(var(--x) + 1px)', 'calc((var(--x) + 1px) / 1px * 100%)'],
+    ['percentage(var(--x) + 180deg)', 'calc((var(--x) + 180deg) / 1rad * 100%)'],
+    ['unit(var(--x) + 1px, em)', 'calc((var(--x) + 1px) / 1px * 1em)'],
+    ['spin(#c00, var(--a) + 10deg)', 'hsl(from #c00 calc(h + (var(--a) + 10deg) / 1deg) s l)'],
+    ['darken(#c00, var(--a) + 5)', 'hsl(from #c00 h s clamp(0, l - (var(--a) + 5), 100))'],
+    ['darken(#c00, var(--a) + 5%)', 'hsl(from #c00 h s clamp(0, l - (var(--a) + 5%) / 1%, 100))']
+  ])('%s', async (source, form) => {
+    await expect(value(source)).resolves.toBe(form);
+  });
+
+  it('stays a number form where structure does not give a type (Q3)', async () => {
+    await expect(value('ceil(var(--x))')).resolves.toBe('round(up, var(--x), 1)');
+    await expect(value('ceil(var(--x) * 2)')).resolves.toBe('round(up, var(--x) * 2, 1)');
+    await expect(value('ceil(var(--x) + 1)')).resolves.toBe('round(up, var(--x) + 1, 1)');
+  });
+});
+
+describe('an authored calc() a built-in takes', () => {
+  it.each([
+    ['percentage(calc(0.5 + 0.5))', '100%'],
+    ['percentage(calc((1 + 1) * 2))', '400%'],
+    ['ceil(calc(1px + 0.5px))', '2px'],
+    ['round(calc(1.25 + 1), 1)', '2.3'],
+    ['mod(calc(5px + 2px), 3)', '1px'],
+    ['unit(calc(1px + 1px), em)', '2em'],
+    ['convert(calc(1in + 1in), cm)', '5.08cm'],
+    ['darken(#c00, calc(5% + 5%))', '#990000'],
+    ['abs(calc(1px - 3px))', '2px']
+  ])('computes %s where all its leaves are known', async (source, known) => {
+    await expect(value(source)).resolves.toBe(known);
+  });
+
+  it('computes in every position', async () => {
+    await expect(css('@x: calc(0.5 + 0.5);\n.a { b: percentage(@x); }')).resolves.toContain('b: 100%');
+    await expect(css('.m(@x) { b: percentage(@x); }\n.a { .m(calc(0.5 + 0.5)); }')).resolves.toContain('b: 100%');
+    await expect(value('1px solid percentage(calc(0.5 + 0.5))')).resolves.toBe('1px solid 100%');
+    await expect(value('calc(percentage(calc(0.5 + 0.5)) - 1px)')).resolves.toBe('calc(100% - 1px)');
+    await expect(value('percentage(calc(0.5 + 0.5))', { compress: true })).resolves.toBe('100%');
+    for (const mathMode of ['always', 'parens-division', 'parens', 'strict']) {
+      await expect(value('percentage(calc(0.5 + 0.5))', { mathMode })).resolves.toBe('100%');
+    }
+  });
+
+  it('stays what it is where the compile cannot compute it', async () => {
+    await expect(value('percentage(calc(1px + 1em))')).resolves.toBe('percentage(calc(1px + 1em))');
+    await expect(value('percentage(calc(1 / 0))')).resolves.toBe('percentage(calc(1 / 0))');
+    await expect(value('percentage(calc(var(--a) + 1))')).resolves.toBe('calc(calc(var(--a) + 1) * 100%)');
+  });
+
+  it('prints as written where nothing takes it', async () => {
+    await expect(value('calc(0.5 + 0.5)')).resolves.toBe('calc(0.5 + 0.5)');
+    await expect(value('rgb(calc(10 + 20), 0, 0)')).resolves.toBe('rgb(calc(10 + 20), 0, 0)');
+  });
+});
+
 describe('other dialects', () => {
   it('.scss still rejects math on what only the browser knows outside a calculation', async () => {
     const compiler = new Compiler({});

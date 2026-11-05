@@ -9,7 +9,7 @@
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { isValueGroup, isValueGroupArray, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
-import { numberOperand } from './math-operand.js';
+import { calcOperand, numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { callKeyword, makeCollection, makeList, NULL } from './value-factory.js';
@@ -142,13 +142,17 @@ export function numberArguments(fn: Fn, args: ValueGroup, ev: Pick<ValueEvaluato
   const tail = fn.variadic === true ? fn.params.at(-1) : fn.params.find(isRest);
   for (let index = 0; index < items.length; index++) {
     const item = items[index]!;
-    if (isValueGroupArray(item) || item.type !== 'List' || item.sep !== '/') {
+    if (isValueGroupArray(item)) {
+      continue;
+    }
+    const isCalc = item.type === 'FunctionCall' && item.name === 'calc' && ev.sassCalculations !== true;
+    if (!isCalc && (item.type !== 'List' || item.sep !== '/')) {
       continue;
     }
     const param = fn.params[index] ?? tail;
     const type = param === undefined ? null : normalizeParamType(param.type ?? param.kinds);
-    if (type !== null && type !== 'any' && type.includes('Dimension') && !type.includes('List')) {
-      (out ??= [...items])[index] = numberOperand(item, ev, modes);
+    if (type !== null && type !== 'any' && type.includes('Dimension') && (isCalc || !type.includes('List'))) {
+      (out ??= [...items])[index] = isCalc ? calcOperand(item, ev) : numberOperand(item, ev, modes);
     }
   }
   if (out === undefined) {

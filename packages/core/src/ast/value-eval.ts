@@ -163,7 +163,7 @@ export interface Keyword {
  * exact type follows from its arguments, §10.9), `null` when only the browser
  * knows (`var()`, an unknown function).
  */
-export type CallResult = 'color' | 'numeric' | null;
+export type CallResult = 'color' | 'numeric' | 'other' | null;
 
 /**
  * A call written out as-is (an unknown or CSS function, a built-in that could

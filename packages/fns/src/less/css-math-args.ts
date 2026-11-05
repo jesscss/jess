@@ -1,4 +1,4 @@
-import { formNumber } from '@jesscss/core/form';
+import { formNumber, knownUnit } from '@jesscss/core/form';
 import { isValueGroupArray, type Dimension, type ValueGroup } from '@jesscss/core/value';
 
 /** A number a form reads, or what only the browser knows of one, taken to hold a number (Q3). */
@@ -11,5 +11,5 @@ export const isDimension = (value: ValueGroup): value is Dimension =>
 export const plain = (value: ValueGroup): ValueGroup =>
   isDimension(value) ? formNumber(value.number, value.unit) : value;
 
-/** The unit a step or a divisor is written in beside `value`: a known value's, else a number's (Q3). */
-export const unitBeside = (value: ValueGroup): string => isDimension(value) ? value.unit : '';
+/** The unit a step or a divisor is written in beside `value`: the one it is known to be in, else a number's (Q3). */
+export const unitBeside = (value: ValueGroup): string => knownUnit(value) ?? '';

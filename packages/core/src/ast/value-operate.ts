@@ -14,6 +14,7 @@
 import Big from 'big.js';
 import { DimensionValueNode } from './node-ctors.js';
 import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Arithmetic, type Color, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
+import { groupItems } from './value-list.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeAny, makeArithmetic, makeCalc, makeColorRgb, makeCompoundDimension, makeDimension, makeGroupedKeyword, makeKeyword, makeQuoted, withFields } from './value-factory.js';
@@ -763,7 +764,7 @@ function invalidOperand(v: ValueGroup, sass: boolean, scss: boolean): string | n
       }
       return !keptAsWritten.has(v) ? 'keyword' : keptAsWritten.get(v) === '' ? 'function call' : null;
     case 'FunctionCall':
-      return writtenCalcInner(v) === null && (scss || v.result === 'color') ? 'function call' : null;
+      return writtenCalcInner(v) === null && (scss || v.result === 'color' || v.result === 'other') ? 'function call' : null;
     case 'Color':
       return scss ? 'color' : null;
     case 'Quoted':
@@ -870,6 +871,23 @@ const isColourOperand = (v: ValueGroup): boolean =>
 /** A colour never adds to what only the browser knows: `calc()` holds no colour. */
 const colourAndDeferred = (left: ValueGroup, right: ValueGroup): boolean =>
   (isColourOperand(left) && isDeferredOperand(right)) || (isColourOperand(right) && isDeferredOperand(left));
+
+/**
+ * An exposed variable read as an operand: its `var()`, of the type its compile-time
+ * value is, so that math on a known wrong type fails as it does on the value (V36).
+ */
+export function exposedOperand(value: ValueGroup): ValueGroup {
+  if (isValueGroupArray(value) || value.type !== 'FunctionCall') {
+    return value;
+  }
+  const held = groupItems(value.args)[1];
+  if (held === undefined) {
+    return value;
+  }
+  const result = isValueGroupArray(held) || held.type === 'List' || invalidOperand(held, false, false) !== null ? 'other' : null;
+  const colour = !isValueGroupArray(held) && (isColourOperand(held) || (held.type === 'FunctionCall' && held.result === 'color'));
+  return colour || result !== null ? keepAsWritten(withFields(value, { result: colour ? 'color' : result })) : value;
+}
 
 /**
  * Math on an operand only the browser knows is CSS's math, in a `calc()`: the
