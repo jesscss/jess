@@ -162,6 +162,7 @@ test('lookahead: wrappers, guards and optional leads do not hide a consuming arm
   caught(`const probe = optional(parser({ trivia: null }, ${SEQ}));`);
   caught(`const name = 'A';\nconst probe = choice(node(name, ${SEQ}, c => c), literal('y'));`);
   caught(`const probe = choice(field('a', ${SEQ}), literal('y'));`);
+  caught(`const probe = optional(parser({ trivia: null }, ${WIDE}));`);
   caught(`const probe = choice(sequence(gate(s => s), ${WIDE}, literal('x')), literal('y'));`);
   caught(`const probe = choice(sequence(notAdjacent(), ${WIDE}, literal('x')), literal('y'));`);
   caught(`const probe = choice(sequence(adjacent(), ${WIDE}, literal('x')), literal('y'));`);
