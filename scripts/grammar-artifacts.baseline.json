@@ -130,22 +130,22 @@
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 136838,
+          "bytes": 137145,
           "ratio": 0.68,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 136921,
+          "bytes": 137228,
           "ratio": 0.68,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 136844,
+          "bytes": 137151,
           "ratio": 0.68,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 136927,
+          "bytes": 137234,
           "ratio": 0.68,
           "assemblyFunctions": null
         }
