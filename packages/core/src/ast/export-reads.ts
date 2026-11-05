@@ -5,7 +5,7 @@ import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
-import { toHex } from './color.js';
+import { exactHex } from './color.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { isBrowserColor } from './value-dispatch.js';
@@ -543,12 +543,8 @@ export function exportCall<F>(
           return result;
         }
         for (const read of reads) {
-          const text = runtimeLiteral(read.value);
-          if (text === undefined) {
-            exportNotWritten(node, `${node.name}()`, read.name, e, `with the value \`${emitValue(read.value)}\`, which the runtime cannot read`);
-          }
           if (!x.runtime.defaults.has(read.name)) {
-            x.runtime.defaults.set(read.name, text);
+            x.runtime.defaults.set(read.name, emitValue(read.value));
           }
         }
         if (typeof checks !== 'object' && checks !== 'argument') {
@@ -612,17 +608,13 @@ const holdsCall = (v: ValueGroup): boolean => isValueGroupArray(v)
   : v.type === 'List' ? v.value.some(holdsCall) : v.type !== 'Quoted' && emitValue(v).includes('(');
 
 /**
- * A value as the runtime reads it, a CSS literal (`packages/fns/src/runtime.ts`),
- * or undefined when it holds a call. A known colour written as a call is its hex.
- * ponytail: hex keeps 8 bits of alpha; a runtime that parses colour calls would keep more.
+ * A fixed argument as the runtime reads it, a CSS literal (`packages/fns/src/runtime.ts`),
+ * or undefined when it holds a call. A known colour written as a call is its hex when
+ * hex holds it exactly. ponytail: a runtime that parses colour calls would take the rest.
  */
 function runtimeLiteral(value: ValueGroup): string | undefined {
   const v = lone(value);
-  if (!isValueGroupArray(v) && v.type === 'Color') {
-    const text = emitValue(v);
-    return text.includes('(') ? toHex(v) : text;
-  }
-  return holdsCall(v) ? undefined : emitValue(value);
+  return !isValueGroupArray(v) && v.type === 'Color' && holdsCall(v) ? exactHex(v) : holdsCall(v) ? undefined : emitValue(value);
 }
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */

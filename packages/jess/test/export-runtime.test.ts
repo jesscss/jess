@@ -93,6 +93,8 @@ describe('the export runtime', () => {
 
   it.each([
     '@less.fade(var(--x), @a)',
+    '@less.fade(hsl(120, 50%, 50%), @a)',
+    '@less.mix(rgba(1, 2, 3, .5), red, @a)',
     '@less.hsva(var(--h), 50%, 50%, @a)',
     '@less.hsv(var(--h), 50%, @a)',
     '@less.darken(var(--x), @a)'
@@ -142,28 +144,29 @@ describe('the export runtime', () => {
   });
 
   it.each([
-    ['@a: rgb(1, 2, 3); @b: #123;', '@less.mix(@a, @b)', { b: '#456' }],
-    ['@a: 10; @b: rgb(1, 2, 3);', '@less.mix(@b, #000, @a)', { a: '5' }]
-  ])('reads a known colour default as its hex: %s %s', async (declarations, expression, values) => {
-    const exported = await compile(`@use "#less";\n@expose a, b;\n${declarations}\n.x { v: ${expression}; }`);
+    ['@a: var(--z);', '@less.iscolor(@a)', { a: '#c00' }, 'true'],
+    ['@a: 0 1px 2px rgba(0, 0, 0, .5);', '@less.extract(@a, 4)', { a: '0 1px 2px #000' }, '#000'],
+    ['@a: var(--p), var(--q);', '@less.length(@a)', { a: '1, 2, 3' }, '3']
+  ])('runs a recipe of one export whose default holds a call: %s %s', async (declaration, expression, values, result) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n${declaration}\n.x { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars(values)).not.toThrow();
-  });
-
-  it('fails a recipe reading a default the runtime cannot read, not the browser', async () => {
-    const source = '@use "#less";\n@expose a, b;\n@a: var(--x);\n@b: #123;\n.x { v: @less.mix(@a, @b); }';
-    await expect(new Compiler({}).renderString(source, { filePath: 'entry.less', extension: '.less' })).rejects.toThrow();
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars(values);
+    expect(Object.values(vars)).toContain(result);
   });
 
   it.each([
-    '@less.mix(@a, hsl(0, 50%, 50%))',
-    '@less.mix(@a, hsl(0 50% 50%))',
+    '@less.mix(@a, hsl(0, 100%, 50%))',
     '@less.mix(@a, @less.rgb(1, 2, 3))',
-    '@less.fade(hsl(120, 50%, 50%), 25%)',
-    '@less.replace("a(b)", "b", @a)',
-    '@less.extract("a(b)" c, 1)'
-  ])('compiles %s beside a fixed argument the runtime can read', async (expression) => {
+    '@less.fade(rgb(1 2 3), 25%)'
+  ])('compiles %s, whose colour hex holds exactly', async (expression) => {
     await expect(compile(`@use "#less";\n@expose a;\n@a: #c00;\n.x { v: ${expression}; }`)).resolves.toBeDefined();
+  });
+
+  it('recomputes a string with parens as a compile does', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: c;\n.x { v: @less.replace("a(b)", "b", @a); }');
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: 'z' });
+    expect(Object.values(vars)).toContain('"a(z)"');
   });
 
   it('leaves nothing behind for a form over a form', async () => {

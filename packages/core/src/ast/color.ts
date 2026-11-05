@@ -112,7 +112,7 @@ export function colorRgb(c: Color): [number, number, number] {
 }
 
 /** Serialize a color to hex — `#rrggbb`, with a trailing `aa` byte when alpha < 1. */
-export function toHex(c: Color): string {
+function toHex(c: Color): string {
   const values = colorRgb(c) as number[];
   const alpha = clamp(c.alpha, 1);
   if (alpha < 1) {
@@ -124,6 +124,11 @@ export function toHex(c: Color): string {
     out += hex.length === 1 ? `0${hex}` : hex;
   }
   return out;
+}
+
+/** A colour's hex when hex holds it exactly: whole channels, and an alpha of 0 or 1. */
+export function exactHex(c: Color): string | undefined {
+  return c.rgb.every(channel => Number.isInteger(channel) && channel >= 0 && channel <= 255) && (c.alpha === 1 || c.alpha === 0) ? toHex(c) : undefined;
 }
 
 /**

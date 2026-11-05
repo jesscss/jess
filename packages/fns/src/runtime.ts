@@ -1,6 +1,6 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { Fn, ValueGroup } from '@jesscss/core/value';
-import { DEFAULT_MODES, emitValue, makeList, sniffLiteral } from '@jesscss/core/value';
+import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, sniffLiteral } from '@jesscss/core/value';
 
 /**
  * The browser runtime for a stylesheet's exported variables (ledger A4,
@@ -49,7 +49,7 @@ export interface Runtime {
   set(values: ExportValues, target?: StyleTarget): void;
 }
 
-const CTX = { modes: DEFAULT_MODES, stringify: emitValue };
+const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value) };
 
 /** The page's document, in a browser; read only when `set` is given no target. */
 declare const document: { readonly documentElement: StyleTarget };
