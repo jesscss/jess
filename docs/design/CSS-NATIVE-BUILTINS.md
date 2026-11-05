@@ -93,8 +93,11 @@ differs: a resolved colour keeps its input's format (V10), as today.
 
 Each built-in has one definition, its CSS form, and resolving means evaluating
 that form (section 3). The evaluation is still Jess's own implementation of CSS
-colour and math, so the invariant is pinned by a browser conformance test that
-slice 1 adds and names (section 4), not assumed.
+colour and math, so the invariant is pinned by a browser conformance test, not
+assumed: `packages/core/src/ast/__tests__/css-color.test.ts` (slice 2a) holds
+each CSS form with the colour a browser computes for it (`getComputedStyle`,
+the browser and version named in the test), and asserts that the compile
+resolves the same colour.
 
 Where the Less meaning and a naive CSS form disagree, and how each is handled:
 
@@ -310,7 +313,8 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 | --- | --- | --- |
 | 0 | Move the inventory into `packages/fns` and add a test that every registered colour/math `Fn` has exactly one row (the runtime work reads it). No output change. | — |
 | 1 | The IR for calls: a call written out as-is (`fallbackCall`) carries its `call` (§3.2). No output change, proven on the full corpus. Kept math's structure moves to slice 5. Still text, with `call: null`: a CSS-shaped colour call kept as authored (`preserveCall`), a kept `calc()` (`evalCalc`), CSS `if()` (`pickIfValue`), a call inside a `var()` fallback, and a paren group around a call (`(var(--a))`). Slice 2 gives each the structure its built-ins read, with the Q12 cases. | — |
-| 2 | Templates: the `.jess` template build step in `@jesscss/fns`, resolution of relative `hsl()`, the browser conformance test. Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. | — |
+| 2a | Resolution of a modern `hsl()` a consumer demands, when its callable wrote it out as-is (`packages/core/src/ast/css-color.ts`): absolute and relative, the channel keywords bound to the origin's sRGB values while the channels evaluate, so the math in them is Less math (§2 Precision), typed as CSS math (`l - 10%` and `h + 30deg` are not CSS, so they stay unresolved). Unresolved, and printed as written, when the origin or a channel is unknown, the alpha has no `/`, a channel fails only bound (`calc(l / 0)`), or the saturation or lightness leaves 0–100 (out of the sRGB gamut, which the browser gamut-maps). A resolved colour keeps the written spelling until an operation consumes it (V1), so a mixin argument prints it as before. A colour function in a channel binds its own channels. A callable that computes the call itself (Sass `hsl()` on an absolute colour) still does. The browser conformance test. The Q12 relative-colour case; no corpus fixture moves. Q14 is open. | — |
+| 2b | Templates: the `.jess` template build step in `@jesscss/fns`, and the `FunctionCall` value kind (§3.2). Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. `clamp()` resolves in a channel. | 2a |
 | 3 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` (relative `rgb()`). | slice 2 |
 | 4 | `hsv` `hsva` → `hwb()`. | slice 2 |
 | 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | — |
@@ -431,6 +435,8 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   input picks by the larger WCAG 2.1 contrast ratio, the threshold argument
   being the only exception; this moves some of the 19 `contrast()` cases in
   `tests-unit/functions/functions.less` (to be counted).
+
+- **Q14 — the syntax a built-in writes its result in, for an input written in modern syntax.** OPEN. With slice 2a a built-in can receive a colour written in modern syntax (`darken(hsl(120 50% 40%), 5%)`), and the kernels disagree: `darken`, `lighten`, `saturate`, `desaturate` and `spin` write legacy syntax (`hsl(120, 50%, 35%)`), while `fade` keeps the modern syntax (`rgb(51 153 51 / 0.5)`). V10 decides the format (HSL in, HSL out), not the syntax. Recommendation: modern in, modern out, decided in the one function that picks a resolved form's format (§2 Result format), when slice 2b deletes the kernels. The conformance test pins the colour, not this spelling.
 
 ### The owner's framing (2026-11-01): built-ins are sugar for CSS
 

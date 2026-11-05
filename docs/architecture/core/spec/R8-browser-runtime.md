@@ -54,9 +54,10 @@ or needs JS) to decide what ships in the bundle.
    `vars()`/`set()` over the recipes slice 2 returns, calling the functions
    they name. It recomputes values and never re-serializes CSS, so it does not
    need the R7.4 per-kind emit split (rulings below).
-4. **Bundler output.** `rollup-plugin-jess` / Vite emit the `.css` plus the
-   `.js` module when a file has an `@expose`.
-5. **Class-name scoping (R7.3).** Its O-CSSM items stay open.
+4. **Bundler output.** Built; contract below. `rollup-plugin-jess` / Vite
+   emit the `.css` plus the `.js` module when a file has an `@expose`.
+5. **Class-name scoping (R7.3).** Not built in Jess (R7 O-CSSM-1): a `.module.*`
+   stylesheet uses the bundler's CSS Modules (slice 4 contract).
 
 ## Slice 1 contract (as built)
 
@@ -192,6 +193,47 @@ or needs JS) to decide what ships in the bundle.
   spelling as written. A relative module is refused with a message, since a
   `@use` in an imported file resolves against that file, which the recipe does
   not record (`packages/compiler/src/runtime-modules.ts`).
+
+## Slice 4 contract (as built)
+
+- **`rollup-plugin-jess`** compiles `.jess` and `.less` imports
+  (`renderToResult`); one plugin serves Rollup and Vite (`enforce: 'pre'`).
+  **`vite-plugin-jess`** is that plugin under Vite's name and `Plugin` type,
+  so there is one implementation.
+- **CSS Modules.** Under Vite, a `.module.*` stylesheet's CSS has the id
+  `<file>.module.css`, so Vite's CSS Modules scope it after Jess
+  has evaluated it (`&__el` is scoped as the name it builds). The module
+  re-exports Vite's class map as its default export and each class as a named
+  export, as `import styles from './x.module.css'` does; `vars`/`set` are
+  unchanged, so a class named `.vars` or `.set` is read from the default
+  export. Under plain Rollup the CSS is emitted unscoped.
+  The stylesheet's module is the virtual id `\0jess:<file>.js`, so no CSS
+  plugin claims it.
+- **CSS.** Rollup: emitted as the asset `<name>.css` (`emitCss`,
+  `cssFileName`). Vite: the module imports `<file>.css`, an id beside the
+  stylesheet that no file backs, so Vite injects it in dev and bundles it in a
+  build, and `url()`, `@import` and `composes` in it resolve from the
+  stylesheet's directory. The plugin's `handleHotUpdate` adds that id to an
+  edit of the stylesheet. `<file>?inline` is the same CSS as a string. A
+  `<link>` to a `.less` or `.jess` file is not served in dev.
+- **Resolving the runtime.** The module's `@jesscss/fns` imports resolve from
+  the stylesheet, then from the plugin. Vite resolves bare imports itself; a
+  Rollup build needs `@rollup/plugin-node-resolve`.
+- **Module.** `export default` is the CSS. A stylesheet with runtime data also
+  has `export const { vars, set } = createRuntime({ defaults, derived })`, each
+  recipe function imported by name from its module (`@jesscss/fns/less`).
+  Imports resolve from the stylesheet, then from the plugin, which depends on
+  `@jesscss/fns`.
+- **Diagnostics** go through Rollup once: errors as `this.error`, warnings as
+  `this.warn`, each with its file, line and column.
+- **Browser-safe functions.** `@jesscss/fns` imports the value barrel
+  (`@jesscss/core/value`, which depends only on `big.js`) instead of the
+  `@jesscss/core` root, whose `node:fs` imports break a browser build, and
+  `util/mime.ts` no longer imports `node:path`. Measured 2026-11-01 with
+  Vite 6: `darken` + runtime is 60 KB minified, 17.6 KB gzip.
+- ponytail: imports of a stylesheet are not watched (`loadedUrls` is empty);
+  only the stylesheet itself is. Watch the render's loaded files when the
+  compiler reports them.
 
 ## Orchestrator rulings for slices 3–5 (2026-11-01, owner delegated: *"You do not have to wait for my permission for slices. Get all slices done"*)
 

@@ -1,5 +1,5 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
-import type { Fn, ValueGroup } from '@jesscss/core';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
 import { DEFAULT_MODES, emitValue, makeList, sniffLiteral } from '@jesscss/core/value';
 
 /**
