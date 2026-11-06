@@ -118,6 +118,7 @@ export interface FnIo {
 interface BaseSpec {
   /** The name is also a CSS filter function (`filter-position.ts`). */
   readonly filter?: boolean;
+
   /** Dispatch name while this declarative spec is being assembled into a callable. */
   readonly name?: string;
   readonly params: readonly ParamSpec[];

@@ -996,7 +996,6 @@ class JessPrinter {
     return `${name}(${args.join(', ')})`;
   }
 
-
   /**
    * A CSS colour function's modern slot with its alpha slash a separator
    * ({@link colorAlphaSlash}): `0 128 255 / 50%`, which `.jess` reads as the
