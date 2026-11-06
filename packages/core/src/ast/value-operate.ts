@@ -714,10 +714,9 @@ export function groupAsWritten(v: Value): Value {
  * unoperated `18 / 2` a mixin argument binds), and an operation kept as
  * written whose operands the rule did not reject (`foo / bar`). In every
  * dialect that computes: a keyword (`foo`,
- * `auto`), a string, quoted or escaped, a colour call written out as-is, and in
- * `.scss` any call written out as-is (`var(--x)`; owner 2026-10-23). Elsewhere math
- * on a call is CSS's: what only the browser knows is in a `calc()` ({@link mathOnDeferred},
- * V38). A colour, a named one included (V13), only
+ * `auto`), a string, quoted or escaped, and a call of a known other type written
+ * out as-is. Other math on a call is CSS's: what only the browser knows is in a
+ * `calc()` ({@link mathOnDeferred}, V38). A colour, a named one included (V13), only
  * in `.scss` (`scss`; owner 2026-10-23: *"ya keep it an error in .scss"*):
  * Less and `.jess` keep colour math. A boolean, a list and a map in `.scss`
  * and `.jess` (`sass`).
