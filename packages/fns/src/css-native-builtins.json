@@ -142,7 +142,9 @@
       "dialect": "less",
       "name": "rgb",
       "class": "already-css",
-      "spec": "css-color-4 §5", "notes": "3+ slots and one colour; its 2-slot overload is as Less rgba. An exposed variable in a channel prints over its var() as written; an exposed colour is that var()" },
+      "spec": "css-color-4 §5",
+      "notes": "3+ slots and one colour; its 2-slot overload is as Less rgba. An exposed variable in a channel prints over its var() as written; an exposed colour is that var()"
+    },
     {
       "dialect": "less",
       "name": "hsl",
@@ -290,7 +292,8 @@
       "dialect": "less",
       "name": "abs",
       "class": "already-css",
-      "spec": "css-values-4 §10.6"
+      "spec": "css-values-4 §10.6",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
@@ -329,64 +332,70 @@
       "name": "min",
       "class": "already-css",
       "spec": "css-values-4 #comparison-funcs",
-      "notes": "Less coerces a unitless argument; CSS needs consistent types"
+      "notes": "Less coerces a unitless argument; CSS needs consistent types. Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
       "name": "max",
       "class": "already-css",
-      "spec": "css-values-4 #comparison-funcs"
+      "spec": "css-values-4 #comparison-funcs",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
       "name": "sqrt",
       "class": "already-css",
       "spec": "css-values-4 §10.5",
-      "notes": "CSS sqrt takes numbers only; Less sqrt(4px) = 2px has no CSS form"
+      "notes": "CSS sqrt takes numbers only; Less sqrt(4px) = 2px has no CSS form. Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
       "name": "pow",
       "class": "already-css",
       "spec": "css-values-4 §10.5",
-      "notes": "numbers only, as sqrt"
+      "notes": "numbers only, as sqrt. Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
       "name": "sin",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
       "name": "cos",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
       "name": "tan",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
       "name": "asin",
       "class": "already-css",
       "spec": "css-values-4 §10.4",
-      "notes": "Less returns rad, CSS an <angle>: the same quantity"
+      "notes": "Less returns rad, CSS an <angle>: the same quantity. Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
       "name": "acos",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
       "name": "atan",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "less",
@@ -618,21 +627,24 @@
       "dialect": "scss",
       "name": "abs",
       "class": "already-css",
-      "spec": "css-values-4 §10.6"
+      "spec": "css-values-4 §10.6",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "ceil",
       "class": "exact-if",
       "css": "round(up, N, 1)",
-      "spec": "css-values-4 §10.3"
+      "spec": "css-values-4 §10.3",
+      "notes": "built: slice 8, stage 3. A known input computes through this form; a dimension takes B in its unit"
     },
     {
       "dialect": "scss",
       "name": "floor",
       "class": "exact-if",
       "css": "round(down, N, 1)",
-      "spec": "css-values-4 §10.3"
+      "spec": "css-values-4 §10.3",
+      "notes": "built: slice 8, stage 3. A known input computes through this form; a dimension takes B in its unit"
     },
     {
       "dialect": "scss",
@@ -640,105 +652,121 @@
       "class": "exact-if",
       "css": "calc(sign(N) * round(abs(N), B))",
       "spec": "css-values-4 §10.3, §10.6",
-      "notes": "Sass B is a step, as in CSS; only the tie direction differs; and N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question)"
+      "notes": "built: slice 8, stage 3. Sass B is a step, as in CSS; only the tie direction differs; and N is not a decimal tie: the compile rounds round(1.005, 0.01) in base 10 to 1.01, browser floats give 1 (V8 open sub-question). A known input computes through this form, and over a step only the browser knows it takes it too"
     },
     {
       "dialect": "scss",
       "name": "min",
       "class": "already-css",
-      "spec": "css-values-4 #comparison-funcs"
+      "spec": "css-values-4 #comparison-funcs",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "max",
       "class": "already-css",
-      "spec": "css-values-4 #comparison-funcs"
+      "spec": "css-values-4 #comparison-funcs",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.clamp",
       "class": "already-css",
-      "spec": "css-values-4 #comparison-funcs"
+      "spec": "css-values-4 #comparison-funcs",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "percentage",
       "class": "exact-if",
       "css": "calc(N * 100%)",
-      "spec": "css-values-4 §10.9"
+      "spec": "css-values-4 §10.9",
+      "notes": "built: slice 8, stage 3. N a <number>: a known unit fails, as Sass has it. A known input computes through this form"
     },
     {
       "dialect": "scss",
       "name": "math.div",
       "class": "exact",
       "css": "calc(N / B)",
-      "spec": "css-values-4 §10.9"
+      "spec": "css-values-4 §10.9",
+      "notes": "built: slice 8, stage 3. Over an unknown only: known numbers keep the .scss division, unit rules and failures (V7, V32)"
     },
     {
       "dialect": "scss",
       "name": "math.sqrt",
       "class": "already-css",
-      "spec": "css-values-4 §10.5"
+      "spec": "css-values-4 §10.5",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.pow",
       "class": "already-css",
-      "spec": "css-values-4 §10.5"
+      "spec": "css-values-4 §10.5",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.log",
       "class": "already-css",
-      "spec": "css-values-4 §10.5"
+      "spec": "css-values-4 §10.5",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.hypot",
       "class": "already-css",
-      "spec": "css-values-4 §10.5"
+      "spec": "css-values-4 §10.5",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.sin",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.cos",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.tan",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.asin",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.acos",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.atan",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
       "name": "math.atan2",
       "class": "already-css",
-      "spec": "css-values-4 §10.4"
+      "spec": "css-values-4 §10.4",
+      "notes": "Over a number only the browser knows, a call prints this function, under the name after any namespace (built: slice 8, stage 3)"
     },
     {
       "dialect": "scss",
