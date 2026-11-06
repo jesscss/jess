@@ -4046,7 +4046,7 @@ function whileReachedFrom<T>(e: Lane, value: Binding, owner: object | null | und
   if (e.checks !== undefined) {
     reportReached(e, reachedValueSyntax(value, e.s));
   }
-  const read = e.s.context?.tracksReachedOwner === true ? reachingOwner(e.s.context, value, owner, run) : run;
+  const read = owner !== undefined && e.s.context?.tracksReachedOwner === true ? reachingOwner(e.s.context, value, owner, run) : run;
   return e.s.context?.mixedPolicies === true && owner instanceof DocumentContext && changesPolicy(e, owner)
     ? withPolicy(e, owner, () => whileReached(e, read, reader))
     : whileReached(e, read, reader);
