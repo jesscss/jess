@@ -215,7 +215,7 @@ import { channelFunction, channelMath, channelOf, formChannels, isComputedColorC
 import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedAtRuleName, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
-import { callSiteLocation } from './call-site-location.js';
+import { callSiteLocation, whileLocatingIn } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptInString, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
@@ -7164,7 +7164,7 @@ function invokeValueLambda(
    */
   const body = makePlacement(null, [], MOOT_FLUSH, activation);
   body.lambdaBody = true;
-  settled(walkBody(lambda.rules, activation, body, scratchEmit(e)), 'value-lambda body', lambda, e);
+  whileLocatingIn(e.s.locating, lambda, activation.sourceOwner, () => settled(walkBody(lambda.rules, activation, body, scratchEmit(e)), 'value-lambda body', lambda, e));
   const result = lambdaResultValue(lambda.rules);
   if (result === undefined) {
     throw ERR.invalidFunction({
@@ -20156,7 +20156,7 @@ function emitDiagnosticDirective(node: AtRuleStatement, frame: Frame, e: Emit): 
 
   /* The grammar lowered every `@return` a function can read; this one has no value to yield. */
   if (name === '@return') {
-    throw ERR.returnPlacement({ node, ...callSiteLocation(node, { context: e.s.locating }) });
+    throw ERR.returnPlacement({ node, ...callSiteLocation(node, e.s) });
   }
 
   /*

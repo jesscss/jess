@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
@@ -60,6 +63,28 @@ describe('ordering what has no order', () => {
     ['a slash before a comparison in `@while`', '$a: 4;\n@while $a/2 > 9 {\n  b { c: d; }\n}', 2]
   ])('%s', async (_label, source, line) => {
     await expect(compile(source)).rejects.toMatchObject({ code: 'eval/incomparable-operands', line });
+  });
+
+  it.each([
+    ['`@if`', '@function f($x) {\n  @if $x/2 == 2 {\n    @return 1;\n  }\n  @return 2;\n}\nb { c: f(4) }', 2, 9],
+    ['`@while`', '@function f($x) {\n  @while $x/2 > 9 {\n    $x: 1;\n  }\n  @return 2;\n}\nb { c: f(4) }', 2, 12],
+    ['a nested `@if`', '@function f($x) {\n  @if true {\n    @if $x/2 == 2 {\n      @return 1;\n    }\n  }\n  @return 2;\n}\nb { c: f(4) }', 3, 11],
+    ['`@if not`', '@function f($x) {\n  @if not ($x/2 == 2) {\n    @return 1;\n  }\n  @return 2;\n}\nb { c: f(4) }', 2, 14],
+    ['`@if` in `@each`', '@function f($x) {\n  @each $i in 1 2 {\n    @if $x/2 == 2 {\n      $x: 1;\n    }\n  }\n  @return 2;\n}\nb { c: f(4) }', 3, 11]
+  ])('locates a slash in %s in a function, in its file', async (_label, source, line, column) => {
+    await expect(compile(source)).rejects.toMatchObject({ code: 'eval/incomparable-operands', line, column, filePath: expect.stringContaining('virtual') });
+  });
+
+  it.each([
+    ['`@use`', '@use "m";\nb { c: m.f(4) }'],
+    ['`@import`', '@import "m";\nb { c: f(4) }'],
+    ['a function of the importer that calls it', '@use "m";\n@function h($x) {\n  $y: m.f($x);\n  @return $y;\n}\nb { c: h(4) }']
+  ])('locates a slash in `@if` in a function reached through %s, in the file that wrote it', async (_label, source) => {
+    const dir = mkdtempSync(join(tmpdir(), 'jess-scss-slash-'));
+    const module = join(dir, '_m.scss');
+    writeFileSync(module, '// a line\n@function f($x) {\n  // a line\n  // a line\n  @if $x/2 == 2 {\n    @return 1;\n  }\n  @return 2;\n}\n');
+    writeFileSync(join(dir, 'main.scss'), source);
+    await expect(new Compiler({}).render(join(dir, 'main.scss'))).rejects.toMatchObject({ code: 'eval/incomparable-operands', line: 5, column: 9, filePath: module });
   });
 
   it('reads the division a group holds in `@if`', async () => {
