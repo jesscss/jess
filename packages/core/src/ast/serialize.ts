@@ -10156,16 +10156,14 @@ function resolveCompoundAmp(
 }
 
 /**
- * Whether `sim`, glued after a `&`, continues a name the `&` builds: a token that opens
- * with an identifier code point (`.scss` `&__el`, `&-m`, `&-#{$x}`, which its grammar
- * reads as `&` then `__el`) or with an interpolation (`&#{$x}`). Such a `&` is a name
- * concatenation, so it distributes over a parent list (`.a, .b { &__el {} }` →
- * `.a__el, .b__el`), never `:is(.a, .b)__el`, which is no selector.
+ * Whether `sim`, glued after a `&`, continues a name the `&` builds: a plain token that
+ * opens with an identifier code point (`.css` `&__el`, `&-m`, which its grammar reads
+ * as `&` then `__el`). Such a `&` is a name concatenation, so it distributes over a
+ * parent list (`.a, .b { &__el {} }` → `.a__el, .b__el`), never `:is(.a, .b)__el`,
+ * which is no selector.
  */
 function continuesName(sim: SimpleToken | undefined): boolean {
-  return sim?.type === 'SimpleSelector' && (sim.text !== null
-    ? sim.text.length > 0 && isNameCode(sim.text.charCodeAt(0))
-    : sim.interp !== null && !('lit' in sim.interp.parts[0]! && !isNameCode(sim.interp.parts[0].lit.charCodeAt(0))));
+  return sim?.type === 'SimpleSelector' && sim.text !== null && sim.text.length > 0 && isNameCode(sim.text.charCodeAt(0));
 }
 
 /** Whether a name is glued after an interpolation: the part of its token that follows it, else the token after it ({@link continuesName}). */
@@ -15483,7 +15481,7 @@ function referenceRuleIsVisible(rule: Ruleset, frame: Frame, e: Emit): boolean {
 
 /**
  * Whether a branch of `list` builds a name on its parent: a `&` with a name glued after
- * it (`&__el`, `&--m`, `&-1`, `&2`, `&@{x}`; `.scss` reads `&__el` as `&` then `__el`),
+ * it (`&__el`, `&--m`, `&-1`, `&2`, `&@{x}`; `.css` reads `&__el` as `&` then `__el`),
  * in a pseudo's argument too. Less name concatenation, not CSS nesting, which reads
  * `&__el` as `&` then the type selector `__el` (owner 2026-07-23/24, ledger J13).
  * Allocates nothing.

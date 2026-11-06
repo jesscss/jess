@@ -4753,6 +4753,12 @@ const scssFactory = (g: ScssInputRules) => {
    * follow-up families rather than being flattened into a string fallback.
    */
 
+  /** An interpolation and the name text and interpolations glued after it: a selector simple after its sigil or `&`. */
+  const interpolatedSimpleRest = sequence(
+    g.SassInterpolation,
+    many(choice(g.SassInterpolation, selectorTextRun))
+  );
+
   /*
    * The leading `.`/`#` is a class/id sigil, and it must not claim the `#` that
    * OPENS an interpolation. Without the boundary the optional prefix consumed
@@ -4768,38 +4774,25 @@ const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       optional(regex(/[.#](?!\{)/)),
       many(selectorTextRun),
-      g.SassInterpolation,
-      many(choice(
-        g.SassInterpolation,
-        selectorTextRun
-      ))
+      interpolatedSimpleRest
     )),
-    (children) => {
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        if (isInterpolation(child)) {
-          parts.push(...child.parts);
-        } else {
-          appendInterpolationLiteral(
-            parts,
-            requireToken(child).value
-          );
-        }
-      }
-      return interpolatedSimpleSelector(interpolation(parts));
-    }
+    children => interpolatedSimpleSelector(interpolationFromTemplateChildren(children))
   );
 
   /**
-   * `&` with a `--` suffix (Sass "Adding Suffixes": `&--b` in `.a` is `.a--b`). A
-   * suffix that starts with one dash reaches the compound as a type selector
-   * (`&-b`); `--b` cannot, so `--x:…` stays a custom property's, and this token
-   * reads it. `&--#{$x}` is this token, then the interpolation.
+   * `&` with the suffix glued after it, as one token (Sass "Adding Suffixes": `&--b`
+   * in `.a` is `.a--b`), the way Less and `.jess` read it. A glued `#{` continues the
+   * same token (`&-#{$x}`), so every suffix reaches core in one shape.
    */
   const NestingSelector = node<SimpleSelector>(
     'SimpleSelector',
-    regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/),
-    children => simpleSelector(requireToken(children[0]).value)
+    noTrivia(sequence(
+      regex(/&(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/),
+      optional(interpolatedSimpleRest)
+    )),
+    children => (children.length === 1
+      ? simpleSelector(requireToken(children[0]).value)
+      : interpolatedSimpleSelector(interpolationFromTemplateChildren(children)))
   );
 
   /*
