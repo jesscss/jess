@@ -341,7 +341,14 @@ const plugin = jsPlugin({
   jsReadRoot: fixture
 });
 await assert.rejects(
-  () => plugin.importPlugin(pluginFile),
+  () => plugin.renderInEngine({
+    compiler: { module: import.meta.resolve('jess'), exportName: 'Compiler' },
+    compilerOptions: {},
+    method: 'render',
+    args: [pluginFile],
+    entryDir: fixture,
+    jsReadRoot: fixture
+  }),
   /Deno runtime is required/u
 );
 plugin.dispose();
