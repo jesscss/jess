@@ -43,7 +43,8 @@ import type {
  * error, because nothing failed.
  */
 export class FunctionDeclined extends Error {
-  constructor() {
+  /** `bound`: the arguments as the callable bound them, when they are what the CSS function of its name takes. */
+  constructor(readonly bound?: readonly ValueGroup[]) {
     super('The function declined the call.');
     this.name = 'FunctionDeclined';
   }
@@ -274,7 +275,7 @@ export const isUnknownNumber = (value: unknown): boolean =>
   isValueGroup(value) && !isValueGroupArray(value) && isDeferred(value, NUMBER_SLOT);
 
 const isNumberOrAbsent = (value: unknown): boolean =>
-  value === undefined || isUnknownNumber(value) || (isValueGroup(value) && !isValueGroupArray(value) && (value.type === 'Dimension' || value.type === 'Null'));
+  value === undefined || isUnknownNumber(value) || (isValueGroup(value) && !isValueGroupArray(value) && value.type === 'Dimension');
 
 /**
  * A built-in over a number only the browser knows, where CSS has a function of
@@ -282,11 +283,14 @@ const isNumberOrAbsent = (value: unknown): boolean =>
  * the name after any namespace (`math.sqrt(var(--x))` is `sqrt(var(--x))`). An
  * argument that is no number fails as it does beside a known one.
  */
-export function declineOverUnknown(args: readonly unknown[]): void {
+export function declineOverUnknown(args: readonly unknown[], bound?: readonly ValueGroup[]): void {
   if (args.some(isUnknownNumber) && args.every(isNumberOrAbsent)) {
-    throw new FunctionDeclined();
+    throw new FunctionDeclined(bound);
   }
 }
+
+const isPassed = (value: unknown): value is ValueGroup =>
+  value !== undefined && isValueGroup(value) && (isValueGroupArray(value) || value.type !== 'Null');
 
 /** A parameter of a `cssFunction`, which also takes what only the browser knows. */
 function cssFunctionParam(param: ParamSpec): ParamSpec {
@@ -430,7 +434,9 @@ export function defineFunction(
   const slots = spec.cssFunction === true ? spec.params.map(cssFunctionParam) : spec.params;
   const applied = (bound: unknown[]): MaybePromise<ValueGroup> => {
     if (definition.cssFunction === true) {
-      declineOverUnknown(bound.flat());
+      /* What the call passed, in parameter order, is what the CSS function takes: no name, no `null` (a declared optional's). */
+      const passed = bound.flat().filter(isPassed);
+      declineOverUnknown(passed, passed);
     }
     return Reflect.apply(definition.body, undefined, bound);
   };

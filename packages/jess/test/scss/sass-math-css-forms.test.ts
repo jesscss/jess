@@ -34,7 +34,13 @@ describe('.scss operators on what only the browser knows', () => {
     ['math.div($x, 2) + 1', 'calc(var(--x) / 2 + 1)'],
     ['percentage($x) * 2', 'calc(var(--x) * 100% * 2)'],
     ['-percentage($x)', 'calc(-1 * var(--x) * 100%)'],
-    ['math.sqrt($x) * 2', 'calc(sqrt(var(--x)) * 2)']
+    ['math.sqrt($x) * 2', 'calc(sqrt(var(--x)) * 2)'],
+    ['translate(-$x, 0)', 'translate(calc(-1 * var(--x)), 0)'],
+    ['translate(-$x, $x * 2)', 'translate(calc(-1 * var(--x)), calc(var(--x) * 2))'],
+    ['translate(($x * 2), 1px)', 'translate(calc(var(--x) * 2), 1px)'],
+    ['repeat(2, $x * 2)', 'repeat(2, calc(var(--x) * 2))'],
+    ['foo($x * 2)', 'foo(calc(var(--x) * 2))'],
+    ['hsl(($x + 1) 50% 50%)', 'hsl(calc(var(--x) + 1) 50% 50%)']
   ])('%s is %s', async (written, out) => {
     await expect(value(written)).resolves.toBe(out);
   });
@@ -43,11 +49,12 @@ describe('.scss operators on what only the browser knows', () => {
     ['$x / 2', 'var(--x) / 2'],
     ['$x/2', 'var(--x)/2'],
     ['$x / 2 / 3', 'var(--x) / 2 / 3'],
+    ['$x / foo', 'var(--x) / foo'],
+    ['(foo / bar)', '(foo / bar)'],
     ['$x + "s"', '"var(--x)s"'],
     ['"s" + $x', '"svar(--x)"'],
     ['null * $x', 'var(--x)'],
     ['$x * null', 'var(--x)'],
-    ['translate(($x * 2), 1px)', 'translate((var(--x) * 2), 1px)'],
     ['calc(var(--a) % 3)', 'calc(var(--a) % 3)']
   ])('%s stays %s', async (written, out) => {
     await expect(value(written)).resolves.toBe(out);
@@ -66,7 +73,14 @@ describe('.scss operators on what only the browser knows', () => {
     '"s" * $x',
     'rgb(var(--r), 0, 0) * 2',
     'rgb(1 2 3) * 2',
-    'media(print) + 1'
+    'media(print) + 1',
+    '($x / foo)',
+    '($x / red)',
+    '("s" / $x)',
+    '($x / true)',
+    '(rgb(1 2 3) / $x)',
+    '(media(print) / $x)',
+    '($x / url(a.png))'
   ])('%s still fails', async (written) => {
     await expect(value(written)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
@@ -84,6 +98,10 @@ describe('.scss operators on what only the browser knows', () => {
 });
 
 describe('Sass math built-ins with a form', () => {
+  it.each(['round(1px * 1px)', 'round(math.div(1px, 1em))', 'round(math.div(1, 2px))', 'ceil(1px * 1px)', 'floor(1px * 1px)'])('%s keeps its unit', async (written) => {
+    await expect(value(written)).resolves.toBe('1px');
+  });
+
   it.each([
     ['percentage($x)', 'calc(var(--x) * 100%)'],
     ['math.percentage($x)', 'calc(var(--x) * 100%)'],
@@ -153,6 +171,25 @@ describe('Sass math built-ins with a form', () => {
 });
 
 describe('a member CSS has a function of its name for, over what only the browser knows', () => {
+  it.each([
+    ['math.sqrt($number: var(--x))', 'sqrt(var(--x))'],
+    ['math.pow($base: var(--x), $exponent: 2)', 'pow(var(--x), 2)'],
+    ['math.pow($exponent: 2, $base: var(--x))', 'pow(var(--x), 2)'],
+    ['math.clamp($max: 1, $number: var(--x), $min: 0)', 'clamp(0, var(--x), 1)'],
+    ['math.atan2($x: 1, $y: var(--a))', 'atan2(var(--a), 1)'],
+    ['math.log($number: var(--x))', 'log(var(--x))'],
+    ['math.log($base: 2, $number: var(--x))', 'log(var(--x), 2)'],
+    ['math.sin($number: var(--x))', 'sin(var(--x))'],
+    ['math.abs($number: var(--x))', 'abs(var(--x))'],
+    ['math.log(var(--a), null)', 'log(var(--a))']
+  ])('writes the arguments it bound, in order: %s', async (written, out) => {
+    await expect(value(written)).resolves.toBe(out);
+  });
+
+  it.each(['math.sqrt($foo: var(--x))', 'math.min(var(--a), null)', 'math.max(null, var(--a))'])('%s fails', async (written) => {
+    await expect(value(written)).rejects.toMatchObject({ code: 'eval/invalid-function' });
+  });
+
   it.each([
     ['math.sqrt($x)', 'sqrt(var(--x))'],
     ['math.abs($x)', 'abs(var(--x))'],

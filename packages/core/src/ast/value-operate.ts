@@ -810,7 +810,7 @@ export function quotedFromLead(lead: EvalValue | undefined, text: string): EvalV
  * {@link operate} decides.
  */
 export function checkedOperation(op: string, left: ValueGroup, right: ValueGroup, ev: Pick<ValueEvaluator, 'sassOperands' | 'sassCalculations'>, keepsMath: boolean): null {
-  return keepsMath || (ev.sassOperands === true && op === '/') ? null : operandRule(op, left, right, ev);
+  return keepsMath || (ev.sassOperands === true && op === '/' && !isDeferredOperand(left) && !isDeferredOperand(right)) ? null : operandRule(op, left, right, ev);
 }
 
 /**

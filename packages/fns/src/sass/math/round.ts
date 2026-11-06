@@ -21,7 +21,7 @@ const round: Fn = /* @__PURE__ */ defineForm('round', {
   ],
   form: (number: ValueGroup, step?: ValueGroup): FormCall => {
     const unit = unitBeside(number) || (step === undefined ? '' : unitBeside(step));
-    const known = isDimension(number) ? formNumber(number.number, unit) : number;
+    const known = isDimension(number) ? formNumber(number.number, unit || number.unit) : number;
     return [form, known, step === undefined ? formNumber(1, unit) : isDimension(step) ? formNumber(step.number, step.unit || unit) : step];
   }
 });

@@ -5,6 +5,10 @@ import { compatibleUnits, isUnitlessDimension } from '../shared/math/units.js';
 const isDimension = (value: ValueGroup): value is Dimension =>
   !isValueGroupArray(value) && value.type === 'Dimension';
 
+/** A number CSS's `min()` and `max()` take beside the others: one of their type, as a unitless one is not beside a length. */
+export const fitsBeside = (value: ValueGroup, slots: readonly ValueGroup[]): boolean =>
+  !isDimension(value) || slots.every(other => !isDimension(other) || (compatibleUnits(value, other) && isUnitlessDimension(value) === isUnitlessDimension(other)));
+
 const isSlashList = (value: ValueGroup): boolean =>
   !isValueGroupArray(value) && value.type === 'List' && value.sep === '/';
 

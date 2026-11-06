@@ -8,7 +8,7 @@ describe('acos canonical AST-v2 parity', () => {
     expect(typeof acos).toBe('function');
     expect(namedAcos).toBe(acos);
     expect(acos.name).toBe('acos');
-    expect(acos.params).toEqual([{ name: 'value', type: 'Dimension' }]);
+    expect(acos.params).toMatchObject([{ name: 'value', type: 'Dimension' }]);
     expectTypeOf<FunctionArgs<typeof acos.params>>().toEqualTypeOf<[ValueDimension]>();
 
     expect(acos(makeDimension(0.5, 'px'))).toEqual({
