@@ -97,13 +97,14 @@ describe('a lone grayscale(), invert() or contrast() over an unknown goes by whe
       .resolves.toBe(`a {\n  color: ${GRAY};\n  filter: invert(var(--x));\n}\nb {\n  color: ${INVERT};\n  filter: invert(var(--x));\n}\n`);
   });
 
-  it('is as written where no position is known, whichever read comes first', async () => {
-    for (const body of ['filter: $f; color: $f;', 'color: $f; filter: $f;']) {
-      await expect(compile(`$f: grayscale(var(--x));\na { ${body} }`)).resolves.not.toContain('hsl(');
-    }
-    for (const body of ['filter: @f; color: @f;', 'color: @f; filter: @f;']) {
-      await expect(compile(`@f: contrast(var(--x));\n.a { ${body} }`, '.less')).resolves.not.toContain('contrast-color');
-    }
+  it('goes by the declaration reading a variable, whichever read comes first', async () => {
+    await expect(compile('$f: grayscale(var(--x));\na { filter: $f; color: $f; }')).resolves.toBe(`a {\n  filter: grayscale(var(--x));\n  color: ${GRAY};\n}\n`);
+    await expect(compile('$f: grayscale(var(--x));\na { color: $f; filter: $f; }')).resolves.toBe(`a {\n  color: ${GRAY};\n  filter: grayscale(var(--x));\n}\n`);
+    await expect(compile('@f: contrast(var(--x));\n.a { filter: @f; color: @f; }', '.less')).resolves.toBe('.a {\n  filter: contrast(var(--x));\n  color: contrast-color(var(--x));\n}\n');
+    await expect(compile('@f: contrast(var(--x));\n.a { color: @f; filter: @f; }', '.less')).resolves.toBe('.a {\n  color: contrast-color(var(--x));\n  filter: contrast(var(--x));\n}\n');
+  });
+
+  it('is as written where no position is known', async () => {
     await expect(compile('@mixin m($p) { color: $p; filter: $p; }\na { @include m(invert(var(--x))); }')).resolves.toBe('a {\n  color: invert(var(--x));\n  filter: invert(var(--x));\n}\n');
     await expect(compile('.m(@p) { color: @p; }\n.a { .m(contrast(var(--x))); }', '.less')).resolves.toBe('.a {\n  color: contrast(var(--x));\n}\n');
     await expect(compile('@function f($c) { @return grayscale($c); }\na { color: f(var(--x)); }')).resolves.toBe('a {\n  color: grayscale(var(--x));\n}\n');

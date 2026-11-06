@@ -3,8 +3,8 @@
  * built-ins over a colour. Over one argument only the browser knows, the
  * declaration the call stands in decides (docs/design/CSS-NATIVE-BUILTINS.md
  * Q13): an item of a `filter` or `backdrop-filter` is the filter, an item of any
- * other declaration the colour. Anywhere else nothing says, and it stays as
- * written.
+ * other declaration the colour, a variable going by the declaration that reads
+ * it. Anywhere else nothing says, and it stays as written.
  */
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import { isMathFunctionName } from './math-functions.js';
@@ -44,8 +44,8 @@ function isItemOf(value: ValueSlot, node: FunctionCall): boolean {
 /**
  * Whether a call of one argument, not through a module, may be the filter: its
  * callable is a filter form, its argument has no known type, and nothing makes
- * it a colour. A value a reference `reached` is read from anywhere, so it has no
- * position.
+ * it a colour. A variable is evaluated where it is read, so a value a reference
+ * `reached` stands in the declaration reading it.
  */
 export function mayBeFilter(
   node: FunctionCall,
@@ -59,7 +59,7 @@ export function mayBeFilter(
   }
   const { checks } = at;
   return (selected ?? registry.fn(node.name))?.filter === true
-    && (at.reached || typeof checks !== 'object' || typeof checks.name !== 'string' || isFilterProperty(checks.name) || !isItemOf(checks.value, node));
+    && (typeof checks !== 'object' || typeof checks.name !== 'string' || isFilterProperty(checks.name) || (!at.reached && !isItemOf(checks.value, node)));
 }
 
 /**
