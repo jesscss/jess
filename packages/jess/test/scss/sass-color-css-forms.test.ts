@@ -84,6 +84,10 @@ describe('a lone grayscale(), invert() or contrast() over an unknown goes by whe
     await expect(compile(source)).resolves.toBe('a {\n  filter: grayscale(var(--x));\n  -webkit-filter: invert(var(--x));\n  backdrop-filter: blur(1px) invert(var(--x));\n  -WEBKIT-BACKDROP-FILTER: grayscale(var(--x));\n  FILTER: blur(1px) grayscale(var(--x)) !important;\n}\n');
   });
 
+  it('reads the name in any case, as CSS and the registry do', async () => {
+    await expect(compile('a { filter: GRAYSCALE(var(--x)); color: GRAYSCALE(var(--x)); }')).resolves.toBe(`a {\n  filter: GRAYSCALE(var(--x));\n  color: ${GRAY};\n}\n`);
+  });
+
   it('is the colour form directly in any other declaration', async () => {
     await expect(compile('a { color: grayscale(var(--x)); background-color: invert(var(--x)); border: 1px solid grayscale(var(--x)); background: url(a.png), invert(var(--x)); }'))
       .resolves.toBe(`a {\n  color: ${GRAY};\n  background-color: ${INVERT};\n  border: 1px solid ${GRAY};\n  background: url(a.png), ${INVERT};\n}\n`);

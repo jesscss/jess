@@ -222,7 +222,7 @@ import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, 
 import { makeAny, makeWrittenMath, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
-import { filterPositionModes, mayBeFilter } from './filter-position.js';
+import { mayBeFilter } from './filter-position.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
@@ -9145,8 +9145,7 @@ function dispatchCall(
     ? otherFunctionMode(e.modes)
     : demanded && e.modes.functionMode === 'error' && isCssColorCall(node)
       ? otherFunctionMode(e.modes)
-      : reach !== 'imported' && node.args.length === 1 && mayBeFilter(node, e.checks, e.reached) ? filterPositionModes(e.modes) : e.modes;
-  const sep = node.modern ? ' ' : ',';
+      : e.modes;
 
   /*
    * Args are materialized TYPED (each arg's tag sourced from its parse node). A
@@ -9170,7 +9169,7 @@ function dispatchCall(
   const dispatch = (vals: ValueGroup[]): MaybePromise<EvalValue> => {
     const named = node.args.some(isNamedArg);
     const ordered = named ? orderKeywordArgs(node.args, vals, ev.paramNames(node.name, selected, reach === 'ambient')) : vals;
-    const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
+    const args: ValueGroup = node.modern ? ordered : makeList(ordered, ',');
 
     /*
      * A call that names an argument also hands over its arguments as written,
@@ -9181,10 +9180,13 @@ function dispatchCall(
      * looked up unless the call is written out.
      */
     const written: WrittenArguments | undefined = named
-      ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
+      ? { args: ordered === vals ? args : (node.modern ? vals : makeList(vals, ',')), keywords: node.args }
       : undefined;
     try {
-      const result = ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', written, node.args);
+      /* A lone filter call is written out as a call to no function is (Q13). */
+      const result = reach !== 'imported' && vals.length === 1 && mayBeFilter(node, vals[0], e, selected, ev)
+        ? ev.call(node.name, args, modes, null, e.s.io, undefined, false, written, node.args)
+        : ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', written, node.args);
       if (isThenable(result)) {
         return result.then((value) => {
           warnConsumedKept(vals, value, node, e);

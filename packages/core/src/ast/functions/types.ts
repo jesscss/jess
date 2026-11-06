@@ -116,6 +116,8 @@ export interface FnIo {
 }
 
 interface BaseSpec {
+  /** The name is also a CSS filter function (`filter-position.ts`). */
+  readonly filter?: boolean;
   /** Dispatch name while this declarative spec is being assembled into a callable. */
   readonly name?: string;
   readonly params: readonly ParamSpec[];
@@ -226,6 +228,8 @@ export type DefinedFunction<P extends readonly ParamSpec[]> = {
  * registry always calls it with the evaluator's typed argument list and context.
  */
 export type Fn = ((value: ValueGroup, ctx: FnCtx) => MaybePromise<ValueGroup>) & {
+  /** The name is also a CSS filter function (`filter-position.ts`). */
+  readonly filter?: boolean;
   readonly name: string;
   readonly params: readonly ParamSpec[];
   readonly variadic?: boolean;

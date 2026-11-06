@@ -41,8 +41,7 @@ import type {
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
 import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
-import { isFilterFunction, isFilterProperty } from './filter-position.js';
-import { isMathFunctionName } from './math-functions.js';
+import { isFilterProperty, writtenAsFilter } from './filter-position.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
@@ -971,7 +970,7 @@ class JessPrinter {
      * Anywhere a callable or a variable can read it, it computes, and goes
      * through its binding.
      */
-    const exported = (this.#propertyValue && at === At.Value && isCssColorFunction(node)) || this.isCssFilter(node, lower, at) ? undefined : this.#functions?.names.get(lower);
+    const exported = (this.#propertyValue && at === At.Value && isCssColorFunction(node)) || writtenAsFilter(node, lower, this.#functions?.names, this.#propertyValue && at === At.Value && !this.#filterProperty) ? undefined : this.#functions?.names.get(lower);
     if (exported !== undefined) {
       this.calledFunctions.set(lower, exported);
     }
@@ -997,26 +996,6 @@ class JessPrinter {
     return `${name}(${args.join(', ')})`;
   }
 
-  /**
-   * A lone `grayscale()`, `invert()`, `contrast()` or `saturate()` the source
-   * writes out as CSS's filter function, which `$name(…)` would read as a colour:
-   * over a number, anywhere, and over what only the browser knows unless it is an
-   * item of a declaration that makes it a colour (`filter-position.ts`). An
-   * argument that reaches a value stays with its binding: it may be a colour.
-   */
-  isCssFilter(node: FunctionCall, lower: string, at: At): boolean {
-    const arg = node.args[0]?.value;
-    if (node.args.length !== 1 || arg === undefined || isSlotArray(arg) || !isFilterFunction(lower)) {
-      return false;
-    }
-    if (arg.type === 'Dimension') {
-      return true;
-    }
-    if (arg.type !== 'FunctionCall' || isCssColorFunction(arg) || (this.#functions?.names.has(arg.name.toLowerCase()) === true && !isMathFunctionName(arg.name))) {
-      return false;
-    }
-    return lower === 'saturate' || isMathFunctionName(arg.name) || this.#filterProperty || !this.#propertyValue || at !== At.Value;
-  }
 
   /**
    * A CSS colour function's modern slot with its alpha slash a separator

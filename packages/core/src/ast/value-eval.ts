@@ -573,8 +573,6 @@ export const literal = (bytes: string): string => bytes;
 export interface EvalModes {
   readonly unitMode: UnitMode;
 
-  /** The call may be CSS's filter function: nothing makes a lone `grayscale()` a colour here (`filter-position.ts`). */
-  readonly filterPosition?: boolean;
 
   /** Less arithmetic policy; parentheses are tracked by the AST walker. */
   readonly mathMode?: MathMode;

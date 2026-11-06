@@ -17,7 +17,7 @@ import { buildEvaluator } from './evaluator.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { AnonymousMixin } from './nodes.js';
 import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type BindingCell, type FormActivation } from './serialize.js';
-import { bindDirect, createFnRegistry, defineFunction, FunctionDeclined } from './value-dispatch.js';
+import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
 import { HEX, RGB } from './color.js';
 import { isValueGroupArray, type Color, type Dimension, type Value, type ValueGroup } from './value-eval.js';
 import { DimensionValueNode } from './node-ctors.js';
@@ -150,24 +150,20 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format:
  * its type includes `FunctionCall`; any other reads a call as it always has.
  *
  * `filter`: the name is also a CSS filter function, so one argument of a number
- * only the browser knows fails as a known number does, and one of no known type
- * is declined where the call may be the filter (`filter-position.ts`).
+ * only the browser knows fails as a known number does, and the dispatch writes
+ * out one of no known type where the call may be the filter (`filter-position.ts`).
  */
 export function defineForm(name: string, spec: { readonly params: readonly ParamSpec[]; readonly form: (...args: never[]) => FormCall | Color; readonly format?: number; readonly filter?: boolean }): Fn {
   const activations = new Map<AnonymousMixin, FormActivation>();
   return defineFunction(name, {
     params: spec.params,
     variadic: true,
-    body: (args: ValueGroup, ctx: { readonly modes: { readonly compress?: boolean; readonly filterPosition?: boolean } }): MaybePromise<ValueGroup> => {
+    filter: spec.filter,
+    body: (args: ValueGroup, ctx: { readonly modes: { readonly compress?: boolean } }): MaybePromise<ValueGroup> => {
       const items = groupItems(args);
       const lone = items[0];
-      if (spec.filter === true && items.length === 1 && lone !== undefined && !isValueGroupArray(lone) && lone.type === 'FunctionCall') {
-        if (lone.result === 'numeric') {
-          throw new TypeError(`${name}: arg 0 expected Color, got a number`);
-        }
-        if (lone.result !== 'color' && ctx.modes.filterPosition === true) {
-          throw new FunctionDeclined();
-        }
+      if (spec.filter === true && items.length === 1 && lone !== undefined && !isValueGroupArray(lone) && lone.type === 'FunctionCall' && lone.result === 'numeric') {
+        throw new TypeError(`${name}: arg 0 expected Color, got a number`);
       }
       const call: FormCall | Color = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, items));
       if ('type' in call) {
