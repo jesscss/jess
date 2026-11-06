@@ -70,6 +70,7 @@ describe('.scss: an interpolated suffix writes what the same suffix written out 
     expect(await render(scss, 'scss')).toBe(rule('.a--y,\n.e--y,\n.z'));
   });
 
+  /* Undecided (jesscss/jess#624): this pins that converting agrees and today's order, not what a comma in a splice means. */
   it('a list spliced after the suffix multiplies the same way converted', async () => {
     const scss = '$l: q, r;\n.a, .e { &-#{$l} { c: d; } }';
     expect(await render(scss, 'scss')).toBe(rule('.a-q,\n.e-q,\n.a-r,\n.e-r'));
