@@ -351,7 +351,15 @@ describe('Compiler.convertToJess', () => {
     ['.scss', '@use "sass:color";\na { color: color.grayscale(var(--x)); border-color: color.invert(var(--x)); }'],
     ['.scss', 'a { color: lighten(var(--a), 10%); color: mix(var(--a), #fff, 25%); color: transparentize(var(--a), .1); color: rgba(currentcolor, .5); }'],
     ['.less', '.a { filter: contrast(var(--x)); color: contrast(var(--x)); }'],
-    ['.less', '@f: contrast(var(--x));\n.a { filter: @f; color: @f; }']
+    ['.less', '@f: contrast(var(--x));\n.a { filter: @f; color: @f; }'],
+    ['.scss', '$c: var(--x);\na { filter: grayscale($c); }'],
+    ['.scss', '$c: var(--x);\na { backdrop-filter: blur(1px) grayscale($c); }'],
+    ['.scss', '@mixin m($c) { filter: grayscale($c); }\na { @include m(var(--x)); }'],
+    ['.scss', '@each $c in var(--x), var(--y) { a { filter: invert($c); } }'],
+    ['.scss', '$c: .5;\na { filter: grayscale($c); }'],
+    ['.scss', '$c: var(--x);\na { filter: saturate($c); color: grayscale($c); }'],
+    ['.less', '@c: var(--x);\n.a { filter: contrast(@c); color: contrast(@c); }'],
+    ['.less', '.m(@c) { filter: contrast(@c); }\n.a { .m(var(--x)); }']
   ])('renders the same through .jess: %s %s', async (extension, source) => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
     const entry = path.join(dir, `a${extension}`);

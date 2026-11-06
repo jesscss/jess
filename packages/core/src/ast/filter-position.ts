@@ -64,21 +64,24 @@ export function mayBeFilter(
 
 /**
  * Whether `.jess` keeps a lone `grayscale()`, `invert()`, `contrast()` or
- * `saturate()` bare, CSS's filter function, where `$name(…)` would read a colour:
- * over a number, anywhere, and over what only the browser knows unless
- * `colorPosition`, an item of a declaration that makes it a colour. An argument
- * that reaches a value stays with its binding: it may be a colour.
+ * `saturate()` bare, CSS's filter function, where `$name(…)` would read a colour.
+ * An item of a `filter` or `backdrop-filter` (`position` is `'filter'`) is the
+ * filter whatever its argument, a variable's read included. Elsewhere it is over
+ * a number, and over what only the browser knows unless `position` is `'item'`,
+ * an item of a declaration that makes it a colour. An argument that reaches a
+ * value stays with its binding: it may be a colour.
  */
-export function writtenAsFilter(node: FunctionCall, lower: string, exported: ReadonlyMap<string, unknown> | undefined, colorPosition: boolean): boolean {
-  const arg = node.args[0]?.value;
-  if (node.args.length !== 1 || arg === undefined || isValueSlotArray(arg) || !(COLOR_OVERLOADS.has(lower) || lower === 'saturate')) {
+export function writtenAsFilter(node: FunctionCall, lower: string, exported: ReadonlyMap<string, unknown> | undefined, position: 'filter' | 'item' | undefined): boolean {
+  const lone = node.args[0];
+  const arg = lone?.value;
+  if (node.args.length !== 1 || lone === undefined || arg === undefined || isValueSlotArray(arg) || !(COLOR_OVERLOADS.has(lower) || lower === 'saturate')) {
     return false;
   }
-  if (arg.type === 'Dimension') {
+  if (arg.type === 'Dimension' || (position === 'filter' && !lone.spread && lone.name === undefined)) {
     return true;
   }
   if (arg.type !== 'FunctionCall' || isCssColorFunction(arg) || (exported?.has(arg.name.toLowerCase()) === true && !isMathFunctionName(arg.name))) {
     return false;
   }
-  return lower === 'saturate' || isMathFunctionName(arg.name) || !colorPosition;
+  return lower === 'saturate' || isMathFunctionName(arg.name) || position !== 'item';
 }

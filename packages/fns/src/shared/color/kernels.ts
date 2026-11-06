@@ -6,7 +6,6 @@
  * HARD MODULE BOUNDARY: value domain only.
  */
 import type { Color, Dimension } from '@jesscss/core/value';
-import { colorHsl, makeColorHsl } from '@jesscss/core/value';
 
 /** Clamp to the 0-1 range (alpha, and an hsl channel written back). */
 export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
