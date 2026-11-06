@@ -663,23 +663,54 @@ function recovering(run: () => MaybePromise<EvalValue>, recover: (error: unknown
   }
 }
 
+/** The custom property a `var()` names. */
+function varName(call: { readonly args: ValueGroup }): string | undefined {
+  const first = isValueGroupArray(call.args) ? call.args[0] : call.args.type === 'List' ? call.args.value[0] : call.args;
+  return first !== undefined && !isValueGroupArray(first) && first.type === 'Keyword' ? first.text : undefined;
+}
+
 /**
  * Whether a call read an export and everything else it was given is known, so
  * all it waits on is the export, which is deferred on purpose. A `var()` or a
- * `currentColor` beside the export is not.
+ * `currentColor` beside the export is not, however deep in its math.
  */
 export function onlyExportsUnknown<F>(state: ExportState<F>, vals: readonly ValueGroup[]): boolean {
-  const reads = exporting(state)?.callReads;
-  if (reads === undefined || reads.length === 0) {
+  const x = exporting(state);
+  if (x === undefined) {
     return false;
   }
-  const read = new Set(reads.map(input => input.value));
-  return vals.every((val) => {
-    const value = lone(val);
-    return read.has(value)
-      || isValueGroupArray(value)
-      || !(value.type === 'FunctionCall' || (value.type === 'Keyword' && isBrowserColor(value.text)));
-  });
+  const read = new Set<EvalValue>((x.callReads ?? []).map(input => input.value));
+  let exported = read.size > 0;
+  const browserOnly = (value: EvalValue): boolean => {
+    if (read.has(value)) {
+      return false;
+    }
+    if (typeof value === 'string') {
+      return true;
+    }
+    if (isValueGroupArray(value)) {
+      return value.some(browserOnly);
+    }
+    switch (value.type) {
+      case 'Keyword':
+        return isBrowserColor(value.text);
+      case 'List':
+        return value.value.some(browserOnly);
+      case 'Arithmetic':
+        return browserOnly(value.left) || browserOnly(value.right);
+      case 'FunctionCall': {
+        const name = value.name === 'var' ? varName(value) : undefined;
+        if (name !== undefined && (x.runtime.exports.has(name.slice(2)) || x.runtime.derived.has(name))) {
+          exported = true;
+          return false;
+        }
+        return value.result === null || browserOnly(value.args);
+      }
+      default:
+        return false;
+    }
+  };
+  return !vals.some(browserOnly) && exported;
 }
 
 /** A built-in's own call written out because it failed, which is no CSS, unlike a call its callable declined. */

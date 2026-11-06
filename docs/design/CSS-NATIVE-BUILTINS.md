@@ -354,13 +354,24 @@ not take beside a `var()` fails: `@less.rgb(var(--r), 1px, 0)`.
 `unresolvedBuiltins: 'off' | 'warn' | 'error'` is a compile option beside `functionMode`, default `'off'`. It is not a lint rule, because `packages/lint` reads parse diagnostics and does not evaluate, so it cannot know whether a call resolved.
 
 - **Counts:** a call through a namespace (`@less.x(…)`, `.scss` `color.adjust(…)`, or `m.sqrt(…)` under `as m`) that printed a form or declined to the CSS call: `@less.fade(#333, var(--a))`, `@less.rgb(var(--r), 0, 0)`, `math.sqrt(var(--x))`. A known input that only has a form counts too: `color.change(#c00, $lightness: 120%)` prints `hsl(from #c00 h s 120)`.
-- **Does not count:** a bare call or a bare name under `as *`, which are ambient; a namespaced call that computed; a value the call only handed back from its arguments (`map.get($theme, brand)`); a call that fails, which keeps its own error. The namespace itself never warns.
-- **An exposed variable** is deferred on purpose: `@less.fade(#333, @a)` with `@expose a` does not count, whatever its value, a recipe included. Beside a real unknown it counts: `@less.fade(var(--x), @a)`.
-- **One report per written call,** at the place it was written, however often a variable holding it is read or a mixin runs it. An outer call over an inner one that fired reports too, each at its own place: the outer call printed a form of its own.
+- **Does not count:** a bare call or a bare name under `as *`, in `.scss` and `.jess` alike, which are ambient; a namespaced call that computed; a value the call only handed back from its arguments (`map.get($theme, brand)`); a call that fails, which keeps its own error. The namespace itself never warns.
+- **An exposed variable** is deferred on purpose: `@less.fade(#333, @a)` with `@expose a` does not count, whatever its value, a recipe included, nor does math over it (`@a * 2`, `-@a`, `calc(@a * 2)`). Beside a real unknown it counts: `@less.fade(var(--x), @a)`, `@a * var(--x)`.
+- **One report per written call,** in the file and at the place it was written, however often a variable holding it is read or a mixin runs it. An outer call over an inner one that fired reports too, each at its own place, since the outer call printed a form of its own. When the inner call read an export, the outer call takes it as that export and only the inner call reports: `@less.darken(@less.fade(var(--y), @a), 10%)` reports once.
 - **`'warn'`** goes through the warning channel, so its limits apply: by default a code shows five sites and a count of the rest.
-- **`'error'`** records the error and evaluates on, so every such call is reported, and the compile fails at the end (P45).
+- **`'error'`** records the error and evaluates on, so every such call is reported until a hard error stops the compile, and the compile fails at the end (P45).
 
 The message says what the call printed and that the output depends on browser support for that form.
+
+A dotted `.scss` call carries a span so the report can name its place, which also adds a source-map segment for it: `color.adjust(#c00, $red: 10)` maps its value where it did not before. CSS is unchanged.
+
+Gaps:
+
+- A form that never reaches the output still reports: `@debug math.sqrt(var(--x));` and `@less.iscolor(@less.fade(var(--c), 50%))`.
+- A call printed unevaluated doesn't report, because it never runs: `.x { v: var(--y, @less.fade(#333, var(--a))); }` prints `var(--y, {}.fade(#333, var(--a)))`, and `rgb(from @less.fade(var(--c), 50%) r g b)` prints as written.
+- An inner call that read an export names the value it computed over, not the export's `var()`: `@less.darken(@less.fade(var(--y), @a), 10%)` says `rgb(from var(--y) r g b / 0.25)`, where the output has `var(--a, 25%)`.
+- A variable from a file `@import`ed inside a rule reports in the importing file's name, with the partial's offset.
+- A call evaluated only after an await (a plugin value) reports in the reader's file.
+- `eval/invalid-function` still names the reader's file for a call in a partial's variable: only this report follows the writing document.
 
 ## 4. Slice plan
 

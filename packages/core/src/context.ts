@@ -424,6 +424,15 @@ export class Context {
   /** Where a namespaced built-in was reported for not computing ({@link unresolvedWatch}), so a call reports once. */
   unresolvedBuiltinSites: Set<string> | undefined = undefined;
 
+  /** Whether some document reports such a call, so a value a reference reaches says whose it is. */
+  tracksReachedOwner = false;
+
+  /** The document that wrote the value a reference has reached ({@link reachingOwner}). */
+  reachedOwner: DocumentContext | undefined = undefined;
+
+  /** Whether a read looks up the document that wrote a root variable's value: for its policy, or for {@link reachedOwner}. */
+  readsValueOwners = false;
+
   readonly opts: Omit<ContextOptions, keyof ResolvedOptions>
     & Readonly<Pick<ContextOptions, keyof ResolvedOptions>>;
 
@@ -991,6 +1000,10 @@ export class Context {
     if (first.options !== policy || first.plugin?.valueEvaluator !== plugin.valueEvaluator) {
       this.mixedPolicies = true;
     }
+    if (policy.unresolvedBuiltins !== 'off') {
+      this.tracksReachedOwner = true;
+    }
+    this.readsValueOwners = this.mixedPolicies || this.tracksReachedOwner;
   }
 
   /**

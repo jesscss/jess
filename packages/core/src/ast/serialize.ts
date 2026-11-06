@@ -29,6 +29,7 @@ import { renderCombinator, type Combinator, type Node, type NodeType } from './n
 import serializerNodes, {
   any,
   callArg,
+  isNamedArg,
   collection,
   collectionEntry,
   dimension,
@@ -267,7 +268,7 @@ import type { ModuleConfigRejection } from '../plugin.js';
 import { rerouteForPlacedPlugins } from '../plugin-reroute.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
-import { unresolvedWatch } from './unresolved-builtin.js';
+import { reachingOwner, unresolvedWatch } from './unresolved-builtin.js';
 import { writtenListValue, writtenResult } from './empty-list.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
@@ -1324,7 +1325,7 @@ function definitionOwner(rules: object, home: Frame, e: Lane): object | null {
  * body a document recorded, or that recorded its owner when it was built; else
  * the active document.
  */
-function frameOwner(home: Frame, e: Lane): object | null {
+function frameOwner(home: Frame | null, e: Lane): object | null {
   const context = e.s.context;
   for (let f: Frame | null = home; f; f = f.parent) {
     const owner = f.statements ? context?.bodyOwner(f.statements) ?? f.sourceOwner : f.sourceOwner;
@@ -4028,7 +4029,7 @@ function withExcluded<T>(e: Lane, node: Binding, run: () => T, reader?: object):
   excluding(e, node, true);
   try {
     /* A root variable's value is looked up only once the session's documents differ. */
-    return whileReachedFrom(e, node, e.s.context?.mixedPolicies === true ? e.s.context.bodyOwner(node) : undefined, run, reader);
+    return whileReachedFrom(e, node, e.s.context?.readsValueOwners === true ? e.s.context.bodyOwner(node) : undefined, run, reader);
   } finally {
     excluding(e, node, false);
   }
@@ -4045,9 +4046,10 @@ function whileReachedFrom<T>(e: Lane, value: Binding, owner: object | null | und
   if (e.checks !== undefined) {
     reportReached(e, reachedValueSyntax(value, e.s));
   }
+  const read = e.s.context?.tracksReachedOwner === true ? reachingOwner(e.s.context, value, owner, run) : run;
   return e.s.context?.mixedPolicies === true && owner instanceof DocumentContext && changesPolicy(e, owner)
-    ? withPolicy(e, owner, () => whileReached(e, run, reader))
-    : whileReached(e, run, reader);
+    ? withPolicy(e, owner, () => whileReached(e, read, reader))
+    : whileReached(e, read, reader);
 }
 
 /**
@@ -7181,7 +7183,7 @@ function invokeValueLambda(
     });
   }
   const activation = makeFrame(defFrame, lambda.rules, collectMixins(lambda.rules), collectDeclIndex(lambda.rules, bindings), cellsForParams(bindings));
-  activation.sourceOwner = defFrame ? definitionOwner(lambda.rules, defFrame, e) : null;
+  activation.sourceOwner = defFrame ? e.s.context?.bodyOwner(lambda) ?? definitionOwner(lambda.rules, defFrame, e) : null;
   if (callerFrame && callerFrame !== defFrame) {
     activation.fallback = callerFrame;
     activation.callerFallback = true;
@@ -9189,7 +9191,9 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   };
-  const watch = reach === 'imported' && (e.modes.unresolvedBuiltins === 'warn' || e.modes.unresolvedBuiltins === 'error') ? unresolvedWatch(node, e, dispatch) : undefined;
+  const watch = reach === 'imported' && (e.modes.unresolvedBuiltins === 'warn' || e.modes.unresolvedBuiltins === 'error') && isNamespaceCall(node.name)
+    ? unresolvedWatch(node, e, (frame?.parent ? undefined : e.s.context?.reachedOwner) ?? frameOwner(frame, e), dispatch)
+    : undefined;
   const call = demanded && selected === undefined && isComputedColorCall(node)
     ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
@@ -9204,9 +9208,6 @@ function dispatchCall(
     : exportCall(e, node, selected ?? ev.fn(node.name), written => callArguments(node, alpha, frame, ae, written ? ARG_OPERAND : argument), args => combineAll(args, call));
   return watch === undefined ? result : watch.settled(result);
 }
-
-/** Whether a call argument is written by name (`$lightness: -10%`). */
-const isNamedArg = (arg: CallArg<ValueSlot>): boolean => arg.name !== undefined;
 
 /** A call's arguments, typed: each slot, or a colour call's channels with its alpha ({@link colorAlphaSlash}); a loop, so no closure per call. */
 function callArguments(node: FunctionCall, alpha: Operation | null, frame: Frame | null, e: Lane, argument: ArgumentMode): Array<MaybePromise<ValueGroup>> {
