@@ -1,4 +1,6 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { defineForm, formNumber, isDimension, knownUnit, type FormCall } from '@jesscss/core/form';
+import { emitValue, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { percentage as form } from '../../less/css-forms.generated.js';
 import { assertNoUnits } from './units.js';
 
 /**
@@ -13,10 +15,21 @@ import { assertNoUnits } from './units.js';
  *   percentage(-0.5)  → -50%
  *   percentage(50px)  → Error: $number: Expected 50px to have no units.
  *   percentage(50%)   → Error: $number: Expected 50% to have no units.
+ *
+ * Over a number only the browser knows it is `calc(number * 100%)` (V38), unless
+ * the number is known to have a unit.
  */
-const percentage = defineFunction('percentage', {
-  params: [{ name: 'number', type: 'Dimension' }] as const,
-  body: number => makeDimension(assertNoUnits(number, 'number').number * 100, '%')
+const percentage: Fn = /* @__PURE__ */ defineForm('percentage', {
+  params: [{ name: 'number', type: ['Dimension', 'FunctionCall'] }],
+  form: (number: ValueGroup): FormCall => {
+    if (isDimension(number)) {
+      return [form, formNumber(assertNoUnits(number, 'number').number)];
+    }
+    if ((knownUnit(number) ?? '') !== '') {
+      throw new TypeError(`$number: Expected ${emitValue(number)} to have no units.`);
+    }
+    return [form, number];
+  }
 });
 
 export { percentage };

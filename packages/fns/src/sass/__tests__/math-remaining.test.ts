@@ -15,6 +15,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Dimension, ValueGroup } from '@jesscss/core';
 import { isValueGroupArray, makeDimension, makeKeyword, makeList, makeNull } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
+import { call } from '../../__tests__/harness.js';
 import { unit } from '../math/unit.js';
 import { percentage } from '../math/percentage.js';
 import { random } from '../math/random.js';
@@ -76,28 +77,28 @@ describe('sass:math — unit', () => {
 
 describe('sass:math — percentage', () => {
   it('spec core_functions/math/percentage.hrx § zero', () => {
-    expect(percentage(makeDimension(0))).toMatchObject({ type: 'Dimension', number: 0, unit: '%' });
+    expect(call(percentage, makeDimension(0))).toMatchObject({ type: 'Dimension', number: 0, unit: '%' });
   });
 
   it('spec core_functions/math/percentage.hrx § small', () => {
-    expect(percentage(makeDimension(0.246))).toMatchObject({ number: 24.6, unit: '%' });
+    expect(call(percentage, makeDimension(0.246))).toMatchObject({ number: 24.6, unit: '%' });
   });
 
   it('spec core_functions/math/percentage.hrx § large', () => {
-    expect(percentage(makeDimension(123.456))).toMatchObject({ bytes: '12345.6%' });
+    expect(call(percentage, makeDimension(123.456))).toMatchObject({ bytes: '12345.6%' });
   });
 
   it('spec core_functions/math/percentage.hrx § integer', () => {
-    expect(percentage(makeDimension(42))).toMatchObject({ number: 4200, unit: '%' });
+    expect(call(percentage, makeDimension(42))).toMatchObject({ number: 4200, unit: '%' });
   });
 
   it('spec core_functions/math/percentage.hrx § negative', () => {
-    expect(percentage(makeDimension(-0.4))).toMatchObject({ number: -40, unit: '%' });
+    expect(call(percentage, makeDimension(-0.4))).toMatchObject({ number: -40, unit: '%' });
   });
 
   it('spec core_functions/math/percentage.hrx § error/unit — rejects a unit, where Less returns 5000%', () => {
-    expect(() => percentage(makeDimension(1, '%'))).toThrow('$number: Expected 1% to have no units.');
-    expect(() => percentage(makeDimension(50, 'px'))).toThrow('$number: Expected 50px to have no units.');
+    expect(() => call(percentage, makeDimension(1, '%'))).toThrow('$number: Expected 1% to have no units.');
+    expect(() => call(percentage, makeDimension(50, 'px'))).toThrow('$number: Expected 50px to have no units.');
   });
 });
 

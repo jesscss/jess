@@ -259,16 +259,18 @@ describe('less: math on a keyword, a call written out as-is or a string fails wh
 });
 
 /*
- * Owner 2026-10-23, asked whether `foo - bar` and `var(--x) + 1px` are errors
- * in `.scss` and `.jess`: *"yes"*; on colour math, which Dart Sass rejects
- * ("Undefined operation"): *"ya keep it an error in .scss"*. Less and `.jess`
- * keep colour math (ledger V36, V13).
+ * Owner 2026-10-23, asked "Should `var(--x) + 1px` be an error in `.scss` and
+ * `.jess`?": *"yes"*, and the same of `foo - bar`; on colour math, which Dart
+ * Sass rejects ("Undefined operation"): *"ya keep it an error in .scss"*. Less
+ * and `.jess` keep colour math (ledger V36, V13). V38 supersedes that answer for
+ * an operand only the browser knows, which is `calc()`
+ * (`test/scss/sass-math-css-forms.test.ts`).
  */
 describe('scss and jess: - on a keyword, a call operand, and .scss colour math', () => {
   it.each([
     ['operators/minus.hrx syntax/whitespace/both', 'a {b: c - d}'],
     ['a keyword and a number', '.a { b: foo - 1px; }'],
-    ['a call written out as-is', '.a { b: var(--x) + 1px; }'],
+    ['a call of a known other type', '.a { b: rgb(var(--r), 0, 0) + 1px; }'],
     ['non_conformant/sass_4_0/color_arithmetic/addition/color_color.hrx', '$v: #abc + #123; a { b: $v; }'],
     ['non_conformant/sass_4_0/color_arithmetic/addition/color_number.hrx', '$v: #abc + 1; a { b: $v; }'],
     ['non_conformant/sass_4_0/color_arithmetic/multiplication/color_number.hrx', '$v: #abc * 1; a { b: $v; }'],

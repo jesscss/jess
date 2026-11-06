@@ -13,9 +13,3 @@ export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 /** `percentOf(base)`: a `%` dimension → `number * base / 100`; else its number. */
 export const percentOf = (d: Dimension, base: number): number =>
   d.unit === '%' ? (d.number * base) / 100 : d.number;
-
-/** A hue in degrees, wrapped into 0-360. */
-export function wrapHue(degrees: number): number {
-  const hue = degrees % 360;
-  return hue < 0 ? hue + 360 : hue;
-}

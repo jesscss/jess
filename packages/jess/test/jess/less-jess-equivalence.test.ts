@@ -771,11 +771,6 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'Interpolation: a `Lookup` spliced into a string: `${…}` takes a variable name (+6 more)'
   }],
-  ['all-less:tests-unit/math-css-vars/math-css-vars.less', {
-    cause: 'lost-info',
-    outcome: 'arm-b-error',
-    reason: 'a built-in call Less writes out as CSS when it cannot compute it (`sin(var(--angle))`) converts to a call through its imported binding (`$sin(…)`), which ruling J1 makes an eval error'
-  }],
   ['all-less:tests-unit/media/media.less', {
     cause: 'cannot-express',
     outcome: 'cannot-express',

@@ -177,10 +177,13 @@ export const makeGroupedKeyword = (text: string, groups: number): Keyword => new
 /** The CSS colour functions a call's type reads by name (css-color-4 §5–§10, css-color-5 §3, §8, css-color-4 §6.5 `light-dark`). */
 const COLOR_FUNCTIONS: ReadonlySet<string> = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix', 'contrast-color', 'light-dark']);
 
+/** The tests of a CSS `if()` (css-values-5 §if), which are no number or colour. */
+const IF_TESTS: ReadonlySet<string> = new Set(['media', 'supports', 'style']);
+
 /** The CSS type a call produces, by its name ({@link CallResult}). */
 function callResult(name: string): CallResult {
   const lower = name.toLowerCase();
-  return COLOR_FUNCTIONS.has(lower) ? 'color' : isMathFunctionName(lower) ? 'numeric' : null;
+  return COLOR_FUNCTIONS.has(lower) ? 'color' : isMathFunctionName(lower) ? 'numeric' : IF_TESTS.has(lower) ? 'other' : null;
 }
 
 /** A call written out as-is, spelled `bytes` ({@link FunctionCall}). */

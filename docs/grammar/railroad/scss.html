@@ -892,7 +892,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-NestingSelector">
     <h2><a href="#rule-NestingSelector">§</a> NestingSelector</h2>
     <div class="diagram" data-rule="NestingSelector"></div>
-    <div class="ebnf">NestingSelector ::= /&amp;(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/</div>
+    <div class="ebnf">NestingSelector ::= /&amp;(?:\d+(?:\.\d+)?%|(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)/ (SassInterpolation (SassInterpolation | NAME)*)?</div>
   </section>
   <section class="rule" id="rule-Property">
     <h2><a href="#rule-Property">§</a> Property</h2>
@@ -2819,7 +2819,7 @@ svg.railroad-diagram rect {
   { name: "LeadingDashRawPseudoArgument", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("-"), NonTerminal("PseudoSelectorCloseAhead")), Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), Terminal("-"), Terminal("WHITESPACE"), NonTerminal("pseudoArgumentContent")), Sequence(Terminal("-"), Terminal("-"), NonTerminal("pseudoArgumentContent")))); } },
   { name: "LangPseudoArgument", dsl: function(){ return Diagram(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), OneOrMore(Sequence(Sequence(Comment("not"), Terminal("~")), Choice(0, Terminal("IDENT (escapes allowed)"), NonTerminal("Quoted"))), Terminal(",")), Optional(Terminal("WHITESPACE or COMMENT")))); } },
   { name: "DirPseudoArgument", dsl: function(){ return Diagram(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal("IDENT (escapes allowed)"), Optional(Terminal("WHITESPACE or COMMENT")))); } },
-  { name: "NestingSelector", dsl: function(){ return Diagram(Terminal("/&(?:--(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*)?/")); } },
+  { name: "NestingSelector", dsl: function(){ return Diagram(Sequence(Terminal("/&(?:\\d+(?:\\.\\d+)?%|(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*)/"), Optional(Sequence(NonTerminal("SassInterpolation"), ZeroOrMore(Choice(0, NonTerminal("SassInterpolation"), Terminal("NAME"))))))); } },
   { name: "Property", dsl: function(){ return Diagram(NonTerminal("Identifier")); } },
   { name: "CustomProperty", dsl: function(){ return Diagram(NonTerminal("CustomPropertyName")); } },
   { name: "CustomValue", dsl: function(){ return Diagram(ZeroOrMore(NonTerminal("CustomPart"))); } },

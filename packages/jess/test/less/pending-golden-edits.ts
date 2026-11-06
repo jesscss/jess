@@ -9,35 +9,10 @@
  * An edit no ruling decides yet is NOT applied: the harness would assert it as if the
  * owner had accepted it. Such an edit is listed here, in a comment, and its fixture is
  * an expected failure in `all-less.test.ts` until the owner decides. Awaiting the owner:
- *
- * - `tests-unit/parse-interpolation/parse-interpolation.less`: a `selector(…)` capture's
- *   header branches one per line, `  .d:is(.a, .b, .c)&:hover, baz-cap {` →
- *   `  .d:is(.a, .b, .c)&:hover,\n  baz-cap {` (O8(a), an owner-delegated judgment of
- *   2026-10-04); and the quoted case's `foo: bar` → `foo: baz`, which the source
- *   writes (a golden typo).
+ * none. No edit is pending now; the tests keep reading goldens through this file so the
+ * next golden that lags a fix has one place to be listed.
  */
-const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string, to: string]>>([
-  /*
-   * A built-in is its CSS form over an input only the browser knows
-   * (docs/design/CSS-NATIVE-BUILTINS.md Q8, approved by the owner 2026-11-01).
-   */
-  ['tests-unit/math-css-vars/math-css-vars.less', [['  e: percentage(var(--p));', '  e: calc(var(--p) * 100%);']]],
-
-  /*
-   * A slash list a variable or a mixin argument holds divides once math that
-   * computes reads it (P35, FIXTURES, owner 2026-10-29: "A stored `10px/2`
-   * divides once it's used in math").
-   */
-  ['tests-unit/operations/operations-advanced.less', [['  result: calc(10px / 2 * 2);', '  result: 10px;']]],
-  ['tests-config/math-parens-division/mixins-args.less', [['  depth: 18 / 2 - 1%;', '  depth: 8%;']]],
-
-  /*
-   * Math beside a slash that does not divide is kept as written (P35, owner
-   * 2026-10-30: "it should be as-written if they have parens-division. They
-   * stated that as their intent!!"); the group `(1 + 1)` still computes.
-   */
-  ['tests-config/math-parens-division/parens.less', [['  border-radius-keep: 8px / 7px;', '  border-radius-keep: 4px * 2 / 4 + 3px;']]]
-]);
+const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string, to: string]>>();
 
 export function applyPendingGoldenEdits(file: string, golden: string): string {
   let edited = golden;

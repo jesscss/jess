@@ -35,6 +35,11 @@ describe('an adjuster over an input only the browser knows prints its form', () 
     ['mix(var(--a), #fff)', 'color-mix(in srgb, var(--a), #fff)'],
     ['rgba(currentcolor, .5)', 'rgb(from currentcolor r g b / 0.5)'],
     ['rgb(currentcolor, .5)', 'rgb(from currentcolor r g b / 0.5)'],
+    ['rgba(currentcolor, var(--a))', 'rgb(from currentcolor r g b / var(--a))'],
+    ['rgba(#000, var(--a))', 'rgb(from #000 r g b / var(--a))'],
+    ['rgb(#000, var(--a))', 'rgb(from #000 r g b / var(--a))'],
+    ['rgba(var(--c), .5)', 'rgba(var(--c), 0.5)'],
+    ['rgba(var(--c), var(--a))', 'rgba(var(--c), var(--a))'],
     ['invert(#f00, var(--w))', 'color-mix(in srgb, rgb(from #f00 calc(255 - r) calc(255 - g) calc(255 - b)) var(--w), #f00)']
   ])('%s', async (call, form) => {
     await expect(value(call)).resolves.toBe(form);

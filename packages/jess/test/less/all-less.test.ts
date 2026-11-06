@@ -259,11 +259,6 @@ const skippedFixtureReasons = new Map(
 const expectedFailureFixtures = new Map<string, string>([
 
   /*
-   * A golden edit no ruling decides yet is not applied (pending-golden-edits.ts), so
-   * these fail until the owner decides.
-   */
-
-  /*
    * NOTE: import-reference-issues.less and starting-style.less graduated OUT of
    * this list — the D3 single-render-pass change (removing the separate
    * Compiler-level eval pre-pass so render() is the sole eval driver) eliminated
@@ -354,10 +349,6 @@ const expectedFailureFixtures = new Map<string, string>([
   [
     'tests-unit/plugin/plugin.less',
     'INTENDED DIVERGENCE (owner ruling 2026-08-18). Lines 124-135 use `@plugin (option) "…"` with the `registerPlugin({ install, use, setOptions })` lifecycle — a documented Less 4.x plugin-API form, but `@plugin` itself is DEPRECATED in v5 (script integration moves to @use / @-use; see deprecation.ts). The bare, common ABI works: with the harness-loaded @jesscss/plugin-less-compat, `functions.addMultiple`/`tree` @plugin scripts (plugin-global, plugin-transitive) load fine. The `registerPlugin`/`setOptions`/`(option)` plugin-manager lifecycle is deliberately NOT built out in the compat bridge — it is a rarely-used corner of a deprecated feature, so any script-integration effort belongs in the @use path instead. Owner-maintained @less/test-data fixture'
-  ],
-  [
-    'tests-unit/parse-interpolation/parse-interpolation.less',
-    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it. Flattened, `.fruit-cap-` is a class of its own and the `&` a plain reference to each captured parent (owner 2026-10-09: "how do you know it\'s a prefix? that\'s why we can\'t do that"), so the golden\'s `.fruit-cap-apple, …` branches are not the flattened output either; Less `each()` is the explicit rule-multiplication form. Escaped text prints as written (owner 2026-10-09; the `.bar2` and quoted `@{c}@{d}` headers are owner-accepted golden edits). Two more differences await the owner and are not applied as golden edits (pending-golden-edits.ts): a `selector(…)` capture prints one branch per line in a nested header (O8(a), owner-delegated judgment 2026-10-04), and the golden writes `foo: bar` where the quoted case\'s source writes `foo: baz`'
   ],
   [
     'tests-unit/permissive-parse/permissive-parse.less',

@@ -201,12 +201,12 @@ describe('Less @expose variables (A4)', () => {
 
     it('follows an exposed variable it computes with through a mixin argument', async () => {
       await expect(renderBesideImage('@use "#less";\n@expose w;\n@w: 8px;\n.m(@l) { v: @l; }\n.a { .m(@less.max(@w, @less.image-width("a.png"))); }'))
-        .resolves.toContain('v: var(--w-max, 17px);');
+        .resolves.toContain('v: max(var(--w, 8px), 17px);');
     });
 
     it('follows an exposed variable beside it', async () => {
       await expect(renderBesideImage('@use "#less";\n@expose w;\n@w: 8px;\n.a { v: @less.max(@w, @less.image-width("a.png")); }'))
-        .resolves.toContain('v: var(--w-max, 17px);');
+        .resolves.toContain('v: max(var(--w, 8px), 17px);');
     });
   });
 

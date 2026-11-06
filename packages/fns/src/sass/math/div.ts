@@ -1,7 +1,7 @@
-import { defineFunction, emitValue, groupItems, isValueGroupArray, operate, type Dimension, type ValueGroup } from '@jesscss/core/value';
+import { defineFunction, emitValue, groupItems, isUnknownNumber, isValueGroupArray, operate, operatedOnUnknown, type Dimension, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
 
-const number = (item: ValueGroup, name: string): Dimension => {
-  if (isValueGroupArray(item) || item.type !== 'Dimension') {
+const number = (item: ValueGroup, name: string): Dimension | FunctionCall => {
+  if (isValueGroupArray(item) || (item.type !== 'Dimension' && (item.type !== 'FunctionCall' || !isUnknownNumber(item)))) {
     throw new TypeError(`$${name}: ${emitValue(item)} is not a number.`);
   }
   return item;
@@ -30,6 +30,9 @@ const number = (item: ValueGroup, name: string): Dimension => {
  * Units of one conversion group cancel, as in the `.scss` `/` (ledger V32):
  * `math.div(6in, 3px)` → `192`. A division by zero fails the call (ledger V7),
  * where Dart Sass writes `calc(infinity)`.
+ *
+ * Over a number only the browser knows it is `calc(number1 / number2)`, what the
+ * `.scss` `/` that computes writes there (V38).
  */
 const div = defineFunction('div', {
   params: [
@@ -42,7 +45,11 @@ const div = defineFunction('div', {
     if (items.length !== 2) {
       throw new TypeError(items.length < 2 ? `Missing argument $number${items.length + 1}.` : `Only 2 arguments allowed, but ${items.length} were passed.`);
     }
-    return operate('/', number(items[0]!, 'number1'), number(items[1]!, 'number2'), ctx.modes, true);
+    const left = number(items[0]!, 'number1');
+    const right = number(items[1]!, 'number2');
+    return left.type === 'Dimension' && right.type === 'Dimension'
+      ? operate('/', left, right, ctx.modes, true)
+      : operatedOnUnknown('/', left, right, ctx.modes, false);
   }
 });
 
