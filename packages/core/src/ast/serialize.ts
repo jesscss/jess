@@ -215,7 +215,7 @@ import { channelFunction, channelMath, channelOf, formChannels, isComputedColorC
 import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedAtRuleName, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
-import { callSiteLocation } from './call-site-location.js';
+import { callSiteLocation, laneSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, groupAsWritten, groupText, inParens, isKeptOperation, isUnexpressible, keepAsWritten, keptInString, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
@@ -4745,8 +4745,8 @@ const operationSignGlued = (node: Operation): boolean => {
  * value-position comparison (`$(1em > 1px)`) that raised it, between its two
  * operands' spans; anything else at its own start.
  */
-function arithmeticSiteLocation(node: object, e: Lane): ReturnType<typeof callSiteLocation> {
-  const location = callSiteLocation(node, e.s);
+function arithmeticSiteLocation(node: object, e: Lane, locate = callSiteLocation): ReturnType<typeof callSiteLocation> {
+  const location = locate(node, e.s);
   if (!isOperatorSite(node)) {
     return location;
   }
@@ -4809,7 +4809,7 @@ function warnUnexpressibleUnit(value: Value, owner: object, e: Lane): void {
   const site = unitOwners.get(value) ?? unitOwners.get(kept) ?? owner;
   context.warn(WARN.unexpressibleUnit({
     node: site,
-    ...arithmeticSiteLocation(site, e),
+    ...arithmeticSiteLocation(site, e, laneSiteLocation),
     meta: { expr: (value.type === 'Dimension' ? value.preserved : undefined) ?? value.bytes }
   }));
 }
