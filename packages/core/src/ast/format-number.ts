@@ -25,7 +25,7 @@
  * values >= 10. Unlike a decimal-place floor it never annihilates a small magnitude:
  * 8 dp flattened everything below ~5e-9 to literally `0`.
  */
-const TOLERANCE = 1e-10;
+export const TOLERANCE = 1e-10;
 
 /**
  * Significant-digit short-circuit. A relative tolerance of 1e-10 can only ever

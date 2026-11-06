@@ -77,6 +77,38 @@ describe('colour updates by keyword in .scss', () => {
   });
 });
 
+describe('a known colour through one relative colour', () => {
+  /* Chrome 152 reads each form to these channels, a half byte rounding up. */
+  it.each([
+    ['color.change(#767676, $lightness: 50%)', '#808080'],
+    ['scale-color(#e6e6e6, $lightness: -15%)', '#c4c4c4'],
+    ['color.change(#0d6efd, $blackness: 50%)', '#0d3b80'],
+    ['color.change(#336699, $whiteness: 0%)', '#004d99'],
+    ['color.change(#336699, $blackness: 100%)', '#2b2b2b']
+  ])('%s is %s, what the channel bound being what it reads', async (call, out) => {
+    await expect(value(call)).resolves.toBe(out);
+  });
+
+  it('reads an hwb hue through sRGB, as a grey hsl() has none, and keeps hsl\'s own', async () => {
+    await expect(value('color.change(hsl(120,0%,50%), $whiteness: 20%)')).resolves.toBe('hsl(0, 42.85714286%, 35%)');
+    await expect(value('color.change(hsl(120,0%,50%), $lightness: 40%)')).resolves.toBe('hsl(120, 0%, 40%)');
+  });
+
+  /* V14: a hex with its own alpha stays hex, through a result that has no source text. */
+  it.each([
+    ['.less', 'darken(lighten(#ffffff88, 5%), 5%)', '#f2f2f288'],
+    ['.less', 'darken(fade(#ffffff88, 50%), 5%)', '#f2f2f280'],
+    ['.less', 'darken(fadein(#fff8, 10%), 5%)', '#f2f2f2a2'],
+    ['.scss', 'darken(darken(#ffffff88, 5%), 5%)', '#e5e5e588'],
+    ['.scss', 'saturate(transparentize(#3369, .1), 5%)', '#2f2f6a80'],
+    ['.less', 'darken(fade(#c00, 50%), 5%)', 'rgba(179, 0, 0, 0.5)'],
+    ['.scss', 'saturate(transparentize(#c00, .1), 5%)', 'rgba(204, 0, 0, 0.9)']
+  ])('%s %s is %s', async (extension, call, out) => {
+    const css = await new Compiler({}).renderString(`a { b: ${call}; }`, { filePath: `theme${extension}`, extension, suppressWarnings: true });
+    expect(css.trim().replace(/^a\s*\{\s*b:\s*/, '').replace(/;?\s*\}$/, '')).toBe(out);
+  });
+});
+
 describe('one relative colour, each channel a slot', () => {
   it.each([
     ['color.adjust(var(--c), $red: 10, $green: 20)', 'rgb(from var(--c) clamp(0, r + 10, 255) clamp(0, g + 20, 255) b)'],

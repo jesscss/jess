@@ -407,6 +407,8 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 - Sass spells an out-of-range channel as `hsl()` with a saturation past 100% (`color.adjust(#cc6666, $whiteness: -100%)` is `hsl(0, 700%, 10%)`), which a browser clamps when it parses. The form here keeps the channels: `hwb(from #cc6666 h calc(w + -100) b)` is what the Sass channels are, clipped at output. So 5 sass-spec rows that print such a colour read differently in Chrome (`adjust/hwb` whiteness and blackness `min`, `change/hsl` saturation `above_range`, `change/hwb` `out_of_range`, `change/rgb` red `out_of_range`).
 - `color.adjust(hsl(120,50%,50%), $alpha: -.1)` is `rgba(64, 191, 64, 0.9)` (V10), as `transparentize` is, where Sass keeps `hsla()`.
 - Conversion to `.jess` reports a gap for `color.adjust` and the others, as for any call with keyword arguments.
+- A channel reader over a known colour that stays a form prints no diagnostic: `red(color.change(#0d6efd, $saturation: saturation(#0d6efd) * 1.2))` is `red(hsl(from #0d6efd h 118.03278689 l))`, invalid, and `@if lightness(color.change(#0d6efd, $lightness: lightness(#0d6efd) + 60%)) > 50` is `eval/incomparable-operands`. Less's `red(rgb(from #336699 calc(r + 300) g b))` does the same.
+- `color.adjust(#c00, $red: foo(1))` prints the form, as an unknown function maps like any other (Q6).
 
 ## 5. Owner questions and rulings
 

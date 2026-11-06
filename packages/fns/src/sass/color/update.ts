@@ -26,7 +26,7 @@
  */
 import { asNumber, channelForm, defineForm, knownUnit, type FormCall, type FormSlot } from '@jesscss/core/form';
 import type { Color, Dimension, Fn, FunctionCall, ValueGroup } from '@jesscss/core/value';
-import { colorHsl, colorRawRgb, isUnknownNumber, isValueGroupArray, makeDimension } from '@jesscss/core/value';
+import { colorHsl, colorRawRgb, isUnknownNumber, isValueGroupArray, makeDimension, TOLERANCE } from '@jesscss/core/value';
 import * as forms from '../../less/css-forms.generated.js';
 import { percentOf } from '../../shared/color/kernels.js';
 import { COLOR } from './color-form.js';
@@ -241,7 +241,8 @@ function huePowerless(space: Space, color: Color): boolean {
     return Math.abs(colorHsl(color)[1]) < 1e-11;
   }
   const rgb = colorRawRgb(color);
-  return space === 'hwb' && Math.min(...rgb) >= Math.max(...rgb) - 1e-9;
+  const max = Math.max(...rgb);
+  return space === 'hwb' && max - Math.min(...rgb) <= max * TOLERANCE;
 }
 
 function update(op: Op, args: readonly (ValueGroup | undefined)[]): FormCall | Color {

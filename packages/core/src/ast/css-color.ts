@@ -227,8 +227,8 @@ function formMix(values: readonly ValueGroup[]): Rgba | undefined {
  * colour, or an absolute colour's channels, or `undefined` when a channel is not
  * known ({@link hslOf}, {@link rgbOf}, {@link hwbOf}).
  */
-export function formColor(form: FormChannels, input: Color | Dimension, channels: MutableChannels, read: (slot: ValueSlot) => MaybePromise<ValueGroup>): MaybePromise<Hsla | Rgba | undefined> {
-  const { kinds, slashed } = form;
+export function formColor(form: FormChannels, input: Color | Dimension, channels: MutableChannels, read: (slot: ValueSlot) => MaybePromise<ValueGroup>, kinds: readonly number[]): MaybePromise<Hsla | Rgba | undefined> {
+  const { slashed } = form;
   if (form.space === 'mix') {
     return channelsOf(form.slots, read, formMix);
   }
@@ -247,7 +247,8 @@ export function formColor(form: FormChannels, input: Color | Dimension, channels
   const alpha = clamp(input.alpha, 1);
   channels.alpha.number = alpha;
   if (form.space === 'hwb') {
-    channels.h.number = originHsl(input)[0]!;
+    /* A relative `hwb()` reads the origin through sRGB, so a grey `hsl()` has no hue of its own (css-color-5 §4). */
+    channels.h.number = rgbToHsl(rgb[0], rgb[1], rgb[2])[0];
     channels.w.number = Math.min(...rgb) / 2.55;
     channels.b.number = 100 - Math.max(...rgb) / 2.55;
     return channelsOf(form.slots, read, values => hwbOf(values, slashed, alpha, true));
@@ -264,6 +265,9 @@ export interface FormChannels {
   readonly relative: boolean;
   readonly slots: readonly ValueSlot[];
   readonly kinds: readonly number[];
+
+  /** Whether a channel is a parameter, so its kind is what each call binds. */
+  readonly parameters: boolean;
   readonly slashed: boolean;
 }
 
@@ -271,7 +275,7 @@ const FORM_SPACES: Readonly<Record<string, FormChannels['space'] | undefined>> =
 
 export function formChannels(node: FunctionCall): FormChannels | undefined {
   if (isSrgbColorMix(node)) {
-    return { space: 'mix', relative: true, slots: [node.args[1]!.value, node.args[2]!.value], kinds: [], slashed: false };
+    return { space: 'mix', relative: true, slots: [node.args[1]!.value, node.args[2]!.value], kinds: [], parameters: false, slashed: false };
   }
   const nodes = node.args[0]!.value;
   const space = FORM_SPACES[node.name];
@@ -281,7 +285,7 @@ export function formChannels(node: FunctionCall): FormChannels | undefined {
   const first = nodes[0]!;
   const relative = !isValueSlotArray(first) && first.type === 'Keyword' && first.src === 'from';
   const { slots, slashed } = colorSlots(node, nodes, relative);
-  return { space, relative, slots, kinds: slots.map(channelKind), slashed };
+  return { space, relative, slots, kinds: slots.map(channelKind), parameters: slots.some(slot => !isValueSlotArray(slot) && slot.type === 'Lookup'), slashed };
 }
 
 /** The channels a form reads, one value each, written anew for each call. */
@@ -547,7 +551,7 @@ function scalesChannel(slot: ValueSlot): boolean {
 }
 
 /** What a channel's math is: `0` a number written, `1` a share of what it reads, `2` a change. */
-const channelKind = (slot: ValueSlot): number =>
+export const channelKind = (slot: ValueSlot): number =>
   !isValueSlotArray(slot) && slot.type === 'Dimension' ? 0 : scalesChannel(slot) ? 1 : 2;
 
 /**

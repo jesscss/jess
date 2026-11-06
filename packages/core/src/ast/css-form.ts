@@ -11,7 +11,7 @@
  */
 import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { compressDimensionBytes } from './compress.js';
-import { formChannelValues, formColor, type FormChannels, type Hsla, type MutableChannels, type Rgba } from './css-color.js';
+import { channelKind, formChannelValues, formColor, type FormChannels, type Hsla, type MutableChannels, type Rgba } from './css-color.js';
 import { cssMath, isDimension } from './css-math.js';
 import { buildEvaluator } from './evaluator.js';
 import type { Fn, ParamSpec } from './functions/types.js';
@@ -20,6 +20,7 @@ import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formL
 import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
 import { HEX, RGB } from './color.js';
 import { isValueGroupArray, type Color, type Dimension, type Value, type ValueGroup } from './value-eval.js';
+import { isValueSlotArray } from './css-grammar-helpers.js';
 import { DimensionValueNode } from './node-ctors.js';
 import { makeColorHsl, makeColorRgb, makeDimension, withFields } from './value-factory.js';
 import { groupItems } from './value-list.js';
@@ -73,7 +74,7 @@ function newLane(compress: boolean): FormLane {
  */
 function spelled(channels: FormChannels, out: Hsla | Rgba, input: Color | Dimension, format: number | undefined): Color {
   if (channels.space === 'hsl' && input.type === 'Color') {
-    return makeColorHsl([out[0], out[1], out[2]], out[3], out[3] < 1 && input.format === HEX ? translucentHex(input) : input.format);
+    return makeColorHsl([out[0], out[1], out[2]], out[3], out[3] < 1 && input.alpha >= 1 && input.format === HEX ? RGB : input.format);
   }
   if (channels.space === 'mix' && input.type === 'Color') {
     return makeColorRgb([out[0], out[1], out[2]], out[3], out[3] < 1 ? format ?? input.format : input.format);
@@ -147,6 +148,21 @@ function channelActivation(form: AnonymousMixin, slot: number): FormActivation {
   return activation;
 }
 
+/** What a channel a template leaves to a parameter is: what this call bound there (`hsl(from $c $h $s $l)`). */
+function boundKinds({ slots }: FormChannels, call: FormCall): readonly number[] {
+  return slots.map((slot) => {
+    if (isValueSlotArray(slot) || slot.type !== 'Lookup') {
+      return channelKind(slot);
+    }
+    const index = call[0].params?.findIndex(param => param.name === slot.name) ?? -1;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- every element after a FormCall's form is what a parameter binds.
+    const value = call[index + 1] as FormSlot | undefined;
+    return value instanceof ChannelForm
+      ? channelKind(channelActivation(value.form, index).result)
+      : typeof value === 'object' && isDimension(value) ? 0 : 2;
+  });
+}
+
 function bindSlot(cell: BindingCell, value: FormSlot | undefined, slot: number, compress: boolean): void {
   if (typeof value === 'string') {
     cell.value = keyword(value);
@@ -186,7 +202,7 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format:
   }
   const origin = channels === undefined || isValueGroupArray(input) ? undefined : knownInput(channels, input);
   if (channels !== undefined && origin !== undefined) {
-    const out = formColor(channels, origin, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
+    const out = formColor(channels, origin, lanes.channels, slot => evalFormChannel(slot, frame, channelLane), channels.parameters ? boundKinds(channels, call) : channels.kinds);
     if (out !== undefined && !isThenable(out)) {
       return spelled(channels, out, origin, format);
     }

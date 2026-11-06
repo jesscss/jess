@@ -118,6 +118,8 @@ export type {
   ParamValue
 } from './ast/functions/types.js';
 
+export { TOLERANCE } from './ast/format-number.js';
+
 // --- registry seam ---
 export { createFnRegistry, declineOverUnknown, defineFunction, FunctionDeclined, isUnknownNumber, NoCssForm } from './ast/value-dispatch.js';
 export type { FnRegistry } from './ast/value-dispatch.js';
