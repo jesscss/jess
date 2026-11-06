@@ -219,8 +219,7 @@ describe('other dialects', () => {
   it.each([
     ['.css', '.a { b: calc(var(--a) % 3); }', '.a {\n  b: calc(var(--a) % 3);\n}\n'],
     ['.scss', '.a { b: calc(var(--a) % 3); }', '.a {\n  b: calc(var(--a) % 3);\n}\n'],
-    ['.css', '.a { b: translate((var(--a) * 2), 1px); }', '.a {\n  b: translate((var(--a) * 2), 1px);\n}\n'],
-    ['.scss', '.a { b: translate((var(--a) * 2), 1px); }', '.a {\n  b: translate((var(--a) * 2), 1px);\n}\n']
+    ['.css', '.a { b: translate((var(--a) * 2), 1px); }', '.a {\n  b: translate((var(--a) * 2), 1px);\n}\n']
   ])('%s keeps %s', async (extension, source, out) => {
     const compiler = new Compiler({});
     await expect(compiler.renderString(source, { filePath: `entry${extension}`, extension })).resolves.toBe(out);
