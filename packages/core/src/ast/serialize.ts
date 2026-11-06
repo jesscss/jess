@@ -223,7 +223,7 @@ import { makeAny, makeWrittenMath, makeBlock, makeCalc, makeCollection, makeDime
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { cssFilterCall, mayBeFilter } from './filter-position.js';
-import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
+import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, moduleReferenceCallNode, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { mathOperand, negatedCall, slashOperated, writtenPercent } from './math-operand.js';
@@ -7736,15 +7736,7 @@ function evalModuleReferenceCall(
     return literal(node.raw);
   }
 
-  /*
-   * Carries the reference's span (its head's, where only the head has one), so
-   * a failure is named where the call was written.
-   */
-  const call = funcCall(selected.name, args);
-  const written = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(node.base) ? node.base : node;
-  call._s = sourceStartOf(written);
-  call._e = sourceEndOf(written);
-  return dispatchCall(call, frame, deriveLane(e, 'call'), e.ev, selected.fn, 'imported');
+  return dispatchCall(moduleReferenceCallNode(node, selected.name, args), frame, deriveLane(e, 'call'), e.ev, selected.fn, 'imported');
 }
 
 /**
@@ -9197,20 +9189,19 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   };
+  const watch = reach === 'imported' && (e.modes.unresolvedBuiltins === 'warn' || e.modes.unresolvedBuiltins === 'error') ? unresolvedWatch(node, e, dispatch) : undefined;
   const call = demanded && selected === undefined && isComputedColorCall(node)
     ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'FunctionCall'
         ? out
         : resolveColorCall(node, vals, channelBinder(frame, be), out))
     : e.channels !== undefined && selected === undefined
       ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? ev.cssMath?.(node.name, vals) ?? dispatch(vals)
-      : dispatch;
-  const watch = reach === 'imported' && (e.modes.unresolvedBuiltins === 'warn' || e.modes.unresolvedBuiltins === 'error') ? unresolvedWatch(node, e, call) : undefined;
-  const watched = watch === undefined ? call : watch.call;
+      : watch === undefined ? dispatch : watch.call;
 
   /* [A4] A computed call reading an export is recorded for the runtime. */
   const result = e.s.exports.runtime === undefined || argument !== ARG_INPUT
-    ? combineAll(callArguments(node, alpha, frame, ae, argument), watched)
-    : exportCall(e, node, selected ?? ev.fn(node.name), written => callArguments(node, alpha, frame, ae, written ? ARG_OPERAND : argument), args => combineAll(args, watched));
+    ? combineAll(callArguments(node, alpha, frame, ae, argument), call)
+    : exportCall(e, node, selected ?? ev.fn(node.name), written => callArguments(node, alpha, frame, ae, written ? ARG_OPERAND : argument), args => combineAll(args, call));
   return watch === undefined ? result : watch.settled(result);
 }
 

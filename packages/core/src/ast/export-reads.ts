@@ -560,19 +560,16 @@ export function exportCall<F>(
     x.writtenRead = outerWritten ?? written;
   }
 
-  const computedOver = (vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> => {
-    x.callReads = inputs;
-    return written === undefined
-      ? dispatch(vals)
+  const computedOver = (vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> =>
+    written === undefined
+      ? dispatchReading(x, inputs, dispatch, vals)
       : mapMaybe(slotsKnown(x, fn, args, e.ev), (slots) => {
           knownSlots = slots;
           if (slots !== undefined && !fitsWritten(fn, vals, slots)) {
             exportNotWritten(node, `@${written}`, written, e, IN_LARGER_ARGUMENT);
           }
-          x.callReads = inputs;
-          return recovering(() => dispatch(vals), namingExport(e, node, written));
+          return recovering(() => dispatchReading(x, inputs, dispatch, vals), namingExport(e, node, written));
         });
-  };
   if (inputs.length === 0 && !typed.some(isThenable)) {
     return computedOver(typed);
   }
@@ -611,6 +608,12 @@ export function exportCall<F>(
         }
         return recorded();
       }));
+}
+
+/** A call's dispatch over the exports it read, for {@link onlyExportsUnknown}. */
+function dispatchReading<F>(x: ExportState<F>, inputs: ReadonlyArray<ExportInput>, dispatch: (args: Array<MaybePromise<ValueGroup>>) => MaybePromise<EvalValue>, vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> {
+  x.callReads = inputs;
+  return dispatch(vals);
 }
 
 /** The compile-time value of each export a recipe reads, the first read standing. */
@@ -670,9 +673,10 @@ export function onlyExportsUnknown<F>(state: ExportState<F>, vals: readonly Valu
   if (reads === undefined || reads.length === 0) {
     return false;
   }
+  const read = new Set(reads.map(input => input.value));
   return vals.every((val) => {
     const value = lone(val);
-    return reads.some(read => read.value === value)
+    return read.has(value)
       || isValueGroupArray(value)
       || !(value.type === 'FunctionCall' || (value.type === 'Keyword' && isBrowserColor(value.text)));
   });
