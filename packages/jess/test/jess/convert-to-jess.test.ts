@@ -359,7 +359,11 @@ describe('Compiler.convertToJess', () => {
     ['.scss', '$c: .5;\na { filter: grayscale($c); }'],
     ['.scss', '$c: var(--x);\na { filter: saturate($c); color: grayscale($c); }'],
     ['.less', '@c: var(--x);\n.a { filter: contrast(@c); color: contrast(@c); }'],
-    ['.less', '.m(@c) { filter: contrast(@c); }\n.a { .m(var(--x)); }']
+    ['.less', '.m(@c) { filter: contrast(@c); }\n.a { .m(var(--x)); }'],
+    ['.scss', '$x: var(--x);\na { a: $x * 2; b: $x + 1px; c: 1 - $x; d: $x % 3; e: -$x; f: $x / 2; g: ($x * 2) + 1; h: ($x * 2) % 3; }'],
+    ['.scss', 'a { a: percentage(var(--x)); b: ceil(var(--x)); c: floor(var(--x)); d: round(var(--x)); e: round(var(--x), 5px); f: round(16px, 5px); }'],
+    ['.scss', '@use "sass:math";\na { a: math.div(var(--x), 2); b: math.sqrt(var(--x)); c: math.abs(var(--x)); d: math.min(var(--x), 1); e: math.clamp(0, var(--x), 1); f: math.div(6in, 3px); }'],
+    ['.less', '@use "#less";\n.a { a: @less.sqrt(var(--x)); b: @less.abs(var(--x)); c: @less.min(var(--x), 1); }']
   ])('renders the same through .jess: %s %s', async (extension, source) => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
     const entry = path.join(dir, `a${extension}`);

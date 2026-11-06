@@ -11,11 +11,11 @@
  */
 import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { compressDimensionBytes } from './compress.js';
-import { formChannelValues, formColor, type FormChannels, type Hsla, type MutableChannels, type Rgba } from './css-color.js';
+import { channelKind, formChannelValues, formColor, type FormChannels, type Hsla, type MutableChannels, type Rgba } from './css-color.js';
 import { cssMath, isDimension } from './css-math.js';
 import { buildEvaluator } from './evaluator.js';
 import type { Fn, ParamSpec } from './functions/types.js';
-import type { AnonymousMixin } from './nodes.js';
+import { keyword, type AnonymousMixin } from './nodes.js';
 import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type BindingCell, type FormActivation } from './serialize.js';
 import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
 import { HEX, RGB } from './color.js';
@@ -26,8 +26,25 @@ import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
 import { negated } from './math-operand.js';
 
-/** A form and the values its parameters bind to, the first of them the one its result's format follows. */
-export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, ...rest: readonly ValueGroup[]];
+/**
+ * A channel of a relative colour's form that reads the origin: a small form over
+ * values and channel names ({@link FormSlot}).
+ */
+class ChannelForm {
+  constructor(readonly form: AnonymousMixin, readonly args: readonly FormSlot[]) {}
+}
+
+export const channelForm = (form: AnonymousMixin, ...args: readonly FormSlot[]): ChannelForm => new ChannelForm(form, args);
+
+/**
+ * What a form's parameter binds: a value, or what is read when the parameter is,
+ * so that it reads the origin's channels where they are bound and prints as
+ * written where they are not: a string, the name of a channel, or a {@link ChannelForm}.
+ */
+export type FormSlot = ValueGroup | string | ChannelForm;
+
+/** A form and what its parameters bind, the first of them the value its result's format follows. */
+export type FormCall = readonly [form: AnonymousMixin, input: ValueGroup, ...rest: readonly FormSlot[]];
 
 type Lane = ReturnType<typeof formLane>;
 
@@ -56,7 +73,7 @@ function newLane(compress: boolean): FormLane {
  */
 function spelled(channels: FormChannels, out: Hsla | Rgba, input: Color | Dimension, format: number | undefined): Color {
   if (channels.space === 'hsl' && input.type === 'Color') {
-    return makeColorHsl([out[0], out[1], out[2]], out[3], input.format);
+    return makeColorHsl([out[0], out[1], out[2]], out[3], out[3] < 1 && input.alpha >= 1 && input.format === HEX ? RGB : input.format);
   }
   if (channels.space === 'mix' && input.type === 'Color') {
     return makeColorRgb([out[0], out[1], out[2]], out[3], out[3] < 1 ? format ?? input.format : input.format);
@@ -64,10 +81,13 @@ function spelled(channels: FormChannels, out: Hsla | Rgba, input: Color | Dimens
   if (format !== undefined || input.type !== 'Color') {
     return makeColorRgb([out[0], out[1], out[2]], out[3], format ?? RGB);
   }
-  const { src } = input;
+  return makeColorRgb([out[0], out[1], out[2]], out[3], out[3] < 1 ? translucentHex(input) : input.format, { modernSyntax: input.modernSyntax === true });
+}
+
+/** A translucent result's format from a colour without its own: hex only from a hex with an alpha digit. */
+function translucentHex({ format, src }: Color): number {
   const hexDigits = typeof src === 'string' && src.startsWith('#') ? src.length - 1 : 0;
-  const translucent = input.format === HEX && (hexDigits === 4 || hexDigits === 8) ? HEX : RGB;
-  return makeColorRgb([out[0], out[1], out[2]], out[3], out[3] < 1 ? translucent : input.format, { modernSyntax: input.modernSyntax === true });
+  return format === HEX && (hexDigits === 4 || hexDigits === 8) ? HEX : RGB;
 }
 
 /** The input a form computes from: the colour a relative form reads, or the first channel of an absolute one. */
@@ -114,6 +134,53 @@ function spellCells(cells: readonly BindingCell[], compress: boolean): void {
   }
 }
 
+/** A channel form's activation in each slot of a call, as two slots can hold the same form. */
+const channelActivations: Array<Map<AnonymousMixin, FormActivation> | undefined> = [];
+
+function channelActivation(form: AnonymousMixin, slot: number): FormActivation {
+  const own = channelActivations[slot] ?? (channelActivations[slot] = new Map());
+  let activation = own.get(form);
+  if (activation === undefined) {
+    activation = formActivation(form);
+    own.set(form, activation);
+  }
+  return activation;
+}
+
+/** What a channel a template leaves to a parameter is: what this call bound there (`hsl(from $c $h $s $l)`). */
+function boundKinds(slots: FormChannels['slots'], parameters: readonly (number | undefined)[], call: FormCall): readonly number[] {
+  return slots.map((slot, channel) => {
+    const index = parameters[channel];
+    if (index === undefined) {
+      return channelKind(slot);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- every element after a FormCall's form is what a parameter binds.
+    const value = call[index + 1] as FormSlot | undefined;
+    return value instanceof ChannelForm
+      ? channelKind(channelActivation(value.form, index).result)
+      : typeof value === 'object' && isDimension(value) ? 0 : 2;
+  });
+}
+
+function bindSlot(cell: BindingCell, value: FormSlot | undefined, slot: number, compress: boolean): void {
+  if (typeof value === 'string') {
+    cell.value = keyword(value);
+    cell.evaluated = null;
+  } else if (value instanceof ChannelForm) {
+    const { cells, result, frame } = channelActivation(value.form, slot);
+    for (let i = 0; i < cells.length; i++) {
+      bindSlot(cells[i]!, value.args[i], slot, compress);
+    }
+    spellCells(cells, compress);
+    cell.value = result;
+    cell.valueFrame = frame;
+    cell.evaluated = null;
+  } else {
+    cell.evaluated = bound(value);
+  }
+}
+
 /**
  * A built-in's CSS form over evaluated arguments: a stylesheet function with its
  * parameters bound to the values, so nothing is evaluated twice. Known inputs
@@ -122,24 +189,25 @@ function spellCells(cells: readonly BindingCell[], compress: boolean): void {
  */
 function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format: number | undefined): MaybePromise<ValueGroup> {
   const { frame, cells, channels, result } = form;
+  const { channelLane, lane } = lanes;
+  const compress = lane.compress === true;
   for (let i = 0; i < cells.length; i++) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- every element after a FormCall's form is a value.
-    cells[i]!.evaluated = bound(call[i + 1] as ValueGroup | undefined);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- every element after a FormCall's form is what a parameter binds.
+    bindSlot(cells[i]!, call[i + 1] as FormSlot | undefined, i, compress);
   }
   const input = call[1];
   const amount = call[2];
-  const { channelLane, lane } = lanes;
-  if (channels === undefined && isDimension(input) && (amount === undefined || isDimension(amount))) {
+  if (channels === undefined && isDimension(input) && (amount === undefined || (typeof amount === 'object' && !(amount instanceof ChannelForm) && isDimension(amount)))) {
     return mapMaybe(evalFormChannel(result, frame, channelLane), computed);
   }
   const origin = channels === undefined || isValueGroupArray(input) ? undefined : knownInput(channels, input);
   if (channels !== undefined && origin !== undefined) {
-    const out = formColor(channels, origin, lanes.channels, slot => evalFormChannel(slot, frame, channelLane));
+    const out = formColor(channels, origin, lanes.channels, slot => evalFormChannel(slot, frame, channelLane), channels.parameters === undefined ? channels.kinds : boundKinds(channels.slots, channels.parameters, call));
     if (out !== undefined && !isThenable(out)) {
       return spelled(channels, out, origin, format);
     }
   }
-  spellCells(cells, lane.compress === true);
+  spellCells(cells, compress);
   return mapMaybe(evalFormResult(form, lane), deferred);
 }
 

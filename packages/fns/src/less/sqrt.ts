@@ -1,6 +1,7 @@
 import { unaryMath } from '../shared/math/math-helper.js';
+import { fitsNumber } from './css-math-args.js';
 import { defineFunction } from '@jesscss/core/value';
 import type { Fn } from '@jesscss/core/value';
 
 /** `sqrt(value)` — square root; preserves the input unit, NO angle normalization. */
-export const sqrt: Fn = defineFunction('sqrt', unaryMath(Math.sqrt, null));
+export const sqrt: Fn = defineFunction('sqrt', unaryMath(Math.sqrt, null, fitsNumber));
