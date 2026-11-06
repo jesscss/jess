@@ -11,5 +11,5 @@
     "sass-list-map-functions": "d46a456dacad8fc205dd41cd378c76fcaa88772415fa4016f75bcbc907c20457",
     "sass-selector-parse": "0f15e760ecafc11546d65927c5d0a92168d849ebbf163e4dfe0dfae683096d81"
   },
-  "rationale": "The root package.json pins parseman to exactly 0.61.5 and the parser packages follow; the binding names, modules and exports jessFunctions projects are unchanged."
+  "rationale": "The root package.json pins parseman exactly at 0.61.5, the release the converted grammars are built on, and the parser packages follow; the binding names, modules and exports jessFunctions projects are unchanged."
 }
