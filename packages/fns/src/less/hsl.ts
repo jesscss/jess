@@ -1,12 +1,12 @@
 import type { Color, ValueGroup, Fn } from '@jesscss/core/value';
-import { colorHsl, defineFunction, FunctionDeclined, groupItems, makeColorHsl, HSL } from '@jesscss/core/value';
-import { clamp01, inUnits, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
-import { ALPHA_ARG, CHANNEL_UNITS, HUE_UNITS, isDeferredSlot, PERCENT_ARG } from './color-form.js';
+import { colorHsl, defineFunction, groupItems, makeColorHsl, HSL } from '@jesscss/core/value';
+import { clamp01, fitsAny, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
+import { ALPHA_ARG, channelSlot, declineSlots, hueSlot, isDeferredSlot, percentSlot } from './color-form.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
-/** What CSS takes in a slot of `hsl()`; the comma syntax has no number for saturation and lightness (css-color-4 §7). */
-const slotUnits = (index: number): readonly string[] =>
-  index === 0 ? HUE_UNITS : index === 3 ? CHANNEL_UNITS : ['%'];
+/** A slot of `hsl()` as CSS holds it; the comma syntax has no number for saturation and lightness (css-color-4 §7). */
+const hslSlot = (value: ValueGroup, index: number): ValueGroup =>
+  index === 0 ? hueSlot(value) : index === 3 ? channelSlot(value) : percentSlot(value);
 
 /**
  * `hsl` / `hsla` (alias) — CONSTRUCT an HSL-format color, or REFORMAT a color to
@@ -26,14 +26,9 @@ export function makeHsl(value: ValueGroup): Color {
   const modernSyntax = isModern(value);
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
-    /* `hsl(var(--h), 50%, 50%)` is CSS as written. Every other slot still has to be what CSS takes there. */
+    /* `hsl(var(--h), 50%, 50%)` is CSS as written. */
     if (items.some(isDeferredSlot)) {
-      items.forEach((item, index) => {
-        if (!isDeferredSlot(item) && !inUnits(requireDimension(item), slotUnits(index))) {
-          throw new TypeError('hsl: a hue is a number or an angle, saturation and lightness are percentages, and an alpha is a number or a percentage');
-        }
-      });
-      throw new FunctionDeclined();
+      declineSlots(items, hslSlot);
     }
     const h = normalizeHue(requireDimension(items[0]));
     const s = clamp01(percentOf(requireDimension(items[1]), 1));
@@ -58,11 +53,14 @@ export function makeHsl(value: ValueGroup): Color {
   throw new Error('Invalid arguments for hsl function');
 }
 
+/** S or L, which after a colour (`hsl(#c00, @a)`) is an alpha the call reformats it with, with no form. */
+const fitsAfterHue = (value: ValueGroup, vals: readonly ValueGroup[]): boolean => fitsAny(value) && !isColor(vals[0]);
+
 /** The slots of `hsl()` and `hsla()`, by what an export in each means over its `var()`: a colour there has no form. */
 export const HSL_PARAMS = [
-  { type: 'any', fits: (value: ValueGroup): boolean => !isColor(value) && inUnits(value, HUE_UNITS) },
-  { type: 'any', optional: true, fits: PERCENT_ARG.fits },
-  { type: 'any', optional: true, fits: PERCENT_ARG.fits },
+  { type: 'any', fits: (value: ValueGroup): boolean => fitsAny(value) && !isColor(value) },
+  { type: 'any', optional: true, fits: fitsAfterHue },
+  { type: 'any', optional: true, fits: fitsAfterHue },
   { type: 'any', optional: true, fits: ALPHA_ARG.fits }
 ] as const;
 

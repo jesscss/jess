@@ -9,13 +9,14 @@
  *
  * HARD MODULE BOUNDARY: the value domain.
  */
+import { negated } from './math-operand.js';
 import { DimensionValueNode } from './node-ctors.js';
 import { round } from './round.js';
-import { isValueGroupArray, type Arithmetic, type Dimension, type EvalValue, type ValueGroup } from './value-eval.js';
-import { makeDimension } from './value-factory.js';
+import { emitValue, isValueGroupArray, type Arithmetic, type Dimension, type EvalValue, type ValueGroup } from './value-eval.js';
+import { makeDimension, makeFunctionCall, makeList } from './value-factory.js';
 import { groupItems } from './value-list.js';
-import { mathOnDeferred } from './value-operate.js';
-import { foldUnit } from './value-units.js';
+import { mathOnDeferred, writtenCalcInner } from './value-operate.js';
+import { foldUnit, groupOf } from './value-units.js';
 
 /** A number a form reads, spelled only if something prints it. */
 export const formNumber = (number: number, unit = ''): Dimension => new DimensionValueNode(number, unit, '');
@@ -41,7 +42,7 @@ function arithmeticUnit(math: Arithmetic, inForm: boolean): string | undefined {
   switch (math.op) {
     case '+':
     case '-':
-      return left === undefined || right === undefined || foldUnit(left) === foldUnit(right) ? left ?? right : undefined;
+      return left === undefined || right === undefined || foldUnit(left) === foldUnit(right) || (groupOf(left) !== undefined && groupOf(left) === groupOf(right)) ? left ?? right : undefined;
     case '*':
       return left && right ? undefined : left || right || (left === '' && right === '' ? '' : undefined);
     case '/':
@@ -57,7 +58,8 @@ function arithmeticUnit(math: Arithmetic, inForm: boolean): string | undefined {
  * or one dimension times or divided by plain numbers (`var(--x) * 100%`, a factor
  * beside a unit being a number, Q3). `undefined` when nothing proves one:
  * `var(--x)`, `var(--x) * 2`, `1px * var(--x) * 1px`, and any call the compile did
- * not write itself, so `asin()`, `hypot()` and `attr()` take the number form.
+ * not write itself, so `asin()`, `hypot()` and `attr()` take the number form. An
+ * exposed variable's `var()` is of its value's type, so it is in that value's unit.
  * `inForm`: inside a built-in's form, whose calls are its own.
  */
 export function knownUnit(value: EvalValue, inForm = false): string | undefined {
@@ -72,6 +74,9 @@ export function knownUnit(value: EvalValue, inForm = false): string | undefined 
     case 'FunctionCall':
       if (value.name === 'calc') {
         return knownUnit(value.args, inForm || value.computed);
+      }
+      if (value.name === 'var') {
+        return value.result === 'numeric' ? knownUnit(groupItems(value.args)[1] ?? value.args) : undefined;
       }
       if (!inForm && !value.computed) {
         return undefined;
@@ -95,7 +100,17 @@ export function knownUnit(value: EvalValue, inForm = false): string | undefined 
 
 /** A value only the browser knows, its known unit divided out: the number a built-in that drops a unit reads (css-values-4 §10.2). */
 export const asNumber = (value: ValueGroup, unit = knownUnit(value)): ValueGroup =>
-  unit === undefined || unit === '' || isValueGroupArray(value) ? value : mathOnDeferred('/', value, makeDimension(1, unit));
+  unit === undefined || unit === '' || isValueGroupArray(value) ? value : mathOnDeferred('/', negated(value), makeDimension(1, unit));
+
+/** Math on what only the browser knows, as a form's slot holds it. */
+export const formMath = (op: '*' | '/' | '-', left: ValueGroup, right: ValueGroup): ValueGroup =>
+  isValueGroupArray(left) || isValueGroupArray(right) ? left : mathOnDeferred(op, negated(left), negated(right));
+
+/** A CSS math function that reads numbers, of `args` with their unit dropped, in the `unit` its known result keeps: `calc(sqrt(var(--a) / 1px) * 1px)`. */
+export function aroundUnit(name: string, args: readonly ValueGroup[], unit: string): ValueGroup {
+  const bytes = args.map(arg => (isValueGroupArray(arg) ? null : writtenCalcInner(arg)) ?? emitValue(arg)).join(', ');
+  return mathOnDeferred('*', makeFunctionCall(name, makeList(args, ','), `${name}(${bytes})`), makeDimension(1, unit));
+}
 
 const keyword = (value: ValueGroup | undefined): string | undefined =>
   value !== undefined && !isValueGroupArray(value) && value.type === 'Keyword' ? value.text : undefined;

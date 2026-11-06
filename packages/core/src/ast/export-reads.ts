@@ -4,6 +4,7 @@ import { ERR } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
+import { isDimension, knownUnit } from './css-math.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
 import { namedColor } from './color-names.js';
@@ -463,6 +464,15 @@ export function exportInputRead<F>(e: ExportLane<F>, hit: { value: CallValue; fr
       });
 }
 
+/** An operand of math written in a math function (`calc(@a * 2)`): an export's `var()` is of its value's type there too ({@link exposedOperand}). */
+export function exposedWritten<F>(e: ExportLane<F>, operand: EvalValue): EvalValue {
+  if (typeof operand === 'string' || isValueGroupArray(operand) || operand.type !== 'FunctionCall' || operand.name !== 'var') {
+    return operand;
+  }
+  const name = varName(operand);
+  return name !== undefined && exporting(e.s.exports)?.runtime.exports.has(name.slice(2)) === true ? exposedOperand(operand) : operand;
+}
+
 /** Note that the mixin argument being bound reads an export. */
 function markArgument(argument: ExportArgument | undefined): void {
   if (argument !== undefined) {
@@ -807,19 +817,20 @@ function slotsKnown<F>(x: ExportState<F>, fn: Fn | undefined, args: (asWritten: 
 
 /**
  * Whether each slot holds the number an export read inside it computes to
- * (`(@a * 2)`), as `fits` asks of a bare `@a`. No recipe follows such a read, so a
- * slot that does not is the caller's to report.
+ * (`(@a * 2)`), as `fits` asks of a bare `@a`, in a unit the form can read from what
+ * is written. No recipe follows such a read, so a slot that does not is the
+ * caller's to report.
  */
 function fitsWritten(fn: Fn | undefined, vals: ReadonlyArray<MaybePromise<ValueGroup>>, slots: readonly ValueGroup[]): boolean {
   return slots.every((value, index) => {
     const fits = fn === undefined ? undefined : slotParam(fn, index)?.fits;
     const read = vals[index];
-    const asKnown = read === undefined || isThenable(read) || (!isValueGroupArray(lone(read)) && isDimensionValue(lone(read)));
-    return fits === undefined || asKnown || !isDimensionValue(value) || fits(value, slots);
+    if (fits === undefined || read === undefined || isThenable(read) || !isDimension(value) || isDimension(lone(read))) {
+      return true;
+    }
+    return fits(value, slots) && (value.unit === '' || knownUnit(lone(read)) !== undefined);
   });
 }
-
-const isDimensionValue = (value: ValueGroup): boolean => !isValueGroupArray(value) && value.type === 'Dimension';
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */
 function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>, e: ExportLane<F>): ExportRecipe {

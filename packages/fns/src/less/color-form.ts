@@ -1,8 +1,9 @@
-import { asNumber, channelForm, defineForm, formNumber, knownUnit, type FormCall, type FormSlot } from '@jesscss/core/form';
+import { asNumber, channelForm, defineForm, formMath, formNumber, isDimension, knownUnit, type FormCall, type FormSlot } from '@jesscss/core/form';
 import { mulExact, percentToFraction, subExact } from '../util/decimal.js';
-import { clamp01, inUnits, normalizeHue } from './color-ctor-helper.js';
+import { clamp01, fitsAny, inUnits, normalizeHue } from './color-ctor-helper.js';
 import { hsvBlack, hsvWhite, hsvWhiteKnown } from './css-forms.generated.js';
-import { isValueGroupArray, makeDimension, textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
+import { requireDimension } from '../shared/math/math-helper.js';
+import { FunctionDeclined, isValueGroupArray, makeDimension, textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 
 /** A colour a form's relative colour reads as its origin, or what only the browser knows of one. */
 export const COLOR_ARG = { type: ['Color', 'FunctionCall'], fits: (value: ValueGroup): boolean => inUnits(value, []) } as const;
@@ -13,50 +14,72 @@ export const channelAmount = (amount: Dimension): Dimension => formNumber(amount
 /** An amount of alpha, a number on 0–1 whatever its unit: `10%` and `10` alike are 0.1 (css-color-5 §4.1). */
 export const alphaAmount = (amount: Dimension): Dimension => makeDimension(percentToFraction(amount.number));
 
+/** What only the browser knows of an amount of alpha or a weight, on 0–1. Of no known type it is taken to hold a percentage (Q2). */
+export function shareOf(amount: ValueGroup): ValueGroup {
+  const unit = knownUnit(amount);
+  return unit === undefined || unit === '%'
+    ? formMath('/', amount, makeDimension(100, '%'))
+    : formMath('/', asNumber(amount, unit), makeDimension(100));
+}
+
 export const HUE_UNITS: readonly string[] = ['', 'deg', 'grad', 'rad', 'turn'];
 
-const fitsPercent = (value: ValueGroup): boolean => inUnits(value, ['%']);
-
-/** An amount or an S or V: a number on its own scale while known, and a percentage while only the browser knows it (Q2). */
-export const PERCENT_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsPercent } as const;
+/** An amount or an S or V: whatever the known path reads there (§2). */
+export const PERCENT_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsAny } as const;
 
 /** A slot only the browser knows: a call of no known type, or of a number. */
 export const isDeferredSlot = (value: ValueGroup): boolean =>
   !isValueGroupArray(value) && value.type === 'FunctionCall' && value.result !== 'color';
 
 /** What CSS takes as an `rgb()` channel or an alpha (css-color-4 §4.2, §5.1). */
-export const CHANNEL_UNITS: readonly string[] = ['', '%'];
+const CHANNEL_UNITS: readonly string[] = ['', '%'];
 
-/** An alpha, read as written. */
-export const ALPHA_ARG = { type: ['Dimension', 'FunctionCall'], fits: (value: ValueGroup): boolean => inUnits(value, CHANNEL_UNITS) } as const;
+/** An alpha: whatever the known path reads there (§2). */
+export const ALPHA_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsAny } as const;
 
-/** An alpha on 0–1 while known; what only the browser knows goes in the slot as it is, and math of another type has no form. */
-export function alphaOf(name: string, alpha: Dimension | WrittenCall): Dimension | WrittenCall {
-  if (alpha.type === 'Dimension') {
-    return makeDimension(clamp01(fractionOf(alpha)));
-  }
-  const unit = knownUnit(alpha);
-  if (unit !== undefined && !CHANNEL_UNITS.includes(unit)) {
-    throw new TypeError(`${name}: an alpha is a number or a percentage`);
-  }
-  return alpha;
+/** A channel or an alpha as CSS holds it: a number in any other unit is that number. */
+export function channelSlot(value: ValueGroup): ValueGroup {
+  const unit = knownUnit(value);
+  return unit === undefined || CHANNEL_UNITS.includes(unit)
+    ? value
+    : isDimension(value) ? makeDimension(value.number) : asNumber(value, unit);
 }
 
-/** What only the browser knows of a slot that takes a percentage; math of another type has no form. */
-export function deferredPercent(name: string, value: WrittenCall): WrittenCall {
+/** An alpha on 0–1 while known; what only the browser knows goes in the slot as CSS holds it. */
+export const alphaOf = (alpha: Dimension | WrittenCall): ValueGroup =>
+  alpha.type === 'Dimension' ? makeDimension(clamp01(fractionOf(alpha))) : channelSlot(alpha);
+
+/** S, V or L as CSS holds them: a percentage, which a number in any other unit is a fraction of 1 of. */
+export function percentSlot(value: ValueGroup): ValueGroup {
   const unit = knownUnit(value);
-  if (unit !== undefined && unit !== '%') {
-    throw new TypeError(`${name}: only a percentage has a form while the browser holds the value`);
-  }
-  return value;
+  return unit === undefined || unit === '%'
+    ? value
+    : isDimension(value) ? makeDimension(mulExact(value.number, 100), '%') : formMath('*', asNumber(value, unit), makeDimension(100, '%'));
 }
 
 /** A hue, known or only the browser's; written as a call or in degrees. */
-export const HUE_ARG = { type: ['Dimension', 'FunctionCall'], fits: (value: ValueGroup): boolean => inUnits(value, HUE_UNITS) } as const;
+export const HUE_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsAny } as const;
 
-/** A hue in degrees, which a known unit converts to. What only the browser knows stays as it is. */
+/** A hue as CSS holds it: a percentage of a turn, and a number in any unit that is no angle. */
+export function hueSlot(hue: ValueGroup): ValueGroup {
+  const unit = knownUnit(hue);
+  if (unit === undefined || HUE_UNITS.includes(unit.toLowerCase())) {
+    return hue;
+  }
+  return isDimension(hue)
+    ? makeDimension(normalizeHue(hue))
+    : unit === '%' ? formMath('*', asNumber(hue, unit), makeDimension(3.6)) : asNumber(hue, unit);
+}
+
+/** A hue in degrees, which a known unit converts to. What only the browser knows goes in the slot as CSS holds it. */
 export const hueOf = (hue: ValueGroup): ValueGroup =>
-  !isValueGroupArray(hue) && hue.type === 'Dimension' ? makeDimension(normalizeHue(hue)) : hue;
+  isDimension(hue) ? makeDimension(normalizeHue(hue)) : hueSlot(hue);
+
+/** `rgb()` or `hsl()` over what only the browser knows is CSS as written, each slot as CSS holds it. */
+export function declineSlots(items: readonly ValueGroup[], slot: (value: ValueGroup, index: number) => ValueGroup): never {
+  const written = items.map((item, index) => slot(isDeferredSlot(item) ? item : requireDimension(item), index));
+  throw new FunctionDeclined(written, written.some((value, index) => value !== items[index]));
+}
 
 /** A value on 0–1: a percentage of 1, or a number as written. */
 export const fractionOf = (value: Dimension): number =>
@@ -80,15 +103,15 @@ function knownWhiteBlack(s: Dimension, v: Dimension): readonly [white: Dimension
 }
 
 /** White and black as slots of `hwb()`, computed for what is known, and as `calc()` over a percentage only the browser knows (Q2). */
-export function whiteBlack(name: string, s: Dimension | WrittenCall, v: Dimension | WrittenCall): readonly [white: FormSlot, black: FormSlot] {
+export function whiteBlack(s: Dimension | WrittenCall, v: Dimension | WrittenCall): readonly [white: FormSlot, black: FormSlot] {
   if (s.type === 'Dimension' && v.type === 'Dimension') {
     return knownWhiteBlack(s, v);
   }
-  const value = v.type === 'Dimension' ? makeDimension(onHundred(v), '%') : deferredPercent(name, v);
+  const value = v.type === 'Dimension' ? makeDimension(onHundred(v), '%') : percentSlot(v);
   return [
     s.type === 'Dimension'
       ? channelForm(hsvWhiteKnown, makeDimension(percentToFraction(subExact(100, onHundred(s)))), value)
-      : channelForm(hsvWhite, deferredPercent(name, s), value),
+      : channelForm(hsvWhite, percentSlot(s), value),
     v.type === 'Dimension' ? makeDimension(subExact(100, onHundred(v)), '%') : channelForm(hsvBlack, value)
   ];
 }
@@ -101,34 +124,22 @@ function relativeMethod(name: string, method: Keyword | Quoted | WrittenCall | u
   return method !== undefined && textOf(method) === 'relative';
 }
 
-/** `name(color, amount, method?)` over its CSS form, and the form `method: relative` takes; each with a form for an amount only the browser knows, taken to hold a percentage (Q2). */
+/** `name(color, amount, method?)` over its CSS form, and the form `method: relative` takes. An amount only the browser knows is its number, of no known type taken to hold a percentage (Q2). */
 /* @__NO_SIDE_EFFECTS__ */
-export function defineAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0], absoluteDeferred: FormCall[0], relativeDeferred: FormCall[0]): Fn {
+export function defineAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0]): Fn {
   return defineForm(name, {
     params: [COLOR_ARG, PERCENT_ARG, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
-    form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall => {
-      const isRelative = relativeMethod(name, method);
-      if (amount.type === 'Dimension') {
-        return [isRelative ? relative : absolute, color, channelAmount(amount)];
-      }
-      const unit = knownUnit(amount);
-      return unit === undefined || unit === '%'
-        ? [isRelative ? relativeDeferred : absoluteDeferred, color, amount]
-        : [isRelative ? relative : absolute, color, asNumber(amount, unit)];
-    }
+    form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall =>
+      [relativeMethod(name, method) ? relative : absolute, color, amount.type === 'Dimension' ? channelAmount(amount) : asNumber(amount, knownUnit(amount) ?? '%')]
   });
 }
 
-/** `name(color, amount, method?)` for an amount of alpha, with a form for an amount only the browser knows, taken to hold a percentage (Q2). */
+/** `name(color, amount, method?)` for an amount of alpha, which only the browser knows is its share of 100. */
 /* @__NO_SIDE_EFFECTS__ */
-export function defineAlphaAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0], absoluteDeferred: FormCall[0], relativeDeferred: FormCall[0]): Fn {
+export function defineAlphaAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0]): Fn {
   return defineForm(name, {
     params: [COLOR_ARG, PERCENT_ARG, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
-    form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall => {
-      const isRelative = relativeMethod(name, method);
-      return amount.type === 'Dimension'
-        ? [isRelative ? relative : absolute, color, alphaAmount(amount)]
-        : [isRelative ? relativeDeferred : absoluteDeferred, color, deferredPercent(name, amount)];
-    }
+    form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall =>
+      [relativeMethod(name, method) ? relative : absolute, color, amount.type === 'Dimension' ? alphaAmount(amount) : shareOf(amount)]
   });
 }

@@ -170,7 +170,13 @@ describe('an alpha, or an S or V, only the browser knows has its form', () => {
     ['hsva(120, 50%, 75%, var(--a))', 'hwb(120 37.5% 25% / var(--a))'],
     ['hsva(120, var(--s), 75%, .5)', 'hwb(120 calc((1 - var(--s) / 100%) * 75%) 25% / 0.5)'],
     ['darken(fade(#333, var(--a)), 10%)', 'hsl(from rgb(from #333 r g b / var(--a)) h s clamp(0, l - 10, 100))'],
-    ['fade(hsv(120, var(--s), 75%), 50%)', 'rgb(from hwb(120 calc((1 - var(--s) / 100%) * 75%) 25%) r g b / 0.5)']
+    ['fade(hsv(120, var(--s), 75%), 50%)', 'rgb(from hwb(120 calc((1 - var(--s) / 100%) * 75%) 25%) r g b / 0.5)'],
+    ['fadein(#333, var(--a) + 5)', 'rgb(from #333 r g b / calc(alpha + (var(--a) + 5) / 100))'],
+    ['fade(#333, var(--a) + .5)', 'rgb(from #333 r g b / calc((var(--a) + 0.5) / 100))'],
+    ['hsv(120, var(--s) + .05, 75%)', 'hwb(120 calc((1 - (var(--s) + 0.05) * 100% / 100%) * 75%) 25%)'],
+    ['fade(#333, unit(var(--x), px))', 'rgb(from #333 r g b / calc(var(--x) * 1px / 1px / 100))'],
+    ['hsva(120, 50%, 75%, unit(var(--x), px))', 'hwb(120 37.5% 25% / calc(var(--x) * 1px / 1px))'],
+    ['rgba(#000, unit(var(--x), px))', 'rgb(from #000 r g b / calc(var(--x) * 1px / 1px))']
   ])('%s', async (source, form) => {
     await expect(value(source)).resolves.toBe(form);
   });
@@ -178,13 +184,7 @@ describe('an alpha, or an S or V, only the browser knows has its form', () => {
   it.each([
     ['rgba(var(--c), .5)', 'rgba(var(--c), 0.5)'],
     ['rgba(var(--c), var(--a))', 'rgba(var(--c), var(--a))'],
-    ['hsl(var(--h), 50%, 50%)', 'hsl(var(--h), 50%, 50%)'],
-    ['fadein(#333, var(--a) + 5)', 'fadein(#333, calc(var(--a) + 5))'],
-    ['fade(#333, var(--a) + .5)', 'fade(#333, calc(var(--a) + 0.5))'],
-    ['hsv(120, var(--s) + .05, 75%)', 'hsv(120, calc(var(--s) + 0.05), 75%)'],
-    ['fade(#333, unit(var(--x), px))', 'fade(#333, calc(var(--x) * 1px))'],
-    ['hsva(120, 50%, 75%, unit(var(--x), px))', 'hsva(120, 50%, 75%, calc(var(--x) * 1px))'],
-    ['rgba(#000, unit(var(--x), px))', 'rgba(#000, calc(var(--x) * 1px))']
+    ['hsl(var(--h), 50%, 50%)', 'hsl(var(--h), 50%, 50%)']
   ])('%s stays written', async (source, written) => {
     await expect(value(source)).resolves.toBe(written);
   });
@@ -203,19 +203,17 @@ describe('an alpha, or an S or V, only the browser knows has its form', () => {
     ['@less.hsl(var(--h), 50%, 50%)', 'hsl(var(--h), 50%, 50%)'],
     ['@less.hsl(var(--h), 50%, 50%, .5)', 'hsl(var(--h), 50%, 50%, 0.5)'],
     ['@less.hsla(120, var(--s), 50%, var(--a))', 'hsla(120, var(--s), 50%, var(--a))'],
-    ['@less.hsv(120, var(--s), 75%)', 'hwb(120 calc((1 - var(--s) / 100%) * 75%) 25%)']
+    ['@less.hsv(120, var(--s), 75%)', 'hwb(120 calc((1 - var(--s) / 100%) * 75%) 25%)'],
+    ['@less.fadein(#333, var(--a) + 5)', 'rgb(from #333 r g b / calc(alpha + (var(--a) + 5) / 100))'],
+    ['@less.fade(#333, var(--a) + .5)', 'rgb(from #333 r g b / calc((var(--a) + 0.5) / 100))'],
+    ['@less.hsv(120, var(--s) + .05, 75%)', 'hwb(120 calc((1 - (var(--s) + 0.05) * 100% / 100%) * 75%) 25%)'],
+    ['@less.hsl(var(--h), 50, 50)', 'hsl(var(--h), 5000%, 5000%)']
   ])('imported, %s', async (source, form) => {
     await expect(css(`@use "#less"; .x { v: ${source}; }`)).resolves.toContain(`v: ${form};`);
   });
 
-  it.each([
-    '@less.rgba(var(--c), .5)',
-    '@less.fadein(#333, var(--a) + 5)',
-    '@less.fade(#333, var(--a) + .5)',
-    '@less.hsv(120, var(--s) + .05, 75%)',
-    '@less.hsl(var(--h), 50, 50)'
-  ])('imported, %s fails', async (source) => {
-    await expect(css(`@use "#less"; .x { v: ${source}; }`)).rejects.toMatchObject({ code: 'eval/invalid-function' });
+  it('imported, @less.rgba(var(--c), .5) fails', async () => {
+    await expect(css('@use "#less"; .x { v: @less.rgba(var(--c), .5); }')).rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 });
 
@@ -481,13 +479,9 @@ describe('an export inside a larger argument, by what the slot holds at compile 
   const exposed = (held: string, source: string): string => `@use "#less"; @expose a; @a: ${held}; .x { v: ${source}; }`;
 
   it.each([
-    ['5px', '@less.ceil((@a * 2))'],
-    ['5px', '@less.percentage((@a * 2))'],
-    ['5px', '@less.unit((@a * 2), em)'],
-    ['5px', '@less.round((@a * 2))'],
-    ['5', '@less.darken(#c00, (@a * 2))'],
-    ['5px', '@less.spin(#c00, (@a * 2))'],
-    ['5px', '@less.ceil(calc(@a * 2))']
+    ['5%', '@less.unit((@a * 2), px)'],
+    ['5%', '@less.mod(5px, (@a * 2))'],
+    ['5px', '@less.sin((@a * 2))']
   ])('@a: %s; %s has no form that holds it and no recipe', async (held, source) => {
     await expect(css(exposed(held, source))).rejects.toMatchObject({ code: 'eval/expose-not-a-value' });
   });
@@ -495,7 +489,14 @@ describe('an export inside a larger argument, by what the slot holds at compile 
   it.each([
     ['5px', '@less.mod((@a * 2), 3px)', 'rem((var(--a, 5px) * 2), 3px)'],
     ['5', '@less.ceil((@a * 2))', 'round(up, (var(--a, 5) * 2), 1)'],
-    ['5%', '@less.darken(#c00, (@a * 2))', 'hsl(from #c00 h s clamp(0, l - (var(--a, 5%) * 2) / 1%, 100))']
+    ['5%', '@less.darken(#c00, (@a * 2))', 'hsl(from #c00 h s clamp(0, l - (var(--a, 5%) * 2) / 1%, 100))'],
+    ['5px', '@less.ceil((@a * 2))', 'round(up, (var(--a, 5px) * 2), 1px)'],
+    ['5px', '@less.ceil(calc(@a * 2))', 'round(up, var(--a, 5px) * 2, 1px)'],
+    ['5px', '@less.percentage((@a * 2))', 'calc((var(--a, 5px) * 2) / 1px * 100%)'],
+    ['5px', '@less.unit((@a * 2), em)', 'calc((var(--a, 5px) * 2) / 1px * 1em)'],
+    ['5px', '@less.round((@a * 2))', 'calc(sign((var(--a, 5px) * 2)) * round(abs((var(--a, 5px) * 2)), 1px))'],
+    ['5', '@less.darken(#c00, (@a * 2))', 'hsl(from #c00 h s clamp(0, l - (var(--a, 5) * 2), 100))'],
+    ['5px', '@less.spin(#c00, (@a * 2))', 'hsl(from #c00 calc(h + (var(--a, 5px) * 2) / 1px) s l)']
   ])('@a: %s; %s is its form', async (held, source, form) => {
     await expect(css(exposed(held, source))).resolves.toContain(`v: ${form};`);
   });
@@ -514,32 +515,25 @@ describe('an export inside a larger argument, by what the slot holds at compile 
   });
 
   it('a recipe has no fixed argument that holds an export', async () => {
-    await expect(css('@use "#less"; @expose a, b; @a: 5px; @b: 3; .x { v: @less.round(@a, (@b * 2)); }'))
+    await expect(css('@use "#less"; @expose a, b; @a: #c00; @b: 3%; .x { v: @less.contrast(@a, #111, #eee, (@b * 2)); }'))
       .rejects.toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('inside a larger argument') });
   });
 
   it('a recipe keeps a plain `var()` as its fixed argument', async () => {
-    const result = await new Compiler({}).renderToResult({ ...options, source: '@use "#less"; @expose b; @b: 3px; .x { v: @less.mod(var(--x), @b); }' });
-    expect(Object.values(result.runtime?.derived ?? {})).toEqual([{ fn: { module: '@jesscss/fns/less', name: 'mod' }, args: ['var(--x)', { export: 'b' }] }]);
+    const result = await new Compiler({}).renderToResult({ ...options, source: '@use "#less"; @expose b; @b: #c00; .x { v: @less.contrast(var(--x), @b); }' });
+    expect(Object.values(result.runtime?.derived ?? {})).toEqual([{ fn: { module: '@jesscss/fns/less', name: 'contrast' }, args: ['var(--x)', { export: 'b' }] }]);
   });
 
-  it.each([
-    ['@less.ceil((@p * 2))'],
-    ['@less.floor((@p * 2))'],
-    ['@less.percentage((@p * 2))'],
-    ['@less.unit((@p * 2), em)'],
-    ['@less.mod((@p * 2), 3)'],
-    ['@less.darken(#c00, (@p * 2))'],
-    ['@less.mix(#c00, #fff, (@p * 2))']
-  ])('a mixin parameter holding the export is read for its value: %s', async (body) => {
-    await expect(css(`@use "#less"; @expose a; @a: 5px; .m(@p) { v: ${body}; } .x { .m(@a); }`)).rejects.toMatchObject({ code: 'eval/expose-not-a-value' });
+  it.each(['@less.unit((@p * 2), px)', '@less.mod(5px, (@p * 2))'])('a mixin parameter holding the export is read for its value: %s', async (body) => {
+    await expect(css(`@use "#less"; @expose a; @a: 5%; .m(@p) { v: ${body}; } .x { .m(@a); }`)).rejects.toMatchObject({ code: 'eval/expose-not-a-value' });
   });
 
   it.each([
     ['5', '@less.ceil((@p * 2))', 'round(up, (var(--a, 5) * 2), 1)'],
     ['5px', '@less.mod((@p * 2), 3px)', 'rem((var(--a, 5px) * 2), 3px)'],
     ['5%', '@less.darken(#c00, (@p * 2))', 'hsl(from #c00 h s clamp(0, l - (var(--a, 5%) * 2) / 1%, 100))'],
-    ['5%', '@less.mix(#c00, #fff, (@p * 2))', 'color-mix(in srgb, #c00 calc(var(--a, 5%) * 2), #fff)']
+    ['5px', '@less.floor((@p * 2))', 'round(down, (var(--a, 5px) * 2), 1px)'],
+    ['5%', '@less.mix(#c00, #fff, (@p * 2))', 'rgb(from #c00 clamp(0, (r * alpha * (var(--a, 5%) * 2) / 100% + 255 * (1 - (var(--a, 5%) * 2) / 100%)) / (alpha * (var(--a, 5%) * 2) / 100% + 1 * (1 - (var(--a, 5%) * 2) / 100%)), 255) clamp(0, (g * alpha * (var(--a, 5%) * 2) / 100% + 255 * (1 - (var(--a, 5%) * 2) / 100%)) / (alpha * (var(--a, 5%) * 2) / 100% + 1 * (1 - (var(--a, 5%) * 2) / 100%)), 255) clamp(0, (b * alpha * (var(--a, 5%) * 2) / 100% + 255 * (1 - (var(--a, 5%) * 2) / 100%)) / (alpha * (var(--a, 5%) * 2) / 100% + 1 * (1 - (var(--a, 5%) * 2) / 100%)), 255) / calc(alpha * (var(--a, 5%) * 2) / 100% + 1 * (1 - (var(--a, 5%) * 2) / 100%)))']
   ])('a mixin parameter holding `@a: %s` that fits: %s', async (held, body, form) => {
     await expect(css(`@use "#less"; @expose a; @a: ${held}; .m(@p) { v: ${body}; } .x { .m(@a); }`)).resolves.toContain(`v: ${form};`);
   });
@@ -560,10 +554,10 @@ describe('an export inside a larger argument, by what the slot holds at compile 
     }
   });
 
-  it('a dividend with no unit beside a divisor with one keeps its recipe', async () => {
+  it('a dividend with no unit beside a divisor with one is the form, in the unit it computes in', async () => {
     const result = await new Compiler({}).renderToResult({ ...options, source: exposed('5', '@less.mod(@a, 3px)') });
-    expect(result.css).toContain('v: var(--a-mod, 2);');
-    expect(Object.keys(result.runtime?.derived ?? {})).toEqual(['--a-mod']);
+    expect(result.css).toContain('v: rem(var(--a, 5), 3);');
+    expect(result.runtime?.derived).toEqual({});
   });
 });
 

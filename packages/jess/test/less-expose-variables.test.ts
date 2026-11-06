@@ -27,14 +27,14 @@ describe('Less @expose variables (A4)', () => {
   it.each([
     ['@r: 10; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(var(--r, 10), 0, 0);'],
     ['@r: 10%; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(var(--r, 10%), 0, 0);'],
-    ['@r: 2px; .x { v: @less.rgb(@r, 0, 0); }', 'v: var(--r-rgb, rgb(2, 0, 0));'],
+    ['@r: 2px; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(calc(var(--r, 2px) / 1px), 0, 0);'],
     ['@h: 30; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30) 37.5% 25%);'],
     ['@h: 30deg; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30deg) 37.5% 25%);'],
-    ['@h: 30px; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: var(--h-hsv, #bf8f60);'],
+    ['@h: 30px; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(calc(var(--h, 30px) / 1px) 37.5% 25%);'],
     ['@a: 50%; .x { v: @less.rgba(#c00, @a); }', 'v: rgb(from #c00 r g b / var(--a, 50%));'],
-    ['@a: 2px; .x { v: @less.rgba(#c00, @a); }', 'v: var(--a-rgba, rgb(204, 0, 0));'],
+    ['@a: 2px; .x { v: @less.rgba(#c00, @a); }', 'v: rgb(from #c00 r g b / calc(var(--a, 2px) / 1px));'],
     ['@b: 5px; .x { v: @less.mod(10px, @b); }', 'v: rem(10px, var(--b, 5px));'],
-    ['@b: 5px; .x { v: @less.mod(10em, @b); }', 'v: var(--b-mod, 0em);']
+    ['@b: 5px; .x { v: @less.mod(10em, @b); }', 'v: rem(10em, var(--b, 5px) / 1px * 1em);']
   ])('one slot field answers whether a form holds the value: %s', async (source, written) => {
     const name = /@(\w+):/.exec(source)?.[1];
     await expect(render(`@use "#less";\n@expose ${name};\n${source}`)).resolves.toContain(written);
@@ -129,9 +129,7 @@ describe('Less @expose variables (A4)', () => {
     ['nested CSS forms', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lighten(@less.darken(@brand, 10%), 5%); }', 'v: hsl(from hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100)) h s clamp(0, l + 5, 100));'],
     ['a CSS form as a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @c; }\n.a { .m(@less.darken(@brand, 10%)); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
     ['a CSS form of a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @less.darken(@c, 10%); }\n.a { .m(@brand); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
-    ['an amount no form takes in its unit', '@use "#less";\n@expose a;\n@a: 10;\n.b { v: @less.darken(#c00, @a); }', 'v: var(--a-darken, #990000);'],
-    ['a number holding a unit, which a form takes as a number', '@use "#less";\n@expose a;\n@a: 0.5px;\n.b { v: @less.percentage(@a); }', 'v: var(--a-percentage, 50%);'],
-    ['a divisor in another unit than the dividend', '@use "#less";\n@expose a;\n@a: 2;\n.b { v: @less.mod(5px, @a); }', 'v: var(--a-mod, 1px);'],
+    ['a percentage no form turns into a length', '@use "#less";\n@expose a;\n@a: 50%;\n.b { v: @less.unit(@a, px); }', 'v: var(--a-unit, 50px);'],
     ['a unit, which picks no form', '@use "#less";\n@expose u;\n@u: em;\n.b { v: @less.unit(5px, @u); }', 'v: var(--u-unit, 5em);'],
     ['a method, which picks no form', '@use "#less";\n@expose m;\n@m: relative;\n.b { v: @less.darken(#c00, 10%, @m); }', 'v: var(--m-darken, #b80000);']
   ])('follows the exposed variable through %s', async (_what, source, expected) => {

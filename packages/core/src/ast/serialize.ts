@@ -213,7 +213,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { channelFunction, channelMath, channelOf, formChannels, isComputedColorCall, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
-import { argumentStatementKind, declareExpose, excluding, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, declareExpose, excluding, exposedWritten, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -6295,7 +6295,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * `calc($val / 2)` came back as `8px / 2` with the wrapper dropped.
            * It is arithmetic, what the `calc()` around it holds.
            */
-          return node.inMathFunction ? writtenPercent(node.operator, values, e.modes, ev) ?? carryKeptClash(makeWrittenMath(node, values[0]!, values[1]!, bytes), values[0]!, values[1]!) : literal(bytes);
+          return node.inMathFunction ? writtenPercent(node.operator, values, e.modes, ev) ?? carryKeptClash(makeWrittenMath(node, exposedWritten(e, values[0]!), exposedWritten(e, values[1]!), bytes), values[0]!, values[1]!) : literal(bytes);
         });
       }
 

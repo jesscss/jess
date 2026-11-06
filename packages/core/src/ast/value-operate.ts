@@ -856,8 +856,13 @@ export function exposedOperand(value: ValueGroup): ValueGroup {
     return value;
   }
   const result = isValueGroupArray(held) || held.type === 'List' || invalidOperand(held, false, false) !== null ? 'other' : null;
-  const colour = !isValueGroupArray(held) && (isColourOperand(held) || (held.type === 'FunctionCall' && held.result === 'color'));
-  return colour || result !== null ? keepAsWritten(withFields(value, { result: colour ? 'color' : result })) : value;
+  if (!isValueGroupArray(held) && (isColourOperand(held) || (held.type === 'FunctionCall' && held.result === 'color'))) {
+    return keepAsWritten(withFields(value, { result: 'color' }));
+  }
+  if (result !== null) {
+    return keepAsWritten(withFields(value, { result }));
+  }
+  return !isValueGroupArray(held) && held.type === 'Dimension' ? keepAsWritten(withFields(value, { result: 'numeric' })) : value;
 }
 
 /** Math on what only the browser knows is defined over one value, and a list is not one (V36). */

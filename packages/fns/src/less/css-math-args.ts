@@ -1,14 +1,26 @@
-import { formNumber, isDimension, knownUnit } from '@jesscss/core/form';
-import type { ValueGroup } from '@jesscss/core/value';
-import { inUnits } from './color-ctor-helper.js';
+import { asNumber, formNumber, isDimension, knownUnit } from '@jesscss/core/form';
+import { makeDimension, type ValueGroup } from '@jesscss/core/value';
+import { fitsAny, inUnits } from './color-ctor-helper.js';
 
 export const fitsNumber = (value: ValueGroup): boolean => inUnits(value, ['']);
 
 /** What `sin()`, `cos()` and `tan()` take: a number or an angle. */
 export const fitsAngle = (value: ValueGroup): boolean => inUnits(value, ['', 'deg', 'grad', 'rad', 'turn']);
 
-/** A number a form reads, or what only the browser knows of one, taken to hold a number (Q3). */
-export const NUMBER_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsNumber } as const;
+/** A number a form reads in any unit, or what only the browser knows of one, of no known type taken to hold a number (Q3). */
+export const NUMBER_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsAny } as const;
+
+/** `value` as a number: its known unit dropped. */
+export const numberOf = (value: ValueGroup): ValueGroup =>
+  isDimension(value) ? makeDimension(value.number) : asNumber(value);
+
+/**
+ * Whether a value's type turns into `target`'s by a form: a percentage does not
+ * into a dimension. Over `(50% / 1%) * 1px` Chrome keeps the percentage's type, so
+ * `height` and `top` under a box of no height read `auto`, and `blur()` reads 0.
+ */
+export const turnsInto = (value: ValueGroup, target: string): boolean =>
+  fitsAny(value) && (!isDimension(value) || value.unit !== '%' || target === '' || target === '%');
 
 export { isDimension };
 
