@@ -94,6 +94,10 @@ describe('.scss operators on what only the browser knows', () => {
 });
 
 describe('Sass math built-ins with a form', () => {
+  it.each(['round(10px * 2em)', 'math.round(10px * 2em)', 'ceil(10px * 2em)', 'floor(10px * 2em)'])('%s reads the one unit each of them reads', async (written) => {
+    await expect(value(written)).resolves.toBe('20px');
+  });
+
   it.each(['round(1px * 1px)', 'round(math.div(1px, 1em))', 'round(math.div(1, 2px))', 'ceil(1px * 1px)', 'floor(1px * 1px)'])('%s keeps its unit', async (written) => {
     await expect(value(written)).resolves.toBe('1px');
   });
