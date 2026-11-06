@@ -573,7 +573,6 @@ export const literal = (bytes: string): string => bytes;
 export interface EvalModes {
   readonly unitMode: UnitMode;
 
-
   /** Less arithmetic policy; parentheses are tracked by the AST walker. */
   readonly mathMode?: MathMode;
 
