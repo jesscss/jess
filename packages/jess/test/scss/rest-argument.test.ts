@@ -35,7 +35,7 @@ describe('a keyword after a rest argument stays on its own value', () => {
     ['$l: red; .a { b: lighten($amount: 10%, $l...); }', '.a {\n  b: #ff3333;\n}\n'],
 
     /* Sass writes this colour as `rgb(30%, 0%, 70%)`. */
-    ['$l: red blue; .a { b: mix($l..., $weight: 30%); }', '.a {\n  b: rgb(77, 0, 179);\n}\n'],
+    ['$l: red blue; .a { b: mix($l..., $weight: 30%); }', '.a {\n  b: #4d00b3;\n}\n'],
 
     /* As `hsl(50%, 50%, $hue: 1)`: positional arguments fill the slots the keywords leave. */
     ['$l: 50% 50%; .a { b: hsl($l..., $hue: 1); }', '.a {\n  b: hsl(1, 50%, 50%);\n}\n']

@@ -1,6 +1,6 @@
 import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
-import { hslAdjust } from './kernels.js';
+import * as forms from '../../less/css-forms.generated.js';
+import { defineAdjuster } from './color-form.js';
 
 /**
  * `color.saturate(color, amount)` — raise the hsl saturation, clamped to 100%.
@@ -12,13 +12,6 @@ import { hslAdjust } from './kernels.js';
  * verbatim. A single `Dimension` argument fails the kind check on the colour
  * slot, which re-emits the call as authored under `functionMode: preserve`.
  */
-export const saturate: Fn = defineFunction('saturate', {
-  params: [
-    { name: 'color', type: 'Color' },
-    { name: 'amount', type: 'Dimension' },
-    { name: 'excess', type: 'any', optional: true }
-  ],
-  body: hslAdjust(1, 1)
-});
+export const saturate: Fn = /* @__PURE__ */ defineAdjuster('saturate', forms.saturate, forms.saturateDeferred);
 
 export default saturate;

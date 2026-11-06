@@ -41,6 +41,7 @@ import type {
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
 import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
+import { isFilterProperty, writtenAsFilter } from './filter-position.js';
 import { isDiagnosticStatement, type AtRuleBlock, type AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
@@ -188,10 +189,7 @@ const isSpaceRun = (slot: ValueSlot | CallValue): boolean =>
   isSlotArray(slot) ? slot.length > 1 : slot.type === 'Sequence';
 
 /** Whether a value template opens with `$( … )`; any other prints as an escaped string (`~"…"`). */
-const leadsWithExpression = (node: Interpolation): boolean => {
-  const first = node.parts[0];
-  return first !== undefined && 'ref' in first && first.ref.type === 'Expression';
-};
+const leadsWithExpression = ({ parts: [first] }: Interpolation): boolean => first !== undefined && 'ref' in first && first.ref.type === 'Expression';
 
 class JessPrinter {
   readonly gaps: JessSpellingGap[] = [];
@@ -208,6 +206,7 @@ class JessPrinter {
 
   /** Set while a property's value prints: a value written to the output, not one a callable reads. */
   #propertyValue = false;
+  #filterProperty = false;
 
   /** Set while a CSS call's arguments print, where a `{ … }` is CSS's own argument braces (`CurlyList`). */
   #cssCall = false;
@@ -474,10 +473,12 @@ class JessPrinter {
       value = this.customValue(node.value);
     } else {
       this.#propertyValue = true;
+      this.#filterProperty = typeof node.name === 'string' && isFilterProperty(node.name);
       try {
         value = this.value(node.value, At.Value);
       } finally {
         this.#propertyValue = false;
+        this.#filterProperty = false;
       }
     }
     return `${name}: ${value}${node.important ? ' !important' : ''}`;
@@ -976,7 +977,7 @@ class JessPrinter {
      * Anywhere a callable or a variable can read it, it computes, and goes
      * through its binding.
      */
-    const exported = this.#propertyValue && at === At.Value && isCssColorFunction(node) ? undefined : this.#functions?.names.get(lower);
+    const exported = (this.#propertyValue && at === At.Value && isCssColorFunction(node)) || writtenAsFilter(node, lower, this.#functions?.names, this.#propertyValue && at === At.Value ? (this.#filterProperty ? 'filter' : 'item') : undefined) ? undefined : this.#functions?.names.get(lower);
     if (exported !== undefined) {
       this.calledFunctions.set(lower, exported);
     }

@@ -4,6 +4,7 @@ exports[`sass:color — sass-spec conformance > covers the corpus with a recorde
 {
   "error": 130,
   "unrunnable": {
+    "\`mix\` is \`color-mix()\` when the alphas differ (Q1), not Sass's formula": 4,
     "colour-space argument (unimplemented)": 45,
     "expression is not a bare call to the function under test": 1,
     "hue interpolation method — unimplemented": 1,
@@ -16,6 +17,6 @@ exports[`sass:color — sass-spec conformance > covers the corpus with a recorde
     "sass:meta (out of scope)": 1,
     "special function passed as a channel (evaluator concern, not a fn body)": 300,
   },
-  "value": 235,
+  "value": 231,
 }
 `;

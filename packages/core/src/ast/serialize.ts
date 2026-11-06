@@ -222,6 +222,7 @@ import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, 
 import { makeAny, makeWrittenMath, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
+import { cssFilterCall, mayBeFilter } from './filter-position.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
@@ -9112,8 +9113,9 @@ function dispatchCall(
    */
   const modes = reach === 'imported' && e.modes.functionMode !== 'error'
     ? otherFunctionMode(e.modes)
-    : demanded && e.modes.functionMode === 'error' && isCssColorCall(node) ? otherFunctionMode(e.modes) : e.modes;
-  const sep = node.modern ? ' ' : ',';
+    : demanded && e.modes.functionMode === 'error' && isCssColorCall(node)
+      ? otherFunctionMode(e.modes)
+      : e.modes;
 
   /*
    * Args are materialized TYPED (each arg's tag sourced from its parse node). A
@@ -9141,7 +9143,7 @@ function dispatchCall(
       const vals = flat === undefined ? evaluated : flat.vals;
       const keywords = flat === undefined ? node.args : flat.keywords;
       const ordered = named ? orderKeywordArgs(keywords, vals, ev.paramNames(node.name, selected, reach === 'ambient')) : vals;
-      const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
+      const args: ValueGroup = node.modern ? ordered : makeList(ordered, ',');
 
       /*
        * A call that names an argument also hands over its arguments as written,
@@ -9151,8 +9153,8 @@ function dispatchCall(
        * comments and line breaks a written-out call keeps (F11); nothing is
        * looked up unless the call is written out.
        */
-      const result = ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', named
-        ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords }
+      const result = ev.call(node.name, args, modes, null, e.s.io, reach !== 'imported' && vals.length === 1 && mayBeFilter(node, vals[0], e, selected, ev) ? cssFilterCall : selected, reach === 'ambient', named
+        ? { args: ordered === vals ? args : (node.modern ? vals : makeList(vals, ',')), keywords }
         : undefined, keywords);
       if (isThenable(result)) {
         return result.then((value) => {

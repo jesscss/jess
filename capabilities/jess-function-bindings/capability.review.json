@@ -4,12 +4,12 @@
   "definitionDigest": "c327223c6be426f6ea7c2d8f6212bf8d9b8f9b1b8717d189e36c9d97253dc347",
   "contractDigest": "3eff2a43c7033347115289ff49f09ad90ae141305f881c7c725acbbff6427b23",
   "implementations": {
-    "owner": "b1d9e61caf804844a7f42037f9ee53cc06ae78624401cd1fd464de5f0c524ad5",
-    "compiler-convert": "885808c741bfa52db105f9eab2b51446ff8fd3534557abf3876114aaea2bdcca",
+    "owner": "c4feef9b75ce5c0baad559f8838ec2d8e98eb2f95d6984c709647097ed5d9a2c",
+    "compiler-convert": "4e305c6f6571b15c729aaafb8dc620d2809cb840b14faaa88574fc6da4594f86",
     "less-equivalence": "016b7bac0f321f6bc77059a10afcbf0010e5ac4303a6b4507f96fe5154d33c10",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "d46a456dacad8fc205dd41cd378c76fcaa88772415fa4016f75bcbc907c20457",
     "sass-selector-parse": "0f15e760ecafc11546d65927c5d0a92168d849ebbf163e4dfe0dfae683096d81"
   },
-  "rationale": "The value barrel's exports move with dev's holdsNone and NoCssForm and the math forms, the equivalence suite gains KNOWN rows for SCSS files that now parse, and the root package.json pins parseman exactly, merged with dev. No dependency, binding name or module a converted .jess file imports changes for this contract's consumers."
+  "rationale": "The value barrel's exports move with dev's holdsNone and NoCssForm and the math forms, the equivalence suite gains KNOWN rows for SCSS files that now parse, and the root package.json pins parseman exactly, merged with dev's filter position and the Sass colour forms. No dependency, binding name or module a converted .jess file imports changes for this contract's consumers."
 }

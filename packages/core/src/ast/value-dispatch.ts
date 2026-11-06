@@ -439,7 +439,7 @@ export function defineFunction(
     }
     return Reflect.apply(definition.body, undefined, bindDirect(name, definition.params, positional));
   };
-  const fn = Object.assign(callable, { params: definition.params, variadic: definition.variadic });
+  const fn = Object.assign(callable, { params: definition.params, variadic: definition.variadic, filter: definition.filter });
   Object.defineProperty(fn, 'name', { value: name, configurable: true });
   return fn;
 }
