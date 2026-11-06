@@ -970,7 +970,7 @@ class JessPrinter {
      * Anywhere a callable or a variable can read it, it computes, and goes
      * through its binding.
      */
-    const exported = (this.#propertyValue && at === At.Value && isCssColorFunction(node)) || writtenAsFilter(node, lower, this.#functions?.names, this.#propertyValue && at === At.Value && !this.#filterProperty) ? undefined : this.#functions?.names.get(lower);
+    const exported = (this.#propertyValue && at === At.Value && isCssColorFunction(node)) || writtenAsFilter(node, lower, this.#functions?.names, this.#propertyValue && at === At.Value ? (this.#filterProperty ? 'filter' : 'item') : undefined) ? undefined : this.#functions?.names.get(lower);
     if (exported !== undefined) {
       this.calledFunctions.set(lower, exported);
     }
