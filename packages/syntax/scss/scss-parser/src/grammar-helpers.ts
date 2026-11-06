@@ -986,8 +986,7 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
     );
   }
 
-  /* A namespaced call is looked up through a module, whose diagnostics point at where it was written. */
-  return span !== undefined && name.includes('.') ? withSourceSpan(call, span) : call;
+  return span !== undefined ? withSourceSpan(call, span) : call;
 }
 
 /** A Sass map key stays an authored value node; equality belongs to value-domain
