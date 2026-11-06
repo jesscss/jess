@@ -1,7 +1,6 @@
 import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
-import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js';
-import { subExact } from '../../util/decimal.js';
+import * as forms from '../../less/css-forms.generated.js';
+import { defineAlphaAdjuster } from './color-form.js';
 
 /**
  * `color.transparentize(color, amount)` — lower alpha by an absolute 0-1 amount.
@@ -15,17 +14,6 @@ import { subExact } from '../../util/decimal.js';
  * `transparentize(hsl(120,50%,50%), 0.5)` → `hsla(120, 50%, 50%, 0.5)` (hsl
  * format survives; only a hex literal turns into rgb).
  */
-export const transparentize: Fn = defineFunction('transparentize', {
-  params: [
-    { name: 'color', type: 'Color' },
-    { name: 'amount', type: 'Dimension' },
-    { name: 'excess', type: 'any', optional: true }
-  ],
-  body: (c, amt, excess) => {
-    noExcess(excess, 2);
-    const color = requireColor(c);
-    return withAlpha(color, subExact(color.alpha, fractionAmount(amt)));
-  }
-});
+export const transparentize: Fn = /* @__PURE__ */ defineAlphaAdjuster('transparentize', forms.fadeout);
 
 export default transparentize;
