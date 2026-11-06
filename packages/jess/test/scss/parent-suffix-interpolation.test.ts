@@ -154,7 +154,9 @@ describe('.scss: an interpolated parent suffix', () => {
     ['.a { &-😀 { c: d; } }', rule('.a-😀')],
     ['.a { &__😀 { c: d; } }', rule('.a__😀')],
     ['.a { &x😀 { c: d; } }', rule('.ax😀')],
-    ['.a { &😀-b { c: d; } }', rule('.a😀-b')]
+    ['.a { &😀-b { c: d; } }', rule('.a😀-b')],
+    ['.a { &\\:😀 { c: d; } }', rule('.a\\:😀')],
+    ['.a { &1😀 { c: d; } }', rule('.a1😀')]
   ])('every glued name character, written out: %s', async (scss, css) => {
     expect(await render(scss, 'scss')).toBe(css);
     expect(await render(emitJess(parseScss(scss)), 'jess')).toBe(css);
