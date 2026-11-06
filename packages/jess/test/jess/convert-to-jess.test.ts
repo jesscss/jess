@@ -340,4 +340,32 @@ describe('Compiler.convertToJess', () => {
       compiler.dispose();
     }
   }, 60_000);
+
+  /* A lone grayscale(), invert() or contrast() goes by where it stands (docs/design/CSS-NATIVE-BUILTINS.md Q13); `$name(…)` is always the colour. */
+  it.each([
+    ['.scss', 'a { filter: grayscale(var(--x)); color: grayscale(var(--x)); }'],
+    ['.scss', 'a { filter: blur(1px) invert(var(--x)); color: invert(var(--x)); }'],
+    ['.scss', 'a { filter: grayscale(50%); color: invert(1); filter: saturate(50%); color: saturate(var(--x)); }'],
+    ['.scss', '$f: grayscale(var(--x));\na { filter: $f; color: $f; }'],
+    ['.scss', 'a { color: grayscale(#800); filter: drop-shadow(0 0 1px grayscale(var(--x))); }'],
+    ['.scss', '@use "sass:color";\na { color: color.grayscale(var(--x)); border-color: color.invert(var(--x)); }'],
+    ['.scss', 'a { color: lighten(var(--a), 10%); color: mix(var(--a), #fff, 25%); color: transparentize(var(--a), .1); color: rgba(currentcolor, .5); }'],
+    ['.less', '.a { filter: contrast(var(--x)); color: contrast(var(--x)); }'],
+    ['.less', '@f: contrast(var(--x));\n.a { filter: @f; color: @f; }']
+  ])('renders the same through .jess: %s %s', async (extension, source) => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    const entry = path.join(dir, `a${extension}`);
+    fs.writeFileSync(entry, source);
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    try {
+      const { files, errors } = await compiler.convertToJess(entry, { suppressWarnings: true });
+      expect(errors).toEqual([]);
+      for (const file of files) {
+        fs.writeFileSync(file.jessPath, 'jess' in file ? file.jess : '');
+      }
+      expect(await compiler.render(path.join(dir, 'a.jess'), { suppressWarnings: true })).toBe(await compiler.render(entry, { suppressWarnings: true }));
+    } finally {
+      compiler.dispose();
+    }
+  });
 });

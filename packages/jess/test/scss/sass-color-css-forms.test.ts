@@ -1,7 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { Compiler } from '../../src/index.js';
 
 /**
@@ -153,33 +150,5 @@ describe('a lone grayscale(), invert() or contrast() over an unknown goes by whe
   it('goes by position for a bare name under @use … as *, which stays ambient', async () => {
     await expect(compile('@use "sass:color" as *;\na { filter: grayscale(var(--x)); color: invert(var(--x)); backdrop-filter: invert(50%); }'))
       .resolves.toBe(`a {\n  filter: grayscale(var(--x));\n  color: ${INVERT};\n  backdrop-filter: invert(50%);\n}\n`);
-  });
-});
-
-describe('.jess round trip of the position rows', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'jess-sass-color-rt-'));
-  it.each([
-    ['.scss', 'a { filter: grayscale(var(--x)); color: grayscale(var(--x)); }'],
-    ['.scss', 'a { filter: blur(1px) invert(var(--x)); color: invert(var(--x)); }'],
-    ['.scss', 'a { filter: grayscale(50%); color: invert(1); filter: saturate(50%); color: saturate(var(--x)); }'],
-    ['.scss', '$f: grayscale(var(--x));\na { filter: $f; color: $f; }'],
-    ['.scss', 'a { color: grayscale(#800); filter: drop-shadow(0 0 1px grayscale(var(--x))); }'],
-    ['.scss', '@use "sass:color";\na { color: color.grayscale(var(--x)); border-color: color.invert(var(--x)); }'],
-    ['.scss', 'a { color: lighten(var(--a), 10%); color: mix(var(--a), #fff, 25%); color: transparentize(var(--a), .1); color: rgba(currentcolor, .5); }'],
-    ['.less', '.a { filter: contrast(var(--x)); color: contrast(var(--x)); }'],
-    ['.less', '@f: contrast(var(--x));\n.a { filter: @f; color: @f; }']
-  ])('%s %s', async (extension, source) => {
-    const file = join(mkdtempSync(join(dir, 'rt-')), `entry${extension}`);
-    writeFileSync(file, source);
-    const compiler = (): Compiler => new Compiler({ output: { collapseNesting: true } });
-    const direct = await compiler().render(file, { suppressWarnings: true });
-    const converted = await compiler().convertToJess(file, { suppressWarnings: true });
-    const jess = converted.files.find(entry => 'jess' in entry);
-    if (jess === undefined || !('jess' in jess)) {
-      throw new Error('no .jess');
-    }
-    const jessFile = file.replace(/\.[a-z]+$/, '.jess');
-    writeFileSync(jessFile, jess.jess);
-    await expect(compiler().render(jessFile, { suppressWarnings: true })).resolves.toBe(direct);
   });
 });
