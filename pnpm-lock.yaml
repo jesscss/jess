@@ -128,7 +128,7 @@ importers:
         specifier: ^8.0.1
         version: 8.0.1
       parseman:
-        specifier: ^0.61.5
+        specifier: 0.61.5
         version: 0.61.5
       puppeteer:
         specifier: ^19.10.1
@@ -713,7 +713,7 @@ importers:
   packages/parser-shared:
     dependencies:
       parseman:
-        specifier: ^0.61.5
+        specifier: 0.61.5
         version: 0.61.5
     devDependencies:
       tsdown:
@@ -753,7 +753,7 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.61.5
+        specifier: 0.61.5
         version: 0.61.5
     devDependencies:
       '@jesscss/core':
@@ -772,7 +772,7 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.61.5
+        specifier: 0.61.5
         version: 0.61.5
     devDependencies:
       '@jesscss/core':
@@ -846,7 +846,7 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.61.5
+        specifier: 0.61.5
         version: 0.61.5
     devDependencies:
       '@jesscss/core':
@@ -883,7 +883,7 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.61.5
+        specifier: 0.61.5
         version: 0.61.5
     devDependencies:
       '@jesscss/core':
