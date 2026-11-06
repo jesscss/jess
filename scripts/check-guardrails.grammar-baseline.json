@@ -218,7 +218,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 747,
+      "line": 738,
       "const": "unknownAtRulePrelude",
       "construct": "scanTo(choice(literal('{'), literal(';')), { skip: unknownAtRuleSkip })",
       "resolved": "4999e6e17e2cd7c5",
@@ -228,7 +228,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 782,
+      "line": 773,
       "const": "customImportantTail",
       "construct": "regex(/[ \\t\\n\\r\\f]*!(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*important(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*(?=[;}])/i)",
       "resolved": "6d3f753b99def944",
@@ -238,7 +238,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 857,
+      "line": 848,
       "const": "cssCase",
       "construct": "cssCase",
       "why": "rule name `cssCase`",
@@ -247,7 +247,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 1198,
+      "line": 1201,
       "const": "LeadingDashRawPseudoArgument",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "758453ff058fbf49",
@@ -257,7 +257,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 1276,
+      "line": 1279,
       "const": "PseudoArgument",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "758453ff058fbf49",
@@ -267,7 +267,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 1300,
+      "line": 1303,
       "const": "OfTypePseudoArgument",
       "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
       "resolved": "9ffbdbd4a74b109e",
@@ -277,7 +277,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 1313,
+      "line": 1316,
       "const": "OfTypePseudoArgument",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "758453ff058fbf49",
@@ -287,7 +287,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 2003,
+      "line": 2002,
       "const": "VarFallbackParen",
       "construct": "not(choice(varFallbackParenCrossBracket, varFallbackParenCrossBrace))",
       "resolved": "e24f7d4e2da5efde",
@@ -297,7 +297,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 2039,
+      "line": 2038,
       "const": "VarFallbackBracket",
       "construct": "not(choice(varFallbackBracketCrossParen, varFallbackBracketCrossBrace))",
       "resolved": "4644bc5f5882888c",
@@ -307,7 +307,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 2057,
+      "line": 2056,
       "const": "VarFallbackBrace",
       "construct": "not(choice(varFallbackBraceCrossParen, varFallbackBraceCrossBracket))",
       "resolved": "869880d7af83f056",
@@ -317,7 +317,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 3058,
+      "line": 3057,
       "const": "ImportTailRaw",
       "construct": "importTailText",
       "resolved": "3f985ea5838e592a",
@@ -327,7 +327,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 3545,
+      "line": 3544,
       "const": "queryComparedHead",
       "construct": "queryFeatureOpenerHead",
       "resolved": "4b6774985803593c",
@@ -337,7 +337,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 3739,
+      "line": 3738,
       "const": "queryFeatureOpener",
       "construct": "queryFeatureOpenerHead",
       "resolved": "4b6774985803593c",
@@ -347,7 +347,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 3835,
+      "line": 3834,
       "const": "mediaFeatureOpener",
       "construct": "queryFeatureOpenerHead",
       "resolved": "4b6774985803593c",
@@ -357,7 +357,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 3970,
+      "line": 3969,
       "const": "QueryConnective",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "7f0fa756971955fa",
@@ -367,7 +367,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 4037,
+      "line": 4036,
       "const": "queryIdentOrFunction",
       "construct": "not(sequence(mediaTypeKeywordReserved, not(literal('('))))",
       "resolved": "9cd693eb239df531",
@@ -377,7 +377,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 4083,
+      "line": 4082,
       "const": "queryIdentOrFunctionTerm",
       "construct": "queryIdentOrFunction",
       "resolved": "22694873aac629c0",
@@ -387,7 +387,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 4386,
+      "line": 4385,
       "const": "EnclosedContent",
       "construct": "EnclosedRaw",
       "resolved": "2253a14d402e31cf",
@@ -397,7 +397,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 4635,
+      "line": 4634,
       "const": "styleQueryContents",
       "construct": "ifTestHead",
       "resolved": "6e859c48acbc4144",
@@ -407,7 +407,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 4757,
+      "line": 4756,
       "const": "supportsTestOperand",
       "construct": "ifTestHead",
       "resolved": "6e859c48acbc4144",
@@ -417,7 +417,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 4789,
+      "line": 4788,
       "const": "supportsTestContents",
       "construct": "ifTestHead",
       "resolved": "6e859c48acbc4144",
@@ -527,7 +527,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "line": 3354,
+      "line": 3345,
       "const": "InterpolatedValue",
       "construct": "interpolatedValueTail",
       "resolved": "c91318495fbcd83f",
@@ -537,7 +537,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "line": 3891,
+      "line": 3882,
       "const": "DollarBraceValue",
       "construct": "interpolatedValueTail",
       "resolved": "c91318495fbcd83f",
@@ -547,7 +547,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "line": 4327,
+      "line": 4318,
       "const": "containerName",
       "construct": "not(containerFunctionOpen)",
       "resolved": "72f1388df381a85a",
@@ -557,7 +557,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "line": 4341,
+      "line": 4332,
       "const": "jessStyleFunctionOpener",
       "construct": "jessStyleFunctionOpener",
       "why": "rule name `jessStyleFunctionOpener`",
@@ -566,7 +566,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "line": 4813,
+      "line": 4804,
       "const": "combinator",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "7f0fa756971955fa",
@@ -576,7 +576,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "line": 4824,
+      "line": 4815,
       "const": "SupportsCondition",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "7f0fa756971955fa",
@@ -586,7 +586,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "line": 5175,
+      "line": 5166,
       "const": "assignHead",
       "construct": "not(reservedVarHead)",
       "resolved": "a8e0b11ab12d3968",
@@ -596,7 +596,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "line": 5269,
+      "line": 5260,
       "const": "interpolatedPropertyAhead",
       "construct": "peek(regex(/[^{};:]*\\$\\{/))",
       "resolved": "7e63569506d5836e",
@@ -606,7 +606,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "line": 6120,
+      "line": 6111,
       "const": "IfGuard",
       "construct": "attempt(g.IfGuardCompare)",
       "resolved": "dea95e65c8e837f0",
@@ -616,7 +616,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 681,
+      "line": 675,
       "const": "staticDataUrlText",
       "construct": "regex(/data:(?:[^\"'()\\\\\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+?(?=[ \\t\\n\\r\\f]*\\))/i)",
       "resolved": "64be9389f42eacd4",
@@ -626,7 +626,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 799,
+      "line": 793,
       "const": "lessSupportedVariableName",
       "construct": "lessSupportedVariableName",
       "why": "rule name `lessSupportedVariableName`",
@@ -635,7 +635,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 800,
+      "line": 794,
       "const": "lessUnsupportedNumericVariableName",
       "construct": "lessUnsupportedNumericVariableName",
       "why": "rule name `lessUnsupportedNumericVariableName`",
@@ -644,7 +644,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 806,
+      "line": 800,
       "const": "lessDashVariableName",
       "construct": "lessDashVariableName",
       "why": "rule name `lessDashVariableName`",
@@ -653,7 +653,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 810,
+      "line": 804,
       "const": "lessVariableName",
       "construct": "lessVariableName",
       "why": "rule name `lessVariableName`",
@@ -662,7 +662,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 935,
+      "line": 929,
       "const": "lessDimensionUnit",
       "construct": "lessDimensionUnit",
       "why": "rule name `lessDimensionUnit`",
@@ -671,7 +671,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 958,
+      "line": 952,
       "const": "lessOwnAtKeyword",
       "construct": "lessOwnAtKeyword",
       "why": "rule name `lessOwnAtKeyword`",
@@ -680,7 +680,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 984,
+      "line": 975,
       "const": "syntaxTypeOpen",
       "construct": "regex(/<(?=-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*>)/)",
       "resolved": "0e7433a09e4636a3",
@@ -690,7 +690,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1063,
+      "line": 1054,
       "const": "lessWord",
       "construct": "lessWord",
       "why": "rule name `lessWord`",
@@ -699,7 +699,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1064,
+      "line": 1055,
       "const": "lessCaseWord",
       "construct": "lessCaseWord",
       "why": "rule name `lessCaseWord`",
@@ -708,7 +708,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1291,
+      "line": 1282,
       "const": "plainUrlArgument",
       "construct": "field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))",
       "resolved": "5347feb07d71a200",
@@ -718,7 +718,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1309,
+      "line": 1300,
       "const": "UrlInterpolation",
       "construct": "staticUrlText",
       "resolved": "e904a69713183236",
@@ -728,7 +728,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1310,
+      "line": 1301,
       "const": "UrlInterpolation",
       "construct": "staticUrlText",
       "resolved": "e904a69713183236",
@@ -738,7 +738,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1367,
+      "line": 1358,
       "const": "ImportTailParen",
       "construct": "staticTailText",
       "resolved": "884b0d6df850866d",
@@ -748,7 +748,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1372,
+      "line": 1363,
       "const": "ImportTailText",
       "construct": "staticTailText",
       "resolved": "884b0d6df850866d",
@@ -758,7 +758,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1694,
+      "line": 1685,
       "const": "inlineJavaScriptFollowingDeclaration",
       "construct": "peek(choice(literal('}'), sequence(choice(variableName, g.PunctuationMapKeyToken, sequence(choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPr…",
       "resolved": "580232a8a375e1ea",
@@ -768,7 +768,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1798,
+      "line": 1789,
       "const": "MixinReferenceValue",
       "construct": "not(regex(/#[0-9a-fA-F]+[ \\t\\n\\r\\f]*[;}!]/))",
       "resolved": "153861d1e1f7e19f",
@@ -778,7 +778,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1996,
+      "line": 1987,
       "const": "functionConditionNotAhead",
       "construct": "peek(choice(parser({ trivia: functionTrivia }, sequence(functionConditionNot, literal('('))), noTrivia(sequence(functionConditionNot, whitespaceRun, regex(/[^,…",
       "resolved": "a626decc44fbd3c4",
@@ -788,7 +788,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 2006,
+      "line": 1997,
       "const": "keywordArgumentKey",
       "construct": "regex(/@[-_a-zA-Z\\u0080-\\uffff][-\\w\\u0080-\\uffff]*(?=[ \\t\\n\\r\\f]*:(?!:))/)",
       "resolved": "f11e009f72f3c432",
@@ -798,7 +798,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 2298,
+      "line": 2282,
       "const": "BacktickJavaScript",
       "construct": "{ gate: state => state === 'less-at-rule-inline-javascript', combinator: atRuleInlineJavaScriptBody }",
       "resolved": "6eec8fb750721a8d",
@@ -808,7 +808,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 2646,
+      "line": 2630,
       "const": "valueRunEndAhead",
       "construct": "nestedAtRuleValueStart",
       "resolved": "e1d2d18bc7601514",
@@ -818,7 +818,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 2649,
+      "line": 2633,
       "const": "combinator",
       "construct": "not(syntaxTypeOpen)",
       "resolved": "157fb6080ac90af4",
@@ -828,7 +828,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 2665,
+      "line": 2649,
       "const": "valueTriviaBoundary",
       "construct": "not(valueRunEndAhead)",
       "resolved": "bfe540cf522e14d9",
@@ -838,7 +838,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3055,
+      "line": 3039,
       "const": "interpolatedPropertyAhead",
       "construct": "peek(regex(/[^:;{}]*[@$]\\{/))",
       "resolved": "5f96cccf796d5635",
@@ -848,7 +848,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3366,
+      "line": 3350,
       "const": "ReferenceTailFromDelimiter",
       "construct": "choice(literal('[]'), literal('['), literal('.'), literal('('))",
       "resolved": "0ec4cb5461eee774",
@@ -858,7 +858,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3554,
+      "line": 3538,
       "const": "MixinGuardOperand",
       "construct": "mixinGuardDefaultOperand",
       "resolved": "88d09d40a9f2d506",
@@ -868,7 +868,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3593,
+      "line": 3577,
       "const": "unparenthesizedMixinGuard",
       "construct": "sequence(optional(lessCaseWord('not')), choice(mixinGuardDefaultOperand, g.Call), optional(sequence(mixinGuardOperator, g.MixinGuardOperand)))",
       "resolved": "2af12adb8b0708b6",
@@ -878,7 +878,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3595,
+      "line": 3579,
       "const": "unparenthesizedMixinGuard",
       "construct": "mixinGuardDefaultOperand",
       "resolved": "88d09d40a9f2d506",
@@ -888,7 +888,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3725,
+      "line": 3708,
       "const": "rulesetNotDeclaration",
       "construct": "not(regex(/[-\\w]+[ \\t]*:[ \\t\\n\\r\\f]/))",
       "resolved": "d8a53b22591bbad7",
@@ -898,7 +898,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3853,
+      "line": 3836,
       "const": "CallArgumentValue",
       "construct": "attempt(g.FlatMixinCall)",
       "resolved": "6ee21eb8f22909ca",
@@ -908,7 +908,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3981,
+      "line": 3964,
       "const": "enclosedRaw",
       "construct": "enclosedText",
       "resolved": "4d87586bf3fdbcc3",
@@ -918,7 +918,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4003,
+      "line": 3986,
       "const": "enclosedContentItems",
       "construct": "enclosedRaw",
       "resolved": "aa60bac2a3f11be6",
@@ -928,7 +928,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4277,
+      "line": 4260,
       "const": "MediaTypeTerm",
       "construct": "attempt(g.MixinReferenceChain)",
       "resolved": "33cd9d2e2b6c1582",
@@ -938,7 +938,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4418,
+      "line": 4401,
       "const": "ContainerName",
       "construct": "not(g.QueryFunctionOpen)",
       "resolved": "8d6968a1ce5b22eb",
@@ -948,7 +948,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4747,
+      "line": 4725,
       "const": "lessUnknownAtPreludeText",
       "construct": "lessUnknownAtPreludeText",
       "why": "rule name `lessUnknownAtPreludeText`",
@@ -957,7 +957,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4748,
+      "line": 4726,
       "const": "lessUnknownAtPreludeCapture",
       "construct": "lessUnknownAtPreludeCapture",
       "why": "rule name `lessUnknownAtPreludeCapture`",
@@ -966,7 +966,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4793,
+      "line": 4770,
       "const": "genericAtRuleBlockTail",
       "construct": "attempt(sequence(// The typed header first; interpolation and parenthesized forms fall to // the byte prelude in the arm below. attempt(g.AtRulePreludeValue), …",
       "resolved": "b5726cdd5a66fa90",
@@ -976,7 +976,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4796,
+      "line": 4773,
       "const": "genericAtRuleBlockTail",
       "construct": "attempt(g.AtRulePreludeValue)",
       "resolved": "e0abc396ddbe685d",
@@ -986,7 +986,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5035,
+      "line": 5014,
       "const": "AtRuleStatement",
       "construct": "attempt(sequence(g.AtRulePreludeValue, literal(';')))",
       "resolved": "8061cb32f134b20e",
@@ -996,7 +996,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5250,
+      "line": 5229,
       "const": "capturedArgument",
       "construct": "InvalidSelectorCaptureArgument",
       "resolved": "9588caa03f4a83d5",
@@ -1006,7 +1006,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5372,
+      "line": 5351,
       "const": "pseudo",
       "construct": "pseudoOpen",
       "resolved": "cb60ab284602ba2e",
@@ -1017,7 +1017,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5395,
+      "line": 5374,
       "const": "staticPseudoDispatch",
       "construct": "pseudoOpen",
       "resolved": "cb60ab284602ba2e",
@@ -1028,7 +1028,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5716,
+      "line": 5695,
       "const": "extendAllFlagAhead",
       "construct": "regex(/[ \\t\\n\\r\\f]*!?all(?=[ \\t\\n\\r\\f]*(?:,|\\)))/i)",
       "resolved": "4c82090aa268fdb8",
@@ -1038,7 +1038,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5734,
+      "line": 5713,
       "const": "ExtendComplex",
       "construct": "not(regex(/[ \\t\\n\\r\\f]*!?all(?=[ \\t\\n\\r\\f]*(?:,|\\)))/i))",
       "resolved": "b8d4149ad13d4d34",
@@ -1048,7 +1048,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5751,
+      "line": 5730,
       "const": "ExtendTargetComplex",
       "construct": "not(extendAllFlagAhead)",
       "resolved": "09f891154e9019d7",
@@ -1058,7 +1058,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5885,
+      "line": 5864,
       "const": "RulesetWithExtends",
       "construct": "attempt(selectorListWithExtends, { contain: true })",
       "resolved": "6fdfb1e5636c6cf1",
@@ -1068,7 +1068,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5914,
+      "line": 5893,
       "const": "NestedRulesetWithExtends",
       "construct": "attempt(relativeSelectorListWithExtends, { contain: true })",
       "resolved": "156835c69d5fc606",
@@ -1078,7 +1078,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5982,
+      "line": 5961,
       "const": "MixinStatementTail",
       "construct": "attempt(MixinDefinitionContinuation)",
       "resolved": "616526270a2683a7",
@@ -1088,7 +1088,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 528,
+      "line": 527,
       "const": "scssScanSkipDoubleString",
       "construct": "scssScanSkipDoubleString",
       "why": "rule name `scssScanSkipDoubleString`",
@@ -1097,7 +1097,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 533,
+      "line": 532,
       "const": "scssScanSkipSingleString",
       "construct": "scssScanSkipSingleString",
       "why": "rule name `scssScanSkipSingleString`",
@@ -1106,7 +1106,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 622,
+      "line": 621,
       "const": "scssVarName",
       "construct": "scssVarName",
       "why": "rule name `scssVarName`",
@@ -1115,7 +1115,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 629,
+      "line": 628,
       "const": "scssVarSigilName",
       "construct": "scssVarSigilName",
       "why": "rule name `scssVarSigilName`",
@@ -1124,7 +1124,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 792,
+      "line": 791,
       "const": "InterpolatedUrlValue",
       "construct": "plainUrlChunk",
       "resolved": "194acb3a8ed37af2",
@@ -1134,7 +1134,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 795,
+      "line": 794,
       "const": "InterpolatedUrlValue",
       "construct": "plainUrlChunk",
       "resolved": "194acb3a8ed37af2",
@@ -1144,7 +1144,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1063,
+      "line": 1062,
       "const": "UrlFunction",
       "construct": "choice(g.Quoted, g.InterpolatedUrlValue, plainUrlChunk)",
       "resolved": "14ce0607885f385c",
@@ -1154,7 +1154,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1477,
+      "line": 1476,
       "const": "MathUnary",
       "construct": "regex(/-(?=[ \\t\\n\\r\\f]*[\\$(])/)",
       "resolved": "d525887e67affab1",
@@ -1164,7 +1164,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1482,
+      "line": 1481,
       "const": "MathUnary",
       "construct": "regex(/\\+(?=[ \\t\\n\\r\\f]*[\\$(])/)",
       "resolved": "97c9f9b5c4cd1ca7",
@@ -1174,7 +1174,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1765,
+      "line": 1764,
       "const": "CallArgument",
       "construct": "regex(/[<>]=?(?=[ \\t\\n\\r\\f]*[),])/)",
       "resolved": "f252fa0bf805d416",
@@ -1184,7 +1184,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1919,
+      "line": 1918,
       "const": "VariableDeclaration",
       "construct": "not(reservedVarHead)",
       "resolved": "749e090a313564ac",
@@ -1194,7 +1194,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2259,
+      "line": 2258,
       "const": "directNestedPropertyAhead",
       "construct": "not(regex(/[^{};]*[;}]/))",
       "resolved": "33a85b020e687478",
@@ -1204,7 +1204,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2361,
+      "line": 2360,
       "const": "ImportUrl",
       "construct": "choice(g.Quoted, plainUrlChunk)",
       "resolved": "7807b43093a74197",
@@ -1214,7 +1214,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2544,
+      "line": 2543,
       "const": "ImportTail",
       "construct": "not(importSupportsOpen)",
       "resolved": "ad61acc0c2035c5d",
@@ -1224,7 +1224,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2544,
+      "line": 2543,
       "const": "ImportTail",
       "construct": "not(importLayerOpen)",
       "resolved": "58e2cce2e5534ad2",
@@ -1234,7 +1234,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 3263,
+      "line": 3262,
       "const": "scssTrueKeyword",
       "construct": "scssTrueKeyword",
       "why": "rule name `scssTrueKeyword`",
@@ -1243,7 +1243,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 3264,
+      "line": 3263,
       "const": "scssFalseKeyword",
       "construct": "scssFalseKeyword",
       "why": "rule name `scssFalseKeyword`",
@@ -1252,7 +1252,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4004,
+      "line": 4003,
       "const": "combinator",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "b2aa78a0298b79f8",
@@ -1262,7 +1262,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4015,
+      "line": 4014,
       "const": "SupportsCondition",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "b2aa78a0298b79f8",
@@ -1272,7 +1272,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4891,
+      "line": 4876,
       "const": "scssRelativeSelectorCombinator",
       "construct": "scssRelativeSelectorCombinator",
       "why": "rule name `scssRelativeSelectorCombinator`",
@@ -1281,7 +1281,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4963,
+      "line": 4948,
       "const": "NthPseudo",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "5a6df5fb2151b5c2",
@@ -1291,7 +1291,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4995,
+      "line": 4980,
       "const": "NthTypePseudo",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "5a6df5fb2151b5c2",
@@ -1301,7 +1301,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4996,
+      "line": 4981,
       "const": "NthTypePseudo",
       "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
       "resolved": "8e5efcf3098b0cee",
@@ -1311,7 +1311,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 5187,
+      "line": 5168,
       "const": "scssCombinator",
       "construct": "scssCombinator",
       "why": "rule name `scssCombinator`",
@@ -1320,7 +1320,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 5322,
+      "line": 5303,
       "const": "ScssGenericAtRuleName",
       "construct": "ScssGenericAtRuleName",
       "why": "rule name `ScssGenericAtRuleName`",
