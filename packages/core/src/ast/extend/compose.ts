@@ -646,7 +646,7 @@ function continuesName(s: Simple | undefined): boolean {
 
 /**
  * `b` with a lone `&` and the name continuation glued after it as one token, the way the
- * Less and `.jess` grammars read `&__el` (`.scss` reads it as `&` then `__el`), so the
+ * Less, `.scss` and `.jess` grammars read `&__el` (`.css` reads it as `&` then `__el`), so the
  * name is built as one simple (`.a__el`) that sibling compaction never splits into
  * `:is(.a, .b)__el`, no selector. `b` itself when it holds none, allocating nothing.
  */

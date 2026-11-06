@@ -107,45 +107,45 @@
     },
     "scss": {
       "source": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "sourceBytes": 202755,
+      "sourceBytes": 202834,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 396579,
+          "bytes": 396709,
           "ratio": 1.96,
           "assemblyFunctions": 46
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 307121,
+          "bytes": 307201,
           "ratio": 1.51,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 307495,
+          "bytes": 307576,
           "ratio": 1.52,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 307408,
+          "bytes": 307488,
           "ratio": 1.52,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 137355,
+          "bytes": 137554,
           "ratio": 0.68,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 137438,
+          "bytes": 137637,
           "ratio": 0.68,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 137361,
+          "bytes": 137560,
           "ratio": 0.68,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 137444,
+          "bytes": 137643,
           "ratio": 0.68,
           "assemblyFunctions": null
         }

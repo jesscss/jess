@@ -178,8 +178,8 @@ const endOf = (node: object): number => {
  * `Parent`: the fused `&suffix` only takes an identifier tail; `&(suffix)` is
  * the explicit append for any other `ampersandAppendPayload`.
  */
-const FUSED_AMPERSAND_TAIL = /^(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\.)*|-?(?:[_a-zA-Z\u0080-\uffff]|\\.)(?:[-_a-zA-Z0-9\u0080-\uffff]|\\.)*)?$/u;
-const APPEND_PAYLOAD = /^[-_a-zA-Z0-9\u0080-\uffff]+$/u;
+const FUSED_AMPERSAND_TAIL = /^(?:\d+(?:\.\d+)?%|--(?:[-_a-zA-Z0-9\u0080-\u{10ffff}]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|-?(?:[_a-zA-Z\u0080-\u{10ffff}]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\u{10ffff}]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?$/u;
+const APPEND_PAYLOAD = /^[-_a-zA-Z0-9\u0080-\u{10ffff}]+$/u;
 
 const isSlotArray = (slot: ValueSlot | CallValue): slot is readonly ValueSlot[] => Array.isArray(slot);
 
