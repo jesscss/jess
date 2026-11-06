@@ -13,6 +13,7 @@ import { assertNoUnits } from './units.js';
  * (sass-spec `core_functions/math/log.hrx`.)
  */
 const log = defineFunction('log', {
+  cssFunction: true,
   params: [
     { name: 'number', type: 'Dimension' },
     { name: 'base', type: ['Dimension', 'Null'], optional: true }

@@ -198,21 +198,80 @@ describe('the export runtime', () => {
   });
 
   it.each([
-    '@less.fade(var(--x), @a)',
-    '@less.fade(hsl(120, 50%, 50%), @a)',
-    '@less.hsva(var(--h), 50%, 50%, @a)',
-    '@less.hsv(var(--h), 50%, @a)',
-    '@less.spin(var(--x), @a)'
-  ])('compiles %s, and says what the runtime cannot read if it is set', async (expression) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: 25%;\n.x { v: ${expression}; }`);
+    ['@less.fade(var(--x), @a)', '.25'],
+    ['@less.fade(hsl(120, 50%, 50%), @a)', '.25'],
+    ['@less.fadeout(var(--x), @a)', '.25'],
+    ['@less.hsv(var(--h), 50%, @a)', '.25'],
+    ['@less.spin(var(--x), @a)', '25%']
+  ])('compiles %s with the export %s, and says what the runtime cannot read if it is set', async (expression, held) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${held};\n.x { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '50%' })).toThrow('The runtime computes from CSS literals');
+  });
+
+  it('sets a percentage the form holds, which the browser reads as a compile of it would', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.fade(#333, @a); }');
+    expect(exported.css).toContain('v: rgb(from #333 r g b / var(--a, 25%));');
+    expect(exported.runtime!.derived).toEqual({});
+    expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived: {} }).vars({ a: '50%' })).toEqual({ '--a': '50%' });
   });
 
   it('needs no recipe where the form holds the export', async () => {
     const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.darken(var(--x), @a); }');
     expect(exported.css).toContain('hsl(from var(--x) h s clamp(0, l - var(--a, 25%) / 1%, 100))');
     expect(exported.runtime!.derived).toEqual({});
+  });
+
+  it.each([
+    ['@expose gap;\n@gap: 2px;', '@less.min(var(--max), @gap)', 'min(var(--max), var(--gap, 2px))', { gap: '4px' }],
+    ['@expose a;\n@a: 2px;', '@less.max(@a, var(--x))', 'max(var(--a, 2px), var(--x))', { a: '4px' }],
+    ['@expose a, b;\n@a: 1px;\n@b: 2px;', '@less.min(@a, @b)', 'min(var(--a, 1px), var(--b, 2px))', { a: '4px' }],
+    ['@expose a;\n@a: 2;', '@less.pow(var(--x), @a)', 'pow(var(--x), var(--a, 2))', { a: '3' }],
+    ['@expose a, b;\n@a: var(--y);\n@b: 2;', '@less.pow(@a, @b)', 'pow(var(--a, var(--y)), var(--b, 2))', { b: '3' }],
+    ['@expose a;\n@a: 16;', '@less.sqrt(@a)', 'sqrt(var(--a, 16))', { a: '25' }],
+    ['@expose a;\n@a: 16;', '@less.sqrt((@a * 2))', 'sqrt((var(--a, 16) * 2))', { a: '25' }],
+    ['@expose a;\n@a: .5;', '@less.asin(@a)', 'asin(var(--a, 0.5))', { a: '1' }],
+    ['@expose a;\n@a: .5;', '@less.acos(@a)', 'acos(var(--a, 0.5))', { a: '1' }],
+    ['@expose a;\n@a: .5;', '@less.atan(@a)', 'atan(var(--a, 0.5))', { a: '1' }],
+    ['@expose a;\n@a: 30deg;', '@less.sin(@a)', 'sin(var(--a, 30deg))', { a: '60deg' }],
+    ['@expose a;\n@a: 1;', '@less.cos(@a)', 'cos(var(--a, 1))', { a: '2' }],
+    ['@expose a;\n@a: .5turn;', '@less.tan(@a)', 'tan(var(--a, 0.5turn))', { a: '1rad' }],
+    ['@expose a;\n@a: -2px;', '@less.abs(@a)', 'abs(var(--a, -2px))', { a: '-3px' }]
+  ])('needs no recipe where the CSS function holds the export: %s %s', async (declared, expression, printed, values) => {
+    const exported = await compile(`@use "#less";\n${declared}\n.x { v: ${expression}; }`);
+    expect(exported.css).toContain(`v: ${printed};`);
+    expect(exported.runtime!.derived).toEqual({});
+    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived: {} }).vars(values)).not.toThrow();
+  });
+
+  it.each([
+    ['@less.sqrt(@a)', '16px', '25px', '5px'],
+    ['@less.pow(@a, 2)', '4px', '3px', '9px'],
+    ['@less.sin(@a)', '0px', '0px', '0'],
+    ['@less.min(@a, 1px)', '5', '.5', '0.5px']
+  ])('recomputes %s where the CSS function does not take %s', async (expression, value, set, computed) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    expect(Object.values(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: set }))).toContain(computed);
+  });
+
+  it.each([
+    ['16px', '@less.sqrt((@a * 2))'],
+    ['16px', '@less.ceil((@a * 2))'],
+    ['16px', '@less.sqrt(calc(@a * 2))'],
+    ['16px', '@less.pow((@a * 2), 2)'],
+    ['16px', '@less.sin((@a * 2))'],
+    ['16px', '@less.sqrt(-@a)'],
+    ['5', '@less.min((@a * 2), 1px)']
+  ])('has no value for @a: %s in %s', async (value, expression) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
+    expect(exported.errors?.[0]?.code).toBe('eval/expose-not-a-value');
+  });
+
+  it.each(['@less.pow(var(--x), @a)', '@less.min(var(--x), @a, 1)'])('compiles %s beside what the CSS function does not take, and says what the runtime cannot read if it is set', async (expression) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: 16px;\n.x { v: ${expression}; }`);
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '2px' })).toThrow('The runtime computes from');
   });
 
   it.each(['rgba(1, 2, 3, .5)', 'rgb(1 2 3)'])('compiles a mix of %s beside a weight no form holds, and says what the runtime cannot read if it is set', async (color) => {
@@ -226,7 +285,7 @@ describe('the export runtime', () => {
     ['red', 'rgba(255, 0, 0, 0.5)'],
     ['#c00', 'rgba(204, 0, 0, 0.5)']
   ])('recomputes beside a fixed argument it can read: %s', async (color, printed) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.fade(${color}, @a); }`);
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: .25;\n.x { v: @less.fade(${color}, @a); }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '50%' });
     expect(Object.values(vars)).toContain(printed);
@@ -235,7 +294,13 @@ describe('the export runtime', () => {
   it.each([
     ['@less.rgb(@a, 0, 0)', '2px', 'var(--a-rgb, rgb(2, 0, 0))'],
     ['@less.rgba(#c00, @a)', '2px', 'var(--a-rgba, rgb(204, 0, 0))'],
-    ['@less.hsv(@a, 50%, 50%)', '50%', 'var(--a-hsv, #408080)']
+    ['@less.hsv(@a, 50%, 50%)', '50%', 'var(--a-hsv, #408080)'],
+    ['@less.hsl(120, @a, 50%)', '.5', 'var(--a-hsl, hsl(120, 50%, 50%))'],
+    ['@less.hsl(@a)', '#c00', 'var(--a-hsl, hsl(0, 100%, 40%))'],
+    ['@less.hsl(@a, 50%)', '#c00', 'var(--a-hsl, hsla(0, 100%, 40%, 0.5))'],
+    ['@less.fade(#333, @a)', '.5', 'var(--a-fade, rgba(51, 51, 51, 0.005))'],
+    ['@less.fadein(#333, @a)', '.1', 'var(--a-fadein, #333333)'],
+    ['@less.hsv(120, @a, 75%)', '.5', 'var(--a-hsv, #60bf60)']
   ])('keeps the recipe of %s when the export is %s, a unit CSS does not take there', async (expression, value, printed) => {
     const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
@@ -253,7 +318,19 @@ describe('the export runtime', () => {
   it.each([
     ['@a: 200;', '@less.rgb(@a, var(--x), 0)', 'rgb(var(--a, 200), var(--x), 0)'],
     ['@a: 200;', '@less.rgba(@a, 0, 0, var(--y))', 'rgba(var(--a, 200), 0, 0, var(--y))'],
-    ['@a: var(--x);', '@less.rgb(@a, 0, 0)', 'rgb(var(--a, var(--x)), 0, 0)']
+    ['@a: var(--x);', '@less.rgb(@a, 0, 0)', 'rgb(var(--a, var(--x)), 0, 0)'],
+    ['@a: 120;', '@less.hsl(@a, 50%, 50%)', 'hsl(var(--a, 120), 50%, 50%)'],
+    ['@a: 120deg;', '@less.hsl(@a, 50%, 50%)', 'hsl(var(--a, 120deg), 50%, 50%)'],
+    ['@a: 50%;', '@less.hsl(120, @a, 50%)', 'hsl(120, var(--a, 50%), 50%)'],
+    ['@a: .5;', '@less.hsla(var(--h), 50%, 50%, @a)', 'hsla(var(--h), 50%, 50%, var(--a, 0.5))'],
+    ['@a: 25%;', '@less.fade(#333, @a)', 'rgb(from #333 r g b / var(--a, 25%))'],
+    ['@a: 25%;', '@less.fade(var(--x), @a)', 'rgb(from var(--x) r g b / var(--a, 25%))'],
+    ['@a: .5;', '@less.rgba(currentcolor, @a)', 'rgb(from currentcolor r g b / var(--a, 0.5))'],
+    ['@a: 10%;', '@less.fadein(#333, @a)', 'rgb(from #333 r g b / calc(alpha + var(--a, 10%) / 100%))'],
+    ['@a: 10%;', '@less.fadeout(var(--x), @a)', 'rgb(from var(--x) r g b / calc(alpha - var(--a, 10%) / 100%))'],
+    ['@a: 50%;', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 50%) / 100%) * 75%) 25%)'],
+    ['@a: 25%;', '@less.hsv(var(--h), 50%, @a)', 'hwb(var(--h) calc(0.5 * var(--a, 25%)) calc(100% - var(--a, 25%)))'],
+    ['@a: .5;', '@less.hsva(120, 50%, 75%, @a)', 'hwb(120 37.5% 25% / var(--a, 0.5))']
   ])('prints %s %s as the CSS it is', async (declaration, expression, printed) => {
     const exported = await compile(`@use "#less";\n@expose a;\n${declaration}\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);

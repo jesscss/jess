@@ -13,6 +13,7 @@ import { convertToMatch } from './units.js';
  * (sass-spec `core_functions/math/hypot.hrx`.)
  */
 const hypot = defineFunction('hypot', {
+  cssFunction: true,
   params: [{ name: 'numbers', type: 'Dimension', rest: true }] as const,
   body: (numbers: readonly Dimension[]) => {
     const first = numbers[0];

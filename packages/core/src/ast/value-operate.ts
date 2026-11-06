@@ -714,10 +714,9 @@ export function groupAsWritten(v: Value): Value {
  * unoperated `18 / 2` a mixin argument binds), and an operation kept as
  * written whose operands the rule did not reject (`foo / bar`). In every
  * dialect that computes: a keyword (`foo`,
- * `auto`), a string, quoted or escaped, a colour call written out as-is, and in
- * `.scss` any call written out as-is (`var(--x)`; owner 2026-10-23). Elsewhere math
- * on a call is CSS's: what only the browser knows is in a `calc()` ({@link mathOnDeferred},
- * V38). A colour, a named one included (V13), only
+ * `auto`), a string, quoted or escaped, and a call of a known other type written
+ * out as-is. Other math on a call is CSS's: what only the browser knows is in a
+ * `calc()` ({@link mathOnDeferred}, V38). A colour, a named one included (V13), only
  * in `.scss` (`scss`; owner 2026-10-23: *"ya keep it an error in .scss"*):
  * Less and `.jess` keep colour math. A boolean, a list and a map in `.scss`
  * and `.jess` (`sass`).
@@ -736,7 +735,7 @@ function invalidOperand(v: ValueGroup, sass: boolean, scss: boolean): string | n
       }
       return !keptAsWritten.has(v) ? 'keyword' : keptAsWritten.get(v) === '' ? 'function call' : null;
     case 'FunctionCall':
-      return writtenCalcInner(v) === null && (scss || v.result === 'color' || v.result === 'other') ? 'function call' : null;
+      return writtenCalcInner(v) === null && (v.result === 'color' || v.result === 'other') ? 'function call' : null;
     case 'Color':
       return scss ? 'color' : null;
     case 'Quoted':
@@ -811,7 +810,7 @@ export function quotedFromLead(lead: EvalValue | undefined, text: string): EvalV
  * {@link operate} decides.
  */
 export function checkedOperation(op: string, left: ValueGroup, right: ValueGroup, ev: Pick<ValueEvaluator, 'sassOperands' | 'sassCalculations'>, keepsMath: boolean): null {
-  return keepsMath || (ev.sassOperands === true && op === '/') ? null : operandRule(op, left, right, ev);
+  return keepsMath || (ev.sassOperands === true && op === '/' && !isDeferredOperand(left) && !isDeferredOperand(right)) ? null : operandRule(op, left, right, ev);
 }
 
 /**

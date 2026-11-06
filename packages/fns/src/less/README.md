@@ -18,11 +18,11 @@ node, no re-parse, no `render()` walk).
   `unaryMath` spec builder) most number/unit math fns reduce to a one-liner
   over; `sass:math`'s `sqrt`/`pow`/trig members compute through it too.
 - **`color-helper.ts` / `color-ctor-helper.ts`** — the shared color kernels
-  (`mixColors`, `colorBlend`, `getLuma`, `toHsv`, channel clamping) the mixers,
-  blend modes, readers and constructors reduce to. Each Photoshop-style blend fn
+  (`colorBlend`, `getLuma`, `toHsv`, channel clamping) the blend modes, readers
+  and constructors reduce to; the mixers and the HSL adjusters are their CSS
+  forms (`css-forms.jess`). Each Photoshop-style blend fn
   (`multiply`/`screen`/`overlay`/…) is a one-liner over `colorBlend` plus its
   per-channel `mode` (overlay reuses multiply+screen, hardlight reuses overlay).
-  The HSL adjusters reduce to a `[h,s,l]` tweak → `makeColorHsl(...)`.
 - **Core list capability** — structural group access (`groupItems`,
   `groupSeparator`, `listValueAt`) belongs to `@jesscss/core`; `min-max.ts`
   owns only Less's unit-grouping policy. A variadic callable receives one typed

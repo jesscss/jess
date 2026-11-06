@@ -1,6 +1,8 @@
-import type { Fn } from '@jesscss/core/value';
-import { colorHsl, defineFunction, makeColorHsl } from '@jesscss/core/value';
-import { noExcess, requireColor } from './kernels.js';
+import { defineForm, type FormCall } from '@jesscss/core/form';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
+import { greyscale } from '../../less/css-forms.generated.js';
+import { COLOR, EXCESS } from './color-form.js';
+import { noExcess } from './kernels.js';
 
 /**
  * `color.grayscale(color)` — zero the saturation, keeping hue, lightness, alpha
@@ -13,15 +15,15 @@ import { noExcess, requireColor } from './kernels.js';
  * The BODY is the same computation as Less's `greyscale`, but the dispatch name
  * is `grayscale`, and a fn IS its name — so this is a Sass-owned definition, not
  * a re-export of the Less callable. `grayscale(50%)` (the CSS filter) is not a
- * colour call: it fails the kind check and re-emits verbatim.
+ * colour call: it fails the kind check. Over one argument only the browser knows,
+ * a call not through a module may be the filter (Q13).
  */
-export const grayscale: Fn = defineFunction('grayscale', {
-  params: [{ name: 'color', type: 'Color' }, { name: 'excess', type: 'any', optional: true }],
-  body: (c, excess) => {
+export const grayscale: Fn = /* @__PURE__ */ defineForm('grayscale', {
+  params: [COLOR, EXCESS],
+  filter: true,
+  form: (color: ValueGroup, excess?: ValueGroup): FormCall => {
     noExcess(excess, 1);
-    const color = requireColor(c);
-    const [h, , l] = colorHsl(color);
-    return makeColorHsl([h, 0, l], color.alpha, color.format);
+    return [greyscale, color];
   }
 });
 

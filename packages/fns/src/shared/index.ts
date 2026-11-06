@@ -19,8 +19,6 @@
 
 // Math functions
 export { default as abs } from './math/abs.js';
-export { default as ceil } from './math/ceil.js';
-export { default as floor } from './math/floor.js';
 
 // Color functions
 export { default as red } from './color/red.js';

@@ -340,4 +340,44 @@ describe('Compiler.convertToJess', () => {
       compiler.dispose();
     }
   }, 60_000);
+
+  /* A lone grayscale(), invert() or contrast() goes by where it stands (docs/design/CSS-NATIVE-BUILTINS.md Q13); `$name(…)` is always the colour. */
+  it.each([
+    ['.scss', 'a { filter: grayscale(var(--x)); color: grayscale(var(--x)); }'],
+    ['.scss', 'a { filter: blur(1px) invert(var(--x)); color: invert(var(--x)); }'],
+    ['.scss', 'a { filter: grayscale(50%); color: invert(1); filter: saturate(50%); color: saturate(var(--x)); }'],
+    ['.scss', '$f: grayscale(var(--x));\na { filter: $f; }'],
+    ['.scss', 'a { color: grayscale(#800); filter: drop-shadow(0 0 1px grayscale(var(--x))); }'],
+    ['.scss', '@use "sass:color";\na { color: color.grayscale(var(--x)); border-color: color.invert(var(--x)); }'],
+    ['.scss', 'a { color: lighten(var(--a), 10%); color: mix(var(--a), #fff, 25%); color: transparentize(var(--a), .1); color: rgba(currentcolor, .5); }'],
+    ['.less', '.a { filter: contrast(var(--x)); color: contrast(var(--x)); }'],
+    ['.less', '@f: contrast(var(--x));\n.a { filter: @f; }'],
+    ['.scss', '$c: var(--x);\na { filter: grayscale($c); }'],
+    ['.scss', '$c: var(--x);\na { backdrop-filter: blur(1px) grayscale($c); }'],
+    ['.scss', '@mixin m($c) { filter: grayscale($c); }\na { @include m(var(--x)); }'],
+    ['.scss', '@each $c in var(--x), var(--y) { a { filter: invert($c); } }'],
+    ['.scss', '$c: .5;\na { filter: grayscale($c); }'],
+    ['.scss', '$c: var(--x);\na { filter: saturate($c); color: grayscale($c); }'],
+    ['.less', '@c: var(--x);\n.a { filter: contrast(@c); color: contrast(@c); }'],
+    ['.less', '.m(@c) { filter: contrast(@c); }\n.a { .m(var(--x)); }'],
+    ['.scss', '$x: var(--x);\na { a: $x * 2; b: $x + 1px; c: 1 - $x; d: $x % 3; e: -$x; f: $x / 2; g: ($x * 2) + 1; h: ($x * 2) % 3; }'],
+    ['.scss', 'a { a: percentage(var(--x)); b: ceil(var(--x)); c: floor(var(--x)); d: round(var(--x)); e: round(var(--x), 5px); f: round(16px, 5px); }'],
+    ['.scss', '@use "sass:math";\na { a: math.div(var(--x), 2); b: math.sqrt(var(--x)); c: math.abs(var(--x)); d: math.min(var(--x), 1); e: math.clamp(0, var(--x), 1); f: math.div(6in, 3px); }'],
+    ['.less', '@use "#less";\n.a { a: @less.sqrt(var(--x)); b: @less.abs(var(--x)); c: @less.min(var(--x), 1); }']
+  ])('renders the same through .jess: %s %s', async (extension, source) => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    const entry = path.join(dir, `a${extension}`);
+    fs.writeFileSync(entry, source);
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    try {
+      const { files, errors } = await compiler.convertToJess(entry, { suppressWarnings: true });
+      expect(errors).toEqual([]);
+      for (const file of files) {
+        fs.writeFileSync(file.jessPath, 'jess' in file ? file.jess : '');
+      }
+      expect(await compiler.render(path.join(dir, 'a.jess'), { suppressWarnings: true })).toBe(await compiler.render(entry, { suppressWarnings: true }));
+    } finally {
+      compiler.dispose();
+    }
+  });
 });

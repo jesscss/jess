@@ -14,6 +14,7 @@ import { convertToMatch } from './units.js';
  * When `$min` is not below `$max`, `$min` wins. (sass-spec `core_functions/math/clamp.hrx`.)
  */
 const clamp = defineFunction('clamp', {
+  cssFunction: true,
   params: [
     { name: 'min', type: 'Dimension' },
     { name: 'number', type: 'Dimension' },

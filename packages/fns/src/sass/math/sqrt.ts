@@ -12,6 +12,7 @@ import { assertNoUnits } from './units.js';
  * (sass-spec `core_functions/math/sqrt.hrx`.)
  */
 const sqrt = defineFunction('sqrt', {
+  cssFunction: true,
   params: [{ name: 'number', type: 'Dimension' }] as const,
   body: number => applyMath(Math.sqrt, null, [assertNoUnits(number, 'number')])
 });

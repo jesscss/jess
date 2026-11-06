@@ -1,9 +1,9 @@
 import { defineFunction } from '@jesscss/core/value';
-import { minMax } from './min-max.js';
+import { fitsBeside, minMax } from './min-max.js';
 
 /** Less `min()` — reference-unit coercion, canonical comparison. */
 const min = defineFunction('min', {
-  params: [{ type: 'Dimension' }],
+  params: [{ type: 'Dimension', fits: fitsBeside }],
   variadic: true,
   body: list => minMax(true, list)
 });

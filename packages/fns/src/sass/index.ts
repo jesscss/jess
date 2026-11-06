@@ -21,7 +21,9 @@
  */
 
 // Global Math Functions (Deprecated - use math.* module instead)
-export { abs, ceil, floor } from '../shared/index.js';
+export { abs } from '../shared/index.js';
+export { ceil } from '../less/ceil.js';
+export { floor } from '../less/floor.js';
 export { round } from './math/round.js';
 
 /*

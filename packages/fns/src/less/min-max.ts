@@ -1,9 +1,13 @@
 import type { Dimension, ValueGroup, Value } from '@jesscss/core/value';
-import { groupItems, isValueGroupArray, makeDimension, unify } from '@jesscss/core/value';
+import { declineOverUnknown, groupItems, isValueGroupArray, makeDimension, unify } from '@jesscss/core/value';
 import { compatibleUnits, isUnitlessDimension } from '../shared/math/units.js';
 
 const isDimension = (value: ValueGroup): value is Dimension =>
   !isValueGroupArray(value) && value.type === 'Dimension';
+
+/** A number CSS's `min()` and `max()` take beside the others: one of their type, as a unitless one is not beside a length. */
+export const fitsBeside = (value: ValueGroup, slots: readonly ValueGroup[]): boolean =>
+  !isDimension(value) || slots.every(other => !isDimension(other) || (compatibleUnits(value, other) && isUnitlessDimension(value) === isUnitlessDimension(other)));
 
 const isSlashList = (value: ValueGroup): boolean =>
   !isValueGroupArray(value) && value.type === 'List' && value.sep === '/';
@@ -61,6 +65,7 @@ export function minMax(isMin: boolean, list: ValueGroup): Value {
     throw new TypeError(`${name}() requires at least one argument`);
   }
 
+  declineOverUnknown(args);
   const numbers: Dimension[] = [];
   for (const arg of args) {
     if (!isDimension(arg)) {

@@ -43,7 +43,8 @@ import type {
  * error, because nothing failed.
  */
 export class FunctionDeclined extends Error {
-  constructor() {
+  /** `bound`: the arguments as the callable bound them, when they are what the CSS function of its name takes. */
+  constructor(readonly bound?: readonly ValueGroup[]) {
     super('The function declined the call.');
     this.name = 'FunctionDeclined';
   }
@@ -267,6 +268,36 @@ function isDeferred(value: Value, type: readonly Kind[]): boolean {
   }
 }
 
+const NUMBER_SLOT: readonly Kind[] = ['Dimension', 'FunctionCall'];
+
+/** Whether `value` is a number only the browser knows ({@link isDeferred}). */
+export const isUnknownNumber = (value: unknown): boolean =>
+  isValueGroup(value) && !isValueGroupArray(value) && isDeferred(value, NUMBER_SLOT);
+
+const isNumberOrAbsent = (value: unknown): boolean =>
+  value === undefined || isUnknownNumber(value) || (isValueGroup(value) && !isValueGroupArray(value) && value.type === 'Dimension');
+
+/**
+ * A built-in over a number only the browser knows, where CSS has a function of
+ * its name, is that function (V38): the call declines, and is written out under
+ * the name after any namespace (`math.sqrt(var(--x))` is `sqrt(var(--x))`). An
+ * argument that is no number fails as it does beside a known one.
+ */
+export function declineOverUnknown(args: readonly unknown[], bound?: readonly ValueGroup[]): void {
+  if (args.some(isUnknownNumber) && args.every(isNumberOrAbsent)) {
+    throw new FunctionDeclined(bound);
+  }
+}
+
+const isPassed = (value: unknown): value is ValueGroup =>
+  value !== undefined && isValueGroup(value) && (isValueGroupArray(value) || value.type !== 'Null');
+
+/** A parameter of a `cssFunction`, which also takes what only the browser knows. */
+function cssFunctionParam(param: ParamSpec): ParamSpec {
+  const type = paramType(param);
+  return type === 'any' ? param : { ...param, kinds: undefined, type: [...type, 'FunctionCall'] };
+}
+
 function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown): ValueGroup {
   if (!isValueGroup(value)) {
     throw new TypeError(`${name}: direct calls require structural value arguments`);
@@ -378,6 +409,7 @@ export function defineFunction<const P extends readonly ParamSpec[]>(
   spec: {
     readonly params: P;
     readonly body: (...args: FunctionBodyArgs<NoInfer<P>>) => MaybePromise<ValueGroup>;
+    readonly cssFunction?: boolean;
     readonly variadic?: false;
   },
 ): DefinedFunction<P>;
@@ -386,6 +418,7 @@ export function defineFunction<const P extends readonly ParamSpec[]>(
   spec: {
     readonly params: P;
     readonly body: (...args: never[]) => MaybePromise<ValueGroup>;
+    readonly cssFunction?: boolean;
     readonly variadic?: false;
   },
 ): DefinedFunction<P>;
@@ -398,6 +431,15 @@ export function defineFunction(
     throw new TypeError(`${name}: function definition must contain params and a callable body`);
   }
   const definition = spec;
+  const slots = spec.cssFunction === true ? spec.params.map(cssFunctionParam) : spec.params;
+  const applied = (bound: unknown[]): MaybePromise<ValueGroup> => {
+    if (definition.cssFunction === true) {
+      /* What the call passed, in parameter order, is what the CSS function takes: no name, no `null` (a declared optional's). */
+      const passed = bound.flat().filter(isPassed);
+      declineOverUnknown(passed, passed);
+    }
+    return Reflect.apply(definition.body, undefined, bound);
+  };
   const callable = (...args: readonly unknown[]): MaybePromise<ValueGroup> => {
     const [first, second] = args;
     if (isValueGroup(first) && isFnCtx(second)) {
@@ -425,7 +467,7 @@ export function defineFunction(
       const positional = items.map((item, index) => (definition.params[index] ?? restParam)?.lazy
         ? () => items[index]!
         : item);
-      return Reflect.apply(definition.body, undefined, bindDirect(name, definition.params, positional));
+      return applied(bindDirect(name, slots, positional));
     }
     const inputs = args.map(toDirectInput);
     const named = hasNamedParams(definition);
@@ -438,9 +480,9 @@ export function defineFunction(
     if (definition.variadic) {
       throw new TypeError(`${name}: direct calls to variadic functions require a List and FnCtx`);
     }
-    return Reflect.apply(definition.body, undefined, bindDirect(name, definition.params, positional));
+    return applied(bindDirect(name, slots, positional));
   };
-  const fn = Object.assign(callable, { params: definition.params, variadic: definition.variadic });
+  const fn = Object.assign(callable, { params: definition.params, variadic: definition.variadic, filter: definition.filter });
   Object.defineProperty(fn, 'name', { value: name, configurable: true });
   return fn;
 }

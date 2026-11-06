@@ -4,12 +4,12 @@
   "definitionDigest": "c327223c6be426f6ea7c2d8f6212bf8d9b8f9b1b8717d189e36c9d97253dc347",
   "contractDigest": "3eff2a43c7033347115289ff49f09ad90ae141305f881c7c725acbbff6427b23",
   "implementations": {
-    "owner": "b1d9e61caf804844a7f42037f9ee53cc06ae78624401cd1fd464de5f0c524ad5",
-    "compiler-convert": "885808c741bfa52db105f9eab2b51446ff8fd3534557abf3876114aaea2bdcca",
-    "less-equivalence": "820a582fda25b3b746d0ee6553fe66a786c75aa2d991abaf54cc8f322fe3a588",
+    "owner": "c4feef9b75ce5c0baad559f8838ec2d8e98eb2f95d6984c709647097ed5d9a2c",
+    "compiler-convert": "073638eb946dbbc4d279a8ae058563e5cad90e8b758826ed84187dca7324ae3e",
+    "less-equivalence": "c8c47260d708b8c3ba7f6a439abb29a211bdb701955d2d2685354be3abd38d41",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "d46a456dacad8fc205dd41cd378c76fcaa88772415fa4016f75bcbc907c20457",
     "sass-selector-parse": "0f15e760ecafc11546d65927c5d0a92168d849ebbf163e4dfe0dfae683096d81"
   },
-  "rationale": "The root package.json pins parseman exactly at 0.61.3 instead of ^0.61.3. The installed parseman, the binding names, modules and exports jessFunctions projects, and the consumers are unchanged."
+  "rationale": "packages/core/src/value.ts exports holdsNone and NoCssForm beside what it exported; fns' contrast splits into a shared form and an ambient one the registry holds under the same name. The call-to-export pairs and the registry derivation are unchanged. The root package.json moves its parseman pin to 0.61.3; the binding names, modules and exports jessFunctions projects are unchanged. The root package.json gains the bench:scss:real script, merged with dev. No dependency, export, binding name or module this contract covers changes. The equivalence test lists namespacing-mixin-reference, a fixture .jess cannot spell yet; the bindings it checks are unchanged. The conversion suite gained a pin that .less and its .jess print the same under math: always; it is a test of the existing conversion path, so the contract and its consumers do not change. A .scss module call that fails is now an error under every functionMode and a missing member is resolve/name-not-found, so the sass-list-map-functions and sass-selector-parse suites expect the errors where they expected the call written out; bindings and conversions are unchanged. The conversion suite gained round trip rows for a lone filter call; a form may now say its name is also a CSS filter, and a built-in's call name and export are unchanged. Less and Sass registries now hold one contrast, grayscale and invert each. The conversion suite gained rows for a lone filter name reading a variable on filter or backdrop-filter, which stays the CSS call through .jess. The Less and Sass tests now pin a variable's lone filter name going by the declaration that reads it. The exact parseman pin on dev is merged in. The convert suite gains rows for Sass and Less math over an unknown, and the equivalence suite drops math-css-vars, which now renders the same."
 }

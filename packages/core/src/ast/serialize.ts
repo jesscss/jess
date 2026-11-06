@@ -222,6 +222,7 @@ import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, 
 import { makeAny, makeWrittenMath, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
+import { cssFilterCall, mayBeFilter } from './filter-position.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
@@ -5638,7 +5639,7 @@ const keepsOperation = (node: Operation, e: Lane): boolean =>
 
 /** An operation over its operands: two known numbers are the operation's, anything else may be CSS's math ({@link operatedOn}). */
 const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
-  (left.type === 'Dimension' && right.type === 'Dimension') || ev.sassCalculations === true
+  (left.type === 'Dimension' && right.type === 'Dimension') || (ev.sassCalculations === true && keepsOperation(node, e))
     ? ev.operate(node.operator, left, right, e.modes)
     : slashOperated(node, left, right, e.modes, keepsOperation(node, e));
 
@@ -7231,7 +7232,7 @@ export function formActivation(lambda: AnonymousMixin): FormActivation {
     frame: makeFrame(null, lambda.rules, null, collectDeclIndex(lambda.rules, bindings, cells), cells),
     cells: [...cells.values()],
     result,
-    channels: !isValueSlotArray(result) && result.type === 'FunctionCall' ? formChannels(result) : undefined
+    channels: !isValueSlotArray(result) && result.type === 'FunctionCall' ? formChannels(result, lambda.params) : undefined
   };
 }
 
@@ -9142,8 +9143,9 @@ function dispatchCall(
    */
   const modes = reach === 'imported' && e.modes.functionMode !== 'error'
     ? otherFunctionMode(e.modes)
-    : demanded && e.modes.functionMode === 'error' && isCssColorCall(node) ? otherFunctionMode(e.modes) : e.modes;
-  const sep = node.modern ? ' ' : ',';
+    : demanded && e.modes.functionMode === 'error' && isCssColorCall(node)
+      ? otherFunctionMode(e.modes)
+      : e.modes;
 
   /*
    * Args are materialized TYPED (each arg's tag sourced from its parse node). A
@@ -9167,7 +9169,7 @@ function dispatchCall(
   const dispatch = (vals: ValueGroup[]): MaybePromise<EvalValue> => {
     const named = node.args.some(isNamedArg);
     const ordered = named ? orderKeywordArgs(node.args, vals, ev.paramNames(node.name, selected, reach === 'ambient')) : vals;
-    const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
+    const args: ValueGroup = node.modern ? ordered : makeList(ordered, ',');
 
     /*
      * A call that names an argument also hands over its arguments as written,
@@ -9178,10 +9180,10 @@ function dispatchCall(
      * looked up unless the call is written out.
      */
     const written: WrittenArguments | undefined = named
-      ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
+      ? { args: ordered === vals ? args : (node.modern ? vals : makeList(vals, ',')), keywords: node.args }
       : undefined;
     try {
-      const result = ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', written, node.args);
+      const result = ev.call(node.name, args, modes, null, e.s.io, reach !== 'imported' && vals.length === 1 && mayBeFilter(node, vals[0], e, selected, ev) ? cssFilterCall : selected, reach === 'ambient', written, node.args);
       if (isThenable(result)) {
         return result.then((value) => {
           warnConsumedKept(vals, value, node, e);

@@ -10,8 +10,9 @@
  * 44.9712418301%, 89.6470588235%)`, which is `#2573e5`.
  */
 import { describe, expect, it } from 'vitest';
-import { HEX, HSL, coerceNamedColorKeyword, makeColorHsl, makeColorRgb, makeDimension, makeKeyword, makeQuoted } from '@jesscss/core';
-import type { Color, PartialFnRecord, ValueGroup } from '@jesscss/core';
+import { HEX, HSL, coerceNamedColorKeyword, isValueGroupArray, makeColorHsl, makeColorRgb, makeDimension, makeKeyword, makeNull, makeQuoted } from '@jesscss/core';
+import type { Color, Fn, ValueGroup } from '@jesscss/core';
+import { call, sync } from '../../__tests__/harness.js';
 import { adjust, adjustColor } from '../color/adjust.js';
 import { scale, scaleColor } from '../color/scale.js';
 import { change, changeColor } from '../color/change.js';
@@ -19,8 +20,6 @@ import { change, changeColor } from '../color/change.js';
 const primary = makeColorRgb([13, 110, 253], 1, HEX);
 const pct = (n: number): ValueGroup => makeDimension(n, '%');
 const num = (n: number, unit = ''): ValueGroup => makeDimension(n, unit);
-
-type ColorUpdate = typeof adjust;
 
 function named(name: string): Color {
   const color = coerceNamedColorKeyword(makeKeyword(name));
@@ -30,9 +29,12 @@ function named(name: string): Color {
   return color;
 }
 
-function bytes(fn: ColorUpdate, color: Color, keywords: PartialFnRecord<ColorUpdate['params']>): string {
-  const result = fn({ ...keywords, color });
-  if (result instanceof Promise || Array.isArray(result) || !('bytes' in result)) {
+const CHANNELS = ['red', 'green', 'blue', 'hue', 'saturation', 'lightness', 'whiteness', 'blackness', 'alpha', 'space'];
+
+/** The evaluator's call: the keywords placed by parameter, what is not passed absent. */
+function bytes(fn: Fn, color: Color, keywords: Readonly<Record<string, ValueGroup | undefined>>): string {
+  const result = sync(call(fn, color, makeNull(), ...CHANNELS.map(name => keywords[name] ?? makeNull())));
+  if (isValueGroupArray(result)) {
     throw new TypeError('Expected a single value result.');
   }
   return result.bytes;
@@ -163,7 +165,7 @@ describe('the errors Dart Sass raises', () => {
   });
 
   it('refuses a second positional argument', () => {
-    expect(() => adjust(primary, num(10))).toThrow('Only one positional argument is allowed. All other arguments must be passed by name.');
+    expect(() => call(adjust, primary, num(10))).toThrow('Only one positional argument is allowed. All other arguments must be passed by name.');
   });
 
   it('refuses to adjust a hue $space makes powerless', () => {

@@ -53,6 +53,7 @@ export function bindModuleFunction(value: ModuleCallable | Fn, name: string, ori
     ? defineFunction(name, {
         params: value.params,
         variadic: true,
+        filter: value.filter,
         body: (args, context) => value(args, context)
       })
     : moduleCallable(value, name);
