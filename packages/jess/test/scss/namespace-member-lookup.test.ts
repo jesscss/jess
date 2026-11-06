@@ -31,6 +31,72 @@ const renderScss = (source: string): Promise<string> =>
 const shape = (source: string, parse: (s: string) => unknown): string =>
   JSON.stringify(parse(source), (key, value: unknown) => (key === 'raw' || key === '_s' || key === '_e' ? undefined : value));
 
+describe('.scss ns.fn() calls the member of the module `ns`', () => {
+  it.each(['preserve', 'error'] as const)('a module function that fails is an error under functionMode %s (ruling J1)', async (functionMode) => {
+    const compile = (source: string): Promise<string> =>
+      new Compiler({ compile: { functionMode } }).renderString(source, { extension: '.scss', suppressWarnings: true });
+    for (const source of [
+      '@use "sass:color";\na { b: color.red(var(--a)); }',
+      '@use "sass:color" as c;\na { b: c.red(var(--a)); }',
+      '@use "sass:math";\na { b: math.div(1, 0); }'
+    ]) {
+      await expect(compile(source)).rejects.toMatchObject({ code: 'eval/invalid-function' });
+    }
+  });
+
+  it.each([
+    ['a member the module does not have', '@use "sass:math";\na { b: math.nope(1); }', 'nope'],
+    ['a module no @use bound', 'a { b: color.adjust(#c00, $red: 1); }', 'color'],
+    ['a glued minus, which is part of the namespace', '@use "sass:math";\na { b: -math.div(1, 2); }', '-math'],
+    ['inside a call written out as-is', 'a { b: fn(foo.bar(1)); }', 'foo']
+  ])('%s is resolve/name-not-found', async (_, source, symbol) => {
+    await expect(renderScss(source)).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `Symbol "${symbol}" is undefined in this scope.` });
+  });
+
+  it('calls a stylesheet module\'s @function, and a member it lacks is resolve/name-not-found', async () => {
+    const dir = files([
+      ['_sizes.scss', '@function double($x) { @return $x * 2; }\n'],
+      ['input.scss', '@use "sizes";\n@use "sizes" as s;\na { b: sizes.double(2px); c: s.double(3px); d: sizes.double(2px) + 1px; }\n'],
+      ['missing.scss', '@use "sizes";\na { b: sizes.nope(1); }\n']
+    ]);
+    await expect(render(dir, 'input.scss')).resolves.toBe('a {\n  b: 4px;\n  c: 6px;\n  d: 5px;\n}\n');
+    await expect(render(dir, 'missing.scss')).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: 'Symbol "nope" is undefined in this scope.' });
+  });
+
+  it('hands a demanded read the typed value of a stylesheet module\'s @function', async () => {
+    const dir = files([
+      ['_m.scss', '@function colour() { @return #c00; }\n@function lst() { @return 1px 2px; }\n$vv: 1;\n'],
+      ['colour.scss', '@use "sass:color";\n@use "m";\na { b: darken(m.colour(), 10%); c: rgba(m.colour(), .5); d: lightness(m.colour()); e: color.adjust(m.colour(), $red: 1); f: type-of(m.colour()); g: m.colour(); }\n'],
+      ['list.scss', '@use "sass:list";\n@use "m";\na { b: list.nth(m.lst(), 2); c: length(m.lst()); d: type-of(m.lst()); @each $x in m.lst() { e: $x; } }\n'],
+      ['if.scss', '@use "m";\na { @if m.colour() == #c00 { b: yes; } @else { b: no; } }\n'],
+      ['variable.scss', '@use "m";\na { b: m.vv(1); }\n']
+    ]);
+    await expect(render(dir, 'colour.scss')).resolves.toBe('a {\n  b: #990000;\n  c: rgba(204, 0, 0, 0.5);\n  d: 40%;\n  e: #cd0000;\n  f: color;\n  g: #c00;\n}\n');
+    await expect(render(dir, 'list.scss')).resolves.toBe('a {\n  b: 2px;\n  c: 2;\n  d: list;\n  e: 1px;\n  e: 2px;\n}\n');
+    await expect(render(dir, 'if.scss')).resolves.toBe('a {\n  b: yes;\n}\n');
+    await expect(render(dir, 'variable.scss')).rejects.toMatchObject({ code: 'eval/invalid-function', reason: '"vv" is not a function of this module, so it cannot be called.' });
+  });
+
+  it.each([
+    ['rgb(var(--r), 0, 0)', 'color'],
+    ['hsl(var(--h) 50% 50%)', 'color'],
+    ['opacity(.5)', 'color'],
+    ['red(var(--a))', 'color'],
+    ['min(100%, 500px)', 'math'],
+    ['scale(1.2)', 'math']
+  ])('a bare %s under `@use "sass:%s" as *` can be a CSS function, so it is not J1\'s and stays as written', async (call, module) => {
+    await expect(renderScss(`@use "sass:${module}" as *;\na { b: ${call}; }`)).resolves.toBe(`a {\n  b: ${call.replace('.5', '0.5')};\n}\n`);
+  });
+
+  it('a variable named as the module does not hide its functions', async () => {
+    await expect(renderScss('@use "sass:color";\n$color: #c00;\na { b: color.adjust($color, $red: 1); }')).resolves.toBe('a {\n  b: #cd0000;\n}\n');
+  });
+
+  it('leaves what is not a member call alone', async () => {
+    await expect(renderScss('a { --x: foo.bar(1); b: foo\\.bar(1); }')).resolves.toBe('a {\n  --x: foo.bar(1);\n  b: foo\\.bar(1);\n}\n');
+  });
+});
+
 describe('.scss ns.$name is the .jess member lookup', () => {
   it.each([
     ['a { b: math.$pi; }', 'a { b: $math.pi; }'],

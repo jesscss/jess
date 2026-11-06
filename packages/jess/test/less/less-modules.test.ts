@@ -177,6 +177,8 @@ describe('Less @compose stylesheet modules', () => {
       expect(errors).toEqual([memberCall(member)]);
       expect(css).toBe('');
     }
+    expect((await render('@compose "./scale.less";\n.a { v: @scale.nope(4); }', [scale])).errors).toEqual(['Symbol "nope" is undefined in this scope.']);
+    expect((await render('@compose "./ids.less";\n.a { v: @ids.idd(4); }', [['ids.less', '#idd(@x) { a: @x; }\n']])).errors).toEqual([memberCall('idd')]);
   });
 
   /*

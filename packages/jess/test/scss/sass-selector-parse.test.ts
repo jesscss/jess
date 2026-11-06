@@ -79,8 +79,8 @@ describe('scss: `selector.parse()` reads a selector string', () => {
     ['a variable left in a plain string', '@use "sass:selector"; .r { x: selector.parse("$sel"); }', 'expected selector.']
   ] as const;
 
-  it.each(invalid)('writes the call as authored for %s', async (_name, source) => {
-    await expect(render(source)).resolves.toBe(`.r {\n  x: ${source.slice(source.indexOf('selector.parse('), source.indexOf(');') + 1)};\n}\n`);
+  it.each(invalid)('fails the compile for %s under the default functionMode (ruling J1)', async (_name, source, message) => {
+    await expect(render(source)).rejects.toMatchObject({ reason: expect.stringContaining(message) });
   });
 
   it.each(invalid)('fails the compile for %s under functionMode: error', async (_name, source, message) => {
