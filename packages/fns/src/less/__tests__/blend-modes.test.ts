@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { invoke, node } from '../../__tests__/harness.js';
+import { call, invoke, node } from '../../__tests__/harness.js';
 import { makeColorRgb, RGB } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { average } from '../average.js';
@@ -13,7 +13,7 @@ describe('less blend modes', () => {
   it('blends black and white as expected', () => {
     const blackValue = makeColorRgb([0, 0, 0], 1, RGB);
     const whiteValue = makeColorRgb([255, 255, 255], 1, RGB);
-    expect(invoke(average, blackValue, whiteValue)).toMatchObject({
+    expect(call(average, blackValue, whiteValue)).toMatchObject({
       type: 'Color',
       rgb: [127.5, 127.5, 127.5],
       bytes: 'rgb(128, 128, 128)'
@@ -31,7 +31,7 @@ describe('less blend modes', () => {
   it('handles zero-alpha blend path', () => {
     const transparentBlack = makeColorRgb([0, 0, 0], 0, RGB);
     const transparentWhite = makeColorRgb([255, 255, 255], 0, RGB);
-    const result = invoke(average, transparentBlack, transparentWhite);
+    const result = call(average, transparentBlack, transparentWhite);
     expect(node(result, 'Color').alpha).toBe(0);
   });
 

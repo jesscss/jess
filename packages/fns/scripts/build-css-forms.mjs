@@ -11,6 +11,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const FACTORIES = ['anonymousMixin', 'block', 'callArg', 'decl', 'dimension', 'funcCall', 'keyword', 'list', 'operation', 'variableReference'];
 
+const pure = code => code.replace(new RegExp(`\\b(${FACTORIES.join('|')})\\(`, 'g'), '/* @__PURE__ */$1(');
+
 const text = value => JSON.stringify(value).replaceAll('"', '\'');
 
 function slot(value) {
@@ -50,7 +52,9 @@ export function generate(parse, source) {
       throw new Error(`The CSS form ${name} must be one \`result:\`; evalForm walks no body`);
     }
     const params = value.params.map(param => `{ name: ${text(param.name)} }`).join(', ');
-    return `export const ${camel(name)} = /* @__PURE__ */ anonymousMixin([${value.rules.map(node).join(', ')}], [${params}]);`;
+
+    /* Every factory call pure: a bundler drops only the call it was told of, and keeps its arguments' calls. */
+    return `export const ${camel(name)} = ${pure(`anonymousMixin([${value.rules.map(node).join(', ')}], [${params}])`)};`;
   });
   const factories = FACTORIES.filter(name => lines.some(line => line.includes(`${name}(`)));
   return `// Generated from css-forms.jess by scripts/build-css-forms.mjs. Do not edit.\nimport { ${factories.join(', ')} } from '@jesscss/core/ast';\n\n${lines.join('\n')}\n`;

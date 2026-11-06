@@ -188,6 +188,7 @@ process and passes it as flags; nothing asks the host during a compile.
 ```
 deno run --no-prompt \
   --allow-read=<read set> --ignore-read \
+  --node-modules-dir=manual \
   [--allow-net=<hosts> --allow-import=<hosts>]   # only with allowHttp
   [--no-remote]                                  # without allowHttp
   --unstable-bare-node-builtins --unstable-sloppy-imports \
@@ -219,6 +220,24 @@ with `DENO_CACHE_DB_MODE=memory` in the engine's environment.
   cdn.jsdelivr.net, raw.githubusercontent.com, …) without `--allow-net`.
   Without `allowHttp`, `--no-remote` refuses every remote module; with it,
   `--allow-import` takes the same hosts as `--allow-net`.
+- **`--node-modules-dir=manual` keeps packages to what is installed.** Deno
+  otherwise picks how it handles npm packages from the configs above the engine
+  script, skipping any inside `node_modules`. A global install has none, so the
+  engine could not find its own packages. A `deno.json` with
+  `nodeModulesDir: "auto"` above the install had Deno fetch a script's `npm:`
+  import with no `--allow-net`, run it, and write `deno.lock` and
+  `node_modules/.deno` with no `--allow-write`, and a `package.json` beside that
+  `deno.json` had the dependencies it lists fetched before the engine started.
+  With this flag a bare import reads the `node_modules` folders above the
+  importing file, and an `npm:` import of a package not in them is refused. A
+  `package.json` alone resolves imports the same with or without the flag.
+
+  The flag covers npm packages only, and Deno still reads the other settings in
+  those configs. A `deno.json` `imports` map above the install still applies to
+  `@use` scripts, within the read set. Under `allowHttp`, which is opt-in, a
+  remote import still has Deno write `deno.lock` beside a `package.json` or
+  `deno.json` above the install, and `vendor/` if the `deno.json` asks for it,
+  with no `--allow-write`. That holds with or without this flag.
 - **The web Cache API's index is kept in memory.** Deno stores `caches` on disk
   by default, needing no write permission, keyed by the main module, which
   every engine shares; a script could leave data there for a later render of

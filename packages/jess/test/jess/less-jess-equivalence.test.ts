@@ -536,6 +536,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'Reference: a chain rooted at a mixin call: `.jess` accessors root at a `$` binding'
   }],
+  ['all-less:tests-config/namespacing/namespacing-mixin-reference.less', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Reference: a chain rooted at a mixin call: `.jess` accessors root at a `$` binding (+1 more)'
+  }],
   ['all-less:tests-config/namespacing/namespacing-operations.less', {
     cause: 'cannot-express',
     outcome: 'cannot-express',

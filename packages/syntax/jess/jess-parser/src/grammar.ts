@@ -461,9 +461,9 @@ type SharedSyntax = {
 
   /*
    * Inherited from the CSS base: the glued `<ident-token>` / `<function-token>`
-   * opener. Jess routes both its value and its pseudo-selector dispatches on it.
+   * opener, a pseudo's name.
    */
-  identifierOrFunction: Combinator<string>;
+  identOrFunction: Combinator<string>;
 };
 
 const rawWhitespace = regex(/[ \t\n\r\f]+/);
@@ -2222,7 +2222,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.PseudoSelectorColon,
       dispatch(
-        g.identifierOrFunction,
+        g.identOrFunction,
         caseInsensitiveWhen(
           ['nth-child(', 'nth-last-child('],
           sequence(
@@ -2247,26 +2247,26 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           ['is(', 'where('],
           sequence(
             routed(),
-            optional(rawWhitespace),
             parser(
               { trivia: whitespace },
-              g.ForgivingSelectorList
-            ),
-            optional(rawWhitespace),
-            literal(')')
+              sequence(
+                g.ForgivingSelectorList,
+                literal(')')
+              )
+            )
           )
         ),
         caseInsensitiveWhen(
           ['not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
           sequence(
             routed(),
-            optional(rawWhitespace),
             parser(
               { trivia: whitespace },
-              g.SelectorOnlyPseudoArgument
-            ),
-            optional(rawWhitespace),
-            literal(')')
+              sequence(
+                g.SelectorOnlyPseudoArgument,
+                literal(')')
+              )
+            )
           )
         ),
         caseInsensitiveWhen(
@@ -2944,8 +2944,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     )
   );
 
+  /*
+   * A value-position identifier, or the same identifier glued to `(` as a
+   * function opener. It reads `Identifier`, which refuses a leading `--`: a
+   * dashed ident in a value is `CustomPropertyValue`.
+   */
+  const identifierOrFunction = token(noTrivia(sequence(
+    g.Identifier,
+    optional(literal('('))
+  )));
   const IdentifierOrFunction = dispatch(
-    g.identifierOrFunction,
+    identifierOrFunction,
     caseInsensitiveWhen(
       'url(',
       UrlFunction
@@ -3856,7 +3865,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     urlFromChildren
   );
   const HeaderIdentifierOrFunction = dispatch(
-    g.identifierOrFunction,
+    identifierOrFunction,
     caseInsensitiveWhen('url(', HeaderUrl),
     when(endsWith('('), HeaderCall),
     otherwise(g.KeywordValue)

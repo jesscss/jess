@@ -1,21 +1,14 @@
-import type { Fn } from '@jesscss/core/value';
-import { makeColorRgb, defineFunction, RGB, withFields } from '@jesscss/core/value';
-import { mixColors, reformatColor, requireColor, snapAlpha } from './color-helper.js';
-import { requireDimension } from '../shared/math/math-helper.js';
+import { defineForm } from '@jesscss/core/form';
+import { RGB, makeColorRgb, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { COLOR_ARG } from './color-form.js';
+import * as forms from './css-forms.generated.js';
+import { WEIGHT_ARG, towardKnown, type Weight } from './mix-form.js';
 
 /**
- * `tint(color, amount = 50%)` — mix with white, preserve the input's format.
- *
- * `amount` is OPTIONAL and defaults to 50%, the same default `mix` already carries
- * for its `weight`: `tint` is a one-liner over `mix`, so it cannot require an
- * argument that its own kernel defaults (ledger **V9**).
+ * `tint(color, amount = 50%)`: `color-mix(in srgb, white amount, color)`. An
+ * `amount` it cannot hold takes the relative form (docs/design/CSS-NATIVE-BUILTINS.md Q11).
  */
-export const tint: Fn = defineFunction('tint', {
-  params: [{ type: 'Color' }, { type: 'Dimension', optional: true }],
-  body: (c, amt) => {
-    const color = requireColor(c);
-    const white = makeColorRgb([255, 255, 255], 1, RGB);
-    const out = mixColors(white, color, amt === undefined ? 50 : requireDimension(amt).number);
-    return reformatColor(withFields(out, { alpha: snapAlpha(out.alpha) }), color.format);
-  }
+export const tint: Fn = /* @__PURE__ */ defineForm('tint', {
+  params: [COLOR_ARG, WEIGHT_ARG],
+  form: (color: ValueGroup, amount?: Weight) => towardKnown(forms.tint, color, amount, () => makeColorRgb([255, 255, 255], 1, RGB))
 });
