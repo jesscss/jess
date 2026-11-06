@@ -351,10 +351,6 @@ const expectedFailureFixtures = new Map<string, string>([
     'INTENDED DIVERGENCE (owner ruling 2026-08-18). Lines 124-135 use `@plugin (option) "…"` with the `registerPlugin({ install, use, setOptions })` lifecycle — a documented Less 4.x plugin-API form, but `@plugin` itself is DEPRECATED in v5 (script integration moves to @use / @-use; see deprecation.ts). The bare, common ABI works: with the harness-loaded @jesscss/plugin-less-compat, `functions.addMultiple`/`tree` @plugin scripts (plugin-global, plugin-transitive) load fine. The `registerPlugin`/`setOptions`/`(option)` plugin-manager lifecycle is deliberately NOT built out in the compat bridge — it is a rarely-used corner of a deprecated feature, so any script-integration effort belongs in the @use path instead. Owner-maintained @less/test-data fixture'
   ],
   [
-    'tests-unit/parse-interpolation/parse-interpolation.less',
-    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it. Flattened, `.fruit-cap-` is a class of its own and the `&` a plain reference to each captured parent (owner 2026-10-09: "how do you know it\'s a prefix? that\'s why we can\'t do that"), so the golden\'s `.fruit-cap-apple, …` branches are not the flattened output either; Less `each()` is the explicit rule-multiplication form. Escaped text prints as written (owner 2026-10-09; the `.bar2` and quoted `@{c}@{d}` headers are owner-accepted golden edits). That final `.fruit-cap-` block is the only difference left'
-  ],
-  [
     'tests-unit/permissive-parse/permissive-parse.less',
     'INTENDED DIVERGENCE (P7): the fixture begins with bare `@function-name` interpolation in an at-rule prelude, which v5 rejects in favor of `@{function-name}`; permissive CSS-base `--*` declaration values and selector capture are already implemented independently'
   ],
