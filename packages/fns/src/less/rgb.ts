@@ -65,7 +65,7 @@ export function makeRgb(value: ValueGroup): Color {
  * substitution or an unknown function may expand to the channels, so that call is
  * CSS as written (docs/design/CSS-NATIVE-BUILTINS.md §3.8).
  */
-const colorWithAlpha = /* @__PURE__ */ defineForm('rgba', {
+export const colorWithAlpha = /* @__PURE__ */ defineForm('rgba', {
   params: [COLOR_ARG, { type: ['Dimension', 'FunctionCall'], fits: fitsChannel }],
   format: RGB,
   form: (color: ValueGroup | FunctionCall, alpha: Dimension | FunctionCall): FormCall => {

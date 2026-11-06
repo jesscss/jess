@@ -1,7 +1,8 @@
-import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
-import { degreesOf, noExcess, requireColor, requireDimension } from './kernels.js';
-import { rotateHue } from '../../shared/color/kernels.js';
+import { asNumber, defineForm, type FormCall } from '@jesscss/core/form';
+import { makeDimension, type Dimension, type Fn, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
+import { spin } from '../../less/css-forms.generated.js';
+import { COLOR, EXCESS } from './color-form.js';
+import { degreesOf, noExcess } from './kernels.js';
 
 /**
  * `color.adjust-hue(color, degrees)` — rotate the hue, wrapped to 0-360.
@@ -13,15 +14,11 @@ import { rotateHue } from '../../shared/color/kernels.js';
  * Same computation as Less's `spin`, different dispatch name — a Sass-owned
  * definition rather than a re-export of the Less callable.
  */
-export const adjustHue: Fn = defineFunction('adjust-hue', {
-  params: [
-    { name: 'color', type: 'Color' },
-    { name: 'degrees', type: 'Dimension' },
-    { name: 'excess', type: 'any', optional: true }
-  ],
-  body: (c, amt, excess) => {
+export const adjustHue: Fn = /* @__PURE__ */ defineForm('adjust-hue', {
+  params: [COLOR, { name: 'degrees', type: ['Dimension', 'FunctionCall'] }, EXCESS],
+  form: (color: ValueGroup, degrees: Dimension | FunctionCall, excess?: ValueGroup): FormCall => {
     noExcess(excess, 2);
-    return rotateHue(requireColor(c), degreesOf(requireDimension(amt)));
+    return [spin, color, degrees.type === 'Dimension' ? makeDimension(degreesOf(degrees)) : asNumber(degrees)];
   }
 });
 

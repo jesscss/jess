@@ -1,7 +1,6 @@
 import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
-import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js';
-import { subExact } from '../../util/decimal.js';
+import * as forms from '../../less/css-forms.generated.js';
+import { defineAlphaAdjuster } from './color-form.js';
 
 /**
  * `color.fade-out(color, amount)` — the `transparentize` computation under Sass's
@@ -10,17 +9,6 @@ import { subExact } from '../../util/decimal.js';
  * dart-sass: `fade-out(rgba(255,0,0,0.5), 0.1)` → `rgba(255, 0, 0, 0.4)`;
  * `fade-out(rgba(255,0,0,0.5), 10%)` → `$amount: Expected 10% to be within 0 and 1`.
  */
-export const fadeOut: Fn = defineFunction('fade-out', {
-  params: [
-    { name: 'color', type: 'Color' },
-    { name: 'amount', type: 'Dimension' },
-    { name: 'excess', type: 'any', optional: true }
-  ],
-  body: (c, amt, excess) => {
-    noExcess(excess, 2);
-    const color = requireColor(c);
-    return withAlpha(color, subExact(color.alpha, fractionAmount(amt)));
-  }
-});
+export const fadeOut: Fn = /* @__PURE__ */ defineAlphaAdjuster('fade-out', forms.fadeout);
 
 export default fadeOut;

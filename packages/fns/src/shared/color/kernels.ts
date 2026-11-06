@@ -20,14 +20,3 @@ export function wrapHue(degrees: number): number {
   const hue = degrees % 360;
   return hue < 0 ? hue + 360 : hue;
 }
-
-/**
- * Rotate hue by `degrees`, wrapped to 0-360, preserving alpha + format: Less's
- * `spin`, and Sass's `adjust-hue` and `complement` (`complement` is a fixed
- * 180). The two dialects differ only in how they read the amount — Less takes
- * the number, Sass converts an angle unit first.
- */
-export function rotateHue(color: Color, degrees: number): Color {
-  const [h, s, l] = colorHsl(color);
-  return makeColorHsl([wrapHue(h + degrees), s, l], color.alpha, color.format);
-}

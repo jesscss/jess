@@ -17,7 +17,7 @@ import { buildEvaluator } from './evaluator.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { AnonymousMixin } from './nodes.js';
 import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type BindingCell, type FormActivation } from './serialize.js';
-import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
+import { bindDirect, createFnRegistry, defineFunction, FunctionDeclined } from './value-dispatch.js';
 import { HEX, RGB } from './color.js';
 import { isValueGroupArray, type Color, type Dimension, type Value, type ValueGroup } from './value-eval.js';
 import { DimensionValueNode } from './node-ctors.js';
@@ -148,14 +148,23 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format:
  * from the bound parameters, or gives the colour when the form cannot compute it
  * (`contrast-color()`'s algorithm is the browser's). A parameter takes what only the browser knows when
  * its type includes `FunctionCall`; any other reads a call as it always has.
+ *
+ * `filter`: the name is also a CSS filter function, so one argument of a number
+ * only the browser knows is not a colour, nor is one of no known type where the
+ * call may be the filter (`filter-position.ts`).
  */
-export function defineForm(name: string, spec: { readonly params: readonly ParamSpec[]; readonly form: (...args: never[]) => FormCall | Color; readonly format?: number }): Fn {
+export function defineForm(name: string, spec: { readonly params: readonly ParamSpec[]; readonly form: (...args: never[]) => FormCall | Color; readonly format?: number; readonly filter?: boolean }): Fn {
   const activations = new Map<AnonymousMixin, FormActivation>();
   return defineFunction(name, {
     params: spec.params,
     variadic: true,
-    body: (args: ValueGroup, ctx: { readonly modes: { readonly compress?: boolean } }): MaybePromise<ValueGroup> => {
-      const call: FormCall | Color = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, groupItems(args)));
+    body: (args: ValueGroup, ctx: { readonly modes: { readonly compress?: boolean; readonly filterPosition?: boolean } }): MaybePromise<ValueGroup> => {
+      const items = groupItems(args);
+      const lone = items[0];
+      if (spec.filter === true && items.length === 1 && lone !== undefined && !isValueGroupArray(lone) && lone.type === 'FunctionCall' && lone.result !== 'color' && (lone.result === 'numeric' || ctx.modes.filterPosition === true)) {
+        throw new FunctionDeclined();
+      }
+      const call: FormCall | Color = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, items));
       if ('type' in call) {
         return call;
       }

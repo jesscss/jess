@@ -222,6 +222,7 @@ import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, 
 import { makeAny, makeWrittenMath, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
+import { filterPositionModes, mayBeFilter } from './filter-position.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
@@ -9142,7 +9143,9 @@ function dispatchCall(
    */
   const modes = reach === 'imported' && e.modes.functionMode !== 'error'
     ? otherFunctionMode(e.modes)
-    : demanded && e.modes.functionMode === 'error' && isCssColorCall(node) ? otherFunctionMode(e.modes) : e.modes;
+    : demanded && e.modes.functionMode === 'error' && isCssColorCall(node)
+      ? otherFunctionMode(e.modes)
+      : reach !== 'imported' && node.args.length === 1 && mayBeFilter(node, e.checks, e.reached) ? filterPositionModes(e.modes) : e.modes;
   const sep = node.modern ? ' ' : ',';
 
   /*

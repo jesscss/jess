@@ -81,6 +81,15 @@ const ALIAS_OF: Readonly<Record<string, Fn>> = { fade_in: opacify, fade_out: tra
 
 const root = specRoot();
 
+/*
+ * Sass `mix` is `color-mix(in srgb)`, each colour counting by weight × opacity
+ * (owner, design doc Q1, whose text names Sass `mix`). Sass's own formula differs
+ * when the alphas differ, so these four cases do not hold, and no flag restores
+ * them (ledger E9).
+ */
+const MIX_BY_OPACITY = '`mix` is `color-mix()` when the alphas differ (Q1), not Sass\'s formula';
+const RULED_OUT: ReadonlySet<string> = new Set(['mix/alpha.hrx::firstwards', 'mix/alpha.hrx::lastwards', 'mix/both_weights.hrx::mixed/firstwards', 'mix/both_weights.hrx::mixed/lastwards']);
+
 interface Runnable {
   readonly spec: SpecCase;
   readonly fn: Fn;
@@ -106,7 +115,7 @@ if (root) {
         skipped.push({ id: spec.id, reason: 'not a single `a {b: <expr>}` declaration' });
         continue;
       }
-      const reason = unrunnableReason(expr);
+      const reason = RULED_OUT.has(spec.id) ? MIX_BY_OPACITY : unrunnableReason(expr);
       if (reason !== null) {
         skipped.push({ id: spec.id, reason });
         continue;

@@ -1,7 +1,8 @@
-import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
-import { noExcess, requireColor } from './kernels.js';
-import { rotateHue } from '../../shared/color/kernels.js';
+import { defineForm, type FormCall } from '@jesscss/core/form';
+import { makeDimension, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { spin } from '../../less/css-forms.generated.js';
+import { COLOR, EXCESS } from './color-form.js';
+import { noExcess } from './kernels.js';
 
 /**
  * `color.complement(color)` — the hue rotated by 180 degrees.
@@ -16,11 +17,11 @@ import { rotateHue } from '../../shared/color/kernels.js';
  * jess does not have yet; an extra argument therefore fails and the call is left
  * verbatim rather than silently answering the legacy-space result.
  */
-export const complement: Fn = defineFunction('complement', {
-  params: [{ name: 'color', type: 'Color' }, { name: 'excess', type: 'any', optional: true }],
-  body: (c, excess) => {
+export const complement: Fn = /* @__PURE__ */ defineForm('complement', {
+  params: [COLOR, EXCESS],
+  form: (color: ValueGroup, excess?: ValueGroup): FormCall => {
     noExcess(excess, 1);
-    return rotateHue(requireColor(c), 180);
+    return [spin, color, makeDimension(180)];
   }
 });
 

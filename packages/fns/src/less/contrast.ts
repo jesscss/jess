@@ -1,5 +1,5 @@
 import { defineForm, type FormCall } from '@jesscss/core/form';
-import { FunctionDeclined, NoCssForm, RGB, colorRawRgb, isValueGroupArray, makeColorRgb, makeDimension, type Color, type Dimension, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { NoCssForm, RGB, colorRawRgb, isValueGroupArray, makeColorRgb, makeDimension, type Color, type Dimension, type Fn, type ValueGroup } from '@jesscss/core/value';
 import { getLuma, reformatColor } from './color-helper.js';
 import { COLOR_ARG } from './color-form.js';
 import * as forms from './css-forms.generated.js';
@@ -60,19 +60,4 @@ function picked(color: ValueGroup, givenDark?: Color, givenLight?: Color, thresh
  * `threshold` has no form (docs/design/CSS-NATIVE-BUILTINS.md Q13). The two are
  * swapped if `dark` is the lighter, and the result takes `color`'s format.
  */
-export const contrast: Fn = /* @__PURE__ */ defineForm('contrast', { params: PARAMS, form: picked });
-
-/**
- * `contrast()` where it is not imported, where a lone argument only the browser
- * knows may be a number, and so CSS's filter function: it stays as written. A
- * pair, or an argument that is a colour by type, says it is a colour.
- */
-export const ambientContrast: Fn = /* @__PURE__ */ defineForm('contrast', {
-  params: PARAMS,
-  form: (color: ValueGroup, givenDark?: Color, givenLight?: Color, threshold?: Dimension) => {
-    if (givenDark === undefined && givenLight === undefined && threshold === undefined && !isValueGroupArray(color) && color.type === 'FunctionCall' && color.result !== 'color') {
-      throw new FunctionDeclined();
-    }
-    return picked(color, givenDark, givenLight, threshold);
-  }
-});
+export const contrast: Fn = /* @__PURE__ */ defineForm('contrast', { params: PARAMS, form: picked, filter: true });
