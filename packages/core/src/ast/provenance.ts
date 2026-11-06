@@ -648,3 +648,19 @@ export function generalEnclosedSourceOf(value: object): string | undefined {
 export function valueBoundaryTriviaOf(value: object): ValueBoundaryTrivia | undefined {
   return layouts.get(value)?.[valueBoundaryTriviaKey];
 }
+
+/** Record `owner` against everything a parsed document holds. The document's own nodes are plain data, so this needs no per-type walk. */
+export function recordNodeOwner<O extends object>(document: object, owner: O, owners: WeakMap<object, O>): void {
+  const pending = [document];
+  for (let value = pending.pop(); value !== undefined; value = pending.pop()) {
+    if (owners.has(value)) {
+      continue;
+    }
+    owners.set(value, owner);
+    for (const child of Object.values(value) as unknown[]) {
+      if (typeof child === 'object' && child !== null) {
+        pending.push(child);
+      }
+    }
+  }
+}
