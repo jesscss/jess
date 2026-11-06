@@ -36,7 +36,7 @@ function isPrintedForm(out: EvalValue, vals: readonly ValueGroup[]): boolean {
 }
 
 /** Reports the call once however often it runs, at the place it was written in `owner`'s file. */
-function report<F>(node: FunctionCall, printed: string, owner: object | null, e: ExportLane<F>): void {
+function report<F>(node: FunctionCall, out: EvalValue, owner: object | null, e: ExportLane<F>): void {
   const context = e.s.context;
   if (context === undefined) {
     return;
@@ -48,7 +48,7 @@ function report<F>(node: FunctionCall, printed: string, owner: object | null, e:
       return;
     }
     sites.add(site);
-    const meta = { name: node.name, printed };
+    const meta = { name: node.name, printed: emitValue(out) };
     if (e.modes.unresolvedBuiltins === 'warn') {
       context.warnAtNode('eval/unresolved-builtin', 'eval', node, meta);
       return;
@@ -85,7 +85,7 @@ export function unresolvedWatch<F>(node: FunctionCall, e: ExportLane<F>, owner: 
     },
     settled: result => mapMaybe(result, (out) => {
       if (unresolved) {
-        report(node, emitValue(out), owner, e);
+        report(node, out, owner, e);
       }
       return out;
     })
