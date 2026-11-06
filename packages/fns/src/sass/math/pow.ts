@@ -15,6 +15,7 @@ import { assertNoUnits } from './units.js';
  * (sass-spec `core_functions/math/pow/**`.)
  */
 const pow = defineFunction('pow', {
+  cssFunction: true,
   params: [
     { name: 'base', type: 'Dimension' },
     { name: 'exponent', type: 'Dimension' }

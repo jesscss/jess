@@ -18,7 +18,9 @@
  * ```
  */
 
-export { abs, ceil, floor } from '../../shared/index.js';
+export { abs } from '../../shared/index.js';
+export { ceil } from '../../less/ceil.js';
+export { floor } from '../../less/floor.js';
 export { round } from './round.js';
 export { mathMin as min } from './min.js';
 export { mathMax as max } from './max.js';
