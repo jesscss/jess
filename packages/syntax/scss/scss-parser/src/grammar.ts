@@ -4782,12 +4782,13 @@ const scssFactory = (g: ScssInputRules) => {
   /**
    * `&` with the suffix glued after it, as one token (Sass "Adding Suffixes": `&--b`
    * in `.a` is `.a--b`), the way Less and `.jess` read it. A glued `#{` continues the
-   * same token (`&-#{$x}`), so every suffix reaches core in one shape.
+   * same token (`&-#{$x}`), so every suffix reaches core in one shape. A percentage
+   * (`&1%`) is the one other form, as CSS reads it in a compound.
    */
   const NestingSelector = node<SimpleSelector>(
     'SimpleSelector',
     noTrivia(sequence(
-      regex(/&(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/),
+      regex(/&(?:\d+(?:\.\d+)?%|(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)/),
       optional(interpolatedSimpleRest)
     )),
     children => (children.length === 1

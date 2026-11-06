@@ -54,15 +54,32 @@ describe('.scss: an interpolated suffix writes what the same suffix written out 
       ['b', 'b#{$x}', 'by'],
       ['1', '1#{$x}', '1y'],
       ['é', 'é#{$x}', 'éy'],
-      ['- and a tail', '-#{$x}-z', '-y-z']
+      ['- and a tail', '-#{$x}-z', '-y-z'],
+      ['two interpolations', '#{$a}#{$b}', 'pq'],
+      ['- between two interpolations', '-#{$a}-#{$b}', '-p-q']
     ])('before the interpolation: %s', async (_name, interpolated, written) => {
       for (const document of documents) {
         const expected = await render(document(written), 'scss', mode);
-        const scss = `$x: y;\n${document(interpolated)}`;
+        const scss = `$x: y;\n$a: p;\n$b: q;\n${document(interpolated)}`;
         expect(await render(scss, 'scss', mode), scss).toBe(expected);
         expect(await render(emitJess(parseScss(scss)), 'jess', mode), scss).toBe(expected);
       }
-    });
+    }, 60_000);
+
+    it.each([
+      ['nothing', 'zz'],
+      ['-', '-zz'],
+      ['--', '--zz'],
+      ['b', 'bzz']
+    ])('an escape writes as a name character does, after: %s', async (_name, name) => {
+      const escaped = name.replace('zz', '\\:z');
+      for (const document of documents) {
+        const expected = (await render(document(name), 'scss', mode)).replaceAll('zz', '\\:z');
+        const scss = document(escaped);
+        expect(await render(scss, 'scss', mode), scss).toBe(expected);
+        expect(await render(emitJess(parseScss(scss)), 'jess', mode), scss).toBe(expected);
+      }
+    }, 60_000);
   });
 
   it('an extend names the built selector', async () => {
@@ -120,6 +137,25 @@ describe('.scss: an interpolated parent suffix', () => {
     ['.a { &-#{$x} { c: d; } }\n.e { @extend .a-y; }', rule('.a-y,\n.e')]
   ])('%s', async (source, css) => {
     const scss = `$x: y;\n${source}`;
+    expect(await render(scss, 'scss')).toBe(css);
+    expect(await render(emitJess(parseScss(scss)), 'jess')).toBe(css);
+  });
+
+  it.each([
+    ['.a, .e { &\\:b { c: d; } }', rule('.a\\:b,\n.e\\:b')],
+    ['.a, .e { &-\\:b { c: d; } }', rule('.a-\\:b,\n.e-\\:b')],
+    ['.a, .e { &--\\:b { c: d; } }', rule('.a--\\:b,\n.e--\\:b')],
+    ['.a, .e { &x\\:b { c: d; } }', rule('.ax\\:b,\n.ex\\:b')],
+    ['.a { &1% { c: d; } }', rule('.a1%')],
+    ['.a { &50% { c: d; } }', rule('.a50%')],
+    ['.a { &1.5% { c: d; } }', rule('.a1.5%')],
+    ['.a { :not(&1%) { c: d; } }', rule(':not(.a1%)')],
+    ['.a { &😀 { c: d; } }', rule('.a😀')],
+    ['.a { &-😀 { c: d; } }', rule('.a-😀')],
+    ['.a { &__😀 { c: d; } }', rule('.a__😀')],
+    ['.a { &x😀 { c: d; } }', rule('.ax😀')],
+    ['.a { &😀-b { c: d; } }', rule('.a😀-b')]
+  ])('every glued name character, written out: %s', async (scss, css) => {
     expect(await render(scss, 'scss')).toBe(css);
     expect(await render(emitJess(parseScss(scss)), 'jess')).toBe(css);
   });
