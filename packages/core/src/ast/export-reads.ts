@@ -4,7 +4,7 @@ import { ERR } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import type { Fn } from './functions/types.js';
+import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
@@ -697,6 +697,9 @@ function typedRead(known: ValueGroup | undefined, written: ValueGroup): ValueGro
     : written;
 }
 
+/** The parameter a slot fills: past the last, a variadic's or a rest's last. */
+const slotParam = (fn: Fn, slot: number): ParamSpec | undefined => fn.params[Math.min(slot, fn.params.length - 1)];
+
 /** Whether every export a call read is an argument its CSS form takes as what only the browser knows. */
 function takesForm<F>(fn: Fn | undefined, known: readonly ValueGroup[], vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>, ev: SlotEvaluator | null | undefined): boolean {
   if (fn === undefined) {
@@ -710,7 +713,7 @@ function takesForm<F>(fn: Fn | undefined, known: readonly ValueGroup[], vals: re
   });
   return inputs.every((input) => {
     const slot = slots.get(input.value);
-    return slot !== undefined && fn.params[slot]?.fits?.(slotValue(input.value, ev), known) === true;
+    return slot !== undefined && slotParam(fn, slot)?.fits?.(slotValue(input.value, ev), known) === true;
   });
 }
 
@@ -748,7 +751,7 @@ function slotsKnown<F>(x: ExportState<F>, fn: Fn | undefined, args: (asWritten: 
  */
 function fitsWritten(fn: Fn | undefined, vals: ReadonlyArray<MaybePromise<ValueGroup>>, slots: readonly ValueGroup[]): boolean {
   return slots.every((value, index) => {
-    const fits = fn?.params[index]?.fits;
+    const fits = fn === undefined ? undefined : slotParam(fn, index)?.fits;
     const read = vals[index];
     const asKnown = read === undefined || isThenable(read) || (!isValueGroupArray(lone(read)) && isDimensionValue(lone(read)));
     return fits === undefined || asKnown || !isDimensionValue(value) || fits(value, slots);

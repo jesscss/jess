@@ -215,6 +215,58 @@ describe('the export runtime', () => {
     expect(exported.runtime!.derived).toEqual({});
   });
 
+  it.each([
+    ['@expose gap;\n@gap: 2px;', '@less.min(var(--max), @gap)', 'min(var(--max), var(--gap, 2px))', { gap: '4px' }],
+    ['@expose a;\n@a: 2px;', '@less.max(@a, var(--x))', 'max(var(--a, 2px), var(--x))', { a: '4px' }],
+    ['@expose a, b;\n@a: 1px;\n@b: 2px;', '@less.min(@a, @b)', 'min(var(--a, 1px), var(--b, 2px))', { a: '4px' }],
+    ['@expose a;\n@a: 2;', '@less.pow(var(--x), @a)', 'pow(var(--x), var(--a, 2))', { a: '3' }],
+    ['@expose a, b;\n@a: var(--y);\n@b: 2;', '@less.pow(@a, @b)', 'pow(var(--a, var(--y)), var(--b, 2))', { b: '3' }],
+    ['@expose a;\n@a: 16;', '@less.sqrt(@a)', 'sqrt(var(--a, 16))', { a: '25' }],
+    ['@expose a;\n@a: 16;', '@less.sqrt((@a * 2))', 'sqrt((var(--a, 16) * 2))', { a: '25' }],
+    ['@expose a;\n@a: .5;', '@less.asin(@a)', 'asin(var(--a, 0.5))', { a: '1' }],
+    ['@expose a;\n@a: .5;', '@less.acos(@a)', 'acos(var(--a, 0.5))', { a: '1' }],
+    ['@expose a;\n@a: .5;', '@less.atan(@a)', 'atan(var(--a, 0.5))', { a: '1' }],
+    ['@expose a;\n@a: 30deg;', '@less.sin(@a)', 'sin(var(--a, 30deg))', { a: '60deg' }],
+    ['@expose a;\n@a: 1;', '@less.cos(@a)', 'cos(var(--a, 1))', { a: '2' }],
+    ['@expose a;\n@a: .5turn;', '@less.tan(@a)', 'tan(var(--a, 0.5turn))', { a: '1rad' }],
+    ['@expose a;\n@a: -2px;', '@less.abs(@a)', 'abs(var(--a, -2px))', { a: '-3px' }]
+  ])('needs no recipe where the CSS function holds the export: %s %s', async (declared, expression, printed, values) => {
+    const exported = await compile(`@use "#less";\n${declared}\n.x { v: ${expression}; }`);
+    expect(exported.css).toContain(`v: ${printed};`);
+    expect(exported.runtime!.derived).toEqual({});
+    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived: {} }).vars(values)).not.toThrow();
+  });
+
+  it.each([
+    ['@less.sqrt(@a)', '16px', '25px', '5px'],
+    ['@less.pow(@a, 2)', '4px', '3px', '9px'],
+    ['@less.sin(@a)', '0px', '0px', '0'],
+    ['@less.min(@a, 1px)', '5', '.5', '0.5px']
+  ])('recomputes %s where the CSS function does not take %s', async (expression, value, set, computed) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    expect(Object.values(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: set }))).toContain(computed);
+  });
+
+  it.each([
+    ['16px', '@less.sqrt((@a * 2))'],
+    ['16px', '@less.ceil((@a * 2))'],
+    ['16px', '@less.sqrt(calc(@a * 2))'],
+    ['16px', '@less.pow((@a * 2), 2)'],
+    ['16px', '@less.sin((@a * 2))'],
+    ['16px', '@less.sqrt(-@a)'],
+    ['5', '@less.min((@a * 2), 1px)']
+  ])('has no value for @a: %s in %s', async (value, expression) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
+    expect(exported.errors?.[0]?.code).toBe('eval/expose-not-a-value');
+  });
+
+  it.each(['@less.pow(var(--x), @a)', '@less.min(var(--x), @a, 1)'])('compiles %s beside what the CSS function does not take, and says what the runtime cannot read if it is set', async (expression) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: 16px;\n.x { v: ${expression}; }`);
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '2px' })).toThrow('The runtime computes from');
+  });
+
   it.each(['rgba(1, 2, 3, .5)', 'rgb(1 2 3)'])('compiles a mix of %s beside a weight no form holds, and says what the runtime cannot read if it is set', async (color) => {
     const exported = await compile(`@use "#less";\n@expose a;\n@a: 150%;\n.x { v: @less.mix(${color}, red, @a); }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
