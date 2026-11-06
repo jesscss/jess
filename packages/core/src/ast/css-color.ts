@@ -19,7 +19,7 @@
 import { type MaybePromise, combineAll, isThenable, mapMaybe } from '@jesscss/awaitable-pipe';
 import { trimNumber } from './format-number.js';
 import { DimensionValueNode } from './node-ctors.js';
-import { colorAlphaSlash, isCssColorCall, isSrgbColorMix, type FunctionCall, type ValueSlot } from './nodes.js';
+import { colorAlphaSlash, isCssColorCall, isSrgbColorMix, type AnonymousMixin, type FunctionCall, type ValueSlot } from './nodes.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import { isValueGroupArray, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
@@ -266,16 +266,16 @@ export interface FormChannels {
   readonly slots: readonly ValueSlot[];
   readonly kinds: readonly number[];
 
-  /** Whether a channel is a parameter, so its kind is what each call binds. */
-  readonly parameters: boolean;
+  /** The parameter each channel is, if any is, so its kind is what each call binds. */
+  readonly parameters?: readonly (number | undefined)[];
   readonly slashed: boolean;
 }
 
 const FORM_SPACES: Readonly<Record<string, FormChannels['space'] | undefined>> = { hsl: 'hsl', rgb: 'rgb', hwb: 'hwb' };
 
-export function formChannels(node: FunctionCall): FormChannels | undefined {
+export function formChannels(node: FunctionCall, params?: AnonymousMixin['params']): FormChannels | undefined {
   if (isSrgbColorMix(node)) {
-    return { space: 'mix', relative: true, slots: [node.args[1]!.value, node.args[2]!.value], kinds: [], parameters: false, slashed: false };
+    return { space: 'mix', relative: true, slots: [node.args[1]!.value, node.args[2]!.value], kinds: [], slashed: false };
   }
   const nodes = node.args[0]!.value;
   const space = FORM_SPACES[node.name];
@@ -285,7 +285,9 @@ export function formChannels(node: FunctionCall): FormChannels | undefined {
   const first = nodes[0]!;
   const relative = !isValueSlotArray(first) && first.type === 'Keyword' && first.src === 'from';
   const { slots, slashed } = colorSlots(node, nodes, relative);
-  return { space, relative, slots, kinds: slots.map(channelKind), parameters: slots.some(slot => !isValueSlotArray(slot) && slot.type === 'Lookup'), slashed };
+  const indexes = new Map<unknown, number>(params?.map((param, index) => [param.name, index]));
+  const parameters = slots.map(slot => isValueSlotArray(slot) || slot.type !== 'Lookup' ? undefined : indexes.get(slot.name));
+  return { space, relative, slots, kinds: slots.map(channelKind), parameters: parameters.some(index => index !== undefined) ? parameters : undefined, slashed };
 }
 
 /** The channels a form reads, one value each, written anew for each call. */

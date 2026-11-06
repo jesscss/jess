@@ -20,7 +20,6 @@ import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formL
 import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
 import { HEX, RGB } from './color.js';
 import { isValueGroupArray, type Color, type Dimension, type Value, type ValueGroup } from './value-eval.js';
-import { isValueSlotArray } from './css-grammar-helpers.js';
 import { DimensionValueNode } from './node-ctors.js';
 import { makeColorHsl, makeColorRgb, makeDimension, withFields } from './value-factory.js';
 import { groupItems } from './value-list.js';
@@ -149,12 +148,13 @@ function channelActivation(form: AnonymousMixin, slot: number): FormActivation {
 }
 
 /** What a channel a template leaves to a parameter is: what this call bound there (`hsl(from $c $h $s $l)`). */
-function boundKinds({ slots }: FormChannels, call: FormCall): readonly number[] {
-  return slots.map((slot) => {
-    if (isValueSlotArray(slot) || slot.type !== 'Lookup') {
+function boundKinds(slots: FormChannels['slots'], parameters: readonly (number | undefined)[], call: FormCall): readonly number[] {
+  return slots.map((slot, channel) => {
+    const index = parameters[channel];
+    if (index === undefined) {
       return channelKind(slot);
     }
-    const index = call[0].params?.findIndex(param => param.name === slot.name) ?? -1;
+
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- every element after a FormCall's form is what a parameter binds.
     const value = call[index + 1] as FormSlot | undefined;
     return value instanceof ChannelForm
@@ -202,7 +202,7 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format:
   }
   const origin = channels === undefined || isValueGroupArray(input) ? undefined : knownInput(channels, input);
   if (channels !== undefined && origin !== undefined) {
-    const out = formColor(channels, origin, lanes.channels, slot => evalFormChannel(slot, frame, channelLane), channels.parameters ? boundKinds(channels, call) : channels.kinds);
+    const out = formColor(channels, origin, lanes.channels, slot => evalFormChannel(slot, frame, channelLane), channels.parameters === undefined ? channels.kinds : boundKinds(channels.slots, channels.parameters, call));
     if (out !== undefined && !isThenable(out)) {
       return spelled(channels, out, origin, format);
     }

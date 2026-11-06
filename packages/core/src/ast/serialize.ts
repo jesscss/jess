@@ -7232,7 +7232,7 @@ export function formActivation(lambda: AnonymousMixin): FormActivation {
     frame: makeFrame(null, lambda.rules, null, collectDeclIndex(lambda.rules, bindings, cells), cells),
     cells: [...cells.values()],
     result,
-    channels: !isValueSlotArray(result) && result.type === 'FunctionCall' ? formChannels(result) : undefined
+    channels: !isValueSlotArray(result) && result.type === 'FunctionCall' ? formChannels(result, lambda.params) : undefined
   };
 }
 
