@@ -81,12 +81,14 @@ describe('getOptions', () => {
         compile: {
           strict: true,
           functionMode: 'error',
+          unresolvedBuiltins: 'warn',
           leakyScope: true
         }
       };
       expect(getOptions(config)).toMatchObject({
         unitMode: 'strict',
         functionMode: 'error',
+        unresolvedBuiltins: 'warn',
         leakyScope: true,
         allowCallerScope: false
       });

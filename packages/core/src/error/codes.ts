@@ -70,6 +70,7 @@ export type JessErrorCode =
   | 'eval/invalid-unit-arithmetic'
   | 'eval/division-by-zero'
   | 'eval/unexpressible-unit'
+  | 'eval/unresolved-builtin'
   | 'eval/url-option-skipped'
   | 'eval/charset-not-utf8'
   | 'eval/incomparable-operands'
@@ -590,6 +591,15 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Division by zero',
       reason: '${expr} divides by zero, so there is no quotient to emit.',
       fix: 'Divide by a non-zero value, or keep the slash as a separator by not dividing it (math: parens-division).'
+    }
+  ],
+  [
+    'eval/unresolved-builtin',
+    {
+      summary: 'Built-in left to the browser',
+      reason:
+        '${name}() did not compute at compile time. It printed ${printed}, so the output depends on browser support for that form.',
+      fix: 'Pass values known at compile time, or leave this check off if the browsers you target support that form.'
     }
   ],
   [

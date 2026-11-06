@@ -28,7 +28,7 @@
  */
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { FunctionMode, MathMode, UnitMode } from '../types/modes.js';
+import type { FunctionMode, MathMode, UnitMode, UnresolvedBuiltinsMode } from '../types/modes.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js';
 import type { Operation } from './nodes.js';
 
@@ -578,6 +578,9 @@ export interface EvalModes {
 
   /** Registered-function failure policy supplied by the active compile Context. */
   readonly functionMode?: FunctionMode;
+
+  /** Whether a namespaced built-in that did not compute is reported ({@link unresolvedWatch}). */
+  readonly unresolvedBuiltins?: UnresolvedBuiltinsMode;
 
   /**
    * [R16] Legacy Less dynamic caller-read. Carried here so a context-free

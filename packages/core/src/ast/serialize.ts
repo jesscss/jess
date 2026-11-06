@@ -267,6 +267,7 @@ import type { ModuleConfigRejection } from '../plugin.js';
 import { rerouteForPlacedPlugins } from '../plugin-reroute.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
+import { unresolvedWatch } from './unresolved-builtin.js';
 import { writtenListValue, writtenResult } from './empty-list.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
@@ -9203,11 +9204,14 @@ function dispatchCall(
     : e.channels !== undefined && selected === undefined
       ? (vals: ValueGroup[]): MaybePromise<EvalValue> => channelFunction(node.name, vals) ?? ev.cssMath?.(node.name, vals) ?? dispatch(vals)
       : dispatch;
+  const watch = reach === 'imported' && (e.modes.unresolvedBuiltins === 'warn' || e.modes.unresolvedBuiltins === 'error') ? unresolvedWatch(node, e, call) : undefined;
+  const watched = watch === undefined ? call : watch.call;
 
   /* [A4] A computed call reading an export is recorded for the runtime. */
-  return e.s.exports.runtime === undefined || argument !== ARG_INPUT
-    ? combineAll(callArguments(node, alpha, frame, ae, argument), call)
-    : exportCall(e, node, selected ?? ev.fn(node.name), written => callArguments(node, alpha, frame, ae, written ? ARG_OPERAND : argument), args => combineAll(args, call));
+  const result = e.s.exports.runtime === undefined || argument !== ARG_INPUT
+    ? combineAll(callArguments(node, alpha, frame, ae, argument), watched)
+    : exportCall(e, node, selected ?? ev.fn(node.name), written => callArguments(node, alpha, frame, ae, written ? ARG_OPERAND : argument), args => combineAll(args, watched));
+  return watch === undefined ? result : watch.settled(result);
 }
 
 /** Whether a call argument is written by name (`$lightness: -10%`). */

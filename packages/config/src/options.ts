@@ -188,6 +188,7 @@ function compileOptions(compile: NonNullable<StylesConfig['compile']>): StrictPr
     mathMode: compile.mathMode,
     unitMode: compile.unitMode,
     functionMode: compile.functionMode,
+    unresolvedBuiltins: compile.unresolvedBuiltins,
     allowLeakyScope: compile.allowLeakyScope,
     leakyScope: compile.leakyScope,
     allowCallerScope: compile.allowCallerScope,

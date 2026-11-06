@@ -138,6 +138,9 @@ export interface ExportState<F> {
    */
   inputs: Array<ExportInput> | undefined;
 
+  /** The exports the call being dispatched read as its arguments ({@link onlyExportsUnknown}). */
+  callReads: ReadonlyArray<ExportInput> | undefined;
+
   /** Exports read as their compile-time values, for what fills a slot ({@link knownArguments}). */
   knownReads: boolean;
 
@@ -227,7 +230,7 @@ export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
 export function exportState<F>(): ExportState<F> {
-  return { refs: new Map(), behind: new Map(), inputs: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map() };
+  return { refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map() };
 }
 
 /**
@@ -557,16 +560,19 @@ export function exportCall<F>(
     x.writtenRead = outerWritten ?? written;
   }
 
-  const computedOver = (vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> =>
-    written === undefined
+  const computedOver = (vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> => {
+    x.callReads = inputs;
+    return written === undefined
       ? dispatch(vals)
       : mapMaybe(slotsKnown(x, fn, args, e.ev), (slots) => {
           knownSlots = slots;
           if (slots !== undefined && !fitsWritten(fn, vals, slots)) {
             exportNotWritten(node, `@${written}`, written, e, IN_LARGER_ARGUMENT);
           }
+          x.callReads = inputs;
           return recovering(() => dispatch(vals), namingExport(e, node, written));
         });
+  };
   if (inputs.length === 0 && !typed.some(isThenable)) {
     return computedOver(typed);
   }
@@ -652,6 +658,24 @@ function recovering(run: () => MaybePromise<EvalValue>, recover: (error: unknown
   } catch (error) {
     return recover(error);
   }
+}
+
+/**
+ * Whether a call read an export and everything else it was given is known, so
+ * all it waits on is the export, which is deferred on purpose. A `var()` or a
+ * `currentColor` beside the export is not.
+ */
+export function onlyExportsUnknown<F>(state: ExportState<F>, vals: readonly ValueGroup[]): boolean {
+  const reads = exporting(state)?.callReads;
+  if (reads === undefined || reads.length === 0) {
+    return false;
+  }
+  return vals.every((val) => {
+    const value = lone(val);
+    return reads.some(read => read.value === value)
+      || isValueGroupArray(value)
+      || !(value.type === 'FunctionCall' || (value.type === 'Keyword' && isBrowserColor(value.text)));
+  });
 }
 
 /** A built-in's own call written out because it failed, which is no CSS, unlike a call its callable declined. */
