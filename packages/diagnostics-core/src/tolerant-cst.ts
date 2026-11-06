@@ -2965,12 +2965,10 @@ function staticJessCollectionKey(entry: CssCstNode): StaticCollectionKey | null 
     const key = direct.find(child => child._tag === 'leaf' && child.value !== ':' && child.value !== ';');
     return key?._tag === 'leaf' ? { value: makeKeyword(key.value), display: key.value, span: key.span } : null;
   }
-  let atom = firstChildNodeOf(entry, 'Value');
-  for (const wrapper of ['ValueSpaceGroup', 'ValueTerm', 'ValueAtom']) {
-    const only: CssCstNode[] = atom === undefined ? [] : childNodesOf(atom);
-    atom = only.length === 1 && only[0]!.grammarType === wrapper && cstChildrenOf(atom!).length === 1 ? only[0] : undefined;
-  }
-  const typed = atom === undefined ? [] : childNodesOf(atom);
+  const value = firstChildNodeOf(entry, 'Value');
+  const first = value === undefined ? undefined : childNodesOf(value)[0];
+  const atom = first?.grammarType === 'ValueAtom' ? first : value;
+  const typed = atom === undefined || cstChildrenOf(atom).length !== 1 ? [] : childNodesOf(atom);
   return typed.length === 1 ? typedCollectionKey(typed[0]!) : null;
 }
 
@@ -3061,7 +3059,6 @@ const STATIC_VALUE_WRAPPER_TYPES = new Set([
   'ValueList',
   'ValueSequence',
   'MathValue',
-  'FunctionScalarArgument',
   'Keyword',
   'Color',
   'Number'
