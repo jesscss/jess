@@ -52,6 +52,7 @@ type ScssRules = {
   MapOrGroup: Combinator<ValueNode>;
   EmptyList: Combinator<Block>;
   ReturnRule: Combinator<AtRuleStatement>;
+  ReturnDirective: Combinator<[string, unknown]>;
   FunctionRule: Combinator<VariableDeclaration>;
   Square: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
@@ -1688,7 +1689,7 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       g.MathTopSum,
       many(sequence(
-        optional(valueTrivia),
+        productPad,
         choice(
           {
             gate: state => isIfTest(state),
@@ -1697,7 +1698,7 @@ const scssFactory = (g: ScssInputRules) => {
           g.LogicalAnd,
           g.ComparisonOperator
         ),
-        optional(valueTrivia),
+        productPad,
         g.MathTopSum
       ))
     ),
@@ -3047,7 +3048,7 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const nestedAtStatement = choice(
     g.SassDirective,
-    g.ReturnRule,
+    g.ReturnDirective,
     g.NestedConditionalBlock,
     g.NestedStartingStyleBlock,
     g.NestedLayerBlock,
@@ -3214,7 +3215,7 @@ const scssFactory = (g: ScssInputRules) => {
 
       /* Statement span, terminator excluded — see `Declaration`. */
       field('statement', sequence(
-        caseInsensitiveWord('@return'),
+        routed(),
         g.Value
       )),
       optional(literal(';'))
@@ -3251,7 +3252,7 @@ const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.Comment,
         g.VariableDeclaration,
-        g.ReturnRule,
+        g.ReturnDirective,
         g.SassControlDirective
       )),
       literal('}')
@@ -4281,6 +4282,17 @@ const scssFactory = (g: ScssInputRules) => {
   const AtRootContinuation = choice(
     AtRootFilter,
     AtRootBlock
+  );
+
+  /**
+   * `@return` routes on the at-keyword. `ReturnRule` opens with a field and ends
+   * in an optional `;`, which parseman reads as able to match nothing, so a bare
+   * arm can't be gated by its first set and would run at every `}` that closes a
+   * body.
+   */
+  const ReturnDirective = dispatch(
+    g.AtRuleKeyword,
+    caseInsensitive('@return', g.ReturnRule)
   );
 
   /*
@@ -5603,6 +5615,7 @@ const scssFactory = (g: ScssInputRules) => {
     MapOrGroup,
     EmptyList,
     ReturnRule,
+    ReturnDirective,
     FunctionRule,
     Square,
     ValueAtom,

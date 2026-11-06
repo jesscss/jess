@@ -1094,7 +1094,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 579,
+      "line": 580,
       "const": "scssScanSkipDoubleString",
       "construct": "scssScanSkipDoubleString",
       "why": "rule name `scssScanSkipDoubleString`",
@@ -1103,7 +1103,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 584,
+      "line": 585,
       "const": "scssScanSkipSingleString",
       "construct": "scssScanSkipSingleString",
       "why": "rule name `scssScanSkipSingleString`",
@@ -1112,7 +1112,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 673,
+      "line": 674,
       "const": "scssVarName",
       "construct": "scssVarName",
       "why": "rule name `scssVarName`",
@@ -1121,7 +1121,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 680,
+      "line": 681,
       "const": "scssVarSigilName",
       "construct": "scssVarSigilName",
       "why": "rule name `scssVarSigilName`",
@@ -1130,7 +1130,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 857,
+      "line": 858,
       "const": "InterpolatedUrlValue",
       "construct": "plainUrlChunk",
       "resolved": "194acb3a8ed37af2",
@@ -1140,7 +1140,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 860,
+      "line": 861,
       "const": "InterpolatedUrlValue",
       "construct": "plainUrlChunk",
       "resolved": "194acb3a8ed37af2",
@@ -1150,7 +1150,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1129,
+      "line": 1130,
       "const": "UrlFunction",
       "construct": "choice(g.Quoted, g.InterpolatedUrlValue, plainUrlChunk)",
       "resolved": "14ce0607885f385c",
@@ -1160,7 +1160,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1569,
+      "line": 1570,
       "const": "MathUnary",
       "construct": "regex(/-(?=[ \\t\\n\\r\\f]*[\\$(])/)",
       "resolved": "d525887e67affab1",
@@ -1170,7 +1170,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1574,
+      "line": 1575,
       "const": "MathUnary",
       "construct": "regex(/\\+(?=[ \\t\\n\\r\\f]*[\\$(])/)",
       "resolved": "97c9f9b5c4cd1ca7",
@@ -1180,7 +1180,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 1845,
+      "line": 1846,
       "const": "CallArgument",
       "construct": "regex(/[<>]=?(?=[ \\t\\n\\r\\f]*[),])/)",
       "resolved": "f252fa0bf805d416",
@@ -1190,7 +1190,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2004,
+      "line": 2005,
       "const": "VariableDeclaration",
       "construct": "not(reservedVarHead)",
       "resolved": "749e090a313564ac",
@@ -1200,7 +1200,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2368,
+      "line": 2369,
       "const": "directNestedPropertyAhead",
       "construct": "not(regex(/[^{};]*[;}]/))",
       "resolved": "33a85b020e687478",
@@ -1210,7 +1210,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2470,
+      "line": 2471,
       "const": "ImportUrl",
       "construct": "choice(g.Quoted, plainUrlChunk)",
       "resolved": "7807b43093a74197",
@@ -1220,7 +1220,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2653,
+      "line": 2654,
       "const": "ImportTail",
       "construct": "not(importSupportsOpen)",
       "resolved": "ad61acc0c2035c5d",
@@ -1230,7 +1230,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 2653,
+      "line": 2654,
       "const": "ImportTail",
       "construct": "not(importLayerOpen)",
       "resolved": "58e2cce2e5534ad2",
@@ -1240,7 +1240,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 3386,
+      "line": 3387,
       "const": "scssTrueKeyword",
       "construct": "scssTrueKeyword",
       "why": "rule name `scssTrueKeyword`",
@@ -1249,7 +1249,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 3387,
+      "line": 3388,
       "const": "scssFalseKeyword",
       "construct": "scssFalseKeyword",
       "why": "rule name `scssFalseKeyword`",
@@ -1258,7 +1258,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4088,
+      "line": 4089,
       "const": "combinator",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "b2aa78a0298b79f8",
@@ -1268,7 +1268,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 4099,
+      "line": 4100,
       "const": "SupportsCondition",
       "construct": "peek(g.QueryGluedConnective)",
       "resolved": "b2aa78a0298b79f8",
@@ -1278,7 +1278,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 5019,
+      "line": 5031,
       "const": "scssRelativeSelectorCombinator",
       "construct": "scssRelativeSelectorCombinator",
       "why": "rule name `scssRelativeSelectorCombinator`",
@@ -1287,7 +1287,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 5091,
+      "line": 5103,
       "const": "NthPseudo",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "4a21c5d3f4cd6056",
@@ -1298,7 +1298,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 5123,
+      "line": 5135,
       "const": "NthTypePseudo",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
       "resolved": "4a21c5d3f4cd6056",
@@ -1309,7 +1309,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 5124,
+      "line": 5136,
       "const": "NthTypePseudo",
       "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
       "resolved": "8e5efcf3098b0cee",
@@ -1319,7 +1319,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 5335,
+      "line": 5347,
       "const": "scssCombinator",
       "construct": "scssCombinator",
       "why": "rule name `scssCombinator`",
@@ -1328,7 +1328,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "line": 5470,
+      "line": 5482,
       "const": "ScssGenericAtRuleName",
       "construct": "ScssGenericAtRuleName",
       "why": "rule name `ScssGenericAtRuleName`",
