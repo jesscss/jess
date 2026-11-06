@@ -1,7 +1,6 @@
 import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
-import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js';
-import { addExact } from '../../util/decimal.js';
+import * as forms from '../../less/css-forms.generated.js';
+import { defineAlphaAdjuster } from './color-form.js';
 
 /**
  * `color.fade-in(color, amount)` — the `opacify` computation under Sass's other
@@ -13,17 +12,6 @@ import { addExact } from '../../util/decimal.js';
  * `fade-in(rgba(red,0.5), 0.14)` → `rgba(255, 0, 0, 0.64)`;
  * `fade-in(rgba(red,0.5), 0)` → `rgba(255, 0, 0, 0.5)`.
  */
-export const fadeIn: Fn = defineFunction('fade-in', {
-  params: [
-    { name: 'color', type: 'Color' },
-    { name: 'amount', type: 'Dimension' },
-    { name: 'excess', type: 'any', optional: true }
-  ],
-  body: (c, amt, excess) => {
-    noExcess(excess, 2);
-    const color = requireColor(c);
-    return withAlpha(color, addExact(color.alpha, fractionAmount(amt)));
-  }
-});
+export const fadeIn: Fn = /* @__PURE__ */ defineAlphaAdjuster('fade-in', forms.fadein);
 
 export default fadeIn;
