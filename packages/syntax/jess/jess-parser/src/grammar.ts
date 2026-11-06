@@ -3453,7 +3453,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.InterpolatedValue,
     g.CustomPropertyValue,
     g.UnicodeRange,
-    g.IdentifierOrFunction,
+
+    /*
+     * A node so this arm always publishes one: a dispatch can't show that, and
+     * the rung directly above opens its frame late only when its corner does.
+     */
+    node<ValueNode>('ValueAtom', g.IdentifierOrFunction, children => requireValueNode(children[0])),
     g.Quoted,
     g.Color,
     g.Dimension,
@@ -3471,14 +3476,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       combinator: g.DollarBraceValue
     }
   );
-  const ValueAtom = node<ValueNode>(
-    'ValueAtom',
-    choice(
-      g.Collection,
-      g.CurlyList,
-      nonBlockValueAtom
-    ),
-    children => requireValueNode(children[0])
+  const ValueAtom = choice(
+    g.Collection,
+    g.CurlyList,
+    nonBlockValueAtom
   );
 
   /*
@@ -3488,15 +3489,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * is loosest, then whitespace, then slash, so `font: 12px/1.5 sans-serif` is
    * `[12px / 1.5, sans-serif]`. `/` still never becomes unwrapped arithmetic.
    */
-  const ValueTerm = node<ValueSlot>(
+  const ValueTerm = noTrivia(node<ValueSlot, 'ValueTerm'>(
     'ValueTerm',
-    noTrivia(sequence(
+    sequence(
       g.ValueAtom,
       many(sequence(
         valueSlashBoundary,
         nonBlockValueAtom
       ))
-    )),
+    ),
     (children) => {
       const values = children.filter(isJessValueSlotValue);
       return values.length === 1
@@ -3505,8 +3506,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             values,
             '/'
           );
-    }
-  );
+    },
+    { collapse: true }
+  ));
 
   /**
    * A `*`, a delim outside `$( … )` like the others (`a * b`, `2*[3]`), but its
@@ -3575,9 +3577,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * brace block may only be a value's FIRST atom (see `nonBlockValueAtom`), so
    * a continuation term may not open one.
    */
-  const ValueSpaceGroup = node<ValueSlot>(
+  const ValueSpaceGroup = noTrivia(node<ValueSlot, 'ValueSpaceGroup'>(
     'ValueSpaceGroup',
-    noTrivia(sequence(
+    sequence(
       g.ValueTerm,
       many(choice(
         sequence(
@@ -3614,18 +3616,19 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         ),
         gluedRunItem
       ))
-    )),
-    children => componentRun(children, isJessValueSlotValue)
-  );
+    ),
+    children => componentRun(children, isJessValueSlotValue),
+    { collapse: true }
+  ));
 
   /**
    * The same run inside a paren group, where a padded `>`, `~` or `:` is a
    * delim (see `groupPaddedDelimRun`): a run css builds is a run here too, so
    * its delims are read as css's are (ledger P48).
    */
-  const groupSpaceGroup = node<ValueSlot>(
+  const groupSpaceGroup = noTrivia(node<ValueSlot, 'ValueSpaceGroup'>(
     'ValueSpaceGroup',
-    noTrivia(sequence(
+    sequence(
       g.ValueTerm,
       many(choice(
         sequence(
@@ -3650,9 +3653,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         ),
         gluedRunItem
       ))
-    )),
-    children => componentRun(children, isJessValueSlotValue)
-  );
+    ),
+    children => componentRun(children, isJessValueSlotValue),
+    { collapse: true }
+  ));
 
   /**
    * A `/` or `*` with nothing on its left: a punctuation-led value (ledger
@@ -6215,24 +6219,27 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     )
   );
 
-  const CompoundSelector = node<SelectorTerm>(
-    'CompoundSelector',
-    noTrivia(parser(
-      { trivia: compoundTrivia },
-      oneOrMore(choice(
-        parser(
-          { trivia: whitespace },
-          g.AttributeSelector
-        ),
-        g.PseudoSelector,
-        g.InterpolatedParentSuffix,
-        g.InterpolatedSimple,
-        g.Parent,
-        g.NamespaceTypeSelector,
-        g.BasicSelector
-      ))
-    )),
-    reduceCompound
+  /** One simple selector, or a piece that joins one, in a `CompoundSelector`. */
+  const compoundItem = choice(
+    parser(
+      { trivia: whitespace },
+      g.AttributeSelector
+    ),
+    g.PseudoSelector,
+    g.InterpolatedParentSuffix,
+    g.InterpolatedSimple,
+    g.Parent,
+    g.NamespaceTypeSelector,
+    g.BasicSelector
+  );
+  const CompoundSelector = parser(
+    { trivia: compoundTrivia },
+    node<SelectorTerm, 'CompoundSelector'>(
+      'CompoundSelector',
+      sequence(compoundItem, many(compoundItem)),
+      reduceCompound,
+      { collapse: true }
+    )
   );
 
   /*
