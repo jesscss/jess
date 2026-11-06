@@ -31,6 +31,25 @@ const GROUP_CANONICAL = ['px', 's', 'rad', 'hz', 'dppx'] as const;
 /** Each group's canonical-unit factor, so `unify` needn't re-look-it-up per call. */
 const GROUP_CANONICAL_FACTOR = GROUP_FACTORS.map((f, g) => f[GROUP_CANONICAL[g]!]!);
 
+/** Every unit CSS defines (css-values-4 §6, §7; css-contain-3 §9; css-grid-1 §7.2.3), keys lowercase. */
+const CSS_UNITS: ReadonlySet<string> = /* @__PURE__ */ new Set([
+  '%', 'fr',
+  'cm', 'mm', 'q', 'in', 'pc', 'pt', 'px',
+  'cap', 'ch', 'em', 'ex', 'ic', 'lh', 'rcap', 'rch', 'rem', 'rex', 'ric', 'rlh',
+  'vb', 'vh', 'vi', 'vw', 'vmin', 'vmax',
+  'dvb', 'dvh', 'dvi', 'dvw', 'dvmin', 'dvmax',
+  'lvb', 'lvh', 'lvi', 'lvw', 'lvmin', 'lvmax',
+  'svb', 'svh', 'svi', 'svw', 'svmin', 'svmax',
+  'cqb', 'cqh', 'cqi', 'cqw', 'cqmin', 'cqmax',
+  'deg', 'grad', 'rad', 'turn',
+  's', 'ms',
+  'hz', 'khz',
+  'dpi', 'dpcm', 'dppx', 'x'
+]);
+
+/** Whether CSS defines `unit`; a number's empty unit is one. */
+export const isCssUnit = (unit: string): boolean => unit === '' || CSS_UNITS.has(foldUnit(unit));
+
 const UNIT_TO_GROUP = new Map<string, UnitGroup>();
 for (let g = 0; g < GROUP_FACTORS.length; g++) {
   for (const u in GROUP_FACTORS[g]!) {

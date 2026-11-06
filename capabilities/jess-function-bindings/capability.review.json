@@ -5,11 +5,11 @@
   "contractDigest": "97218e845da57022082aada7f5f8e52ddf39ec13c92a11b23828c9136e717c05",
   "implementations": {
     "owner": "b1d9e61caf804844a7f42037f9ee53cc06ae78624401cd1fd464de5f0c524ad5",
-    "compiler-convert": "518c1bb8be8974415fa801d195dec43cd8dd0d58c27482b60c05890054538321",
+    "compiler-convert": "885808c741bfa52db105f9eab2b51446ff8fd3534557abf3876114aaea2bdcca",
     "less-equivalence": "016b7bac0f321f6bc77059a10afcbf0010e5ac4303a6b4507f96fe5154d33c10",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
-    "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
-    "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
+    "sass-list-map-functions": "d46a456dacad8fc205dd41cd378c76fcaa88772415fa4016f75bcbc907c20457",
+    "sass-selector-parse": "0f15e760ecafc11546d65927c5d0a92168d849ebbf163e4dfe0dfae683096d81"
   },
-  "rationale": "The value barrel's exports move with dev's holdsNone and NoCssForm, and the equivalence suite gains KNOWN rows for SCSS files that now parse, merged with dev. No dependency, binding name or module a converted .jess file imports changes for this contract's consumers."
+  "rationale": "The value barrel's exports move with dev's holdsNone and NoCssForm and the math forms, and the equivalence suite gains KNOWN rows for SCSS files that now parse, merged with dev. No dependency, binding name or module a converted .jess file imports changes for this contract's consumers."
 }

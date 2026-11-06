@@ -20,7 +20,6 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 const TD = resolveLessTestDataRoot();
 const FIXTURES: ReadonlyArray<readonly [fixture: string, declaration: string]> = [
   ['tests-error/eval/color-func-invalid-color', 'color: color("NOT A COLOR");'],
-  ['tests-error/eval/percentage-css-var', 'b: percentage(var(--x));'],
   ['tests-error/eval/svg-gradient1', 'a: svg-gradient(horizontal, black, white);'],
   ['tests-error/eval/svg-gradient2', 'a: svg-gradient(to bottom, black, orange, 45%, white);'],
   ['tests-error/eval/svg-gradient3', 'a: svg-gradient(black, orange);'],
@@ -34,9 +33,11 @@ const FIXTURES: ReadonlyArray<readonly [fixture: string, declaration: string]> =
  * converts where the parameter takes a number (ledger P35, owner 2026-10-30:
  * "Since functions can specify types, it seems like we could use type hints
  * to auto-convert here? since obviously percentage() does not accept a slash
- * list?").
+ * list?"), and a built-in is its CSS form over an input only the browser knows
+ * (CSS-NATIVE-BUILTINS Q8).
  */
 const COMPUTED: ReadonlyArray<readonly [fixture: string, declaration: string]> = [
+  ['tests-error/eval/percentage-css-var', 'b: calc(var(--x) * 100%);'],
   ['tests-error/eval/percentage-non-number-argument', 'percentage: 94.11764706%;'],
   ['tests-error/eval/unit-function', 'font-size: 5rem;']
 ];

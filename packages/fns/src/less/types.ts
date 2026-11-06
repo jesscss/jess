@@ -18,10 +18,10 @@ const iscolor: Fn = defineFunction('iscolor', {
   body: value => makeBool(isColorLike(value))
 });
 
-/** Less `isnumber()` — true for an already-materialized dimension. */
+/** Less `isnumber()` — true for an already-materialized dimension or a built-in's numeric form (Q10). */
 const isnumber: Fn = defineFunction('isnumber', {
   params: [{ type: 'any' }],
-  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Dimension')
+  body: value => makeBool(!isValueGroupArray(value) && (value.type === 'Dimension' || (value.type === 'FunctionCall' && value.computed && value.result === 'numeric')))
 });
 
 /** Less `isstring()` — true for a quoted value. */
@@ -30,11 +30,12 @@ const isstring: Fn = defineFunction('isstring', {
   body: value => makeBool(!isValueGroupArray(value) && value.type === 'Quoted')
 });
 
-/** Less `iskeyword()` — true for a bare keyword or a call written out that is NOT a colour: a
- * named-color keyword and a built-in's colour form answer `iscolor` (Q10). */
+/** Less `iskeyword()` — true for a bare keyword or a call written out: a named-color keyword
+ * and a built-in's form answer `iscolor` or `isnumber` (Q10). */
 const iskeyword: Fn = defineFunction('iskeyword', {
   params: [{ type: 'any' }],
-  body: value => makeBool(!isValueGroupArray(value) && (value.type === 'FunctionCall' || value.type === 'Keyword') && !isColorLike(value))
+  body: value => makeBool(!isValueGroupArray(value) && (value.type === 'FunctionCall' || value.type === 'Keyword') && !isColorLike(value)
+    && !(value.type === 'FunctionCall' && value.computed && value.result === 'numeric'))
 });
 
 /** Less `isurl()` — true only for a parser-owned `url(...)` value. */

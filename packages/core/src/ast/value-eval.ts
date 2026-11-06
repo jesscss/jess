@@ -30,6 +30,7 @@
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { FunctionMode, MathMode, UnitMode } from '../types/modes.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js';
+import type { Operation } from './nodes.js';
 
 /* --------------------------------------------------------- value domain */
 
@@ -86,6 +87,9 @@ export interface Dimension {
    * reads the magnitude.
    */
   readonly preserved?: string;
+
+  /** Whether {@link preserved} holds a `+` or `-`, so it is grouped as an operand. */
+  readonly preservedSum?: boolean;
 
   /** Canonical emitted bytes (byte-faithful; produced by the free serializer). */
   readonly bytes: string;
@@ -163,7 +167,7 @@ export interface Keyword {
  * exact type follows from its arguments, §10.9), `null` when only the browser
  * knows (`var()`, an unknown function).
  */
-export type CallResult = 'color' | 'numeric' | null;
+export type CallResult = 'color' | 'numeric' | 'other' | null;
 
 /**
  * A call written out as-is (an unknown or CSS function, a built-in that could
@@ -183,6 +187,28 @@ export interface FunctionCall {
   /** A built-in's CSS form, which a type predicate reads by {@link result}; an authored call is not (Q10). */
   readonly computed: boolean;
   readonly bytes: string;
+}
+
+/**
+ * Arithmetic that has not computed, as structure: the evaluated twin of the
+ * parse tree's `Operation`, spelled `bytes`. What a `calc()` holds when its math
+ * cannot compute, and what math written in any math function is (css-values-4
+ * §10; docs/design/CSS-NATIVE-BUILTINS.md §3.2). `kept` when the compile kept it
+ * (V18, V27, V38) rather than the author writing it in a math function, so it
+ * is that `calc()`'s arithmetic wherever more math reads it (V27). An `op` of
+ * `''` is a paren group around `left`. Operands written in a math function that
+ * nothing reads as values stay literal.
+ */
+export interface Arithmetic {
+  readonly type: 'Arithmetic';
+  readonly op: string;
+  readonly left: EvalValue;
+  readonly right: EvalValue;
+  readonly kept: boolean;
+  readonly bytes: string;
+
+  /** The operation written in a math function, whose number operands {@link arithmeticOperand} reads only if something asks. */
+  readonly written: Operation | null;
 }
 
 /**
@@ -338,7 +364,7 @@ export interface UrlValue {
   readonly bytes: string;
 }
 
-export type Value = Dimension | Color | Quoted | Keyword | FunctionCall | Any | UrlValue | List | Block | Bool | Null | Collection;
+export type Value = Dimension | Color | Quoted | Keyword | FunctionCall | Arithmetic | Any | UrlValue | List | Block | Bool | Null | Collection;
 
 /**
  * The canonical structural value carrier. A raw array is a default
@@ -904,6 +930,9 @@ export function spreadArguments(
 export interface ValueEvaluator {
   /** Binary operation on two materialized operands (direct / delegated math). */
   operate(op: string, left: Value, right: Value, modes: EvalModes): Value;
+
+  /** The CSS math functions a built-in's form computes on known inputs (`css-math.ts`); no document's evaluator has them. */
+  readonly cssMath?: (name: string, args: readonly ValueGroup[]) => Dimension | null;
 
   /** Named-function call on a materialized arg list. Sync unless a genuinely
    * async built-in forces a thenable (scoped to the forcing leaf). `scope`, when

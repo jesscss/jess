@@ -29,6 +29,8 @@ const isDeferredChannel = (value: ValueGroup): boolean =>
 /** What CSS takes as an `rgb()` channel or alpha (css-color-4 §5.1). */
 const CHANNEL_UNITS: readonly string[] = ['', '%'];
 
+const fitsChannel = (value: ValueGroup): boolean => inUnits(value, CHANNEL_UNITS);
+
 export function makeRgb(value: ValueGroup): Color {
   const items = groupItems(value);
   const modernSyntax = isModern(value);
@@ -64,7 +66,7 @@ export function makeRgb(value: ValueGroup): Color {
  * CSS as written (docs/design/CSS-NATIVE-BUILTINS.md §3.8).
  */
 const colorWithAlpha = /* @__PURE__ */ defineForm('rgba', {
-  params: [COLOR_ARG, { type: ['Dimension', 'FunctionCall'] }],
+  params: [COLOR_ARG, { type: ['Dimension', 'FunctionCall'], fits: fitsChannel }],
   format: RGB,
   form: (color: ValueGroup | FunctionCall, alpha: Dimension | FunctionCall): FormCall => {
     if ((!isValueGroupArray(color) && color.type === 'FunctionCall' && color.result !== 'color') || (alpha.type === 'FunctionCall' && alpha.result !== 'numeric')) {
@@ -88,8 +90,6 @@ export const rgbBody = (list: ValueGroup, ctx: FnCtx): ReturnType<Fn> => {
 /** What a slot of `rgb()` takes: a list stays a list, and a call is what only the browser knows. */
 const SLOT_TYPES = ['List', 'Color', 'Dimension', 'FunctionCall'] as const;
 
-/* No spread: a bundler keeps a pure call whose argument spreads, and this one reaches the evaluator. */
-const fitsChannel = (value: ValueGroup): boolean => inUnits(value, CHANNEL_UNITS);
 const RGB_SLOT = { type: SLOT_TYPES, fits: fitsChannel } as const;
 const RGB_OPTIONAL_SLOT = { type: SLOT_TYPES, fits: fitsChannel, optional: true } as const;
 
