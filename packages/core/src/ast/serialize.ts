@@ -5639,7 +5639,7 @@ const keepsOperation = (node: Operation, e: Lane): boolean =>
 
 /** An operation over its operands: two known numbers are the operation's, anything else may be CSS's math ({@link operatedOn}). */
 const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
-  (left.type === 'Dimension' && right.type === 'Dimension') || ev.sassCalculations === true
+  (left.type === 'Dimension' && right.type === 'Dimension') || (ev.sassCalculations === true && keepsOperation(node, e))
     ? ev.operate(node.operator, left, right, e.modes)
     : slashOperated(node, left, right, e.modes, keepsOperation(node, e));
 
@@ -7232,7 +7232,7 @@ export function formActivation(lambda: AnonymousMixin): FormActivation {
     frame: makeFrame(null, lambda.rules, null, collectDeclIndex(lambda.rules, bindings, cells), cells),
     cells: [...cells.values()],
     result,
-    channels: !isValueSlotArray(result) && result.type === 'FunctionCall' ? formChannels(result) : undefined
+    channels: !isValueSlotArray(result) && result.type === 'FunctionCall' ? formChannels(result, lambda.params) : undefined
   };
 }
 

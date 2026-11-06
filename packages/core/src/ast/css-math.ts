@@ -3,9 +3,9 @@
  * computed when every input is known (docs/design/CSS-NATIVE-BUILTINS.md §3.4).
  * `null` from {@link cssMath} leaves the call written out.
  *
- * A form's `round()` steps are ones it chose: `1` in the input's unit, or a power
- * of ten for Less's decimal places, which rounds in base 10 as {@link round} does
- * (V8, whose decimal ties differ from a browser's floats; §2).
+ * A `round()` step of `1` or a power of ten below it (Less's decimal places) rounds
+ * in base 10 as {@link round} does (V8, whose decimal ties differ from a browser's
+ * floats; §2). Any other is Sass's step, a float multiple without its float dust.
  *
  * HARD MODULE BOUNDARY: the value domain.
  */
@@ -100,6 +100,11 @@ export const asNumber = (value: ValueGroup, unit = knownUnit(value)): ValueGroup
 const keyword = (value: ValueGroup | undefined): string | undefined =>
   value !== undefined && !isValueGroupArray(value) && value.type === 'Keyword' ? value.text : undefined;
 
+function toStep(value: number, step: number): number {
+  const places = -Math.round(Math.log10(Math.abs(step)));
+  return step > 0 && step <= 1 && 10 ** -places === step ? round(value, places) : Number((round(value / step) * step).toPrecision(15));
+}
+
 export function cssMath(name: string, args: readonly ValueGroup[]): Dimension | null {
   const [first, second, third] = args;
   if (name === 'round' && isDimension(second) && isDimension(third)) {
@@ -114,7 +119,7 @@ export function cssMath(name: string, args: readonly ValueGroup[]): Dimension | 
   switch (name) {
     case 'abs': return formNumber(Math.abs(first.number), first.unit);
     case 'sign': return formNumber(Math.sign(first.number));
-    case 'round': return isDimension(second) ? formNumber(round(first.number, -Math.round(Math.log10(second.number))), first.unit) : null;
+    case 'round': return isDimension(second) ? formNumber(toStep(first.number, second.number), first.unit) : null;
     case 'rem': return isDimension(second) ? formNumber(first.number % second.number, first.unit) : null;
     default: return null;
   }

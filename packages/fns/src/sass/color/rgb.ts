@@ -1,12 +1,15 @@
 import type { Fn, FnCtx, ValueGroup } from '@jesscss/core/value';
-import { defineFunction, groupItems } from '@jesscss/core/value';
+import { defineFunction, groupItems, isValueGroupArray } from '@jesscss/core/value';
 import { colorWithAlpha } from '../../less/rgb.js';
 import { isColor, isModern, makeRgb } from './kernels.js';
 
-/** The channels or a colour with an alpha; a colour not known takes the two-slot form (`rgba(currentcolor, .5)`). */
+const isCall = (value: ValueGroup | undefined): boolean =>
+  value !== undefined && !isValueGroupArray(value) && value.type === 'FunctionCall';
+
+/** The channels or a colour with an alpha; a colour or an alpha not known takes the two-slot form (`rgba(currentcolor, .5)`, `rgba(#000, var(--a))`). */
 export const rgbBody = (list: ValueGroup, ctx: FnCtx): ReturnType<Fn> => {
   const items = groupItems(list);
-  return items.length === 2 && !isModern(list) && !isColor(items[0]) ? colorWithAlpha(list, ctx) : makeRgb(items, isModern(list));
+  return items.length === 2 && !isModern(list) && (!isColor(items[0]) || isCall(items[1])) ? colorWithAlpha(list, ctx) : makeRgb(items, isModern(list));
 };
 
 /**

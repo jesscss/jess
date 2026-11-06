@@ -23,7 +23,7 @@ describe('canonical Less trigonometric callables', () => {
   });
 
   it('exposes callable metadata and rejects legacy/plain inputs', () => {
-    expect(asin.params).toEqual([{ name: 'value', type: 'Dimension' }]);
+    expect(asin.params).toMatchObject([{ name: 'value', type: 'Dimension' }]);
     expect(() => invoke(asin, 0.5)).toThrow('typed value node');
   });
 });

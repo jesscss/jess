@@ -26,11 +26,11 @@ import { spin as spinLess } from '../../less/spin.js';
 import { argb as argbLess } from '../../less/argb.js';
 import {
   red as sharedRed,
-  abs as sharedAbs,
-  ceil as sharedCeil,
-  floor as sharedFloor
+  abs as sharedAbs
 } from '../../shared/index.js';
 import lessRound from '../../less/round.js';
+import { ceil as lessCeil } from '../../less/ceil.js';
+import { floor as lessFloor } from '../../less/floor.js';
 
 describe('Sass export aliases', () => {
   /*
@@ -79,8 +79,8 @@ describe('Sass export aliases', () => {
 
   it('maps math module exports to shared implementations', () => {
     expect(mathModuleAbs).toBe(sharedAbs);
-    expect(mathModuleCeil).toBe(sharedCeil);
-    expect(mathModuleFloor).toBe(sharedFloor);
+    expect(mathModuleCeil).toBe(lessCeil);
+    expect(mathModuleFloor).toBe(lessFloor);
 
     /*
      * `round` is dialect-owned: Sass's second argument is a step, Less's is
@@ -91,8 +91,8 @@ describe('Sass export aliases', () => {
   });
 
   it('maps global math exports to the same shared implementations', () => {
-    expect(globalCeil).toBe(sharedCeil);
-    expect(globalFloor).toBe(sharedFloor);
+    expect(globalCeil).toBe(lessCeil);
+    expect(globalFloor).toBe(lessFloor);
     expect(globalRound).not.toBe(lessRound);
     expect(globalRound).toBe(mathModuleRound);
   });

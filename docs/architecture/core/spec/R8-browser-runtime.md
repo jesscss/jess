@@ -153,15 +153,20 @@ or needs JS) to decide what ships in the bundle.
   `hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100))`, the browser
   recomputes it, and the function is in no recipe. Built for Less `lighten`
   `darken` `saturate` `desaturate` `spin` `greyscale` `fade` `fadein` `fadeout`,
-  `mix` `tint` `shade` `average`, `contrast`, two-slot `rgb` `rgba`, and the hue of `hsv`
-  `hsva`; the one seam is `exportCall`. A weight is a form's while its value is one
+  `mix` `tint` `shade` `average`, `contrast`, two-slot `rgb` `rgba`, and the hue, S, V
+  and alpha of `hsv` `hsva`; the one seam is `exportCall`. A weight is a form's while its value is one
   `color-mix()` holds, and a call with no form over what only the browser knows
   (`@less.mix(@a, @b, 150%)`) takes rung 4. The form or the recipe is chosen by the
   default: `@less.mix(red, blue, @w)` with `@w: 25%` prints the form, and
-  `vars({ w: '150%' })` then gives a value the browser finds invalid. OPEN for the owner.
+  `vars({ w: '150%' })` then gives a value the browser finds invalid. The same class:
+  `@a: 50%; @less.fade(#333, @a)` then `vars({ a: '.5' })` reads alpha 0.5, where a compile
+  with `@a: .5` reads 0.005; and `@less.hsv(120, @a, 75%)`, `@less.hsl(120, @a, 50%)` and
+  `@less.fadein(#333, @a)` with a `%` default, then a number at runtime, are invalid at
+  computed-value time (measured in Chrome 152). OPEN for the owner.
   An exposed variable in parens is read as one without them.
-  `rgb` and `rgba` with an exposed channel are valid CSS as written, and print so:
-  `@less.rgb(@r, 0, 0)` is `rgb(var(--r, 10), 0, 0)`; one exposed colour,
+  `rgb`, `rgba`, `hsl` and `hsla` with an exposed channel are valid CSS as written, and
+  print so: `@less.rgb(@r, 0, 0)` is `rgb(var(--r, 10), 0, 0)`, and
+  `@less.hsl(@h, 50%, 50%)` is `hsl(var(--h, 120), 50%, 50%)`; one exposed colour,
   `@less.rgb(@brand)`, is `var(--brand, #c00)`. A wrong exposed value fails at the
   compile, as its slot rejects it. A
   stylesheet that prints only forms adds no function: with no exposed variable it
@@ -177,8 +182,11 @@ or needs JS) to decide what ships in the bundle.
   `@c: var(--x)`).
   The runtime reads a recipe's fixed arguments and other exports' defaults as CSS
   literals, and a quoted string may hold parens. One holding a call
-  (`@less.fade(var(--x), @a)`, `@less.fade(hsl(120, 50%, 50%), @a)`) compiles, so the
-  stylesheet's CSS stands, and `vars()` throws saying so when that value is set. Hex
+  beside an export the form does not hold (`@less.fade(var(--x), @a)` and
+  `@less.fade(hsl(120, 50%, 50%), @a)` with `@a: .25`, a number on the scale `fade` reads
+  as 0.0025) compiles, so the stylesheet's CSS stands, and `vars()` throws saying so
+  when that value is set. With `@a: 25%` the form holds it, with no recipe:
+  `rgb(from hsl(120, 50%, 50%) r g b / var(--a, 25%))`. Hex
   cannot stand in: it loses a grey's hue and rounds an alpha. OPEN for the owner:
   whether this should be reported at the compile.
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
