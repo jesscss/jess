@@ -7625,7 +7625,7 @@ function resolveReferenceResult(
       if (matched && map.byVar.get(matched.name) === matched) {
         matched = activatedVarMember(map.activation, matched.name, e);
       }
-      if (!statementCall && node.steps[stepIndex + 1]?.type === 'Call' && (matched !== undefined || map.activation.mixins?.has(`.${missingSymbol}`))) {
+      if (!statementCall && node.steps[stepIndex + 1]?.type === 'Call' && (matched !== undefined || map.activation.mixins?.has(`.${missingSymbol}`) || map.activation.mixins?.has(`#${missingSymbol}`))) {
         rejectComposedMemberCall(node, matched, missingSymbol);
       }
     }
@@ -9090,8 +9090,8 @@ function evalCall(
   return node.name.charCodeAt(0) === 45 && selected === undefined && ev.has(node.name.slice(1)) && hasAmbientFunctions(node)
     ? mapMaybe(evalCall(withFields(node, { name: node.name.slice(1) }), frame, e, demanded), value => negatedCall(value) ?? dispatchCall(node, frame, e, ev, selected, 'ambient', demanded))
     : selected === undefined && isNamespaceCall(node.name)
-      ? evalReference(namespaceMemberCall(node), frame, e)
-      : dispatchCall(node, frame, e, ev, selected, selected !== undefined && e.s.moduleFns?.has(selected) === true ? 'imported' : hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
+      ? (demanded ? evalTypedSlot : evalReference)(namespaceMemberCall(node), frame, e)
+      : dispatchCall(node, frame, e, ev, selected, selected !== undefined && isNamespaceCall(node.name) ? 'imported' : hasAmbientFunctions(node) ? 'ambient' : 'local', demanded);
 }
 
 /**
@@ -20591,8 +20591,10 @@ function rejectComposedMemberCall(node: Reference, member: DeclEntry | undefined
     && lambdaResultValue(value.rules) !== undefined) {
     return;
   }
-  const reason = `"${symbol}" cannot be called as a value: a @compose stylesheet module has no member functions `
-    + '(its `.name()` is a mixin call, a statement); functions come from @use script modules.';
+  const reason = !isValueSlotArray(node.base) && node.base.type === 'Lookup' && node.base.kind === 'entry'
+    ? `"${symbol}" is not a function of this module, so it cannot be called.`
+    : `"${symbol}" cannot be called as a value: a @compose stylesheet module has no member functions `
+      + '(its `.name()` is a mixin call, a statement); functions come from @use script modules.';
   throw new JessError({
     code: 'eval/invalid-function',
     phase: 'eval',

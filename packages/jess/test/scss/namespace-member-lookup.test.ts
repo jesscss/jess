@@ -38,7 +38,6 @@ describe('.scss ns.fn() calls the member of the module `ns`', () => {
     for (const source of [
       '@use "sass:color";\na { b: color.red(var(--a)); }',
       '@use "sass:color" as c;\na { b: c.red(var(--a)); }',
-      '@use "sass:color" as *;\na { b: red(var(--a)); }',
       '@use "sass:math";\na { b: math.div(1, 0); }'
     ]) {
       await expect(compile(source)).rejects.toMatchObject({ code: 'eval/invalid-function' });
@@ -62,6 +61,31 @@ describe('.scss ns.fn() calls the member of the module `ns`', () => {
     ]);
     await expect(render(dir, 'input.scss')).resolves.toBe('a {\n  b: 4px;\n  c: 6px;\n  d: 5px;\n}\n');
     await expect(render(dir, 'missing.scss')).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: 'Symbol "nope" is undefined in this scope.' });
+  });
+
+  it('hands a demanded read the typed value of a stylesheet module\'s @function', async () => {
+    const dir = files([
+      ['_m.scss', '@function colour() { @return #c00; }\n@function lst() { @return 1px 2px; }\n$vv: 1;\n'],
+      ['colour.scss', '@use "sass:color";\n@use "m";\na { b: darken(m.colour(), 10%); c: rgba(m.colour(), .5); d: lightness(m.colour()); e: color.adjust(m.colour(), $red: 1); f: type-of(m.colour()); g: m.colour(); }\n'],
+      ['list.scss', '@use "sass:list";\n@use "m";\na { b: list.nth(m.lst(), 2); c: length(m.lst()); d: type-of(m.lst()); @each $x in m.lst() { e: $x; } }\n'],
+      ['if.scss', '@use "m";\na { @if m.colour() == #c00 { b: yes; } @else { b: no; } }\n'],
+      ['variable.scss', '@use "m";\na { b: m.vv(1); }\n']
+    ]);
+    await expect(render(dir, 'colour.scss')).resolves.toBe('a {\n  b: #990000;\n  c: rgba(204, 0, 0, 0.5);\n  d: 40%;\n  e: #cd0000;\n  f: color;\n  g: #c00;\n}\n');
+    await expect(render(dir, 'list.scss')).resolves.toBe('a {\n  b: 2px;\n  c: 2;\n  d: list;\n  e: 1px;\n  e: 2px;\n}\n');
+    await expect(render(dir, 'if.scss')).resolves.toBe('a {\n  b: yes;\n}\n');
+    await expect(render(dir, 'variable.scss')).rejects.toMatchObject({ code: 'eval/invalid-function', reason: '"vv" is not a function of this module, so it cannot be called.' });
+  });
+
+  it.each([
+    ['rgb(var(--r), 0, 0)', 'color'],
+    ['hsl(var(--h) 50% 50%)', 'color'],
+    ['opacity(.5)', 'color'],
+    ['red(var(--a))', 'color'],
+    ['min(100%, 500px)', 'math'],
+    ['scale(1.2)', 'math']
+  ])('a bare %s under `@use "sass:%s" as *` can be a CSS function, so it is not J1\'s and stays as written', async (call, module) => {
+    await expect(renderScss(`@use "sass:${module}" as *;\na { b: ${call}; }`)).resolves.toBe(`a {\n  b: ${call.replace('.5', '0.5')};\n}\n`);
   });
 
   it('a variable named as the module does not hide its functions', async () => {
