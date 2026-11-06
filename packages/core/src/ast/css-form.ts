@@ -150,8 +150,8 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format:
  * its type includes `FunctionCall`; any other reads a call as it always has.
  *
  * `filter`: the name is also a CSS filter function, so one argument of a number
- * only the browser knows is not a colour, nor is one of no known type where the
- * call may be the filter (`filter-position.ts`).
+ * only the browser knows fails as a known number does, and one of no known type
+ * is declined where the call may be the filter (`filter-position.ts`).
  */
 export function defineForm(name: string, spec: { readonly params: readonly ParamSpec[]; readonly form: (...args: never[]) => FormCall | Color; readonly format?: number; readonly filter?: boolean }): Fn {
   const activations = new Map<AnonymousMixin, FormActivation>();
@@ -161,8 +161,13 @@ export function defineForm(name: string, spec: { readonly params: readonly Param
     body: (args: ValueGroup, ctx: { readonly modes: { readonly compress?: boolean; readonly filterPosition?: boolean } }): MaybePromise<ValueGroup> => {
       const items = groupItems(args);
       const lone = items[0];
-      if (spec.filter === true && items.length === 1 && lone !== undefined && !isValueGroupArray(lone) && lone.type === 'FunctionCall' && lone.result !== 'color' && (lone.result === 'numeric' || ctx.modes.filterPosition === true)) {
-        throw new FunctionDeclined();
+      if (spec.filter === true && items.length === 1 && lone !== undefined && !isValueGroupArray(lone) && lone.type === 'FunctionCall') {
+        if (lone.result === 'numeric') {
+          throw new TypeError(`${name}: arg 0 expected Color, got a number`);
+        }
+        if (lone.result !== 'color' && ctx.modes.filterPosition === true) {
+          throw new FunctionDeclined();
+        }
       }
       const call: FormCall | Color = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, items));
       if ('type' in call) {

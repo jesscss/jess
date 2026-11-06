@@ -140,6 +140,12 @@ describe('a lone grayscale(), invert() or contrast() over an unknown goes by whe
     await expect(compile('@-from "#sass" import (grayscale);\n.a { filter: $grayscale(var(--x)); }', '.jess')).resolves.toBe(`.a {\n  filter: ${GRAY};\n}\n`);
   });
 
+  it('fails a number through a module, as J1 has it', async () => {
+    for (const call of ['invert(1)', 'grayscale(50%)', 'opacity(50%)', 'grayscale(calc(1 * var(--x)))']) {
+      await expect(compile(`@use "sass:color";\na { b: color.${call}; }`)).rejects.toMatchObject({ code: 'eval/invalid-function' });
+    }
+  });
+
   it('goes by position for a bare name under @use … as *, which stays ambient', async () => {
     await expect(compile('@use "sass:color" as *;\na { filter: grayscale(var(--x)); color: invert(var(--x)); backdrop-filter: invert(50%); }'))
       .resolves.toBe(`a {\n  filter: grayscale(var(--x));\n  color: ${INVERT};\n  backdrop-filter: invert(50%);\n}\n`);
