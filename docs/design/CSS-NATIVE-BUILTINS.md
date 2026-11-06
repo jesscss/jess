@@ -362,7 +362,7 @@ not take beside a `var()` fails: `@less.rgb(var(--r), 1px, 0)`.
 
 The message says what the call printed and that the output depends on browser support for that form.
 
-A dotted `.scss` call carries a span so the report can name its place, which also adds a source-map segment for it: `color.adjust(#c00, $red: 10)` maps its value where it did not before. CSS is unchanged. The worst case is one more mapping per dotted call: an all-dotted fixture, with the option off, went from 2,100 to 3,900 segments and from 10,922 to 19,922 map bytes.
+Every `.scss` call carries a span, as a Less call does, so a report names its place, and every call gets a source-map segment: `color.adjust(#c00, $red: 10)` and `f(1px)` map their values where they did not before. CSS is unchanged. The worst case is one more mapping per call: an all-dotted fixture went from 2,100 to 3,900 segments and from 10,922 to 19,922 map bytes, with the option off.
 
 Gaps:
 
@@ -440,7 +440,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 - `math.div(var(--x), 0)` and `(var(--x) / 0)` print `calc(var(--x) / 0)`: V7 fails only a division it knows of.
 - Conversion to `.jess` reports a gap for a call as an operand of `.scss` math (`var(--x) * 2`, `env(a) * 2`, `calc($x * 2) * 3`), because `$( … )` takes no call, and for `($x / 2)`, as it does for `(1 / 2)`. `$x * 2`, `-$x`, `$x % 3` and the rest over a reference convert and render the same.
 - A `@forward`ed member is not found through a dotted call.
-- A `.scss` diagnostic for a plain call reports 1:1, because that `FunctionCall` has no span; a dotted call (`color.adjust(…)`) has one.
+- Some `.scss` diagnostics about a call still report 1:1: `eval/bad-call-arity` for a user `@function` (`f()` where `f` takes `$x`), and `resolve/name-not-found` (`map-get(1px, a)`). `eval/invalid-function` names where the call was written, plain or dotted.
 - `color.invert(1)`, `color.grayscale(50%)` and `color.opacity(50%)` are errors, per J1, where the bare calls are CSS filters.
 - A bare operator in an argument of a call written out stays as written in `.scss`, invalid CSS as it was before: `translate(-$x, 0)` is `translate(-1 * var(--x), 0)`, `translate(-$x, $x * 2)` is `translate(-1 * var(--x), var(--x) * 2)`, and `repeat(2, $x * 2)` is `repeat(2, var(--x) * 2)`. A group's route takes no dialect, and Less's bare `foo(var(--a) * 2)` stays as written, so this needs `.scss` told apart on the written call.
 - `translate(1px, 2px) + 1`, `math.div(linear-gradient(red, blue), 2)`, `ceil(linear-gradient(red, blue))` and `min(1px, 1em) + 1` reach `calc()` or a form as a call of no known type. They are known CSS types; widening the list of them (`other`) is later work.
