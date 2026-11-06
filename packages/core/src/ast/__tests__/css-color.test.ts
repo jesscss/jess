@@ -354,7 +354,8 @@ describe('a built-in is its CSS form', () => {
     expect(value('rgb(currentcolor, 0.5)')).toBe('rgb(from currentcolor r g b / 0.5)');
     expect(value('rgba(darken(var(--x), 1%), 0.5)')).toBe('rgb(from hsl(from var(--x) h s clamp(0, l - 1, 100)) r g b / 0.5)');
     expect(value('rgba(foo(1), 0.5)')).toBe('rgba(foo(1), 0.5)');
-    expect(value('rgba(#f00, var(--a))')).toBe('rgba(#f00, var(--a))');
+    expect(value('rgba(#f00, var(--a))')).toBe('rgb(from #f00 r g b / var(--a))');
+    expect(value('rgba(var(--c), var(--a))')).toBe('rgba(var(--c), var(--a))');
     expect(value('rgba(10px, 0.5)')).toBe('rgba(10px, 0.5)');
     expect(value('rgba(#f00 0.5)')).toBe('rgba(#f00 0.5)');
   });
@@ -373,18 +374,18 @@ describe('a built-in is its CSS form', () => {
     expect(value('rgb(#f00, 0.5, 0.5)')).toBe('rgb(#f00, 0.5, 0.5)');
   });
 
-  it('leaves an alpha only the browser knows to be computed by a later form', () => {
-    expect(value('fade(#336699, var(--a))')).toBe('fade(#336699, var(--a))');
-    expect(value('fade(var(--c), var(--a))')).toBe('fade(var(--c), var(--a))');
+  it('prints the form over an alpha only the browser knows', () => {
+    expect(value('fade(#336699, var(--a))')).toBe('rgb(from #336699 r g b / var(--a))');
+    expect(value('fade(var(--c), var(--a))')).toBe('rgb(from var(--c) r g b / var(--a))');
   });
 
-  it('prints hsv() over a hue only the browser knows, and writes out any other unknown', () => {
+  it('prints hsv() over what only the browser knows', () => {
     expect(value('hsv(var(--h), 50%, 50%)')).toBe('hwb(var(--h) 25% 50%)');
     expect(value('hsv(var(--h), 50%, 75%)')).toBe('hwb(var(--h) 37.5% 25%)');
     expect(value('hsva(var(--h), 50%, 50%, 0.5)')).toBe('hwb(var(--h) 25% 50% / 0.5)');
     expect(value('hsv(var(--h), 33.3%, 66.6%)')).toBe('hwb(var(--h) 44.4222% 33.4%)');
-    expect(value('hsv(90, var(--s), 50%)')).toBe('hsv(90, var(--s), 50%)');
-    expect(value('hsva(90, 50%, 50%, var(--a))')).toBe('hsva(90, 50%, 50%, var(--a))');
+    expect(value('hsv(90, var(--s), 50%)')).toBe('hwb(90 calc((1 - var(--s) / 100%) * 50%) 50%)');
+    expect(value('hsva(90, 50%, 50%, var(--a))')).toBe('hwb(90 25% 50% / var(--a))');
   });
 
   it('reads a known origin by its channels, whatever its spelling', () => {

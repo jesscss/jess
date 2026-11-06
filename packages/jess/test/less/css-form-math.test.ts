@@ -151,6 +151,74 @@ describe('a math built-in over a known input', () => {
   });
 });
 
+describe('an alpha, or an S or V, only the browser knows has its form', () => {
+  it.each([
+    ['fade(#333, var(--a))', 'rgb(from #333 r g b / var(--a))'],
+    ['fade(var(--c), var(--a))', 'rgb(from var(--c) r g b / var(--a))'],
+    ['fade(#333, var(--a) + 5%)', 'rgb(from #333 r g b / calc(var(--a) + 5%))'],
+    ['rgba(#000, var(--a))', 'rgb(from #000 r g b / var(--a))'],
+    ['rgba(currentcolor, var(--a))', 'rgb(from currentcolor r g b / var(--a))'],
+    ['rgb(#000, var(--a))', 'rgb(from #000 r g b / var(--a))'],
+    ['fadein(#333, var(--a))', 'rgb(from #333 r g b / calc(alpha + var(--a) / 100%))'],
+    ['fadeout(var(--c), var(--a))', 'rgb(from var(--c) r g b / calc(alpha - var(--a) / 100%))'],
+    ['fadein(#333, var(--a), relative)', 'rgb(from #333 r g b / calc(alpha + alpha * var(--a) / 100%))'],
+    ['fadeout(#333, var(--a), relative)', 'rgb(from #333 r g b / calc(alpha - alpha * var(--a) / 100%))'],
+    ['hsv(120, var(--s), 75%)', 'hwb(120 calc((1 - var(--s) / 100%) * 75%) 25%)'],
+    ['hsv(120, 50%, var(--v))', 'hwb(120 calc(0.5 * var(--v)) calc(100% - var(--v)))'],
+    ['hsv(120, .5, var(--v))', 'hwb(120 calc(0.5 * var(--v)) calc(100% - var(--v)))'],
+    ['hsv(var(--h), var(--s), var(--v))', 'hwb(var(--h) calc((1 - var(--s) / 100%) * var(--v)) calc(100% - var(--v)))'],
+    ['hsva(120, 50%, 75%, var(--a))', 'hwb(120 37.5% 25% / var(--a))'],
+    ['hsva(120, var(--s), 75%, .5)', 'hwb(120 calc((1 - var(--s) / 100%) * 75%) 25% / 0.5)'],
+    ['darken(fade(#333, var(--a)), 10%)', 'hsl(from rgb(from #333 r g b / var(--a)) h s clamp(0, l - 10, 100))'],
+    ['fade(hsv(120, var(--s), 75%), 50%)', 'rgb(from hwb(120 calc((1 - var(--s) / 100%) * 75%) 25%) r g b / 0.5)']
+  ])('%s', async (source, form) => {
+    await expect(value(source)).resolves.toBe(form);
+  });
+
+  it.each([
+    ['rgba(var(--c), .5)', 'rgba(var(--c), 0.5)'],
+    ['rgba(var(--c), var(--a))', 'rgba(var(--c), var(--a))'],
+    ['hsl(var(--h), 50%, 50%)', 'hsl(var(--h), 50%, 50%)'],
+    ['fadein(#333, var(--a) + 5)', 'fadein(#333, calc(var(--a) + 5))'],
+    ['fade(#333, var(--a) + .5)', 'fade(#333, calc(var(--a) + 0.5))'],
+    ['hsv(120, var(--s) + .05, 75%)', 'hsv(120, calc(var(--s) + 0.05), 75%)'],
+    ['fade(#333, unit(var(--x), px))', 'fade(#333, calc(var(--x) * 1px))'],
+    ['hsva(120, 50%, 75%, unit(var(--x), px))', 'hsva(120, 50%, 75%, calc(var(--x) * 1px))'],
+    ['rgba(#000, unit(var(--x), px))', 'rgba(#000, calc(var(--x) * 1px))']
+  ])('%s stays written', async (source, written) => {
+    await expect(value(source)).resolves.toBe(written);
+  });
+
+  it('computes what is known', async () => {
+    await expect(value('fade(#333, 50%)')).resolves.toBe('rgba(51, 51, 51, 0.5)');
+    await expect(value('fadein(rgba(0, 0, 0, .5), 10%)')).resolves.toBe('rgba(0, 0, 0, 0.6)');
+    await expect(value('hsv(120, 50%, 75%)')).resolves.toBe('#60bf60');
+    await expect(value('hsva(120, 50%, 75%, 50%)')).resolves.toBe('rgba(96, 191, 96, 0.5)');
+  });
+
+  it.each([
+    ['@less.fade(#333, var(--a))', 'rgb(from #333 r g b / var(--a))'],
+    ['@less.rgba(#000, var(--a))', 'rgb(from #000 r g b / var(--a))'],
+    ['@less.fadein(#333, var(--a))', 'rgb(from #333 r g b / calc(alpha + var(--a) / 100%))'],
+    ['@less.hsl(var(--h), 50%, 50%)', 'hsl(var(--h), 50%, 50%)'],
+    ['@less.hsl(var(--h), 50%, 50%, .5)', 'hsl(var(--h), 50%, 50%, 0.5)'],
+    ['@less.hsla(120, var(--s), 50%, var(--a))', 'hsla(120, var(--s), 50%, var(--a))'],
+    ['@less.hsv(120, var(--s), 75%)', 'hwb(120 calc((1 - var(--s) / 100%) * 75%) 25%)']
+  ])('imported, %s', async (source, form) => {
+    await expect(css(`@use "#less"; .x { v: ${source}; }`)).resolves.toContain(`v: ${form};`);
+  });
+
+  it.each([
+    '@less.rgba(var(--c), .5)',
+    '@less.fadein(#333, var(--a) + 5)',
+    '@less.fade(#333, var(--a) + .5)',
+    '@less.hsv(120, var(--s) + .05, 75%)',
+    '@less.hsl(var(--h), 50, 50)'
+  ])('imported, %s fails', async (source) => {
+    await expect(css(`@use "#less"; .x { v: ${source}; }`)).rejects.toMatchObject({ code: 'eval/invalid-function' });
+  });
+});
+
 describe('a form over a value whose type its structure gives is valid CSS of that type', () => {
   it.each([
     ['ceil(var(--x) + 1px)', 'round(up, var(--x) + 1px, 1px)'],
@@ -367,10 +435,6 @@ describe('a group of math in a call written out', () => {
   it('in a colour channel `fade` reads', async () => {
     await expect(css('@use "#less"; @expose h; @h: 10; .x { v: @less.fade(hsl((@h + 1) 50% 50%), 50%); }')).resolves.toContain('v: rgb(from hsl(calc(var(--h, 10) + 1) 50% 50%) r g b / 0.5);');
     await expect(css('@use "#less"; .x { v: @less.fade(hsl((var(--h) + 1) 50% 50%), 50%); }')).resolves.toContain('v: rgb(from hsl(calc(var(--h) + 1) 50% 50%) r g b / 0.5);');
-  });
-
-  it('an alpha amount only the browser knows has no form yet', async () => {
-    await expect(value('fade(#333, var(--a))')).resolves.toBe('fade(#333, var(--a))');
   });
 
   it('math the author wrote bare, or in a prefixed `calc()`, stays as written', async () => {
