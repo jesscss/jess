@@ -461,7 +461,7 @@ describe('Less AST grammar facts', () => {
 
   it('reads the gap before a value and after a delim that leads a value run', () => {
     for (const [source, value] of [
-      ['@media (a: a = /*c*/ b) { c { d: e } }', '/*c*/'],
+      ['@all: ~/*c*/"all"; @media @{all} { a { b: c } }', '~/*c*/"all"'],
       ['a { b: /*c*/ U+26 }', 'U+26']
     ] as const) {
       const result = run(lessGrammar.Document, source, {

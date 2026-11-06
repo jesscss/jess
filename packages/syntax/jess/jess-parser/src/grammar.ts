@@ -3456,7 +3456,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
     /*
      * A node so this arm always publishes one: a dispatch can't show that, and
-     * the frames of the ladder above open late only when their corner does.
+     * the rung directly above opens its frame late only when its corner does.
      */
     node<ValueNode>('ValueAtom', g.IdentifierOrFunction, children => requireValueNode(children[0])),
     g.Quoted,

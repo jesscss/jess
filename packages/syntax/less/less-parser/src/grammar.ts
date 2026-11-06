@@ -85,7 +85,6 @@ import {
   isQuoted,
   isReference,
   isReferenceTailFact,
-  isRuleset,
   isRulesetTailFact,
   isLessSelectorBranch,
   isSelectorBranchFact,
@@ -2599,6 +2598,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const syntaxTypeName = noTrivia(sequence(syntaxTypeOpenDelim, g.Keyword, syntaxTypeCloseDelim));
 
+  /**
+   * A piece no math value starts: a lone `-` or `%`, a `<syntax>` type name, a
+   * delim. `ValueRun` reads it by reference, which restores the trivia its
+   * `noTrivia` cleared, so the gap after a delim (`~/*c*\/"all"`) stays in the
+   * run's frame, where a comment is kept. Written inline there, that gap would
+   * fall inside the next piece and the comment would be lost.
+   */
+  const terminalValuePiece = choice(literal('-'), literal('%'), syntaxTypeName, delimValue);
+
   /*
    * Value pieces are separated by grammar-owned whitespace. Keeping that token
    * here is what lets a canonical Sequence retain multiline CSS layout without
@@ -2610,15 +2618,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * A `<` reaches a piece only as a `<syntax>` type name (`syntaxTypeName`);
    * anywhere else it is a comparison.
    */
-
-  /**
-   * A piece no math value starts: a lone `-` or `%`, a `<syntax>` type name, a
-   * delim. `ValueRun` reads it by reference, which restores the trivia its
-   * `noTrivia` cleared, so the gap after a delim (`~ /*c*\/ 2`) stays in the
-   * run's frame, where a comment is kept. Written inline there, that gap would
-   * fall inside the next piece and the comment would be lost.
-   */
-  const terminalValuePiece = choice(literal('-'), literal('%'), syntaxTypeName, delimValue);
   const valuePiece = choice(g.UnicodeRange, g.MathValue, g.terminalValuePiece);
   const nestedAtRuleValueStart = regex(/@[^;{}()'"]*\{/);
   /**
