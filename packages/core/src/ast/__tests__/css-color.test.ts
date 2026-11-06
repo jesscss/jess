@@ -506,9 +506,12 @@ describe('a built-in is its CSS form', () => {
     expect(value('darken(solid, 10%)')).toBe('darken(solid, 10%)');
   });
 
-  it('leaves an amount only the browser knows to be computed by a later form', () => {
-    expect(value('darken(#336699, var(--a))')).toBe('darken(#336699, var(--a))');
-    expect(value('darken(var(--c), var(--a))')).toBe('darken(var(--c), var(--a))');
+  it('reads an amount only the browser knows as a percentage (Q2)', () => {
+    expect(value('darken(#336699, var(--a))')).toBe('hsl(from #336699 h s clamp(0, l - var(--a) / 1%, 100))');
+    expect(value('darken(var(--c), var(--a))')).toBe('hsl(from var(--c) h s clamp(0, l - var(--a) / 1%, 100))');
+    expect(value('darken(var(--c), var(--a), relative)')).toBe('hsl(from var(--c) h s clamp(0, l - l * var(--a) / 1% / 100, 100))');
+    expect(value('saturate(var(--c), var(--a))')).toBe('hsl(from var(--c) h clamp(0, s + var(--a) / 1%, 100) l)');
+    expect(value('spin(var(--c), var(--a))')).toBe('hsl(from var(--c) calc(h + var(--a)) s l)');
   });
 
   it('nests', () => {

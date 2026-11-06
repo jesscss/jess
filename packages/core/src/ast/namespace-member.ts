@@ -12,8 +12,9 @@ import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import type { CallValue, Reference } from './nodes.js';
-import { NO_SPAN, sourceStartOf } from './provenance.js';
+import { declarationReference, lookupStep, reference, referenceCall } from './nodes.js';
+import type { CallValue, FunctionCall, Reference } from './nodes.js';
+import { NO_SPAN, sourceEndOf, sourceStartOf, withSourceSpan } from './provenance.js';
 import type { Frame } from './serialize.js';
 
 /** What these decisions read from the render session. */
@@ -107,6 +108,29 @@ export function hiddenNamespace<L extends NamespaceLane>(read: MemberRead<L>, st
 export function memberNotFound<L extends NamespaceLane>(read: MemberRead<L>, stepIndex: number, symbol: string, e: L): never {
   hiddenNamespace(read, stepIndex, e);
   throw ERR.nameNotFound({ node: read.node, ...callSiteLocation(read.node, e.s), meta: { symbol } });
+}
+
+/** Whether a call is spelled `ns.fn(…)`, which only `.scss` parses as one name. An escaped dot is part of an identifier. */
+export function isNamespaceCall(name: string): boolean {
+  const dot = name.indexOf('.');
+  return dot > 0 && name.charCodeAt(dot - 1) !== 92;
+}
+
+/**
+ * A `.scss` call `ns.fn(…)` that no imported function answers, as a read of the
+ * member `fn` of the module `ns`: the chain `ns.$var` is built as. So a
+ * stylesheet's `@function` is invoked, and a member or a namespace that does not
+ * exist is `resolve/name-not-found`.
+ */
+export function namespaceMemberCall(node: FunctionCall): Reference {
+  const { name } = node;
+  const dot = name.indexOf('.');
+  const span = { start: sourceStartOf(node), end: sourceEndOf(node) };
+  return withSourceSpan(reference(
+    withSourceSpan(declarationReference('$'), span),
+    [lookupStep('member', name.slice(0, dot)), lookupStep('member', name.slice(dot + 1)), referenceCall(node.args)],
+    name
+  ), span);
 }
 
 /* A usable module namespace identifier (the same ident shape the grammars use). */

@@ -50,7 +50,7 @@ describe('keyword arguments in a function call', () => {
     /* `$end-at` is the third parameter; nothing names the second. Dart Sass:
      * `Missing argument $start-at.` — never `"bcd"`, which reads `2` as `$start-at`. */
     await expect(render('@use "sass:string"; a { b: string.slice("abcd", $end-at: 2); }', '.scss'))
-      .resolves.toBe('a {\n  b: string.slice("abcd", $end-at: 2);\n}\n');
+      .rejects.toMatchObject({ code: 'eval/invalid-function' });
     await expect(render('@use "sass:color"; a { b: color.adjust(#0d6efd, $lightness: -10%); }', '.scss'))
       .resolves.toBe('a {\n  b: #0257d5;\n}\n');
   });
@@ -104,10 +104,8 @@ describe('keyword arguments in a function call', () => {
   });
 
   it('parses the Sass module-call spelling that blocked the Foundation corpus', async () => {
-    /* `color.adjust` has no implementation yet, so it PRESERVES — the point of
-     * this case is that it reaches evaluation at all instead of being a parse
-     * error, which is what blocked fifteen Foundation entry points. */
-    await expect(render('$g: #333; a { b: color.adjust($g, $lightness: -10%); }', '.scss'))
-      .resolves.toContain('color.adjust(');
+    /* A parse error here is what blocked fifteen Foundation entry points. */
+    await expect(render('@use "sass:color"; $g: #333; a { b: color.adjust($g, $lightness: -10%); }', '.scss'))
+      .resolves.toBe('a {\n  b: #1a1a1a;\n}\n');
   });
 });

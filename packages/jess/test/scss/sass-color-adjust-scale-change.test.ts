@@ -84,7 +84,10 @@ describe('the errors Dart Sass raises are coded diagnostics', () => {
       reason: expect.stringContaining(reason)
     });
 
-    /* Under the default `functionMode`, a call that cannot produce a value is written out as authored. */
-    await expect(render(source)).resolves.toBe(`a {\n  b: ${call.replace('$primary', '#0d6efd')};\n}\n`);
+    /* A module's function is never a CSS function, so the default `functionMode` has nothing to write out (ruling J1). */
+    await expect(render(source)).rejects.toMatchObject({
+      code: 'eval/invalid-function',
+      reason: expect.stringContaining(reason)
+    });
   });
 });

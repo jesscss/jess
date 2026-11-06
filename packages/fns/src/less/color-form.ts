@@ -1,18 +1,20 @@
-import { defineForm, type FormCall } from '@jesscss/core/form';
+import { asNumber, defineForm, formNumber, knownUnit, type FormCall } from '@jesscss/core/form';
 import { mulExact, percentToFraction, subExact } from '../util/decimal.js';
 import { inUnits, normalizeHue } from './color-ctor-helper.js';
 import { isValueGroupArray, makeDimension, textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 
 /** A colour a form's relative colour reads as its origin, or what only the browser knows of one. */
-export const COLOR_ARG = { type: ['Color', 'FunctionCall'] } as const;
+export const COLOR_ARG = { type: ['Color', 'FunctionCall'], fits: (value: ValueGroup): boolean => inUnits(value, []) } as const;
 
 /** An amount in a channel, written as a number on that channel's scale, whatever its unit (css-color-5 §4.4). */
-export const channelAmount = (amount: Dimension): Dimension => makeDimension(amount.number);
+export const channelAmount = (amount: Dimension): Dimension => formNumber(amount.number);
 
 /** An amount of alpha, a number on 0–1 whatever its unit: `10%` and `10` alike are 0.1 (css-color-5 §4.1). */
 export const alphaAmount = (amount: Dimension): Dimension => makeDimension(percentToFraction(amount.number));
 
 const HUE_UNITS = ['', 'deg', 'grad', 'rad', 'turn'];
+
+const fitsPercent = (value: ValueGroup): boolean => inUnits(value, ['%']);
 
 /** A hue, known or only the browser's; written as a call or in degrees. */
 export const HUE_ARG = { type: ['Dimension', 'FunctionCall'], fits: (value: ValueGroup): boolean => inUnits(value, HUE_UNITS) } as const;
@@ -42,16 +44,38 @@ export function whiteBlack(s: Dimension, v: Dimension): readonly [white: Dimensi
     : [makeDimension(percentToFraction(mulExact(subExact(100, saturation), value)), '%'), makeDimension(subExact(100, value), '%')];
 }
 
-/** `name(color, amount, method?)` over its CSS form, and the form `method: relative` takes. */
+/** Whether a method picks the form `method: relative` takes. */
+function relativeMethod(name: string, method: Keyword | Quoted | WrittenCall | undefined): boolean {
+  if (method?.type === 'FunctionCall') {
+    throw new TypeError(`${name}: a method only the browser knows cannot pick a form`);
+  }
+  return method !== undefined && textOf(method) === 'relative';
+}
+
+/** `name(color, amount, method?)` over its CSS form, and the form `method: relative` takes; each with a form for an amount only the browser knows, taken to hold a percentage (Q2). */
 /* @__NO_SIDE_EFFECTS__ */
-export function defineAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0], amountOf: (amount: Dimension) => Dimension = channelAmount): Fn {
+export function defineAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0], absoluteDeferred: FormCall[0], relativeDeferred: FormCall[0]): Fn {
+  return defineForm(name, {
+    params: [COLOR_ARG, { type: ['Dimension', 'FunctionCall'], fits: fitsPercent }, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
+    form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall => {
+      const isRelative = relativeMethod(name, method);
+      if (amount.type === 'Dimension') {
+        return [isRelative ? relative : absolute, color, channelAmount(amount)];
+      }
+      const unit = knownUnit(amount);
+      return unit === undefined || unit === '%'
+        ? [isRelative ? relativeDeferred : absoluteDeferred, color, amount]
+        : [isRelative ? relative : absolute, color, asNumber(amount, unit)];
+    }
+  });
+}
+
+/** `name(color, amount, method?)` for an amount of alpha, which has no form while only the browser knows it. */
+/* @__NO_SIDE_EFFECTS__ */
+export function defineAlphaAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0]): Fn {
   return defineForm(name, {
     params: [COLOR_ARG, { type: 'Dimension' }, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
-    form: (color: ValueGroup, amount: Dimension, method?: Keyword | Quoted | WrittenCall): FormCall => {
-      if (method?.type === 'FunctionCall') {
-        throw new TypeError(`${name}: a method only the browser knows cannot pick a form`);
-      }
-      return [method !== undefined && textOf(method) === 'relative' ? relative : absolute, color, amountOf(amount)];
-    }
+    form: (color: ValueGroup, amount: Dimension, method?: Keyword | Quoted | WrittenCall): FormCall =>
+      [relativeMethod(name, method) ? relative : absolute, color, alphaAmount(amount)]
   });
 }

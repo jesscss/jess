@@ -731,6 +731,16 @@ export function FunctionCallValueNode(name, args, result, computed, bytes) {
   this.bytes = bytes;
 }
 
+export function ArithmeticValueNode(op, left, right, kept, bytes, written) {
+  this.type = 'Arithmetic';
+  this.op = op;
+  this.left = left;
+  this.right = right;
+  this.kept = kept;
+  this.bytes = bytes;
+  this.written = written;
+}
+
 export function AnyValueNode(bytes, escapedQuote, groups) {
   this.type = 'Any';
   this.bytes = bytes;
@@ -779,7 +789,7 @@ export function BlockValueNode(value, delimiter, bytes) {
 for (const f of [
   NullNode, ExposedNameNode, MixinPathSegmentNode, AtRuleStatementNode,
   GuardCompareNode, GuardLogicalNode, GuardNotNode, GuardValueNode, GuardCallNode, GuardDefaultNode,
-  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode, FunctionCallValueNode,
+  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode, FunctionCallValueNode, ArithmeticValueNode,
   AnyValueNode, UrlValueNode, BoolValueNode, NullValueNode, ListValueNode, CollectionValueNode, BlockValueNode
 ]) {
   f.prototype = Object.prototype;
@@ -804,7 +814,7 @@ for (const f of [
   ExpressionNode, ConditionNode, IfValueNode, VariableDeclarationNode, VariableExposeNode, MixinDefinitionNode,
   MixinCallNode, ApplyNode, StyleImportNode, ModuleImportNode, StylesheetNode, AtRuleBlockNode, UnknownAtRuleBlockNode,
   PluginNode, RulesetNode, RulesetExtendNode, RulesetGuardNode, RulesetExtendGuardNode, ReferenceCallNode, NullNode, AtRuleStatementNode,
-  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode, FunctionCallValueNode,
+  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode, FunctionCallValueNode, ArithmeticValueNode,
   AnyValueNode, UrlValueNode, BoolValueNode, NullValueNode, ListValueNode, CollectionValueNode, BlockValueNode
 ]) {
   const sentinels = Array.from({ length: f.length }, () => ({}));

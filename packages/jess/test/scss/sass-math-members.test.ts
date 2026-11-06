@@ -116,8 +116,8 @@ describe('sass:math members reject what Dart Sass rejects', () => {
     ).rejects.toMatchObject({ reason: expect.stringContaining(message) });
   });
 
-  it('keeps a rejected call as written by default', async () => {
-    await expect(render('math.sqrt(1px)')).resolves.toBe('a {\n  b: math.sqrt(1px);\n}\n');
+  it('rejects it under the default functionMode too: a module function is never a CSS function (ruling J1)', async () => {
+    await expect(render('math.sqrt(1px)')).rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 });
 

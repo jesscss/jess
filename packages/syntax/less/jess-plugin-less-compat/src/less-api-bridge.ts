@@ -333,6 +333,7 @@ export function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknow
     /* An escaped string (`~"…"`, `e()`) is an escaped Quoted to a 4.x plugin. */
     case 'Any': return node.escapedQuote === '' ? new LessAnonymous(node.bytes) : new LessQuoted(node.escapedQuote, node.bytes, true);
     case 'Keyword':
+    case 'Arithmetic':
     case 'FunctionCall': return new LessKeyword(node.bytes);
     case 'Color': return { type: 'Color', rgb: node.rgb, alpha: node.alpha, value: node.bytes, bytes: node.bytes, valueOf: () => node.bytes };
     case 'List':

@@ -5,11 +5,11 @@
   "contractDigest": "1534c6aa6a27dc6e791aca253f5939d5886bdbcaafcb07f5b9a4a08373a1b793",
   "implementations": {
     "owner": "b1d9e61caf804844a7f42037f9ee53cc06ae78624401cd1fd464de5f0c524ad5",
-    "compiler-convert": "518c1bb8be8974415fa801d195dec43cd8dd0d58c27482b60c05890054538321",
+    "compiler-convert": "885808c741bfa52db105f9eab2b51446ff8fd3534557abf3876114aaea2bdcca",
     "less-equivalence": "820a582fda25b3b746d0ee6553fe66a786c75aa2d991abaf54cc8f322fe3a588",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
-    "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
-    "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
+    "sass-list-map-functions": "d46a456dacad8fc205dd41cd378c76fcaa88772415fa4016f75bcbc907c20457",
+    "sass-selector-parse": "0f15e760ecafc11546d65927c5d0a92168d849ebbf163e4dfe0dfae683096d81"
   },
-  "rationale": "packages/core/src/value.ts exports holdsNone and NoCssForm beside what it exported; fns' contrast splits into a shared form and an ambient one the registry holds under the same name. The call-to-export pairs and the registry derivation are unchanged. The root package.json moves its parseman pin to 0.61.3; the binding names, modules and exports jessFunctions projects are unchanged. The root package.json gains the bench:scss:real script, merged with dev. No dependency, export, binding name or module this contract covers changes. The equivalence test lists namespacing-mixin-reference, a fixture .jess cannot spell yet; the bindings it checks are unchanged."
+  "rationale": "packages/core/src/value.ts exports holdsNone and NoCssForm beside what it exported; fns' contrast splits into a shared form and an ambient one the registry holds under the same name. The call-to-export pairs and the registry derivation are unchanged. The root package.json moves its parseman pin to 0.61.3; the binding names, modules and exports jessFunctions projects are unchanged. The root package.json gains the bench:scss:real script, merged with dev. No dependency, export, binding name or module this contract covers changes. The equivalence test lists namespacing-mixin-reference, a fixture .jess cannot spell yet; the bindings it checks are unchanged. The conversion suite gained a pin that .less and its .jess print the same under math: always; it is a test of the existing conversion path, so the contract and its consumers do not change. A .scss module call that fails is now an error under every functionMode and a missing member is resolve/name-not-found, so the sass-list-map-functions and sass-selector-parse suites expect the errors where they expected the call written out; bindings and conversions are unchanged."
 }
