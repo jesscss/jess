@@ -116,6 +116,8 @@ export interface FnIo {
 }
 
 interface BaseSpec {
+  /** A number only the browser knows leaves the call the CSS function of its name (`value-dispatch.ts` {@link declineOverUnknown}). */
+  readonly cssFunction?: boolean;
   /** The name is also a CSS filter function (`filter-position.ts`). */
   readonly filter?: boolean;
   /** Dispatch name while this declarative spec is being assembled into a callable. */

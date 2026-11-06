@@ -2,6 +2,7 @@ import { defineFunction, makeDimension } from '@jesscss/core/value';
 
 /** Less `acos(value)` — canonical value-domain callable, returned in radians. */
 const acos = defineFunction('acos', {
+  cssFunction: true,
   params: [{ name: 'value', type: 'Dimension' }] as const,
   body: (value) => {
     return makeDimension(Math.acos(value.number), 'rad');

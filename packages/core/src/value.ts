@@ -85,6 +85,7 @@ export { compareOrder } from './ast/value-guards.js';
 
 // --- the binary operators (`+ - * /`) every dialect computes with ---
 export { operate } from './ast/value-operate.js';
+export { operated as operatedOnUnknown } from './ast/math-operand.js';
 
 // --- unit table / conversion ---
 export { convertValue, foldUnit, groupOf, isCssUnit, unify, unitFactor } from './ast/value-units.js';
@@ -118,5 +119,5 @@ export type {
 } from './ast/functions/types.js';
 
 // --- registry seam ---
-export { createFnRegistry, defineFunction, FunctionDeclined, NoCssForm } from './ast/value-dispatch.js';
+export { createFnRegistry, declineOverUnknown, defineFunction, FunctionDeclined, isUnknownNumber, NoCssForm } from './ast/value-dispatch.js';
 export type { FnRegistry } from './ast/value-dispatch.js';

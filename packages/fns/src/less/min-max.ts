@@ -1,5 +1,5 @@
 import type { Dimension, ValueGroup, Value } from '@jesscss/core/value';
-import { groupItems, isValueGroupArray, makeDimension, unify } from '@jesscss/core/value';
+import { declineOverUnknown, groupItems, isValueGroupArray, makeDimension, unify } from '@jesscss/core/value';
 import { compatibleUnits, isUnitlessDimension } from '../shared/math/units.js';
 
 const isDimension = (value: ValueGroup): value is Dimension =>
@@ -61,6 +61,7 @@ export function minMax(isMin: boolean, list: ValueGroup): Value {
     throw new TypeError(`${name}() requires at least one argument`);
   }
 
+  declineOverUnknown(args);
   const numbers: Dimension[] = [];
   for (const arg of args) {
     if (!isDimension(arg)) {

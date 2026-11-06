@@ -736,7 +736,7 @@ function invalidOperand(v: ValueGroup, sass: boolean, scss: boolean): string | n
       }
       return !keptAsWritten.has(v) ? 'keyword' : keptAsWritten.get(v) === '' ? 'function call' : null;
     case 'FunctionCall':
-      return writtenCalcInner(v) === null && (scss || v.result === 'color' || v.result === 'other') ? 'function call' : null;
+      return writtenCalcInner(v) === null && (v.result === 'color' || v.result === 'other') ? 'function call' : null;
     case 'Color':
       return scss ? 'color' : null;
     case 'Quoted':

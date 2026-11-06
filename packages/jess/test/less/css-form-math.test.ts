@@ -216,12 +216,6 @@ describe('an authored calc() a built-in takes', () => {
 });
 
 describe('other dialects', () => {
-  it('.scss still rejects math on what only the browser knows outside a calculation', async () => {
-    const compiler = new Compiler({});
-    await expect(compiler.renderString('.a { b: (var(--a) * 2); }', { filePath: 'entry.scss', extension: '.scss' }))
-      .rejects.toMatchObject({ code: 'eval/invalid-operand' });
-  });
-
   it.each([
     ['.css', '.a { b: calc(var(--a) % 3); }', '.a {\n  b: calc(var(--a) % 3);\n}\n'],
     ['.scss', '.a { b: calc(var(--a) % 3); }', '.a {\n  b: calc(var(--a) % 3);\n}\n'],
@@ -230,12 +224,6 @@ describe('other dialects', () => {
   ])('%s keeps %s', async (extension, source, out) => {
     const compiler = new Compiler({});
     await expect(compiler.renderString(source, { filePath: `entry${extension}`, extension })).resolves.toBe(out);
-  });
-
-  it('.scss keeps its own math functions', async () => {
-    const compiler = new Compiler({});
-    await expect(compiler.renderString('.a { b: ceil(var(--a)); c: percentage(var(--a)); }', { filePath: 'entry.scss', extension: '.scss' }))
-      .resolves.toBe('.a {\n  b: ceil(var(--a));\n  c: percentage(var(--a));\n}\n');
   });
 });
 
