@@ -1,4 +1,4 @@
-import type { ValueGroup } from '@jesscss/core';
+import type { ValueGroup } from '@jesscss/core/value';
 import {
   groupItems,
   groupSeparator,
@@ -6,7 +6,7 @@ import {
   isValueGroupArray,
   makeBlock,
   makeList
-} from '@jesscss/core';
+} from '@jesscss/core/value';
 
 /** Sass's public separator names mapped onto the core value facts. */
 export type SassListSep = ',' | ' ' | '/';
@@ -41,10 +41,10 @@ export function resolveSassSeparator(
   if (separator === undefined) {
     return fallback;
   }
-  if (isValueGroupArray(separator) || (separator.type !== 'Quoted' && separator.type !== 'Keyword')) {
+  if (isValueGroupArray(separator) || (separator.type !== 'Quoted' && separator.type !== 'Keyword' && separator.type !== 'FunctionCall')) {
     throw new TypeError('$separator must be a quoted separator name');
   }
-  const value = separator.type === 'Quoted' ? separator.value : separator.text;
+  const value = separator.type === 'Quoted' ? separator.value : separator.bytes;
   switch (value) {
     case 'comma': return ',';
     case 'slash': return '/';
@@ -64,10 +64,10 @@ export function resolveSassBracketed(
   if (!isValueGroupArray(bracketed) && bracketed.type === 'Bool') {
     return bracketed.value;
   }
-  if (isValueGroupArray(bracketed) || (bracketed.type !== 'Quoted' && bracketed.type !== 'Keyword')) {
+  if (isValueGroupArray(bracketed) || (bracketed.type !== 'Quoted' && bracketed.type !== 'Keyword' && bracketed.type !== 'FunctionCall')) {
     throw new TypeError('$bracketed must be true, false, or auto');
   }
-  const value = bracketed.type === 'Quoted' ? bracketed.value : bracketed.text;
+  const value = bracketed.type === 'Quoted' ? bracketed.value : bracketed.bytes;
   if (value === 'auto') {
     return fallback;
   }

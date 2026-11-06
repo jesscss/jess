@@ -13,8 +13,8 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../../tree`, no legacy node).
  */
-import type { Color, Dimension, ValueGroup, Value } from '@jesscss/core';
-import { HEX, HSL, RGB, colorHsl, colorRawRgb, colorRgbRounded, groupSeparator, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core';
+import type { Color, Dimension, ValueGroup, Value } from '@jesscss/core/value';
+import { HEX, HSL, RGB, colorHsl, colorRawRgb, colorRgbRounded, groupSeparator, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core/value';
 import { clamp01, percentOf } from '../../shared/color/kernels.js';
 
 export function requireColor(value: Value): Color {
@@ -100,7 +100,7 @@ export function fractionAmount(value: Value): number {
  * literal turning translucent becomes rgb — dart-sass: `transparentize(#ff0, .5)`
  * → `rgba(255, 255, 0, 0.5)` and `opacify(#ff000080, .1)` →
  * `rgba(255, 0, 0, 0.6019607843)` (so an 8-digit hex is NOT preserved the way
- * Less's `withAlpha` preserves it), while `transparentize(hsl(120,50%,50%), .5)`
+ * Less's alpha family preserves it), while `transparentize(hsl(120,50%,50%), .5)`
  * → `hsla(120, 50%, 50%, 0.5)` keeps hsl. No 8-decimal rounding: the emit policy
  * (`formatNumber` + 1e-10 tolerance trim) owns numeric presentation.
  */

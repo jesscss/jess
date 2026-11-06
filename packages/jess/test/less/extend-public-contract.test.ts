@@ -226,4 +226,43 @@ describe('public direct-AST extend contracts', () => {
       '.x:nth-child(odd) {\n  c: d;\n}\n'
     );
   });
+
+  /*
+   * Extend matches the compiled selector (ledger X5); `&-b` under `.a` composes `.a-b`
+   * (EXTEND-SEMANTICS §5). The planner's atom fast-reject reads each rule's own
+   * selector, where `.a-b` appears nowhere (jess#500).
+   */
+  describe('a selector an `&` concatenation builds (jess#500)', () => {
+    const source = '.a {\n  color: red;\n  &-b {\n    color: blue;\n  }\n}\n';
+    const expected = '.a {\n  color: red;\n}\n.a-b,\n.q {\n  color: blue;\n}\n';
+
+    it.each([
+      ['exact', '.q:extend(.a-b) {}'],
+      ['all', '.q:extend(.a-b all) {}'],
+      ['body form', '.q { &:extend(.a-b); }']
+    ])('is a target at the root (%s)', async (_label, extend) => {
+      expect(await render(`${source}${extend}\n`, false)).toBe(expected);
+      expect(await render(`${source}${extend}\n`)).toBe(expected);
+    });
+
+    it('is a target when two concatenations build it', async () => {
+      expect(await render('.a { &-b { &-c { c: d; } } }\n.q:extend(.a-b-c) {}\n'))
+        .toBe('.a-b-c,\n.q {\n  c: d;\n}\n');
+    });
+
+    it('is a target when a mixin call places it', async () => {
+      expect(await render('.m() { .a { &-b { c: d; } } }\n.m();\n.q:extend(.a-b) {}\n'))
+        .toBe('.a-b,\n.q {\n  c: d;\n}\n');
+    });
+
+    it('is a target in .scss, which reads `&-b` as `&` then `-b`', async () => {
+      const css = await new Compiler({ output: { collapseNesting: true } })
+        .renderString('.a { &-b { c: d; } }\n.q { @extend .a-b; }\n', { extension: '.scss' });
+      expect(css).toBe('.a-b,\n.q {\n  c: d;\n}\n');
+    });
+
+    it('is no target for a name it does not build', async () => {
+      expect(await render('.a { &-b { c: d; } }\n.q:extend(.zz-b) {}\n')).toBe('.a-b {\n  c: d;\n}\n');
+    });
+  });
 });

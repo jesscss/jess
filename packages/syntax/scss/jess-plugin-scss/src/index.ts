@@ -6,14 +6,15 @@ import {
   type ModuleConfigRequest,
   parserDiagnostic,
   type UnitMode,
-  ProvidedModules,
   buildEvaluator,
+  recordPluginModule,
   type ValueEvaluator
 } from '@jesscss/core';
-import { createRequire } from 'node:module';
 import { makeSassRegistry } from '@jesscss/fns/sass/registry';
+import { jessFunctions } from './jess-functions.js';
 import { parseRecovering, parseSelector } from '@jesscss/scss-parser';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
+import { providedModules } from './provided-modules.js';
 
 export type ScssPluginOptions = {
   allowExtendSelectors?: ExtendSelectorKind[];
@@ -31,17 +32,6 @@ type ExtendSelectorKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 
 /* A `.scss` `calc()` is a Sass calculation, as dart-sass evaluates it (ledger V32); `selector.parse()` reads a string with the SCSS grammar's own selector list. */
 const sassValueEvaluator = buildEvaluator(makeSassRegistry(), { sassCalculations: true, sassOperands: true, parseSelector });
 
-/**
- * `#sass` and `#sass/<module>` are this plugin's private paths to the Sass
- * built-in modules in `@jesscss/fns` (the grammar spells `@use "sass:math"` as
- * `#sass/math`), resolved from THIS package's location. The plugin loads and
- * trusts them (no script runtime); the package spelling reaching the same file
- * is the same module.
- */
-const providedModules = new ProvidedModules([
-  ['#sass', '@jesscss/fns/sass'],
-  ...['color', 'list', 'map', 'math', 'selector', 'string'].map(name => [`#sass/${name}`, `@jesscss/fns/sass/${name}`] as const)
-], createRequire(import.meta.url));
 type ScssDialectDefaults = Required<Pick<
   NonNullable<ISafeParseResult['dialectDefaults']>,
   'unitMode'
@@ -51,6 +41,7 @@ export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
   readonly valueEvaluator: ValueEvaluator = sassValueEvaluator;
+  readonly jessFunctions = jessFunctions;
   readonly #dialectDefaults: ScssDialectDefaults;
 
   constructor(public opts: ScssPluginOptions = {}) {
@@ -70,6 +61,10 @@ export class ScssPlugin extends AbstractPlugin {
 
   canImportModule(absoluteFilePath: string): boolean {
     return providedModules.owns(absoluteFilePath);
+  }
+
+  packageModule(specifier: string): string | undefined {
+    return providedModules.packageOf(specifier);
   }
 
   import(absoluteFilePath: string): Promise<Record<string, unknown>> {
@@ -124,6 +119,9 @@ export class ScssPlugin extends AbstractPlugin {
   }
 }
 
-const scssPlugin = ((opts?: ScssPluginOptions) => new ScssPlugin(opts)) satisfies Plugin;
+const scssPlugin = ((opts?: ScssPluginOptions) =>
+  recordPluginModule(new ScssPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 
+export { jessFunctions } from './jess-functions.js';
+export { scssPlugin };
 export default scssPlugin;

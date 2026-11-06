@@ -15,8 +15,9 @@ import {
   MODULE_MODES,
   ProvidedModules,
   UNIT_MODES,
-  logger, type PluginHost, type ValueEvaluator } from '@jesscss/core';
+  logger, recordPluginModule, type PluginHost, type ValueEvaluator } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
+import { LESS_MODULE, jessFunctions } from './jess-functions.js';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { MathMode, ModuleMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
@@ -101,7 +102,7 @@ function checkModeOptions(
  * whatever the importing project installs. The plugin loads and trusts it (no
  * script runtime); the package spelling reaching the same file is the same module.
  */
-const providedModules = new ProvidedModules([['#less', '@jesscss/fns/less']], createRequire(import.meta.url));
+const providedModules = new ProvidedModules([[LESS_MODULE, '@jesscss/fns/less']], createRequire(import.meta.url));
 type LessPluginInput = LessPluginOptions & { plugins?: readonly unknown[] };
 type LessPluginCacheKey = string;
 
@@ -474,6 +475,7 @@ export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
   readonly valueEvaluator: ValueEvaluator = lessValueEvaluator;
+  readonly jessFunctions = jessFunctions;
   readonly #policy: LessPolicy;
 
   /** The modes this plugin was built with, under the settings a host scopes to each source. */
@@ -483,6 +485,9 @@ export class LessPlugin extends AbstractPlugin {
   /** `rewriteUrls`, or what the deprecated `relativeUrls` names when it is unset. */
   readonly #rewriteUrls: LessPluginOptions['rewriteUrls'];
   private readonly pluginHosts = new WeakMap<Context, PluginHost>();
+
+  /** A `require` per base directory; it holds only that directory's `node_modules` lookup paths, never file state. */
+  readonly #requires = new Map<string, NodeJS.Require>();
 
   /**
    * `own` is the options a user built the plugin with, when `opts` also carries
@@ -657,6 +662,10 @@ export class LessPlugin extends AbstractPlugin {
     return providedModules.owns(absoluteFilePath);
   }
 
+  packageModule(specifier: string): string | undefined {
+    return providedModules.packageOf(specifier);
+  }
+
   import(absoluteFilePath: string): Promise<Record<string, unknown>> {
     return providedModules.import(absoluteFilePath);
   }
@@ -681,7 +690,15 @@ export class LessPlugin extends AbstractPlugin {
     });
 
     const resolved = super.resolve(mapped, currentDir, searchPaths);
-    const out = [...resolved];
+
+    /*
+     * Node resolution only appends candidates after these, and `locate` takes
+     * the first that exists, so when one of these exists it cannot change
+     * which file loads.
+     */
+    if (this.locate(resolved, currentDir) !== null) {
+      return resolved;
+    }
     const bases = [currentDir, ...searchPaths, process.cwd()];
     const looksBareSpecifier = (p: string) =>
       !path.isAbsolute(p)
@@ -696,28 +713,29 @@ export class LessPlugin extends AbstractPlugin {
       }
       for (const base of bases) {
         const baseDir = path.isAbsolute(base) ? base : path.resolve(currentDir, base);
+        let req = this.#requires.get(baseDir);
+        if (req === undefined) {
+          req = createRequire(path.join(baseDir, '__jess_resolve__.js'));
+          this.#requires.set(baseDir, req);
+        }
+        let resolvedModule: string;
         try {
-          const req = createRequire(path.join(baseDir, '__jess_resolve__.js'));
-          const resolvedModule = req.resolve(candidate);
-          if (!out.includes(resolvedModule)) {
-            out.push(resolvedModule);
-          }
-          break;
+          resolvedModule = req.resolve(candidate);
         } catch {
           try {
-            const req = createRequire(path.join(baseDir, '__jess_resolve__.js'));
-            const resolvedModuleLess = req.resolve(`${candidate}.less`);
-            if (!out.includes(resolvedModuleLess)) {
-              out.push(resolvedModuleLess);
-            }
-            break;
+            resolvedModule = req.resolve(`${candidate}.less`);
           } catch {
             // keep trying other base dirs
+            continue;
           }
         }
+        if (!resolved.includes(resolvedModule)) {
+          resolved.push(resolvedModule);
+        }
+        break;
       }
     }
-    return out;
+    return resolved;
   }
 
   /**
@@ -751,8 +769,8 @@ export class LessPlugin extends AbstractPlugin {
 }
 
 export type { LessOptions } from 'styles-config';
-const lessPlugin = ((opts?: LessPluginOptions) => {
-  return new LessPlugin(opts);
-}) satisfies Plugin;
+export { jessFunctions } from './jess-functions.js';
+const lessPlugin = ((opts?: LessPluginOptions) =>
+  recordPluginModule(new LessPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 
 export default lessPlugin;

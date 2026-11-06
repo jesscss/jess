@@ -162,7 +162,7 @@ export interface LessOptions {
   /**
    * How to handle an optional/global function call that matched a registered
    * function but couldn't be evaluated (no matching signature, or it threw) —
-   * e.g. `unit(80/16)`, `color("x")`. Mirrors {@link unitMode}.
+   * e.g. `unit(red)`, `color("x")`. Mirrors {@link unitMode}.
    * - 'preserve': render the call as-is (like an unknown CSS function) + warn
    * - 'error': throw the underlying function error (Less 4.x behavior)
    * Unknown function names always render as-is regardless.
@@ -528,8 +528,28 @@ export interface StylesConfig {
   language?: {
     less?: LessOptions;
     scss?: ScssOptions;
-    css?: Record<string, any>;
-    jess?: Record<string, any>;
-    [key: string]: LessOptions | ScssOptions | Record<string, any> | undefined;
+    css?: SourceDialectOptions;
+    jess?: SourceDialectOptions;
+    [key: string]: LessOptions | ScssOptions | SourceDialectOptions | Record<string, unknown> | undefined;
   };
+}
+
+/**
+ * What a `.css` or `.jess` file's compile reads from its `language.<lang>`
+ * block: the per-file modes and selector policies core resolves for every
+ * source (its `SourceOptions`). Neither dialect plugin reads anything else.
+ */
+export interface SourceDialectOptions {
+  mathMode?: MathMode;
+  unitMode?: UnitMode;
+  functionMode?: FunctionMode;
+  allowLeakyScope?: boolean;
+
+  /** @deprecated See {@link LessOptions.leakyScope}. */
+  leakyScope?: boolean;
+  allowCallerScope?: boolean;
+  bubbleRootAtRules?: boolean;
+  processImports?: boolean;
+  allowExtendSelectors?: ExtendSelectorKind[];
+  allowApplySelectors?: ApplySelectorKind[];
 }

@@ -2,9 +2,10 @@
  * Every parser ships each grammar twice: macro-lowered tables under
  * `lib/grammar/<variant>` and plain interpreter twins under
  * `lib/grammar/interpreter/<variant>`. A dialect composes onto css's compose
- * base from the matching build, so the two graphs must stay apart, and a
- * compiled dialect must reach css only through `lib/grammar/base.js`, never
- * through css's own parse grammar, which is most of css's shipped bytes.
+ * base from the matching build, so the two graphs must stay apart. A compiled
+ * dialect reaches no css grammar module at runtime: its build reads css's
+ * compose base from css-parser's `lib/grammar/base.js.parseman.json`,
+ * beside the artifact, and the lowered dialect carries no import of it.
  *
  * Walks the modules Node actually loads for each built entry. Needs a build.
  */
@@ -20,7 +21,6 @@ const FROM = join(ROOT, 'packages/jess');
 
 const VARIANTS = ['ast', 'ast/positions', 'cst', 'cst/positions'];
 const DIALECTS = ['css', 'less', 'scss', 'jess'];
-const CSS_BASE = 'packages/syntax/css/css-parser/lib/grammar/base.js';
 
 const graph = specifier => eagerGraph(specifier, FROM).files
   .map(file => file.slice(ROOT.length + 1).split('\\').join('/'));
@@ -51,7 +51,7 @@ for (const dialect of DIALECTS) {
       assert.deepEqual(files.filter(isInterpreterModule), [], 'reaches an interpreter module');
       if (dialect !== 'css') {
         const cssGrammar = files.filter(file => file.startsWith('packages/syntax/css/css-parser/lib/grammar/'));
-        assert.deepEqual(cssGrammar, [CSS_BASE], 'must reach css only through its compose base');
+        assert.deepEqual(cssGrammar, [], 'must not load a css grammar at runtime');
       }
     });
   }

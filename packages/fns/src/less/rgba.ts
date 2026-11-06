@@ -1,10 +1,10 @@
-import { makeRgb } from './rgb.js';
-import { defineFunction } from '@jesscss/core';
-import type { Fn } from '@jesscss/core';
+import { RGB_PARAMS, rgbBody } from './rgb.js';
+import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 
 /** `rgba` — an ALIAS of `rgb` (same construction / reformat kernel, distinct name). */
-export const rgba: Fn = defineFunction('rgba', {
-  params: [{ type: 'any' }, { type: 'any', optional: true }, { type: 'any', optional: true }, { type: 'any', optional: true }],
+export const rgba: Fn = /* @__PURE__ */ defineFunction('rgba', {
+  params: RGB_PARAMS,
   variadic: true,
-  body: list => makeRgb(list)
+  body: rgbBody
 });

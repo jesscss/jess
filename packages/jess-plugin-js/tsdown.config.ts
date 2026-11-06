@@ -4,7 +4,9 @@ export default defineConfig({
   entry: {
     index: './src/index.ts',
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    'runtime-worker': './src/runtime-worker.ts'
+    'runtime-worker': './src/runtime-worker.ts',
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    'plugin-runtime': './src/plugin-runtime.ts'
   },
   format: ['esm', 'cjs'],
   dts: true,

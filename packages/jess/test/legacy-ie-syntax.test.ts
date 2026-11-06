@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AbstractPlugin } from '@jesscss/core';
-import { CssPlugin } from '@jesscss/compiler-preset';
+import { CssPlugin } from '@jesscss/compiler-preset/css';
 import lessPlugin from '@jesscss/plugin-less';
 import scssPlugin from '@jesscss/plugin-scss';
 import jessPlugin from '@jesscss/plugin-jess';

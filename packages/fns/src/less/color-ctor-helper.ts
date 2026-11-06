@@ -1,13 +1,13 @@
 /**
  * Shared kernels for the COLOR-CONSTRUCTOR fns (`rgb`/`hsl`/`hsv`/… + their
  * `*a` aliases). Boundary-clean re-implementations of the legacy `@jesscss/core`
- * conversion plugins (`percentOf` / `normalizeHue` / `alphaToNumber`) over the
+ * conversion plugins (`percentOf` / `normalizeHue`) over the
  * value-domain `Dimension`.
  *
  * HARD MODULE BOUNDARY: value domain only.
  */
-import type { Color, Dimension, ValueGroup } from '@jesscss/core';
-import { groupSeparator, isValueGroupArray } from '@jesscss/core';
+import type { Color, Dimension, ValueGroup } from '@jesscss/core/value';
+import { groupSeparator, isValueGroupArray } from '@jesscss/core/value';
 
 export { clamp01, percentOf } from '../shared/color/kernels.js';
 
@@ -19,7 +19,7 @@ export { clamp01, percentOf } from '../shared/color/kernels.js';
 export function normalizeHue(d: Dimension): number {
   const { number, unit } = d;
   let deg: number;
-  switch (unit) {
+  switch (unit.toLowerCase()) {
     case 'turn':
       deg = number * 360;
       break;
@@ -41,12 +41,6 @@ export function normalizeHue(d: Dimension): number {
   return ((deg % 360) + 360) % 360;
 }
 
-/** `alphaToNumber()`: a `%` dimension → `number / 100`; unitless passes; clamp 0-1. */
-export function alphaToNumber(d: Dimension): number {
-  const raw = d.unit === '%' ? d.number / 100 : d.number;
-  return Math.max(0, Math.min(1, raw));
-}
-
 /** Whether an arg-list item is a materialized color operand. */
 export const isColor = (v: ValueGroup | undefined): v is Color =>
   v !== undefined && !isValueGroupArray(v) && v.type === 'Color';
@@ -58,22 +52,15 @@ export const isModern = (value: ValueGroup): boolean => {
 };
 
 /**
- * The HSV→RGB kernel shared by `hsv`/`hsva` — byte-faithful to legacy `less/hsva`.
- * `h` in degrees, `s`/`v` in 0-1; returns the raw (unrounded) 0-255 rgb triple.
+ * Whether a slot's form means what this value computes to: a dimension of one of
+ * these units, or a value the browser reads as one. It cannot judge anything else,
+ * a list above all, which keeps the call's recipe.
  */
-export function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
-  const hue = ((h % 360) / 360) * 360;
-  const i = Math.floor((hue / 60) % 6);
-  const f = hue / 60 - i;
-  const vs = [v, v * (1 - s), v * (1 - f * s), v * (1 - (1 - f) * s)];
-  const perm = [
-    [0, 3, 1],
-    [2, 0, 1],
-    [1, 0, 3],
-    [1, 2, 0],
-    [3, 1, 0],
-    [0, 1, 2]
-  ];
-  const p = perm[i]!;
-  return [vs[p[0]!]! * 255, vs[p[1]!]! * 255, vs[p[2]!]! * 255];
-}
+export const inUnits = (value: ValueGroup, units: readonly string[]): boolean => {
+  if (isValueGroupArray(value)) {
+    return false;
+  }
+  return value.type === 'Dimension'
+    ? units.includes(value.unit.toLowerCase())
+    : value.type === 'Color' || value.type === 'Keyword' || value.type === 'FunctionCall' || value.type === 'Arithmetic';
+};

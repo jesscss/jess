@@ -51,7 +51,7 @@ import { readdirSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
-import { artifactFallbacks, scanBuildLog } from './parseman-fallback-detector.mjs';
+import { artifactFallbacks, precompiledAssembly, scanBuildLog } from './parseman-fallback-detector.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -288,6 +288,26 @@ for (const pkg of PARSERS) {
     const pct = total === 0 ? '0' : ((charCode / total) * 100).toFixed(1);
     console.log(`✓ ${name}: fully compiled — 0 interpreter fallbacks `
       + `(${modules.length} ESM module(s); ${charCode} charCodeAt vs ${regexExec} RegExp.exec — ${pct}% charCodeAt)`);
+  }
+
+  /*
+   * "Fully compiled" means no interpreter fallback; it does not mean fast. A
+   * table with no precompiled assembly (`a: []`) runs every parse on the
+   * closure table engine, and that is how Less, SCSS and `.jess` lost their
+   * fast path on 2026-08-31 with this guard green (jesscss/jess#508). Say so.
+   * Reported here; `check-grammar-artifacts.mjs` gates it.
+   */
+  const precompiled = [];
+  for (const [file, code] of sources) {
+    const assembly = relative(libDir, file).startsWith('grammar/') ? precompiledAssembly(code) : null;
+    if (assembly?.functions > 0) {
+      precompiled.push(`${relative(libDir, file)} ${assembly.functions} functions`);
+    }
+  }
+  if (sources.some(([file]) => relative(libDir, file).startsWith('grammar/'))) {
+    console.log(precompiled.length > 0
+      ? `    precompiled assembly: ${precompiled.join(', ')}; every other variant runs on tables only`
+      : '    TABLES ONLY: no grammar artifact carries a precompiled assembly; every parse runs on the closure table engine');
   }
 }
 

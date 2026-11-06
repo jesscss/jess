@@ -1,6 +1,7 @@
 import {
   type Plugin,
-  AbstractPlugin
+  AbstractPlugin,
+  recordPluginModule
 } from '@jesscss/core';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -143,80 +144,6 @@ export class NodeModulesPlugin extends AbstractPlugin {
 
     return resolved;
   }
-
-  /**
-   * Load an npm package module.
-   *
-   * @param packageName - The npm package name (e.g., "less-plugin-clean-css")
-   * @returns The loaded module, or null if not found
-   */
-  async loadPackage(packageName: string): Promise<Record<string, any> | null> {
-    const resolvedPath = this.resolvePackage(packageName);
-    if (!resolvedPath) {
-      return null;
-    }
-
-    try {
-      // Load the module using require
-
-      const module: unknown = this._require(resolvedPath);
-      return isRecord(module) ? module : null;
-    } catch {
-      // If loading fails, return null
-      return null;
-    }
-  }
-
-  /**
-   * Try to resolve a package name with multiple possible names.
-   * Useful for plugins that want to try different variations
-   * (e.g., "clean-css" and "less-plugin-clean-css").
-   *
-   * @param packageNames - Array of package names to try in order
-   * @returns The first successfully resolved package, or null if none found
-   */
-  async tryResolvePackages(packageNames: string[]): Promise<{ name: string; module: Record<string, any> } | null> {
-    for (const name of packageNames) {
-      const module = await this.loadPackage(name);
-      if (module !== null) {
-        return { name, module };
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Import method for loading JavaScript modules from npm.
-   * This is called by the context when importing modules.
-   *
-   * @param absoluteFilePath - The absolute path to the module
-   * @returns The loaded module, or throws if this plugin can't handle it
-   */
-  async import(absoluteFilePath: string): Promise<Record<string, any>> {
-    if (this.opts.enabled === false) {
-      throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}" (disabled)`);
-    }
-
-    /*
-     * Check if this looks like a node_modules path
-     * We can't directly resolve from absolute paths, but we can try to require it
-     */
-    if (absoluteFilePath.includes('node_modules')) {
-      try {
-        const module: unknown = this._require(absoluteFilePath);
-        if (!isRecord(module)) {
-          throw new TypeError(`Module "${absoluteFilePath}" did not export an object.`);
-        }
-        return module;
-      } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : String(e);
-        throw new Error(`Failed to import "${absoluteFilePath}": ${message}`);
-      }
-    }
-
-    // For non-node_modules paths, throw to let other plugins handle it
-    throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}" (not a node_modules path)`);
-  }
 }
 
 function isBareModuleSpecifier(candidate: string): boolean {
@@ -227,12 +154,8 @@ function isBareModuleSpecifier(candidate: string): boolean {
     && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate);
 }
 
-function isRecord(value: unknown): value is Record<string, any> {
-  return value !== null && typeof value === 'object';
-}
+const nodeModulesPlugin = ((opts?: NodeModulesPluginOptions) =>
+  recordPluginModule(new NodeModulesPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 
-const nodeModulesPlugin = ((opts?: NodeModulesPluginOptions) => {
-  return new NodeModulesPlugin(opts);
-}) satisfies Plugin;
-
+export { nodeModulesPlugin };
 export default nodeModulesPlugin;

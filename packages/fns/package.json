@@ -9,7 +9,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.31",
+  "version": "2.0.0-alpha.32",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
@@ -72,6 +72,11 @@
       "import": "./lib/sass/string/index.js",
       "require": "./lib/sass/string/index.cjs"
     },
+    "./runtime": {
+      "types": "./lib/runtime.d.ts",
+      "import": "./lib/runtime.js",
+      "require": "./lib/runtime.cjs"
+    },
     "./shared": {
       "types": "./lib/shared/index.d.ts",
       "import": "./lib/shared/index.js",
@@ -91,6 +96,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
+    "build:forms": "node scripts/build-css-forms.mjs",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "cross-env TEST=true vitest",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",

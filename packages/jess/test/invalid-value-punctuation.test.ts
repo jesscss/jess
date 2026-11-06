@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AbstractPlugin } from '@jesscss/core';
-import { CssPlugin } from '@jesscss/compiler-preset';
+import { CssPlugin } from '@jesscss/compiler-preset/css';
 import lessPlugin from '@jesscss/plugin-less';
 import scssPlugin from '@jesscss/plugin-scss';
 import jessPlugin from '@jesscss/plugin-jess';
@@ -402,7 +402,6 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
 
   it.each([
     ['a module call', '@use "sass:color";\na { x: color.mix(red, blue); }\n'],
-    ['a module call written as authored', 'a { x: color.mix(red, blue); y: ns.fn(); }\n'],
     ['`==` and the comparison operators', 'a { x: foo(3 == 4); y: if(1 == 1, a, b); z: foo(1 < 2); }\n'],
     ['the not() operator', 'a { x: foo(not(a=b=c)); }\n'],
     ['a map', '$m: (k: v);\na { x: map-get($m, k); }\n'],

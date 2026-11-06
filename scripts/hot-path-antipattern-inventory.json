@@ -157,6 +157,13 @@
       "snippet": "text.charCodeAt(at)"
     },
     {
+      "file": "packages/core/src/ast/extend/dynamic.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "a4a83fcafd3faf3b",
+      "ordinal": 0,
+      "snippet": "rule.selector.selectors.indexOf(inst.subject.selectors[0]!)"
+    },
+    {
       "file": "packages/core/src/ast/extend/emit.ts",
       "rule": "no-rescan-in-loop",
       "fingerprint": "bf7c22d08aa3b2f9",
@@ -505,14 +512,6 @@
       "fingerprint": "bc9f264ef5c5e392",
       "ordinal": 0,
       "snippet": "new WeakMap<EvalModes, EvalModes>()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "4194fde10645db5e",
-      "ordinal": 0,
-      "snippet": "params.indexOf(argName)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -957,14 +956,6 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "a4a83fcafd3faf3b",
-      "ordinal": 0,
-      "snippet": "rule.selector.selectors.indexOf(inst.subject.selectors[0]!)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
       "fingerprint": "722d108585fce322",
       "ordinal": 0,
@@ -1026,6 +1017,13 @@
       "snippet": "sourceText.slice(injected, authoredEnd)"
     },
     {
+      "file": "packages/core/src/ast/value-dispatch.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "4194fde10645db5e",
+      "ordinal": 0,
+      "snippet": "params.indexOf(argName)"
+    },
+    {
       "file": "packages/core/src/ast/value-operate.ts",
       "rule": "no-node-keyed-side-map",
       "fingerprint": "1194ac044eb73853",
@@ -1037,13 +1035,6 @@
       "rule": "no-node-keyed-side-map",
       "fingerprint": "d1eb8fc25775a38f",
       "ordinal": 0,
-      "snippet": "new WeakMap<Value, string>()"
-    },
-    {
-      "file": "packages/core/src/ast/value-operate.ts",
-      "rule": "no-node-keyed-side-map",
-      "fingerprint": "d1eb8fc25775a38f",
-      "ordinal": 1,
       "snippet": "new WeakMap<Value, string>()"
     },
     {
@@ -1069,24 +1060,10 @@
     },
     {
       "file": "packages/syntax/less/less-parser/src/grammar-helpers.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "16f637e94df40a5e",
-      "ordinal": 0,
-      "snippet": "children.slice(previousValue + 1, index)"
-    },
-    {
-      "file": "packages/syntax/less/less-parser/src/grammar-helpers.ts",
       "rule": "no-source-text-rescan",
       "fingerprint": "5e298b111ee4df7d",
       "ordinal": 0,
       "snippet": "source.slice(span.start, span.end)"
-    },
-    {
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "f748df590277ac6a",
-      "ordinal": 0,
-      "snippet": "children.slice(colonIndex + 1)"
     },
     {
       "file": "packages/syntax/less/less-parser/src/grammar.ts",

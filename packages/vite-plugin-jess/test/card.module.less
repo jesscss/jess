@@ -1,0 +1,11 @@
+@use "#less";
+@expose brand;
+@brand: #c00;
+
+.card {
+  color: @brand;
+
+  &__title {
+    opacity: @less.lightness(@brand);
+  }
+}

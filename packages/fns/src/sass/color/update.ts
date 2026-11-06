@@ -26,8 +26,8 @@
  *
  * HARD MODULE BOUNDARY: value domain only.
  */
-import type { Color, DefinedFunction, Dimension, ValueGroup } from '@jesscss/core';
-import { HEX, HSL, RGB, colorHsl, colorRawRgb, defineFunction, hslToRgb, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core';
+import type { Color, DefinedFunction, Dimension, ValueGroup } from '@jesscss/core/value';
+import { HEX, HSL, RGB, colorHsl, colorRawRgb, defineFunction, hslToRgb, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core/value';
 import { clamp01, percentOf, wrapHue } from '../../shared/color/kernels.js';
 import { degreesOf, requireColor, requireValue } from './kernels.js';
 
@@ -99,7 +99,7 @@ function numberArg(op: Op, name: string, v: ValueGroup): Dimension {
 
 /** `$space`: an unquoted rgb, hsl or hwb. */
 function spaceArg(v: ValueGroup): Space {
-  if (isValueGroupArray(v) || (v.type !== 'Keyword' && v.type !== 'Quoted')) {
+  if (isValueGroupArray(v) || (v.type !== 'Keyword' && v.type !== 'FunctionCall' && v.type !== 'Quoted')) {
     throw new TypeError(`$space: ${describe(v)} is not a string.`);
   }
   if (v.type === 'Quoted') {

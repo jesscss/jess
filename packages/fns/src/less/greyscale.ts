@@ -1,13 +1,10 @@
-import type { Fn } from '@jesscss/core';
-import { colorHsl, makeColorHsl, defineFunction } from '@jesscss/core';
-import { requireColor } from './color-helper.js';
+import { defineForm, type FormCall } from '@jesscss/core/form';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
+import { COLOR_ARG } from './color-form.js';
+import { greyscale as form } from './css-forms.generated.js';
 
-/** `greyscale(color)` — zero the saturation. Byte-faithful to `less/greyscale`. */
-export const greyscale: Fn = defineFunction('greyscale', {
-  params: [{ type: 'Color' }],
-  body: (c) => {
-    const color = requireColor(c);
-    const [h, , l] = colorHsl(color);
-    return makeColorHsl([h, 0, l], color.alpha, color.format);
-  }
+/** `greyscale(color)`: `hsl(from color h 0 l)`. */
+export const greyscale: Fn = /* @__PURE__ */ defineForm('greyscale', {
+  params: [COLOR_ARG],
+  form: (color: ValueGroup): FormCall => [form, color]
 });

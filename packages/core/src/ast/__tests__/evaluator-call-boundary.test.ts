@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import { createFnRegistry, defineFunction } from '../value-dispatch.js';
-import { makeKeyword, makeList } from '../value-factory.js';
+import { makeDimension, makeKeyword, makeList } from '../value-factory.js';
 
 const args = makeList([makeKeyword('one'), makeKeyword('two')], ',');
 
@@ -30,18 +30,18 @@ describe('ValueEvaluator function-call boundary', () => {
     const registry = createFnRegistry();
     const body = vi.fn(() => makeKeyword('computed'));
     registry.register(defineFunction('builtin', { params: twoSlots, body }));
-    const has = vi.spyOn(registry, 'has');
+    const get = vi.spyOn(registry, 'get');
     const evaluator = buildEvaluator(registry);
 
     expect(evaluator.call('builtin', args, { unitMode: 'preserve' }))
       .toMatchObject({ bytes: 'computed' });
-    expect(has).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledTimes(1);
 
-    has.mockClear();
+    get.mockClear();
     body.mockClear();
     expect(evaluator.call('builtin', args, { unitMode: 'preserve' }, null, undefined, undefined, false))
       .toMatchObject({ bytes: 'builtin(one, two)' });
-    expect(has).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
     expect(body).not.toHaveBeenCalled();
   });
 
@@ -89,5 +89,27 @@ describe('ValueEvaluator function-call boundary', () => {
     expect(evaluator.call('scoped', args, { unitMode: 'preserve' }, scope, undefined, scoped))
       .toMatchObject({ bytes: 'selected' });
     expect(scope.lookup).not.toHaveBeenCalled();
+  });
+
+  it('hands a parameter typed as a number the quotient of a slash list of numbers (ledger P35)', () => {
+    const registry = createFnRegistry();
+    const seen: string[] = [];
+    registry.register(defineFunction('pair', {
+      params: [{ type: 'Dimension' }, { type: 'any' }],
+      body: (number, value) => {
+        seen.push(number.type, value.type);
+        return makeKeyword('ok');
+      }
+    }));
+    const evaluator = buildEvaluator(registry);
+    const slash = makeList([makeDimension(10, 'px'), makeDimension(2)], '/');
+
+    expect(evaluator.call('pair', makeList([slash, slash], ','), { unitMode: 'preserve' })).toMatchObject({ bytes: 'ok' });
+    expect(seen).toEqual(['Dimension', 'List']);
+
+    /* A slash list that is not all numbers is not a number: the call is written out. */
+    const words = makeList([makeDimension(12, 'px'), makeKeyword('normal')], '/');
+    expect(evaluator.call('pair', makeList([words, words], ','), { unitMode: 'preserve' }))
+      .toMatchObject({ bytes: 'pair(12px / normal, 12px / normal)' });
   });
 });

@@ -150,6 +150,12 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean)
        * pair with no ground. The operand's warning is the consumer's
        * (`warnConsumedKept`); `strict` raised at the operation already
        * (orchestrator judgment under owner delegation 2026-10-06).
+       *
+       * A comparison never converts a slash list, stored or written: whether
+       * `1/2` means `0.5` there is ambiguous (ledger P35, owner 2026-10-30:
+       * *"the second case with when is more ambiguous so yes i agree we
+       * wouldn't compare"*; *"so 'does match' cannot resolve, we should roll
+       * that rule back"*).
        */
       const compare = (a: ValueGroup, b: ValueGroup): boolean =>
         !holdsKeptOperation(a) && !holdsKeptOperation(b)

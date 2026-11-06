@@ -248,6 +248,57 @@ function calleeName(callee) {
   return target.type === 'MemberExpression' && !target.computed ? target.property.name : null;
 }
 
+/** The value of a non-computed `key: value` property of an object literal, else `undefined`. */
+function propertyValue(object, key) {
+  if (object?.type !== 'ObjectExpression') {
+    return undefined;
+  }
+  const found = object.properties.find(p =>
+    p.type === 'Property' && !p.computed && (p.key.name ?? p.key.value) === key);
+  return found?.value;
+}
+
+/**
+ * The precompiled assembly one built grammar module carries, or `null` when the
+ * module is not a table artifact (no `tableRules(…)` call: the interpreter build).
+ *
+ * Keyed on parseman's own artifact contract, not on text. A table program's
+ * `a:` field is its `PrecompiledAssembly[]` (parseman `src/table/program.ts`,
+ * `CompactProgram.a`); each entry's `factory` is the emitted engine, and
+ * parseman's plugin locates it by exactly this shape
+ * (`supercompileRuleMapReplacement` in `src/plugin/entry-supercompiler.ts`).
+ * `a: []` is a closure-only table: it runs, on the table engine, with nothing
+ * precompiled. Inside a factory every emitted parse site is a function named
+ * `_pf<ip>` (`src/table/emit-assembly.ts`), so `functions` counts those.
+ *
+ * Throws on a module it cannot parse.
+ */
+export function precompiledAssembly(code) {
+  let tables = 0;
+  let assemblies = 0;
+  let functions = 0;
+  walk(espree.parse(code, { ecmaVersion: 'latest', sourceType: 'module' }), (node) => {
+    if (node.type !== 'CallExpression' || calleeName(node.callee) !== 'tableRules') {
+      return;
+    }
+    tables++;
+    const inventory = propertyValue(node.arguments[0], 'a');
+    for (const entry of inventory?.type === 'ArrayExpression' ? inventory.elements : []) {
+      const factory = propertyValue(entry, 'factory');
+      if (factory?.type !== 'FunctionExpression') {
+        continue;
+      }
+      assemblies++;
+      walk(factory.body, (inner) => {
+        if (inner.type === 'FunctionDeclaration' && /^_pf\d+$/.test(inner.id?.name ?? '')) {
+          functions++;
+        }
+      });
+    }
+  });
+  return tables === 0 ? null : { assemblies, functions };
+}
+
 /**
  * How many times one built module CALLS any of `names`, read from its syntax
  * rather than its text: a doc comment that spells `compose([…])` is not a call.

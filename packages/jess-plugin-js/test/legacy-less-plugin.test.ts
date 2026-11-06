@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { JessError, makeDimension } from '@jesscss/core';
 import jsPlugin, { type JsPlugin } from '../src/index.js';
+import { sandboxed } from './engine/sandboxed.js';
 import { registered } from './registered.js';
 
 /*
@@ -78,7 +79,7 @@ describe('legacy Less @plugin runtime', () => {
       const { runtime, entry } = project([
         ['root/plugin.js', `registerPlugin({ install: function(less, manager) { ${call} } });`]
       ]);
-      const refused = await refusal(runtime.importLessPlugin(entry));
+      const refused = await refusal(sandboxed(runtime).importLessPlugin(entry));
       expect(refused.code).toBe('plugin/unsupported-feature');
       expect(refused.message).toBe(`Plugin "plugin.js" uses ${feature}, which is not supported`);
       expect(refused.fix).toContain(replacement);
@@ -94,7 +95,7 @@ describe('legacy Less @plugin runtime', () => {
           '};'
         ].join('\n')]
       ]);
-      const refused = await refusal(runtime.importLessPlugin(entry));
+      const refused = await refusal(sandboxed(runtime).importLessPlugin(entry));
       expect(refused.message).toContain('less.visitors');
     }, 30000);
 
@@ -102,7 +103,7 @@ describe('legacy Less @plugin runtime', () => {
       const { runtime, entry } = project([
         ['root/plugin.js', 'functions.add("late", () => less.visitors);']
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       const refused = await refusal(Promise.resolve(registered(loaded, 'late')()));
       expect(refused.code).toBe('plugin/unsupported-feature');
       expect(refused.message).toContain('less.visitors');
@@ -112,7 +113,7 @@ describe('legacy Less @plugin runtime', () => {
       const { runtime, entry } = project([
         ['root/plugin.js', 'functions.add("late", function() { return this.context.pluginManager.getVisitors(); });']
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       const refused = await refusal(Promise.resolve(registered(loaded, 'late')()));
       expect(refused.message).toBe('Plugin "plugin.js" uses pluginManager.getVisitors(), which is not supported');
     }, 30000);
@@ -126,7 +127,7 @@ describe('legacy Less @plugin runtime', () => {
         ['root/plugin.js', 'require("./visitor");'],
         ['root/visitor.js', `module.exports = ${use};`]
       ]);
-      const refused = await refusal(runtime.importLessPlugin(entry));
+      const refused = await refusal(sandboxed(runtime).importLessPlugin(entry));
       expect(refused.message).toBe('Plugin "plugin.js" uses less.visitors, which is not supported');
     }, 30000);
 
@@ -136,7 +137,7 @@ describe('legacy Less @plugin runtime', () => {
       ['less.environment', 'globalThis.Less.environment.addFileManager({});']
     ])('refuses %s on the worker-global facade too', async (feature, use) => {
       const { runtime, entry } = project([['root/plugin.js', use]]);
-      const refused = await refusal(runtime.importLessPlugin(entry));
+      const refused = await refusal(sandboxed(runtime).importLessPlugin(entry));
       expect(refused.message).toBe(`Plugin "plugin.js" uses ${feature}, which is not supported`);
     }, 30000);
   });
@@ -160,7 +161,7 @@ describe('legacy Less @plugin runtime', () => {
           '});'
         ].join('\n')]
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       expect(Object.keys(loaded.functions).sort()).toEqual(['facts', 'one', 'two']);
       await expect(registered(loaded, 'one')()).resolves.toMatchObject({ number: 1 });
       await expect(registered(loaded, 'two')()).resolves.toMatchObject({ number: 2 });
@@ -180,7 +181,7 @@ describe('legacy Less @plugin runtime', () => {
           '});'
         ].join('\n')]
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       await expect(registered(loaded, 'child')()).resolves.toBe('child');
     }, 30000);
 
@@ -194,7 +195,7 @@ describe('legacy Less @plugin runtime', () => {
           '});'
         ].join('\n')]
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       await expect(registered(loaded, 'three')()).resolves.toMatchObject({ number: 3 });
     }, 30000);
 
@@ -209,7 +210,7 @@ describe('legacy Less @plugin runtime', () => {
           '});'
         ].join('\n')]
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       await expect(registered(loaded, 'keys')()).resolves.toBe('');
     }, 30000);
 
@@ -221,7 +222,7 @@ describe('legacy Less @plugin runtime', () => {
           '});'
         ].join('\n')]
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       await expect(Promise.resolve(registered(loaded, 'late')())).rejects.toThrow('not from inside a function body');
     }, 30000);
   });
@@ -237,7 +238,7 @@ describe('legacy Less @plugin runtime', () => {
         ['root/lib/scale.js', 'const { times } = require("../util");\nexports.scale = (n, k) => times(n, k);'],
         ['root/util/index.js', 'module.exports = { times: (a, b) => a * b };']
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       expect(Object.keys(loaded.functions).sort()).toEqual(['double', 'triple']);
       await expect(registered(loaded, 'double')(makeDimension(4, 'px'))).resolves.toMatchObject({ number: 8, unit: 'px' });
       await expect(registered(loaded, 'triple')(makeDimension(4, 'px'))).resolves.toMatchObject({ number: 12, unit: 'px' });
@@ -256,7 +257,7 @@ describe('legacy Less @plugin runtime', () => {
         ['root/sub/index.json', '"sub-index"'],
         ['root/only-cjs.cjs', 'module.exports = 1;']
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       await expect(registered(loaded, 'probe')()).resolves.toBe('3,sub-index,missing');
     }, 30000);
 
@@ -269,7 +270,7 @@ describe('legacy Less @plugin runtime', () => {
         ['root/a.js', 'exports.early = "a";\nexports.seenB = require("./b").name;'],
         ['root/b.js', 'exports.name = "b";\nexports.seenA = require("./a").early;']
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       await expect(registered(loaded, 'probe')()).resolves.toBe('b:a:true');
     }, 30000);
 
@@ -278,19 +279,22 @@ describe('legacy Less @plugin runtime', () => {
         ['root/plugin.js', 'require("../outside/secret.js");'],
         ['outside/secret.js', 'module.exports = "LEAKED";']
       ]);
-      const failure = await runtime.importLessPlugin(entry).then(
+      const failure = await sandboxed(runtime).importLessPlugin(entry).then(
         () => new Error('expected the require to be refused'),
         (error: unknown) => error
       );
       expect(failure).toBeInstanceOf(Error);
       const message = failure instanceof Error ? failure.message : '';
       expect(message).toContain('require("../outside/secret.js")');
-      expect(message).toContain('was refused: Read access denied by Jess policy.');
+
+      /* Deno answers a read outside the read root "not found" (`--ignore-read`), so the file is not seen at all. */
+      expect(message).toContain('no file found');
+      expect(message).not.toContain('LEAKED');
     }, 30000);
 
     it('refuses package and built-in specifiers with a clear message', async () => {
       const { runtime, entry } = project([['root/plugin.js', 'require("fs");']]);
-      await expect(runtime.importLessPlugin(entry)).rejects.toThrow(
+      await expect(sandboxed(runtime).importLessPlugin(entry)).rejects.toThrow(
         'Less @plugin require("fs") is not supported: only relative requires ("./file", "../file") of CommonJS files inside the script root are.'
       );
     }, 30000);
@@ -300,7 +304,7 @@ describe('legacy Less @plugin runtime', () => {
         ['root/plugin.js', 'require("./lib");'],
         ['root/lib.js', 'less.functions.functionRegistry.add("fromlib", () => new less.tree.Dimension(7, "px"));']
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       await expect(registered(loaded, 'fromlib')()).resolves.toMatchObject({ number: 7, unit: 'px' });
     }, 30000);
 
@@ -309,7 +313,7 @@ describe('legacy Less @plugin runtime', () => {
         ['root/plugin.js', 'const probe = require("./probe");\nfunctions.add("probe", () => probe);'],
         ['root/probe.js', 'module.exports = [typeof functions, typeof registerPlugin, typeof process].join(",");']
       ]);
-      const loaded = await runtime.importLessPlugin(entry);
+      const loaded = await sandboxed(runtime).importLessPlugin(entry);
       await expect(registered(loaded, 'probe')()).resolves.toBe('undefined,undefined,undefined');
     }, 30000);
   });

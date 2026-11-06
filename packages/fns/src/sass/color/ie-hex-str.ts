@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core';
-import { HEX, colorRawRgb, defineFunction, makeColorRgb } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { HEX, colorRawRgb, defineFunction, makeColorRgb } from '@jesscss/core/value';
 import { ieHexString, noExcess, requireColor } from './kernels.js';
 
 /**

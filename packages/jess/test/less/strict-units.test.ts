@@ -46,7 +46,7 @@ describe('Less strict-unit final validation', () => {
     expect(result.css).toBe(applyPendingGoldenEdits('tests-config/units/loose/loose.less', readFileSync(expected, 'utf8')));
   });
 
-  it('divides every slash under always; under parens-division each side of the slash computes', async () => {
+  it('divides every slash under always; under parens-division math beside the slash is kept as written', async () => {
     const source = `
       .a {
         first: 4 / 2 + 5em;
@@ -86,11 +86,12 @@ describe('Less strict-unit final validation', () => {
     });
 
     /*
-     * A non-dividing slash is the value's loosest separator and each side keeps
-     * its own math (DESIGN-DECISIONS P35): `4 / $(2 + 5em)`, `$(4 + 2) / 5em`.
+     * Math beside a slash that does not divide is ambiguous, so it is kept as
+     * written (DESIGN-DECISIONS P35, owner 2026-10-30: "it should be as-written
+     * if they have parens-division").
      */
-    expect(parensDivision).toContain('first: 4 / 7em;');
-    expect(parensDivision).toContain('second: 6 / 5em;');
+    expect(parensDivision).toContain('first: 4 / 2 + 5em;');
+    expect(parensDivision).toContain('second: 4 + 2 / 5em;');
     expect(parensDivision).toContain('same-unit: 2em / 1em;');
     expect(parensDivision).toContain('shorthand: normal small / 20px;');
     expect(parensDivision).toContain('bare-parens-mode: 10px / 2;');

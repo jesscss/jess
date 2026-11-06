@@ -1,5 +1,5 @@
-import { makeBool, defineFunction, isValueGroupArray, namedColor } from '@jesscss/core';
-import type { Fn, ValueGroup } from '@jesscss/core';
+import { makeBool, defineFunction, isValueGroupArray, namedColor } from '@jesscss/core/value';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
 
 /**
  * A materialized value counts as a color for a type predicate when it is a
@@ -9,7 +9,7 @@ import type { Fn, ValueGroup } from '@jesscss/core';
  */
 function isColorLike(value: ValueGroup): boolean {
   return !isValueGroupArray(value)
-    && (value.type === 'Color' || (value.type === 'Keyword' && namedColor(value.text) !== undefined));
+    && (value.type === 'Color' || (value.type === 'Keyword' && namedColor(value.text) !== undefined) || (value.type === 'FunctionCall' && value.computed && value.result === 'color'));
 }
 
 /** Less `iscolor()` — true for a colour value or a named-color keyword. */
@@ -18,10 +18,10 @@ const iscolor: Fn = defineFunction('iscolor', {
   body: value => makeBool(isColorLike(value))
 });
 
-/** Less `isnumber()` — true for an already-materialized dimension. */
+/** Less `isnumber()` — true for an already-materialized dimension or a built-in's numeric form (Q10). */
 const isnumber: Fn = defineFunction('isnumber', {
   params: [{ type: 'any' }],
-  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Dimension')
+  body: value => makeBool(!isValueGroupArray(value) && (value.type === 'Dimension' || (value.type === 'FunctionCall' && value.computed && value.result === 'numeric')))
 });
 
 /** Less `isstring()` — true for a quoted value. */
@@ -30,11 +30,12 @@ const isstring: Fn = defineFunction('isstring', {
   body: value => makeBool(!isValueGroupArray(value) && value.type === 'Quoted')
 });
 
-/** Less `iskeyword()` — true for a bare keyword that is NOT a named color
- * (a named-color keyword answers `iscolor`, matching pre-convergence Less). */
+/** Less `iskeyword()` — true for a bare keyword or a call written out: a named-color keyword
+ * and a built-in's form answer `iscolor` or `isnumber` (Q10). */
 const iskeyword: Fn = defineFunction('iskeyword', {
   params: [{ type: 'any' }],
-  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Keyword' && namedColor(value.text) === undefined)
+  body: value => makeBool(!isValueGroupArray(value) && (value.type === 'FunctionCall' || value.type === 'Keyword') && !isColorLike(value)
+    && !(value.type === 'FunctionCall' && value.computed && value.result === 'numeric'))
 });
 
 /** Less `isurl()` — true only for a parser-owned `url(...)` value. */

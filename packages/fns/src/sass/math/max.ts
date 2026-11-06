@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
 import { sassMinMax } from './min-max.js';
 
 /** The global Sass `max()` — a bare call, preserved by the engine when it fails. */

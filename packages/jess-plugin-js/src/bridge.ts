@@ -140,7 +140,9 @@ export function encodeBridgeValue(value: unknown): unknown {
         return node.escapedQuote === ''
           ? { __jessBridge: true, kind: 'anonymous', value: node.bytes } satisfies JsBridgeValue
           : { __jessBridge: true, kind: 'quoted', value: node.bytes, quote: node.escapedQuote === '\'' ? '\'' : '"', escaped: true } satisfies JsBridgeValue;
-      case 'Keyword': return { __jessBridge: true, kind: 'keyword', value: node.bytes } satisfies JsBridgeValue;
+      case 'Keyword':
+      case 'Arithmetic':
+      case 'FunctionCall': return { __jessBridge: true, kind: 'keyword', value: node.bytes } satisfies JsBridgeValue;
       case 'List':
         return node.sep === ',' || node.sep === '/'
           ? { __jessBridge: true, kind: 'list', items: node.value.map(encodeBridgeChildValue), separator: node.sep } satisfies JsBridgeValue

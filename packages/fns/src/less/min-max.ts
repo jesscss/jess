@@ -1,5 +1,5 @@
-import type { Dimension, ValueGroup, Value } from '@jesscss/core';
-import { groupItems, isValueGroupArray, makeDimension, unify } from '@jesscss/core';
+import type { Dimension, ValueGroup, Value } from '@jesscss/core/value';
+import { groupItems, isValueGroupArray, makeDimension, unify } from '@jesscss/core/value';
 import { compatibleUnits, isUnitlessDimension } from '../shared/math/units.js';
 
 const isDimension = (value: ValueGroup): value is Dimension =>
@@ -50,7 +50,10 @@ export function minMax(isMin: boolean, list: ValueGroup): Value {
 
   /*
    * A comma or space list argument spreads into candidates. A slash list does
-   * not: `min(12px / 1.5, 2px)` has two arguments, the first of which is not a
+   * not: `min(12px / 1.5, 2px)` has two arguments. A slash list of numbers
+   * arrives as its quotient (ledger P35), written in the call or delivered by
+   * a reference, so `min(10px/2, 4px)` is `4px`, and `min(@f, 2px)` with
+   * `@f: 12px/1.5` is `2px`; a slash list that is not all numbers is not a
    * number, so the call fails and is preserved like any other non-numeric one.
    */
   const args = groupItems(list).flatMap(arg => isSlashList(arg) ? [arg] : groupItems(arg));
@@ -91,5 +94,10 @@ export function minMax(isMin: boolean, list: ValueGroup): Value {
       bestMagnitude = candidateMagnitude;
     }
   }
-  return reference !== undefined && isUnitlessDimension(best) ? makeDimension(best.number, reference.unit) : best;
+  if (reference !== undefined && isUnitlessDimension(best)) {
+    return makeDimension(best.number, reference.unit);
+  }
+
+  /* A `calc()` that resolved to one number is that number here, whatever math it held (`min(calc(3px), 4px)` is `3px`). */
+  return best.preserved !== undefined && best.numerator === undefined ? makeDimension(best.number, best.unit) : best;
 }

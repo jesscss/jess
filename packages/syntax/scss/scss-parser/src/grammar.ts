@@ -23,9 +23,9 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { conditionWord, emptyParenList, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { scssSum } from './plus-chain.js';
 import type { ConditionWord, MathOperatorFact, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
@@ -44,6 +44,7 @@ type ScssRules = {
   Paren: Combinator<ValueNode>;
   MapEntry: Combinator<CollectionEntry>;
   Map: Combinator<Collection>;
+  MapOrGroup: Combinator<ValueNode>;
   EmptyList: Combinator<Block>;
   ReturnRule: Combinator<Declaration>;
   FunctionRule: Combinator<VariableDeclaration>;
@@ -161,6 +162,7 @@ type ScssRules = {
   NestedStartingStyleBlock: Combinator<AtRuleBlock>;
   NestedLayerBlock: Combinator<AtRuleBlock>;
   InterpolatedSimple: Combinator<SimpleSelector>;
+  NestingSelector: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
@@ -227,6 +229,9 @@ type ScssSharedSyntax = {
   /* Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list. */
   ForgivingSelectorList: Combinator<SelectorList>;
 
+  /* Inherited from the CSS base: a pseudo's name opener. */
+  identOrFunction: Combinator<string>;
+
   /*
    * Converged to the CSS base (inherited via compose): same token rule
    * token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
@@ -285,7 +290,6 @@ type ScssSharedSyntax = {
   UnicodeRange: Combinator<ValueNode>;
   Keyword: Combinator<Keyword>;
   Important: Combinator<true>;
-  NestingSelector: Combinator<SimpleSelector>;
 
   /*
    * Converged to the CSS base (inherited via compose): CSS already spells
@@ -491,9 +495,10 @@ const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
 
 /*
- * The trivia of a `:is()` / `:where()` argument: whitespace and both comment
- * forms, so a comment between items or after an item's selector is trivia
- * there as CSS reads it, not the start of a kept item.
+ * The trivia of a selector pseudo's argument: whitespace and both comment
+ * forms. It reaches what the argument's own rules leave: a comment before the
+ * `)`, or between `:is()` items. Inside a selector, and before `:not()`'s `,`,
+ * those rules read whitespace only, so `:not(.a /*c*\/, .e)` stops.
  */
 const forgivingListTrivia = classifiedTrivia({
   whitespace: whitespaceRun,
@@ -824,13 +829,14 @@ const scssFactory = (g: ScssInputRules) => {
 
   /*
    * A parenthesized SCSS value can either enforce arithmetic precedence or hold
-   * an ordinary list. Try the fully structured arithmetic form first; the list
-   * branch is deliberately separate so `(1 2)` is a list rather than being
-   * invented as math. Parens around a list are list syntax, as Dart Sass reads
+   * an ordinary list. A group with no `/` after its first operand is read by
+   * `MapOrGroup` before this rule is tried; here the fully structured arithmetic
+   * form comes first, so `(a/b)` divides, and the list branch is deliberately
+   * separate so `(1 2)` is a list rather than being invented as math. Parens around a list are list syntax, as Dart Sass reads
    * them, so the list branch builds the curly list (`parenValue`), and it
    * takes a trailing comma: `(1,)` is a one-item comma list.
    *
-   * The interior padding is spelled for the same reason `Map` above spells it:
+   * The interior padding is spelled for the same reason `Map` below spells it:
    * this ladder runs with trivia cleared, so an interior that admits authored
    * padding has to write it, and it has to write the comment-bearing
    * `valueTrivia` — the document trivia table names only whitespace and `//`,
@@ -861,7 +867,7 @@ const scssFactory = (g: ScssInputRules) => {
         literal(')')
       ))
     ),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => parenValue(children, state)
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => parenValue(children, keepsGroup(state))
   );
 
   /*
@@ -897,6 +903,14 @@ const scssFactory = (g: ScssInputRules) => {
     )
   );
 
+  /* A map entry's `:` and its value, after the key. */
+  const mapEntryValue = sequence(
+    optional(valueTrivia),
+    literal(':'),
+    optional(valueTrivia),
+    g.ValueTerm
+  );
+
   /*
    * A Sass map entry `key: value`. The key is a single arithmetic term (an
    * identifier, string, number, or `#{…}`); the value is an ordinary value term
@@ -907,10 +921,7 @@ const scssFactory = (g: ScssInputRules) => {
     'CollectionEntry',
     noTrivia(sequence(
       g.MathTopSum,
-      optional(valueTrivia),
-      literal(':'),
-      optional(valueTrivia),
-      g.ValueTerm
+      mapEntryValue
     )),
     children => collectionEntry(
       mapKeyValue(requireValue(children[0])),
@@ -918,14 +929,27 @@ const scssFactory = (g: ScssInputRules) => {
     )
   );
 
+  /* A map's entries after its first, and its close. */
+  const mapRest = sequence(
+    many(noTrivia(sequence(
+      optional(valueTrivia),
+      literal(','),
+      optional(valueTrivia),
+      g.MapEntry
+    ))),
+    listTrailingComma,
+    optional(valueTrivia),
+    literal(')')
+  );
+
   /*
    * A Sass map literal `(a: 1, b: 2)` lowers to the data-only shared
    * `Collection` (`.jess` `#{a: 1; b: 2}`); SCSS nested properties use
    * `NestedPropertyBlock` instead. Maps are disambiguated from a paren
    * value-list `(1 2 3)` by the `key: value` entry shape, so a single `(a: 1)`
-   * is a map and `()` is not (`EmptyList`). This arm sits before `Paren` in the
-   * value-atom choice; when no entry carries a colon it backtracks to the paren
-   * list/arithmetic form.
+   * is a map and `()` is not (`EmptyList`). A value reads a map through
+   * `MapOrGroup`; this rule is the `@use … with (…)` configuration, which takes
+   * only a map.
    */
   const Map = node<Collection>(
     'Collection',
@@ -933,17 +957,65 @@ const scssFactory = (g: ScssInputRules) => {
       literal('('),
       optional(valueTrivia),
       g.MapEntry,
-      many(noTrivia(sequence(
-        optional(valueTrivia),
-        literal(','),
-        optional(valueTrivia),
-        g.MapEntry
-      ))),
-      listTrailingComma,
-      optional(valueTrivia),
-      literal(')')
+      mapRest
     )),
     children => collection(children.filter(isCollectionEntry))
+  );
+
+  /*
+   * A value `(` that opens a map or an arithmetic group reads its first operand
+   * once and decides on what follows it: a `:` makes a map (`(a: 1, b: 2)`), a
+   * `)` a group (`($x * 2)`, `(6px)`). The operand is a map key's `MathTopSum`.
+   * Followed by `)` it is also the group's `MathSum`, which differs from it only
+   * by reading a `/` as division, and no `/` follows it.
+   *
+   * The rest is `Paren`'s, after this rule fails: a `/` after the operand, where
+   * `(a/b)` divides but `(a/b c)` is a slash list, which only the input further
+   * on decides, and a list (`(1 2)`, `(1, 2)`), whose items `Paren` reads as a
+   * `Value`.
+   */
+  const MapOrGroup = node<ValueNode>(
+    'MapOrGroup',
+    noTrivia(sequence(
+      literal('('),
+      optional(valueTrivia),
+      g.MathTopSum,
+      choice(
+        sequence(
+          mapEntryValue,
+          mapRest
+        ),
+        sequence(
+          optional(valueTrivia),
+
+          /*
+           * Whether the group keeps its parens is read here, by a gate, so the
+           * reducer reads it as a field rather than the parse state, which would
+           * make every map capture its raw children and trivia log as well.
+           */
+          choice(
+            {
+              gate: state => keepsGroup(state),
+              combinator: field('keepsParens', literal(')'))
+            },
+            literal(')')
+          )
+        )
+      )
+    )),
+    (children, fields) => {
+      const colon = children.findIndex(child => isToken(child) && child.value === ':');
+      if (colon === -1) {
+        return parenValue(children, fields?.keepsParens !== undefined);
+      }
+      return collection([
+        collectionEntry(
+          mapKeyValue(requireValue(children.find(isScssValue))),
+          requireValueSlot(children.find((child, index) => index > colon && isScssValueSlotValue(child)))
+        ),
+        ...children.filter(isCollectionEntry)
+      ]);
+    }
   );
 
   /*
@@ -1366,7 +1438,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.CustomPropertyValue,
       g.UnicodeRange,
       IdentifierOrFunction,
-      g.Map,
+      g.MapOrGroup,
       g.EmptyList,
       g.Paren,
       g.Square,
@@ -2837,7 +2909,7 @@ const scssFactory = (g: ScssInputRules) => {
           'content',
           'live'
         ),
-        [{ type: 'Call', args: args.slice() }],
+        [referenceCall(args)],
         `$content(${args.map(arg => contentArgRaw(arg)).join(', ')})`
       );
     }
@@ -3239,15 +3311,8 @@ const scssFactory = (g: ScssInputRules) => {
        * comparison instead, and the primitive dispatches on operand type at
        * eval. `!=` is that same comparison under `not`.
        */
-      const comparison = {
-        g: 'cmp' as const,
-        op: operator === '==' || operator === '!=' ? 'sass-equal' : operator,
-        left,
-        right,
-        implied: false,
-        parens: 0
-      };
-      return operator === '!=' ? { g: 'not', inner: comparison, word: 'not', gluedAt: NO_SPAN, parens: 0 } : comparison;
+      const comparison = guardCompare('cmp', operator === '==' || operator === '!=' ? 'sass-equal' : operator, left, right, false);
+      return operator === '!=' ? guardNot(comparison, 'not', NO_SPAN, 0) : comparison;
     }
   );
   const IfAtom = node<GuardNode>(
@@ -3279,7 +3344,7 @@ const scssFactory = (g: ScssInputRules) => {
       }
       const value = children.find(isScssValue);
       return value === undefined
-        ? { g: 'truth', value: keyword(requireToken(children[0]).value.toLowerCase()), parens: 0 }
+        ? guardValue('truth', keyword(requireToken(children[0]).value.toLowerCase()), 0)
         : scssTruth(value);
     }
   );
@@ -3295,7 +3360,7 @@ const scssFactory = (g: ScssInputRules) => {
         throw new TypeError('SCSS @if term lost its guard.');
       }
       const not = children.find(child => isToken(child) && child.value.toLowerCase() === 'not');
-      return not === undefined ? atom : { g: 'not', inner: atom, word: requireToken(not).value, gluedAt: NO_SPAN, parens: 0 };
+      return not === undefined ? atom : guardNot(atom, requireToken(not).value, NO_SPAN, 0);
     }
   );
   const IfAnd = node<GuardNode>(
@@ -3310,7 +3375,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'and', left: guard, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
+        guard = guardLogical('and', guard, requireGuardNode(children[index]), requireToken(children[index - 1]).value, NO_SPAN);
       }
       return guard;
     }
@@ -3327,7 +3392,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'or', left: guard, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
+        guard = guardLogical('or', guard, requireGuardNode(children[index]), requireToken(children[index - 1]).value, NO_SPAN);
       }
       return guard;
     }
@@ -4725,6 +4790,18 @@ const scssFactory = (g: ScssInputRules) => {
     }
   );
 
+  /**
+   * `&` with a `--` suffix (Sass "Adding Suffixes": `&--b` in `.a` is `.a--b`). A
+   * suffix that starts with one dash reaches the compound as a type selector
+   * (`&-b`); `--b` cannot, so `--x:…` stays a custom property's, and this token
+   * reads it. `&--#{$x}` is this token, then the interpolation.
+   */
+  const NestingSelector = node<SimpleSelector>(
+    'SimpleSelector',
+    regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/),
+    children => simpleSelector(requireToken(children[0]).value)
+  );
+
   /*
    * SCSS placeholder selectors are selector syntax, not declarations or a
    * runtime-only marker, and they are an ordinary `SimpleSelector` -- a
@@ -4794,12 +4871,13 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * Pseudos share a glued `:name` / `:name(` opener. Route it once, then let the
    * selected branch own that opener through `routed()` so the public
-   * semantic pseudo CST labels keep their source span.
+   * semantic pseudo CST labels keep their source span. The name is the CSS
+   * base's opener, so it may start `--` (`:--heading`, css-extensions-1
+   * `<custom-selector>`); the local `identOrFunction` is the value position's.
    */
   const pseudoIdentOrFunction = token(noTrivia(sequence(
     pseudoColon,
-    g.Identifier,
-    optional(literal('('))
+    g.identOrFunction
   )));
 
   /*
@@ -4964,17 +5042,21 @@ const scssFactory = (g: ScssInputRules) => {
        * (`pseudoCanonical`). `SelectorOnlyPseudoArgument` is the one parse of
        * the static argument; an interpolated argument fails there and, with no
        * text fallback for these names, rejects exactly as before.
-       * Insignificant whitespace surrounding the argument inside the parens
-       * (`:not( .b )`) is consumed here; it is trivia, so the structured arg
-       * normalizes it away (`:not(.b)`) via `pseudoCanonical`, matching the other
-       * dialects (Selectors-4; the residual SCSS surrounding-whitespace divergence).
+       * Whitespace around the argument and a comment before the `)` are trivia
+       * here, so the structured arg normalizes them away (`:not( .b )` is
+       * `:not(.b)`) via `pseudoCanonical`, matching the other dialects
+       * (Selectors-4; the residual SCSS surrounding-whitespace divergence). A
+       * comment before the argument is not: `:not( /*x*\/ .a)` stops.
        */
     sequence(
       routed(),
-      optional(space),
-      expect(SelectorOnlyPseudoArgument, 'pseudo selector argument'),
-      optional(space),
-      literal(')')
+      parser(
+        { trivia: forgivingListTrivia },
+        sequence(
+          expect(SelectorOnlyPseudoArgument, 'pseudo selector argument'),
+          literal(')')
+        )
+      )
     ),
     children => pseudoSelector(
       scssPseudoName(requireToken(children[0]).value),
@@ -5006,13 +5088,13 @@ const scssFactory = (g: ScssInputRules) => {
     'StructuredPseudo',
     sequence(
       routed(),
-      optional(space),
       parser(
         { trivia: forgivingListTrivia },
-        g.ForgivingSelectorList
-      ),
-      optional(space),
-      literal(')')
+        sequence(
+          g.ForgivingSelectorList,
+          literal(')')
+        )
+      )
     ),
     children => pseudoSelector(
       scssPseudoName(requireToken(children[0]).value),
@@ -5373,6 +5455,7 @@ const scssFactory = (g: ScssInputRules) => {
     Paren,
     MapEntry,
     Map,
+    MapOrGroup,
     EmptyList,
     ReturnRule,
     FunctionRule,
@@ -5488,6 +5571,7 @@ const scssFactory = (g: ScssInputRules) => {
     ScssGenericAtRuleName,
     UnknownAtRuleBlock,
     InterpolatedSimple,
+    NestingSelector,
     Placeholder,
     PseudoArgument,
     PseudoArgumentGroup,

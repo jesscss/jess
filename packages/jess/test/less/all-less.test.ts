@@ -15,7 +15,8 @@ import {
   readStringFunctionArg,
   resolveLessTestDataRoot,
   upstreamHarnessSourceMap,
-  withFixtureTimeout
+  withFixtureTimeout,
+  corpusReadRoot
 } from '../test-utils.js';
 import { applyPendingGoldenEdits } from './pending-golden-edits.js';
 import lessPlugin from '@jesscss/plugin-less';
@@ -59,7 +60,7 @@ const baseCompiler = new Compiler({
      * test-data/plugin/*.js from fixtures in sibling directories; widen the
      * (trusted) harness jsReadRoot to the test-data root so plugin-js can read them.
      */
-    jsReadRoot: testData,
+    jsReadRoot: corpusReadRoot(testData),
     plugins: [
       /*
        * [plugin/P2] The harness function plugin is registered through the NATIVE
@@ -393,8 +394,8 @@ const expectedFailureFixtures = new Map<string, string>([
    * jess#351 says what each one does.
    */
   ['tests-config/math-always/no-sm-operations.less', 'untriaged (jess#351): the digit-led variable name `@3` is rejected'],
-  ['tests-config/math-parens-division/mixins-args.less', 'untriaged (jess#351): the `;` argument groups render (ledger P46); the rest differs: `.var-args` keeps `(@var * 2) / 2 - 1%` as `calc(18 / 2 - 1%)` for `8%` (and `depth` as `calc(…)`), `.slash-vs-math` writes `2px / 5px` for `2px/5px`, and `extract()` over `.aa(@y, @x..., and again, @y...)` counts `and again` as one item'],
-  ['tests-config/math-strict/mixins-args.less', 'untriaged (jess#351): the `;` argument groups render (ledger P46); the rest differs: `.var-args` keeps `(@var * 2) / 2 - 1%` as `calc(18 / 2 - 1%)` for `8%`, `.slash-vs-math` writes `2px / 5px` for `2px/5px`, and `extract()` over `.aa(@y, @x..., and again, @y...)` counts `and again` as one item'],
+  ['tests-config/math-parens-division/mixins-args.less', 'untriaged (jess#351): the `;` argument groups render (ledger P46); the rest differs: `.slash-vs-math` writes `2px / 5px` for `2px/5px`, and `extract()` over `.aa(@y, @x..., and again, @y...)` counts `and again` as one item'],
+  ['tests-config/math-strict/mixins-args.less', 'untriaged (jess#351): the `;` argument groups render (ledger P46); the rest differs: `.slash-vs-math` writes `2px / 5px` for `2px/5px`, and `extract()` over `.aa(@y, @x..., and again, @y...)` counts `and again` as one item'],
   ['tests-config/math-parens-division/new-division.less', 'the `./` division operator was removed in v5, so the `.math` rule is a parse error'],
   ['tests-config/math-strict/css.less', 'untriaged (jess#351): unary `+2.2em` is kept, `!important` spacing is normalised and the `.misc` rules print in a different order']
 

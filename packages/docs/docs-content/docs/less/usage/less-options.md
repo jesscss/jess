@@ -152,6 +152,21 @@ Outputs:
 }
 ```
 
+A `/` divides inside parentheses. Outside them, a slash list stays as written: `font: 12px/1.5` and `grid-area: 1 / 2` are left alone, and so is a stored slash written out, as in `@f: 12px/1.5; font: @f`.
+
+A slash list is converted to its quotient only where its use is unambiguous:
+
+- as the whole argument of a function parameter that takes a number, whether written in place or stored: `percentage(16/17)` gives `94.11764706%`, `unit(80/16, rem)` gives `5rem`, and with `@d: 10px/2`, `percentage(@d)` gives `500%`;
+- as one operand of math, which a variable always is: with `@d: 10px/2`, `width: @d * 2` gives `10px`, and with `@h: 1/2`, `percentage(@h + 1)` gives `150%`.
+
+It is not converted:
+
+- beside other math written in place: `font-size: 12px / 1 + 1` and `percentage(1/2 + 1)` are kept as written, because nothing says which side the math belongs to. Parentheses say it: `percentage((1/2) + 1)` gives `150%`, and `12px / (1 + 1)` gives `12px / 2`;
+- in a comparison, stored or written: with `@h: 1/2`, a guard `when (@h = 0.5)` does not match, and neither does `when (10px/2 = 5px)` (write `when ((10px/2) = 5px)`);
+- by a function that accepts any value: `length(16/17)` is `2`;
+- as a direct argument to a CSS function such as `calc()` or `clamp()`: `calc(10px/2)` stays `calc(10px / 2)`;
+- where it is written out as a value.
+
 **strict**
 ```less
 .math {
@@ -230,7 +245,7 @@ _Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off`
 
 `MODE` is `auto` (the default) or `modern`, and decides whether the Less built-in functions are available in a `.less` file without importing them.
 
-- `auto` — decided per file. A file that uses `@use` or `@compose` is in modern mode (`@export` will join them when Less implements it). Any other file is in legacy mode, and a call to a Less built-in such as `min()` or `darken()` computes as it did in Less 4.
+- `auto` — decided per file. A file that uses `@use`, `@compose` or `@expose` is in modern mode. Any other file is in legacy mode, and a call to a Less built-in such as `min()` or `darken()` computes as it did in Less 4.
 - `modern` — every `.less` file is in modern mode.
 
 In modern mode a Less built-in must be imported, for example `@use "#less";` and then `@less.darken(red, 10%)`. A call that is not imported is treated like an unknown CSS function: it keeps its name and call shape, and its arguments are evaluated like any other value, so `padding: min(-5px, 1px)` stays `min(-5px, 1px)`. See [Modules and Imports](../features/modules-and-imports.mdx#modern-mode).

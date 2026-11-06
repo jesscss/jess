@@ -84,7 +84,9 @@ walk emits selector headers as addressable slots into the render buffer and reco
 extend facts inline; after the single walk completes, the extend engine folds each
 extender's compiled selector into the target slots (held **by reference** — a
 nested `&` holds a reference to the parent's composed selector, it is not
-re-flattened per rule); then the buffer is stringified. Match-time flattening is
+re-flattened per rule); then the buffer is stringified. In nested output the same rewrite also moves and
+copies blocks the walk wrote, where a placed rule's re-solved plan restructures it
+(ledger X22, §7a); it evaluates nothing. Match-time flattening is
 lazy and cached, and only for the selectors that actually participate in a match.
 
 This law is enforced by `extend-evaluator-isolation.test.ts` (a source-frontier
@@ -128,10 +130,9 @@ sheet, which the §8 scope does not.
 In nested output (`collapseNesting: false`, the Less v5 default) a rule that extends a
 rule nested inside it is written `&` beside the target (§7a), so the `@media print`
 example gives `.a { @media print { .b, & { … } } }`, the same selectors; so does the
-inline form `.a:extend(.a .b) { .b { … } }`. Known gap: a target that a mixin or a
-detached ruleset PLACES under a rule block is not rewritten in nested output (§6,
-`PINNED-DEFECTS-AUDIT.md` DF6), pinned in
-`packages/jess/test/less/mixin-public-semantics.test.ts`.
+inline form `.a:extend(.a .b) { .b { … } }`. A target that a mixin or a detached ruleset
+PLACES under a rule block is written the same way (§7a, ledger X22), as
+`packages/jess/test/less/mixin-public-semantics.test.ts` asserts.
 
 Grammar: the Jess `$extend` statement is `packages/syntax/jess/jess-parser/src/grammar.ts`
 (search `$extend`); the core node is `Extend { target, flag }` with the parsed
@@ -446,16 +447,15 @@ each is recorded with its repro in `docs/state/PINNED-DEFECTS-AUDIT.md` ("Deferr
 pinned"):
 
 - A placed EXTENDER folds in as its composed selector (`.a { .m(); } .b { .m(); }` →
-  `.sm, .a .x, .b .x`), but a placed TARGET written inside a parent block is not rewritten,
-  whoever extends it: a recorded rule under a parent block is no rewritable slot, and
-  moving an extender out is restructuring, not a header rewrite (§1a). So
-  `.m() { @media print { &:extend(.y .z); .z {…} } } .y { .m(); }` keeps `.z` alone,
-  where `.y { @media print { &:extend(.y .z); .z {…} } }` gives `.z, &` (§7a). The same
-  holds for a rule of a `(reference)` sheet imported
-  inside a ruleset, which flat output reveals under its extender
-  (`.wrap { @import (reference) "t.less"; }` + `.x:extend(.wrap .sm) {}` → `.x { b: 2; }`)
-  and nested output leaves hidden, and for a sheet imported inside a ruleset whose rules
-  extend each other.
+  `.sm, .a .x, .b .x`). A placed TARGET follows the nested-output rules of a target
+  written in its rule (§7a, ledger X22; DF6 FIXED): `.m() { @media print { &:extend(.y .z);
+  .z {…} } } .y { .m(); }` gives `.z, &` as `.y { @media print { &:extend(.y .z); .z {…} } }`
+  does, and a rule of a `(reference)` sheet imported inside a ruleset is revealed under its
+  extender (`.wrap { @import (reference) "t.less"; }` + `.x:extend(.wrap .sm) {}` →
+  `.x { b: 2; }`). Still open (DF9): a rule the walk wrote STATICALLY that only a walk-recorded
+  extender flattens, or splits off at the top, keeps the header the walk wrote
+  (`.m(){ &:extend(.a .b); } .a { .b { y: 1 } } .x { .m(); }` keeps `.a { .b {…} }`; flat
+  `.a .b, .x`).
 - A match of a nested rule's whole selector by a top-level extender that shares none of
   the rule's parent levels is dropped (`.w { .k { k: 1; } } .w .y:extend(.w .k) {}` →
   `.w { .k { … } }`; flat `.w .k, .w .y`). An extender nested under the same parent folds
@@ -559,6 +559,28 @@ STAYS nested and its extend rewrites the local selector in place, with three ref
   (`emit.ts` trigger C, the per-boundary hoist) keeps outer ancestors as wrappers.
   Flatten only when there is no shared prefix to strip and the match crosses;
   otherwise the local rewrite / prefix strip keeps the rule nested.
+
+**A placed target is written as a written one (ledger X22, Claude's decision under owner
+delegation 2026-10-29).** A rule a mixin call, a detached-ruleset call, an `@if`/`@else` or
+loop body, or an `@import` inside a rule places — `(reference)` included — takes exactly the
+rules above and §7b: the same flatten triggers, re-nesting, shared-prefix strip and split.
+Nested output never drops an extender that flat output applies:
+`.m(){ .b{ y:1; .c{ x:1; } } } .a{ .m(); } .q:extend(.a .b){}` writes `.q { y: 1; }` beside
+`.a`, as `.a{ .b{ y:1; .c{ x:1; } } }` does. The reasons are recorded with X22: placement
+is evaluation, which does not depend on nesting (V19); nested output re-nests the flat
+result, so where a rule came from cannot change it; the source gives the author no way to
+tell the two apart; a dropped extender changes what the CSS matches in one output mode
+only; and the static target already flattens to the same shape. The placed rule's plan is
+known only once the deferred fold has re-solved, so the fold restructures the output the
+one walk wrote, evaluating nothing (§1a): the walk reserves, in each hoist queue the rule
+could rise through, the chunk where it lands, and records its block's extent and its
+declarations' chunk ranges; the fold moves and copies those chunks and rebuilds the output
+once, source-map positions carried (`extend/dynamic.ts`). A rule of a `(reference)` sheet
+imported in a rule is written as a reserved block and goes when nothing reveals it; a rule
+under one an extender reveals is written under the extender (`.wrap { @import (reference)
+"t.less"; } .x:extend(.wrap .sm all) {}` with `.sm { b: 2; .in { c: 3; } }` gives
+`.x { b: 2; .in { c: 3; } }`). A moved block keeps the indent the writer gave a value's
+continuation lines where it was written (PINNED-DEFECTS-AUDIT DF11).
 
 ### 7b. Exact-extender-into-children SPLIT (LANDED)
 

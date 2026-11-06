@@ -1,5 +1,5 @@
-import type { FnCtx, ValueGroup } from '@jesscss/core';
-import { defineFunction, groupItems, isValueGroupArray, selectorValue } from '@jesscss/core';
+import type { FnCtx, ValueGroup } from '@jesscss/core/value';
+import { defineFunction, groupItems, isValueGroupArray, selectorValue } from '@jesscss/core/value';
 
 /**
  * The text Sass reads a `$selector` argument as: a string, a space list of
@@ -15,6 +15,8 @@ function selectorText(value: ValueGroup, level = 0): string | null {
   switch (value.type) {
     case 'Quoted': return value.value;
     case 'Keyword': return value.text;
+    case 'Arithmetic':
+    case 'FunctionCall': return value.bytes;
     case 'List':
       if (value.sep === '/' || level === 2 || (level === 1 && value.sep === ',')) {
         return null;

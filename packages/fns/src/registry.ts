@@ -11,7 +11,7 @@
  * ever grows one, but the dialect callable surfaces themselves are value-domain
  * `Fn`s. There is no legacy tree-node fallback here.
  */
-import { createFnRegistry, type Fn, type FnRegistry } from '@jesscss/core';
+import { createFnRegistry, type Fn, type FnRegistry } from '@jesscss/core/value';
 
 /**
  * Whether a dialect-index export is a value-domain {@link Fn}. The value-domain
@@ -34,4 +34,19 @@ export function registryOf(dialectIndex: Readonly<Record<string, unknown>>): FnR
   const registry = createFnRegistry();
   registry.registerAll(fnsOf(dialectIndex));
   return registry;
+}
+
+/**
+ * A dialect index's callables as a `.jess` file imports them: the name the
+ * registry dispatches a call on (`fn.name`, lowercased) → the index export that
+ * `@-from "<module>" import (…)` names. Same derivation as {@link registryOf}.
+ */
+export function exportNamesByCall(dialectIndex: Readonly<Record<string, unknown>>): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const [exported, value] of Object.entries(dialectIndex)) {
+    if (isFn(value)) {
+      names.set(value.name.toLowerCase(), exported);
+    }
+  }
+  return names;
 }

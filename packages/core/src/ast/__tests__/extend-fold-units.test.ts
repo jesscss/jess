@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { branchText, descendantBranch, mkBranch, multisetEqual } from '../extend/ir.js';
+import { branchText, cloneBranch, descendantBranch, mkBranch, multisetEqual } from '../extend/ir.js';
 import type { Branch, SelectorPart, Simple } from '../extend/ir.js';
 import type { Combinator } from '../node.js';
 import { appendDeduped, branchWholeMatch } from '../extend/match.js';
@@ -41,19 +41,25 @@ const inst = (
 });
 
 describe('branch-key cache (mkBranch / branchText)', () => {
-  it('mkBranch pre-declares `key` and `bnd` as own properties initialized undefined', () => {
+  it('mkBranch pre-declares `key`, `bnd`, `hidden` and `ext` as own properties initialized undefined', () => {
     const b = mkBranch([{ combinator: ' ', compound: { value: [{ t: 'text', text: '.a' }] } }]);
 
     /*
-     * One stable hidden class: every branch is born `{ segments, key, bnd }`, so the memo
-     * write below (and any later `bnd` origin store) is an in-place store, never a
-     * `{segments}`->`{segments,key}`->`{segments,key,bnd}` transition.
+     * One stable hidden class: every branch is born `{ segments, key, bnd, hidden, ext }`,
+     * so the memo write below, a later `bnd` origin store and the provenance stamps are
+     * in-place stores, never a `{segments}`->`{segments,key}`->… transition.
      */
-    expect(Object.keys(b)).toEqual(['segments', 'key', 'bnd']);
-    expect(Object.hasOwn(b, 'key')).toBe(true);
+    expect(Object.keys(b)).toEqual(['segments', 'key', 'bnd', 'hidden', 'ext']);
     expect(b.key).toBeUndefined();
-    expect(Object.hasOwn(b, 'bnd')).toBe(true);
     expect(b.bnd).toBeUndefined();
+    expect(b.hidden).toBeUndefined();
+    expect(b.ext).toBeUndefined();
+  });
+
+  it('cloneBranch carries the source key: a clone has the same text', () => {
+    const b = textBranch('.foo');
+    const key = branchText(b);
+    expect(cloneBranch(b).key).toBe(key);
   });
 
   it('branchText computes once, stores the result on `key`, and reads it back', () => {

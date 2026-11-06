@@ -1,4 +1,4 @@
-import { defineFunction, isValueGroupArray, makeKeyword, namedColor } from '@jesscss/core';
+import { defineFunction, isValueGroupArray, makeKeyword, namedColor } from '@jesscss/core/value';
 
 /**
  * Sass `meta.type-of($value)` / the global `type-of()`.
@@ -40,6 +40,8 @@ const typeOf = defineFunction('type-of', {
        * here, at the point of use.
        */
       case 'Keyword': return makeKeyword(namedColor(value.text) !== undefined ? 'color' : 'string');
+      case 'Arithmetic':
+      case 'FunctionCall':
       case 'Quoted':
       case 'Any':
       case 'Url': return makeKeyword('string');

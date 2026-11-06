@@ -6,7 +6,7 @@
  * @example
  * map.merge((a: 1), (b: 2)) // (a: 1, b: 2)
  */
-import { CollectionOverlay, defineFunction, makeCollection } from '@jesscss/core';
+import { CollectionOverlay, defineFunction, makeCollection } from '@jesscss/core/value';
 
 const merge = defineFunction(
   'merge',

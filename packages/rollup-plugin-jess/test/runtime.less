@@ -1,0 +1,8 @@
+@use "#less";
+@expose brand;
+@brand: #c00;
+
+.button {
+  color: @brand;
+  opacity: @less.lightness(@brand);
+}

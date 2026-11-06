@@ -40,14 +40,13 @@ import {
   cloneBranch,
   cloneSeg,
   cloneSimple,
+  compoundHitsLevel,
   compoundText,
   descendantBranch,
   isSimple,
   mkBranch,
-  multisetSubset,
   simpleText,
-  textSimple,
-  textSimpleTokens
+  textSimple
 } from './ir.js';
 import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
 import type { Combinator } from '../node.js';
@@ -55,9 +54,10 @@ import { branchHasAmp, composePath } from './compose.js';
 import { mergeCompound, NO_SIMPLES, placeComplex } from './conflict.js';
 import { extendBranchSpecificity, irPseudoElementCarriesSuffix, nestingGroupKey, partitionGroups } from '../is-grouping.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
-import { boundaryReaches, collectPlan, documentHasExtend, reaches, recordAstExtendProfile } from './plan.js';
+import { boundaryReaches, collectPlan, reaches, recordAstExtendProfile } from './plan.js';
+import { documentHasExtend } from './document.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
-import { buildContribs, runFixpoint, solveComposed } from './solve.js';
+import { buildContribs, groupInstructions, runFixpoint, solveComposed } from './solve.js';
 import type { ContribMap } from './solve.js';
 import type { SelectorList, Stylesheet, Ruleset, Statement } from '../nodes.js';
 import { branchTextIsPlaceholder } from '../nodes.js';
@@ -184,6 +184,9 @@ export interface ExtendResults {
 
   /** The plan's {@link Plan.targetAtoms}: every atom an extend target names. */
   targetAtoms: ReadonlySet<string>;
+
+  /** The plan's subjects, each with the selector level the planner built for its rule. */
+  subjects: readonly PlanSubject[];
 }
 
 /* ------------------------------------------------------ sibling compaction */
@@ -226,22 +229,6 @@ function dropLeadingSegs(b: Branch, n: number): Branch {
     out.hidden = true;
   }
   return out;
-}
-
-/** True when `target`'s text-value are ⊆ some compound in `level`. */
-function compoundHitsLevel(target: Compound, level: Level): boolean {
-  const need = textSimpleTokens(target);
-  if (need.length === 0) {
-    return false;
-  }
-  for (const b of level) {
-    for (const seg of b.segments) {
-      if (multisetSubset(need, textSimpleTokens(seg.compound))) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 /** True when composed branch text `b` descends from (nests under) some parent
@@ -783,6 +770,7 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
     return null;
   }
   const list: Branch[] = [];
+  const compoundOnly = !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
   if (added === null) {
     for (const arm of kept) {
       list.push(arm!);
@@ -797,7 +785,6 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
       }
       listSpecificity = Math.max(listSpecificity, s);
     }
-    const compoundOnly = !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
     let next = 0;
     for (const arm of kept) {
       if (arm !== null) {
@@ -816,8 +803,11 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
     }
   }
   const out: Branch[] = [];
-  pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: list, fold: false }), root, k, p + 1);
-  const unit = arms.length === 1 && !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
+
+  /* Every arm left the list (a hidden seed's own arms are not shown): its members stand alone. */
+  if (list.length > 0) {
+    pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: list, fold: false }), root, k, p + 1);
+  }
   for (const alternative of alone ?? []) {
     /*
      * Written where the `:is()` stood, by X3's placement ({@link spliceMember}), except
@@ -826,7 +816,7 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
      * author's — and written in place it would change what the selector matches
      * (`.c :is(#z .b)` is not `.c #z .b`; owner 2026-10-09, ledger J13).
      */
-    if (unit && alternative.segments.length > 1) {
+    if (arms.length === 1 && compoundOnly && alternative.segments.length > 1) {
       pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: [mkBranch(alternative.segments)], fold: false }), root, k, p + 1);
       continue;
     }
@@ -1056,8 +1046,8 @@ export function computeExtends(
   units?: ReadonlyMap<SelectorList, Int32Array>
 ): ExtendResults | null {
   /*
-   * Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
-   * `:extend()` anywhere) before any subject/instruction plan is built.
+   * Zero-cost gate: the document's classified extend surface short-circuits the common
+   * case (no `:extend()` on its static spine) before any subject/instruction plan is built.
    */
   if (!documentHasExtend(root) && (!overlay || overlay.instructions.length === 0)) {
     return null;
@@ -1715,7 +1705,7 @@ export function computeExtends(
          * (`.attribute-test`), not the double-prefixed full path.
          */
         .map(inst => relativizeExtender(inst, s, false));
-      header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list.map(nestedExtenderUnit);
+      header = runFixpoint(s.ownLocal.map(cloneBranch), groupInstructions(applied, buildContribs(applied))).list.map(nestedExtenderUnit);
 
       /*
        * A match of the rule's whole composed selector by an extender nested under the
@@ -1776,6 +1766,7 @@ export function computeExtends(
     nestedPlan,
     hoistHeader,
     byPlacement,
-    targetAtoms: plan.targetAtoms
+    targetAtoms: plan.targetAtoms,
+    subjects: plan.subjects
   };
 }

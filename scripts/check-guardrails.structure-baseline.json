@@ -1,7 +1,4 @@
 {
-  "packages/compiler/src/index.ts": {
-    "statements": 539
-  },
   "packages/core/src/ast/css-grammar-helpers.ts": {
     "statements": 735
   },
@@ -15,7 +12,7 @@
     "statements": 61
   },
   "packages/core/src/ast/extend/emit.ts": {
-    "statements": 714
+    "statements": 706
   },
   "packages/core/src/ast/extend/emit.ts#nestingFold": {
     "statements": 50
@@ -42,7 +39,7 @@
     "params": 6
   },
   "packages/core/src/ast/extend/plan.ts#collectPlan": {
-    "statements": 58
+    "statements": 57
   },
   "packages/core/src/ast/mixin-dispatch.ts#bindArgs": {
     "statements": 53
@@ -55,13 +52,10 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9400
+    "statements": 9232
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
-  },
-  "packages/core/src/ast/serialize.ts#activateBodyDependencies": {
-    "statements": 46
   },
   "packages/core/src/ast/serialize.ts#cellsForParams": {
     "params": 7
@@ -88,7 +82,7 @@
     "statements": 47
   },
   "packages/core/src/ast/serialize.ts#resolveReferenceResult": {
-    "statements": 212
+    "statements": 211
   },
   "packages/core/src/ast/serialize.ts#snapshotPreparedMixinValue": {
     "params": 7
@@ -108,9 +102,6 @@
   },
   "packages/core/src/ast/serialize.ts#writtenBlockBody": {
     "statements": 86
-  },
-  "packages/core/src/ast/serialize.ts#orderKeywordArgs": {
-    "params": 6
   },
   "packages/core/src/ast/serialize.ts#resolveTokenAmp": {
     "params": 7
@@ -146,7 +137,7 @@
     "params": 10
   },
   "packages/core/src/ast/serialize.ts#planImportedFacts": {
-    "statements": 204,
+    "statements": 203,
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#planImportedFacts.planImported": {
@@ -160,7 +151,7 @@
     "statements": 86
   },
   "packages/core/src/ast/serialize.ts#serialize": {
-    "statements": 58
+    "statements": 56
   },
   "packages/core/src/ast/serialize.ts#emitDocumentStatements": {
     "statements": 186
@@ -168,14 +159,11 @@
   "packages/core/src/ast/serialize.ts#emitDocumentStatements.emit~2": {
     "statements": 89
   },
-  "packages/core/src/ast/serialize.ts#openDynamicPath": {
+  "packages/core/src/ast/extend/dynamic.ts#openDynamicPath": {
     "params": 6
   },
-  "packages/core/src/ast/serialize.ts#recordDynamicExtendFacts": {
+  "packages/core/src/ast/extend/dynamic.ts#recordDynamicExtendFacts": {
     "params": 8
-  },
-  "packages/core/src/ast/serialize.ts#recordNestedDynExtendSlot": {
-    "params": 7
   },
   "packages/core/src/ast/serialize.ts#foldDynamicExtends": {
     "statements": 60
@@ -188,10 +176,10 @@
     "params": 7
   },
   "packages/core/src/ast/serialize.ts#walkBody": {
-    "statements": 294
+    "statements": 289
   },
   "packages/core/src/ast/serialize.ts#walkBody.run": {
-    "statements": 238
+    "statements": 233
   },
   "packages/core/src/ast/serialize.ts#expandCall": {
     "statements": 78,
@@ -277,7 +265,7 @@
     "params": 12
   },
   "packages/core/src/ast/serialize.ts#writeNestedRule": {
-    "statements": 98
+    "statements": 96
   },
   "packages/core/src/ast/serialize.ts#writeNestedAtRuleBlock": {
     "params": 7
@@ -323,7 +311,7 @@
     "statements": 63
   },
   "packages/diagnostics-core/src/tolerant-cst.ts": {
-    "statements": 3463
+    "statements": 3462
   },
   "packages/diagnostics-core/src/tolerant-cst.ts#animationNameReferences": {
     "statements": 81
@@ -372,10 +360,10 @@
     "statements": 86
   },
   "packages/jess-plugin-js/src/index.ts#JsPlugin.startWorker": {
-    "statements": 60
+    "statements": 49
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts": {
-    "statements": 1277
+    "statements": 1271
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts#callWithLayout": {
     "params": 6

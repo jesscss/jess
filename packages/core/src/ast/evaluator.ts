@@ -20,10 +20,11 @@ import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { keepAsWritten, keptMathOf, mathText, operate } from './value-operate.js';
 import { isMathFunctionName } from './math-functions.js';
+import { writtenCallValue } from './math-operand.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry } from './value-dispatch.js';
-import { dispatchFn, FunctionDeclined } from './value-dispatch.js';
-import { makeKeyword } from './value-factory.js';
+import { dispatchFn, numberArguments } from './value-dispatch.js';
+import { makeFunctionCall, withFields } from './value-factory.js';
 import { emitCompressed } from './compress.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
@@ -33,12 +34,14 @@ import { emitCompressed } from './compress.js';
  *  ({@link writtenArgument}), and pretty output keeps the comments and line
  *  breaks the parser recorded between and inside the `authored` arguments
  *  (ledger F11). */
-function verbatimArgs(args: ValueGroup, modes?: EvalModes, authored?: readonly ArgumentKeyword[], math = false): string {
+function verbatimArgs(args: ValueGroup, modes?: EvalModes, authored?: readonly ArgumentKeyword[], math = false, inCalc = false): string {
   const separator = groupSeparator(args);
   const compress = modes?.compress === true;
   const glue = separator === ' ' ? ' ' : sepGlue(separator, compress);
   const plain = compress ? emitCompressed : emitValue;
-  const emit = math ? (v: ValueGroup): string => isValueGroupArray(v) ? plain(v) : keptMathOf(v) ?? mathText(v, plain(v)) : plain;
+  const emit = math
+    ? (v: ValueGroup): string => isValueGroupArray(v) ? plain(v) : keptMathOf(v) ?? mathText(v, plain(v))
+    : inCalc ? (v: ValueGroup): string => writtenCallValue(v, plain) : plain;
   const items = groupItems(args);
   if (authored === undefined) {
     return items.map(emit).join(glue);
@@ -69,13 +72,22 @@ interface WrittenCall {
   readonly written?: WrittenArguments;
   readonly authored?: readonly ArgumentKeyword[];
   readonly rejectEmpty: boolean;
+
+  /** `.scss` keeps math on what only the browser knows as written (slice 8); elsewhere, a group of it outside a math function is a `calc()`, there being no `(...)` in CSS. */
+  readonly keptMath?: boolean;
 }
 
 function fallbackCall(name: string, args: ValueGroup, modes: EvalModes | undefined, call: WrittenCall): Value {
   if (call.rejectEmpty && groupItems(args).some(isEmptyList)) {
     throw new EmptyListValueError(`An empty list is an argument of \`${name}()\`, a call written out as-is; an empty list has no CSS spelling.`);
   }
-  return keepAsWritten(makeKeyword(`${name}(${verbatimArgs(call.written?.args ?? args, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name))})`));
+  const written = call.written?.args ?? args;
+  return keepAsWritten(makeFunctionCall(name, written, `${name}(${verbatimArgs(written, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name), call.keptMath !== true && name.charCodeAt(0) !== 45)})`));
+}
+
+/** `name(args)` written out as-is, as a call with no callable is. */
+export function writeCall(name: string, args: ValueGroup, modes: EvalModes): Value {
+  return fallbackCall(name, args, modes, { rejectEmpty: false });
 }
 
 /**
@@ -90,10 +102,20 @@ function recoverCallFailure(
   modes: EvalModes,
   call: WrittenCall
 ): Value {
-  if (modes.functionMode === 'error' && !(error instanceof FunctionDeclined)) {
+  /* By name: a provided module (`#less`) is loaded by its resolved path, and may run another build of the class. */
+  const declined = error instanceof Error && error.name === 'FunctionDeclined';
+  if (modes.functionMode === 'error' && !declined) {
     throw error;
   }
-  return fallbackCall(name, args, modes, call);
+
+  /* A declined imported call (`less.rgb`) is the CSS function it names. */
+  if (!declined) {
+    return fallbackCall(name, args, modes, call);
+  }
+  const written = fallbackCall(name.slice(name.lastIndexOf('.') + 1), args, modes, call);
+
+  /* Of no known type, it is still CSS, which a call written out because it failed is not (`isUnwrittenBuiltin`). */
+  return written.type === 'FunctionCall' && written.result === null ? keepAsWritten(withFields(written, { computed: true })) : written;
 }
 
 /** Attach recovery to an async result; the caller keeps the synchronous path allocation-free. */
@@ -130,10 +152,11 @@ const stringify = (v: ValueGroup): string =>
  */
 export function buildEvaluator(
   registry: FnRegistry,
-  options: { readonly sassCalculations?: boolean; readonly sassOperands?: boolean; readonly parseSelector?: SelectorParse } = {}
+  options: { readonly sassCalculations?: boolean; readonly sassOperands?: boolean; readonly parseSelector?: SelectorParse; readonly cssMath?: ValueEvaluator['cssMath'] } = {}
 ): ValueEvaluator {
   const { parseSelector } = options;
   const rejectEmpty = options.sassOperands === true;
+  const keptMath = options.sassCalculations === true;
   const call = (
     name: string,
     args: ValueGroup,
@@ -152,35 +175,30 @@ export function buildEvaluator(
      * direct consumers of the legacy lazy lookup seam.
      */
     const scoped = scopedFn ?? scope?.lookup(name);
-    if (scoped) {
+
+    /*
+     * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
+     * resolves to a built-in but can't produce a value for these args — a modern
+     * color syntax (`hsl(198deg 28% 50%)`), a relative/`var()` color arg, or a
+     * non-color first arg to `contrast`/`lighten` (the CSS filter) — renders
+     * as-is, like an unknown CSS function, rather than throwing (ledger C17).
+     * The same holds for a scoped `@plugin`/`@use` fn. (Only fn-dispatch errors are
+     * caught here; variable-resolution / mixin-recursion errors are thrown
+     * outside `dispatch` and still propagate.) A slash list passed to a
+     * parameter typed as a number is its quotient ({@link numberArguments}).
+     */
+    const fn = scoped ?? (ambient ? registry.get(name) : undefined);
+    if (fn) {
       try {
-        const result = dispatchFn(scoped, args, { modes, stringify, io, parseSelector });
-        return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty }) : result;
+        const result = dispatchFn(fn, numberArguments(fn, args, evaluator, modes), { modes, stringify, io, parseSelector });
+        return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty, keptMath }) : result;
       } catch (err) {
-        return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty });
-      }
-    }
-    if (ambient && registry.has(name)) {
-      try {
-        const result = registry.dispatch(name, args, { modes, stringify, io, parseSelector });
-        return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty }) : result;
-      } catch (err) {
-        /*
-         * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
-         * resolves to a built-in but can't produce a value for these args — a modern
-         * color syntax (`hsl(198deg 28% 50%)`), a relative/`var()` color arg, or a
-         * non-color first arg to `contrast`/`lighten` (the CSS filter) — renders
-         * as-is, like an unknown CSS function, rather than throwing. This mirrors
-         * less.js, which keeps such calls verbatim. (Only fn-dispatch errors are
-         * caught here; variable-resolution / mixin-recursion errors are thrown
-         * outside `dispatch` and still propagate.)
-         */
-        return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty });
+        return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty, keptMath });
       }
     }
 
     // Unknown function: emit verbatim.
-    return fallbackCall(name, args, modes, { written, authored, rejectEmpty });
+    return fallbackCall(name, args, modes, { written, authored, rejectEmpty, keptMath });
   };
 
   /* The callee's declared parameter names — the binding surface a keyword
@@ -212,16 +230,19 @@ export function buildEvaluator(
     return typeCheckValues(name, values);
   };
 
-  return {
+  const evaluator: ValueEvaluator = {
     /* `.scss` computes `*` and `/` units as Dart Sass does (ledger V32). */
     operate: options.sassCalculations === true ? (op, left, right, modes) => operate(op, left, right, modes, true) : operate,
     call,
     paramNames,
     has: name => registry.has(name),
+    fn: name => registry.get(name),
     compare,
     compareMatch,
     typeCheck,
     sassCalculations: options.sassCalculations === true,
-    sassOperands: options.sassOperands === true
+    sassOperands: options.sassOperands === true,
+    cssMath: options.cssMath
   };
+  return evaluator;
 }

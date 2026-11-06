@@ -1,6 +1,9 @@
-import type { Color, Dimension, ValueGroup, Fn } from '@jesscss/core';
-import { colorRawRgb, defineFunction, groupItems, makeColorRgb, RGB } from '@jesscss/core';
-import { clamp01, isColor, isModern, percentOf } from './color-ctor-helper.js';
+import { defineForm, type FormCall } from '@jesscss/core/form';
+import type { Color, Dimension, FnCtx, FunctionCall, ValueGroup, Fn } from '@jesscss/core/value';
+import { colorRawRgb, defineFunction, FunctionDeclined, groupItems, isValueGroupArray, makeColorRgb, makeDimension, RGB } from '@jesscss/core/value';
+import { clamp01, inUnits, isColor, isModern, percentOf } from './color-ctor-helper.js';
+import { COLOR_ARG, fractionOf } from './color-form.js';
+import { fade as form } from './css-forms.generated.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
@@ -19,11 +22,29 @@ import { requireDimension } from '../shared/math/math-helper.js';
 const pctOf = (d: Dimension | undefined): number | undefined =>
   d?.unit === '%' ? d.number : undefined;
 
+/** A channel only the browser knows: a call of no known type, or of a number. */
+const isDeferredChannel = (value: ValueGroup): boolean =>
+  !isValueGroupArray(value) && value.type === 'FunctionCall' && value.result !== 'color';
+
+/** What CSS takes as an `rgb()` channel or alpha (css-color-4 §5.1). */
+const CHANNEL_UNITS: readonly string[] = ['', '%'];
+
+const fitsChannel = (value: ValueGroup): boolean => inUnits(value, CHANNEL_UNITS);
+
 export function makeRgb(value: ValueGroup): Color {
   const items = groupItems(value);
   const modernSyntax = isModern(value);
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
+    /* `rgb(var(--r), 0, 0)` is CSS as written. Every other channel still has to be a number. */
+    if (items.some(isDeferredChannel)) {
+      items.forEach((item) => {
+        if (!isDeferredChannel(item) && !CHANNEL_UNITS.includes(requireDimension(item).unit)) {
+          throw new TypeError('rgb: a channel is a number or a percentage');
+        }
+      });
+      throw new FunctionDeclined();
+    }
     const r = percentOf(requireDimension(items[0]), 255);
     const g = percentOf(requireDimension(items[1]), 255);
     const b = percentOf(requireDimension(items[2]), 255);
@@ -33,16 +54,50 @@ export function makeRgb(value: ValueGroup): Color {
     const alphaPct = items[3] !== undefined ? pctOf(requireDimension(items[3])) : undefined;
     return makeColorRgb([r, g, b], a, RGB, { modernSyntax, ...(rgbPct ? { rgbPct } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) });
   }
-  if (isColor(first)) {
-    const c = first;
-    const a = items[1] !== undefined ? clamp01(percentOf(requireDimension(items[1]), 1)) : c.alpha;
-    return makeColorRgb(colorRawRgb(c), a, RGB, { modernSyntax });
+  if (items.length < 3 && isColor(first)) {
+    return makeColorRgb(colorRawRgb(first), first.alpha, RGB, { modernSyntax });
   }
   throw new Error('Invalid arguments for rgb function');
 }
 
-export const rgb: Fn = defineFunction('rgb', {
-  params: [{ type: 'any' }, { type: 'any', optional: true }, { type: 'any', optional: true }, { type: 'any', optional: true }],
+/**
+ * The two-slot `rgba(color, alpha)`: `rgb(from color r g b / alpha)`. A
+ * substitution or an unknown function may expand to the channels, so that call is
+ * CSS as written (docs/design/CSS-NATIVE-BUILTINS.md §3.8).
+ */
+const colorWithAlpha = /* @__PURE__ */ defineForm('rgba', {
+  params: [COLOR_ARG, { type: ['Dimension', 'FunctionCall'], fits: fitsChannel }],
+  format: RGB,
+  form: (color: ValueGroup | FunctionCall, alpha: Dimension | FunctionCall): FormCall => {
+    if ((!isValueGroupArray(color) && color.type === 'FunctionCall' && color.result !== 'color') || (alpha.type === 'FunctionCall' && alpha.result !== 'numeric')) {
+      throw new TypeError('rgba: a substitution may hold the channels, so the call is CSS as written');
+    }
+    return [form, color, alpha.type === 'Dimension' ? makeDimension(clamp01(fractionOf(alpha))) : alpha];
+  }
+});
+
+/** `rgb()`/`rgba()`: the two-slot overload's form, else the channels or one colour. */
+export const rgbBody = (list: ValueGroup, ctx: FnCtx): ReturnType<Fn> => {
+  const items = groupItems(list);
+  const first = items[0];
+
+  /* An exposed colour is already that colour; a `var()` written here may hold channels (§3.8). */
+  return items.length === 2 && !isModern(list)
+    ? colorWithAlpha(list, ctx)
+    : items.length === 1 && first !== undefined && !isValueGroupArray(first) && first.type === 'FunctionCall' && first.name === 'var' && first.result === 'color' ? first : makeRgb(list);
+};
+
+/** What a slot of `rgb()` takes: a list stays a list, and a call is what only the browser knows. */
+const SLOT_TYPES = ['List', 'Color', 'Dimension', 'FunctionCall'] as const;
+
+const RGB_SLOT = { type: SLOT_TYPES, fits: fitsChannel } as const;
+const RGB_OPTIONAL_SLOT = { type: SLOT_TYPES, fits: fitsChannel, optional: true } as const;
+
+/** The slots of `rgb()` and `rgba()`. */
+export const RGB_PARAMS = [RGB_SLOT, RGB_OPTIONAL_SLOT, RGB_OPTIONAL_SLOT, RGB_OPTIONAL_SLOT] as const;
+
+export const rgb: Fn = /* @__PURE__ */ defineFunction('rgb', {
+  params: RGB_PARAMS,
   variadic: true,
-  body: list => makeRgb(list)
+  body: rgbBody
 });

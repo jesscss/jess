@@ -3,6 +3,11 @@
 ## Status
 
 - Proposed
+- The permission broker and the per-call worker are replaced by
+  [`design/DENO-SANDBOX-COMPILE.md`](../design/DENO-SANDBOX-COMPILE.md): a compile
+  that runs stylesheet JavaScript runs whole in Deno, under native permission
+  flags. The non-goal below about running the whole compile in Deno no longer
+  holds.
 - Owner: Jess core team
 - Scope: `@jesscss/jess`, `@jesscss/core`, new `@jesscss/plugin-js`
 
@@ -234,12 +239,12 @@ Exemption:
 
 If plugin is absent and JS import is requested, fail with deterministic error:
 
-- `JavaScript plugin not installed. Install @jesscss/plugin-js to enable script execution features.`
+- `Feature not supported. Install @jesscss/plugin-js where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.`
 
 If a script-capable feature is encountered and the plugin is not installed/configured:
 
 - Throw a feature-level error with consistent wording:
-  - `Feature not supported. Install @jesscss/plugin-js to enable script execution features.`
+  - `Feature not supported. Install @jesscss/plugin-js where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.`
 - This applies to executable `@-use` / `@-from` imports and file-based Less
   `@plugin`.
 - `@jesscss/fns`, `#less/*`, `#sass/*`, and `.json` imports are excluded from

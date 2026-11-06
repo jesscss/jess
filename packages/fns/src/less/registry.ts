@@ -4,8 +4,9 @@
  * Deliberately in the dialect folder: a Less-only consumer must not pull the
  * Sass index into its bundle just to build the Less dispatch table.
  */
-import type { Fn, FnRegistry } from '@jesscss/core';
-import { fnsOf, registryOf } from '../registry.js';
+import type { Fn, FnRegistry } from '@jesscss/core/value';
+import { exportNamesByCall, fnsOf, registryOf } from '../registry.js';
+import { ambientContrast } from './contrast.js';
 import * as lessIndex from './index.js';
 
 /** Every Less built-in. Derived from the index — not a maintained list. */
@@ -13,5 +14,12 @@ export const lessFns: readonly Fn[] = fnsOf(lessIndex);
 
 /** Build the Less built-in dispatch table. */
 export function makeLessRegistry(): FnRegistry {
-  return registryOf(lessIndex);
+  const registry = registryOf(lessIndex);
+  registry.register(ambientContrast);
+  return registry;
+}
+
+/** Every Less built-in's call name → its export name in this index. */
+export function lessExportNames(): Map<string, string> {
+  return exportNamesByCall(lessIndex);
 }

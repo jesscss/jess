@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emitJess } from '@jesscss/core';
-import * as sassFunctions from '@jesscss/fns/sass';
+import { jessFunctions } from '@jesscss/plugin-scss';
 import { parse as parseScss } from '@jesscss/scss-parser';
 import { Compiler } from '../../src/index.js';
 
@@ -104,12 +104,12 @@ const DART_SASS: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string,
 const NOT_IMPLEMENTED = new Set(['list.slash', 'map.deep-remove', 'inspect']);
 const divergence = (fn: string, input: string, wrap: 'value' | 'type', [value, type]: readonly [string, string]): string | undefined => {
   /*
-   * A call to a function Jess lacks is written out as-is, which is typed a
-   * string, as `inspect()` returns; written out with an empty list it fails, as
-   * Dart Sass fails `map.deep-remove((), a)`.
+   * `inspect()`, which Jess lacks, is written out as-is, which is typed a string
+   * as `inspect()` returns. A module member Jess lacks is
+   * `resolve/name-not-found`, so it fails where Dart Sass fails.
    */
-  const writtenAsIs = fn === 'inspect' && wrap === 'type' ? input !== '()' : fn === 'map.deep-remove' && wrap === 'value' && input === '()';
-  if (NOT_IMPLEMENTED.has(fn) && !writtenAsIs) {
+  const agrees = fn === 'inspect' ? wrap === 'type' && input !== '()' : (wrap === 'value' ? value : type) === 'ERROR';
+  if (NOT_IMPLEMENTED.has(fn) && !agrees) {
     return 'not implemented in Jess';
   }
   if ((fn === 'map.get' || fn === 'map-get') && (input === '()' || input === '[]')) {
@@ -158,10 +158,7 @@ describe('scss: Sass list, map and type functions on every list spelling do what
  * `.scss` → CSS writes, with the empty list `{}`, the curly list `{ … }` and
  * the map `#{ … }`.
  */
-const SASS_FUNCTIONS = {
-  from: '#sass',
-  names: new Map(Object.entries(sassFunctions).flatMap(([exported, fn]) => typeof fn === 'function' ? [[fn.name.toLowerCase(), exported] as const] : []))
-};
+const SASS_FUNCTIONS = jessFunctions();
 describe('scss → .jess → css writes what scss → css writes', () => {
   /* A map literal read with `map.get` lowers to an accessor on a literal, which `.jess` roots only at a `$` binding. */
   const converts = (cell: typeof cells[number]): boolean => !NOT_IMPLEMENTED.has(cell.fn) && cell.fn !== 'map.get' && cell.fn !== 'map-get';

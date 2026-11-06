@@ -10,7 +10,7 @@
     "access": "public"
   },
   "description": "Generic compiler host for Jess-compatible stylesheet language plugins",
-  "version": "2.0.0-alpha.31",
+  "version": "2.0.0-alpha.32",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
@@ -49,11 +49,7 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "linecraft": "0.2.8",
-    "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
-  },
-  "devDependencies": {
-    "@types/lodash-es": "^4.17.8"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

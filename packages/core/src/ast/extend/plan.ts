@@ -5,11 +5,13 @@
  * scope, document order).
  */
 
-import { branchFromSelector, branchSharesAtom, collectBranchAtoms, levelFromSelectorList } from './ir.js';
+import { branchSharesAtom, collectBranchAtoms, selectorLevel } from './ir.js';
+import { buildsSharedName } from './compose.js';
 import type { Branch, Level } from './ir.js';
 import { selectorBranchHasInterp } from '../nodes.js';
 import type { SelectorList, Stylesheet, Ruleset, Statement } from '../nodes.js';
 import type { AtRuleBlock } from '../at-rule.js';
+import type { InstGroup } from './solve.js';
 
 /**
  * Opt-in, import-time-captured counters for the AST extend planner. Production
@@ -100,9 +102,11 @@ export interface PlanSubject {
   /**
    * FAST-REJECT: true when some level on this subject's ancestor path (own-local ∪
    * ancestors) contains an atom that is also an instruction-target atom. Computed
-   * as an inherited boolean — O(own-local atoms) per subject, no `composePath`.
+   * as an inherited boolean — O(own-local atoms) per subject; only a subject whose own
+   * level builds a name on its parent (`&-b`) is composed ({@link buildsSharedName}).
    * A subject with `mayMatch === false` provably cannot match or chain any extend
-   * (its composed seed's atoms ⊆ the per-level atom union; see EXTEND-REDESIGN.md),
+   * (its composed seed's atoms ⊆ the per-level atom union, plus the names a `&`
+   * builds; see EXTEND-REDESIGN.md),
    * so it keeps its raw form and needs no expensive solve. Only meaningful when
    * `targetAtoms` is populated (i.e. the document has extends).
    */
@@ -124,6 +128,29 @@ export interface PlanSubject {
    * Every subject literal declares it, so all subjects keep one shape.
    */
   placement: object | undefined;
+}
+
+/**
+ * The placement of a stand-in for a planned rule: a rule the render walk records under
+ * a rule the plan holds names a stand-in as its parent, and {@link collectPlan} nests it
+ * under the planned subject (ledger X22).
+ */
+const PLANNED_PARENT = {};
+
+/** A stand-in for the planned subject of `rule`, written with `path` ({@link PLANNED_PARENT}). */
+export function plannedParent(rule: Ruleset, path: Level[]): PlanSubject {
+  return {
+    rule,
+    path,
+    scope: [],
+    ownLocal: path[path.length - 1]!,
+    parent: null,
+    mayMatch: false,
+    hidden: false,
+    boundary: null,
+    referenceAtRule: null,
+    placement: PLANNED_PARENT
+  };
 }
 
 /** One hidden at-rule occurrence in the render-local reference-import plan. */
@@ -159,6 +186,12 @@ export interface Plan {
    * of these atoms provably cannot match or chain — the solve prefilter skips it.
    */
   targetAtoms: Set<string>;
+
+  /**
+   * The instruction groups of a subject every instruction reaches, the common case,
+   * built by the first such solve and read by the rest ({@link solveComposed}).
+   */
+  groups: InstGroup[] | null;
 }
 
 /** Typed facts produced by a render-local preflight (currently imported loop bodies). */
@@ -207,6 +240,30 @@ export function atRuleScope(scope: number[], node: AtRuleBlock, ids: AtRuleScope
   return [...scope, id];
 }
 
+/**
+ * Append `overlay` to `subjects` in order, nesting a walk-recorded subject whose parent
+ * is a {@link plannedParent} stand-in under the planned subject of that rule. Indexed
+ * append: a large, finite imported-loop overlay spread as call arguments hits V8's
+ * stack/argument limit before solving.
+ */
+function appendOverlaySubjects(subjects: PlanSubject[], overlay: readonly PlanSubject[]): void {
+  let planned: Map<Ruleset, PlanSubject> | undefined;
+  for (let index = 0; index < overlay.length; index++) {
+    const s = overlay[index]!;
+    if (s.parent?.placement === PLANNED_PARENT) {
+      /* ponytail: by rule alone; a rule a `(multiple)` import plans twice nests its walk-placed children under its last placement. */
+      if (planned === undefined) {
+        planned = new Map();
+        for (const p of subjects) {
+          planned.set(p.rule, p);
+        }
+      }
+      s.parent = planned.get(s.parent.rule) ?? s.parent;
+    }
+    subjects.push(s);
+  }
+}
+
 export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: ReadonlyMap<SelectorList, SelectorList>): Plan {
   recordAstExtendProfile?.('astExtend.plan.calls');
   const subjects: PlanSubject[] = [];
@@ -230,16 +287,14 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
   ): void => {
     for (const st of statements) {
       if (st.type === 'Ruleset') {
-        const rule = st;
-
         /* An interpolated selector reads as the extend pre-pass resolved it (`resolved`), the parsed one untouched. */
-        const selector = resolved?.get(rule.selector) ?? rule.selector;
-        const own = levelFromSelectorList(selector);
+        const selector = resolved?.get(st.selector) ?? st.selector;
+        const own = selectorLevel(selector);
         const rulePath = [...path, own];
         const ownExt = ext === null ? null : writableLevel(selector, own);
         const ruleExt = ext === null || ownExt === null ? null : ext === path && ownExt === own ? rulePath : [...ext, ownExt];
         const subject: PlanSubject = {
-          rule,
+          rule: st,
           path: rulePath,
           scope,
           ownLocal: own,
@@ -251,8 +306,8 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
           placement: undefined
         };
         subjects.push(subject);
-        if (rule.extendInstructions) {
-          for (const inst of rule.extendInstructions) {
+        if (st.extendInstructions) {
+          for (const inst of st.extendInstructions) {
             /*
              * [extend] An INLINE extend binds to its own complex (`inst.subject`), not
              * the whole rule selector — its extender path narrows the own-local level to
@@ -261,17 +316,18 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
              */
             const subject = inst.subject && (resolved?.get(inst.subject) ?? inst.subject);
             const extenderPath = subject
-              ? ext === null || subject.selectors.some(selectorBranchHasInterp) ? null : [...ext, levelFromSelectorList(subject)]
+              ? ext === null || subject.selectors.some(selectorBranchHasInterp) ? null : [...ext, selectorLevel(subject)]
               : ruleExt;
             if (extenderPath === null) {
               continue;
             }
-            for (const sel of (resolved?.get(inst.target) ?? inst.target).selectors) {
+            const target = resolved?.get(inst.target) ?? inst.target;
+            for (let index = 0; index < target.selectors.length; index++) {
               /* An unresolved target names nothing, and its `''` would match an unresolved subject. */
-              if (selectorBranchHasInterp(sel)) {
+              if (selectorBranchHasInterp(target.selectors[index]!)) {
                 continue;
               }
-              const targetBranch = branchFromSelector(sel);
+              const targetBranch = selectorLevel(target)[index]!;
               instructions.push({
                 target: targetBranch,
                 partial: inst.partial,
@@ -285,7 +341,7 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
             }
           }
         }
-        walk(rule.rules, rulePath, ruleExt, scope, subject);
+        walk(st.rules, rulePath, ruleExt, scope, subject);
       } else if (st.type === 'AtRuleBlock') {
         const inner = atRuleScope(scope, st, scopeIds);
         if (parent !== null) {
@@ -307,9 +363,7 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
      * becomes call arguments and hits V8's stack/argument limit before solving.
      * Indexed append preserves source order without a temporary copy.
      */
-    for (let index = 0; index < overlay.subjects.length; index++) {
-      subjects.push(overlay.subjects[index]!);
-    }
+    appendOverlaySubjects(subjects, overlay.subjects);
     for (let index = 0; index < overlay.instructions.length; index++) {
       instructions.push(overlay.instructions[index]!);
     }
@@ -329,52 +383,22 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
   /*
    * FAST-REJECT boolean, computed as an inherited flag over subjects in document
    * (pre-)order — a parent always precedes its descendants, so one forward pass
-   * suffices. `own || parent.mayMatch`: no `composePath`, O(own-local atoms). A
+   * suffices. `own || parent.mayMatch`: O(own-local atoms), no `composePath`. A
    * subject with no parent subject reads its whole path: a rule the render walk
-   * reached through a mixin or loop body carries its ancestors as levels only.
+   * reached through a mixin or loop body carries its ancestors as levels only. A name
+   * a `&` builds on its parent is seen only composed ({@link buildsSharedName}).
    */
   const levelShares = (level: Level): boolean => level.some(b => branchSharesAtom(b, targetAtoms));
   for (const s of subjects) {
-    s.mayMatch = s.parent !== null
+    s.mayMatch = (s.parent !== null && s.parent.placement !== PLANNED_PARENT
       ? s.parent.mayMatch || levelShares(s.ownLocal)
-      : s.path.some(levelShares);
+      : s.path.some(levelShares)) || buildsSharedName(s.path, targetAtoms);
   }
 
   recordAstExtendProfile?.('astExtend.plan.subjects', subjects.length);
   recordAstExtendProfile?.('astExtend.plan.bubbles', bubbles.length);
   recordAstExtendProfile?.('astExtend.plan.instructions', instructions.length);
-  return { subjects, instructions, bubbles, targetAtoms };
-}
-
-/**
- * Allocation-free pre-scan: does the document contain ANY `:extend()` instruction?
- * The common case (no extends) returns false without building the subject/instruction
- * plan at all — the serializer's true zero-cost gate.
- */
-export function documentHasExtend(root: Stylesheet): boolean {
-  recordAstExtendProfile?.('astExtend.documentHasExtend.calls');
-  const scan = (statements: Statement[]): boolean => {
-    for (const st of statements) {
-      if (st.type === 'Ruleset') {
-        if (st.extendInstructions && st.extendInstructions.length > 0) {
-          return true;
-        }
-        if (scan(st.rules)) {
-          return true;
-        }
-      } else if (st.type === 'AtRuleBlock') {
-        if (scan(st.rules)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-  const found = scan(root.rules);
-  recordAstExtendProfile?.(found
-    ? 'astExtend.documentHasExtend.featureBearingCalls'
-    : 'astExtend.documentHasExtend.noFeatureMisses');
-  return found;
+  return { subjects, instructions, bubbles, targetAtoms, groups: null };
 }
 
 /** Reachability: an instruction reaches a subject iff the subject scope is the

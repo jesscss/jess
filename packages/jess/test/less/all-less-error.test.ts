@@ -29,6 +29,9 @@ const acceptedDivergences = new Map<string, string>([
    */
   ['tests-error/eval/color-func-invalid-color-2.less', 'lazy variables (R1): the failing call sits in an unreferenced variable'],
 
+  /* `percentage(var(--x))` is its CSS form, `calc(var(--x) * 100%)` (CSS-NATIVE-BUILTINS Q8). */
+  ['tests-error/eval/percentage-css-var.less', 'a built-in is its CSS form over an input only the browser knows'],
+
   /*
    * Escaped text is written as written (owner 2026-10-09: "everywhere that is text
    * should print AS WRITTEN"), and well-formed input never stops the pipeline (P45):
@@ -42,7 +45,18 @@ const acceptedDivergences = new Map<string, string>([
    * `@foo: .a;` should stay an error: "No, it's a mixin reference."; ledger
    * P33, jess#236), so `@alias[foo]` reads the mixin's `foo`.
    */
-  ['tests-error/eval/namespacing-3.less', 'a variable that names a mixin holds a mixin reference (owner 2026-10-29, P33)']
+  ['tests-error/eval/namespacing-3.less', 'a variable that names a mixin holds a mixin reference (owner 2026-10-29, P33)'],
+
+  /*
+   * A slash written in place as a function argument converts where the
+   * parameter takes a number (owner 2026-10-30, ledger P35: "Since functions
+   * can specify types, it seems like we could use type hints to auto-convert
+   * here? since obviously percentage() does not accept a slash list?"), so
+   * `percentage(16/17)` is `94.11764706%` and `unit(80/16,rem)` is `5rem`
+   * (function-mode.test.ts).
+   */
+  ['tests-error/eval/percentage-non-number-argument.less', 'a slash written in place converts for a parameter that takes a number (owner 2026-10-30, P35)'],
+  ['tests-error/eval/unit-function.less', 'a slash written in place converts for a parameter that takes a number (owner 2026-10-30, P35)']
 ]);
 
 const rootCallFunctionFixtures = new Set([
@@ -64,9 +78,7 @@ const rootCallFunctionFixtures = new Set([
  * operator rather than the declaration start Less reports, so only its line is
  * compared.
  *
- * Wording is not asserted. Known differences: the argument binder reports
- * `percentage: arg 0 expected Dimension, got List` where Less says `argument must
- * be a number` (`unit()` likewise drops Less's parenthesis hint), and
+ * Wording is not asserted. Known difference:
  * `svg-gradient(black, orange)` reports the stop-list message because the stops
  * are counted structurally; Less counted the characters of `orange` and so
  * reached its direction message instead.
@@ -77,15 +89,12 @@ const callSiteErrorFixtures = new Map<string, string>([
   ['tests-error/eval/divide-mixed-units.less', 'eval/invalid-unit-arithmetic'],
   ['tests-error/eval/multiply-mixed-units.less', 'eval/invalid-unit-arithmetic'],
   ['tests-error/eval/color-func-invalid-color.less', 'eval/invalid-function'],
-  ['tests-error/eval/percentage-css-var.less', 'eval/invalid-function'],
-  ['tests-error/eval/percentage-non-number-argument.less', 'eval/invalid-function'],
   ['tests-error/eval/svg-gradient1.less', 'eval/invalid-function'],
   ['tests-error/eval/svg-gradient2.less', 'eval/invalid-function'],
   ['tests-error/eval/svg-gradient3.less', 'eval/invalid-function'],
   ['tests-error/eval/svg-gradient4.less', 'eval/invalid-function'],
   ['tests-error/eval/svg-gradient5.less', 'eval/invalid-function'],
-  ['tests-error/eval/svg-gradient6.less', 'eval/invalid-function'],
-  ['tests-error/eval/unit-function.less', 'eval/invalid-function']
+  ['tests-error/eval/svg-gradient6.less', 'eval/invalid-function']
 ]);
 
 /** The `on line N, column M` location in a fixture's expected Less error. */

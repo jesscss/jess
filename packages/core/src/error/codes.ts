@@ -24,10 +24,14 @@ export type JessErrorCode =
   | 'parse/unparenthesized-mixin-guard'
   | 'parse/leading-separator-value'
   | 'parse/uncalled-mixin-reference'
+  | 'parse/important-on-mixin-reference'
   | 'parse/import-postlude-on-compile-time-import'
   | 'parse/source-import-css-syntax'
   | 'parse/invalid-mixin-argument'
   | 'parse/ambiguous-not'
+  | 'parse/unresolved-prelude-interpolation'
+  | 'parse/expose-declaration'
+  | 'parse/malformed-expose'
   | 'parse/condition-keyword-case'
   | 'parse/selector-capture-argument'
   | 'parse/arithmetic-outside-expression'
@@ -50,8 +54,14 @@ export type JessErrorCode =
   | 'eval/ruleset-argument-with-rules'
   | 'eval/guarded-selector-list'
   | 'eval/ruleset-on-property'
+  | 'eval/uncalled-mixin-reference'
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
+  | 'eval/expose-not-a-value'
+  | 'eval/expose-not-top-level'
+  | 'eval/expose-not-declared'
+  | 'eval/expose-conflict'
+  | 'eval/expose-key-conflict'
   | 'eval/loop-iteration-limit'
   | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
@@ -220,6 +230,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
+    'parse/important-on-mixin-reference',
+    {
+      summary: 'A mixin reference cannot carry !important.',
+      reason: 'A mixin reference names a mixin without calling it, so it has no declarations for !important to mark.',
+      fix: 'Remove !important, or call the mixin: .mixin() !important.'
+    }
+  ],
+  [
     'parse/deprecated-if-function',
     {
       summary: 'Sass\'s if($condition, $if-true, $if-false) is deprecated in favor of CSS if()',
@@ -265,6 +283,30 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'selector() takes a selector list',
       reason: 'In a value, selector() captures a selector list, the argument :is() takes, and this argument is not one.',
       fix: 'Write a selector list, for example selector(.a, .b > .c).'
+    }
+  ],
+  [
+    'parse/expose-declaration',
+    {
+      summary: '@expose names variables; it does not declare one',
+      reason: '@expose lists the names of variables declared on their own, without their @.',
+      fix: 'Declare the variable, then expose it by name, for example: @brand: red; @expose brand;'
+    }
+  ],
+  [
+    'parse/malformed-expose',
+    {
+      summary: '@expose takes a comma-separated list of variable names',
+      reason: '@expose is followed by one or more variable names without their @, separated by commas, and ends at a semicolon.',
+      fix: 'Write the names it exposes, for example: @expose brand, gap;'
+    }
+  ],
+  [
+    'parse/unresolved-prelude-interpolation',
+    {
+      summary: 'This `@{…}` cannot be resolved in an at-rule prelude that opens with a group.',
+      reason: 'After a parenthesized group opens an at-rule prelude, a `@{…}` resolves only outside strings, functions and further groups.',
+      fix: 'Write the `@{…}` on its own in the prelude, or put it in a variable that holds the whole prelude.'
     }
   ],
   [
@@ -360,6 +402,46 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
+    'eval/expose-not-a-value',
+    {
+      summary: 'Exposed variable read outside a CSS value',
+      reason: '${symbol} is exposed, so a CSS value that reads it becomes var(--${name}, …); here it is read ${where}.',
+      fix: 'Read a variable that is not exposed here, or stop exposing ${symbol}.'
+    }
+  ],
+  [
+    'eval/expose-not-top-level',
+    {
+      summary: '@expose is only allowed at the top level of a stylesheet',
+      reason: 'An @expose is written inside a ruleset, at-rule, mixin, guard or loop body, or in a file imported into one; it publishes a variable of a stylesheet\'s top level.',
+      fix: 'Move the @expose to the top level of the stylesheet, or import the file at its top level.'
+    }
+  ],
+  [
+    'eval/expose-not-declared',
+    {
+      summary: '@expose names @${name}, which is not visible at the top level of this file',
+      reason: '@expose ${name} publishes the variable @${name} a read at the top level of this file sees: one declared there, by a file it imports or by a mixin it calls there. A variable declared only in a nested block is not one.',
+      fix: 'Declare @${name} at the top level of this file, or remove ${name} from the @expose.'
+    }
+  ],
+  [
+    'eval/expose-conflict',
+    {
+      summary: '@expose ${name} names a different @${name} than @expose ${name} at ${other}',
+      reason: 'An exposed variable is one custom property, --${name}, that the runtime sets; two @expose lists may name it only if they name the same variable. These name separate ones, such as a composed module\'s own @${name} and this file\'s.',
+      fix: 'Expose only one of them, or rename one of the variables.'
+    }
+  ],
+  [
+    'eval/expose-key-conflict',
+    {
+      summary: '@expose ${name} and @expose ${other} at ${at} are both ${key} in JavaScript',
+      reason: 'The runtime keys each exposed variable by its name with dash-case turned to camelCase (brand-color is brandColor), so ${name} and ${other} would be one key.',
+      fix: 'Rename one of the variables, or expose only one of them.'
+    }
+  ],
+  [
     'eval/invalid-function',
     {
       summary: 'Invalid function call',
@@ -427,6 +509,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         'The value of "${what}" evaluated to a detached ruleset; a detached ruleset can only be called (e.g. `@dr();` inside a block), not used as a property value.',
       fix: 'Call the detached ruleset in statement position instead of assigning it to a property.'
+    }
+  ],
+  [
+    'eval/uncalled-mixin-reference',
+    {
+      summary: 'A mixin reference is not a value',
+      reason: '${name} writes out a mixin reference, which is neither called nor looked up, so it has no value.',
+      fix: 'Call the mixin in statement position, or look up one of its members (`@ref[name]`), instead of writing the reference into a value.'
     }
   ],
   [

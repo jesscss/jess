@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { probe, sandboxed } from './engine/sandboxed.js';
 import jsPlugin, { type JsPlugin } from '../src/index.js';
 
 const workerPath = fileURLToPath(new URL('../src/runtime-worker.ts', import.meta.url));
@@ -41,7 +42,7 @@ const exited = (child: ChildProcessWithoutNullStreams, ms: number): Promise<bool
 const startWorker = async (modulePath: string) => {
   const child = spawn(
     denoPath,
-    ['run', '--no-prompt', `--allow-read=${path.dirname(modulePath)},${workerPath}`, workerPath, '--runtime-api=module'],
+    ['run', '--no-prompt', `--allow-read=${path.dirname(modulePath)},${path.dirname(workerPath)}`, workerPath, '--runtime-api=module'],
     { stdio: ['pipe', 'pipe', 'pipe'] }
   );
   const lines: Array<{ id?: number; type?: string }> = [];
@@ -117,12 +118,35 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     const modulePath = writeModule(`export function quit() { ${call}; }`);
     const plugin = jsPlugin({ jsReadRoot: path.dirname(modulePath) }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     const started = Date.now();
     await expect(mod.quit()).rejects.toThrow('Deno worker exited unexpectedly.');
 
     // Well inside the 10 s request timeout, which is what a swallowed exit would wait for.
     expect(Date.now() - started).toBeLessThan(3000);
+  });
+
+  /*
+   * A host killed by a signal (Vitest stops its forks with SIGTERM) runs no exit
+   * handler, so a broker socket still on disk would stay in /tmp for good. Once
+   * the worker has connected, none is.
+   */
+  it.skipIf(process.platform === 'win32')('leaves no broker socket in /tmp once the worker is running, across a worker crash and restart', async () => {
+    const brokerSockets = () => fs.readdirSync('/tmp').filter(name => name.startsWith(`jd-${process.pid}-`)).length;
+    const before = brokerSockets();
+    const modulePath = writeModule('export function ok() { return 1; }\nexport function quit() { Deno.exit(0); }');
+    const plugin = jsPlugin({ jsReadRoot: path.dirname(modulePath) }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await sandboxed(plugin).import(modulePath);
+    expect(await mod.ok()).toBe(1);
+    expect(brokerSockets()).toBe(before);
+
+    await expect(mod.quit()).rejects.toThrow('Deno worker exited unexpectedly.');
+    expect(await (await sandboxed(plugin).import(modulePath)).ok()).toBe(1);
+    expect(brokerSockets()).toBe(before);
+
+    plugin.dispose();
+    expect(brokerSockets()).toBe(before);
   });
 
   it('fails startup at once when the worker exits before it is ready', async () => {
@@ -133,9 +157,53 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     const plugin = jsPlugin({ jsReadRoot: root, denoCommand }) as JsPlugin;
     plugins.push(plugin);
     const started = Date.now();
-    await expect(plugin.import(modulePath)).rejects.toThrow(/exited during startup\.\ncannot start/);
+    await expect(sandboxed(plugin).import(modulePath)).rejects.toThrow(/exited during startup\.\ncannot start/);
 
     // Well inside the 8 s startup timeout.
     expect(Date.now() - started).toBeLessThan(3000);
+  });
+
+  it('gives the install guidance when the command exits during startup without a word', async () => {
+    const modulePath = writeModule('export const x = 1;');
+    const root = path.dirname(modulePath);
+    const denoCommand = path.join(root, 'not-deno');
+    fs.writeFileSync(denoCommand, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const plugin = jsPlugin({ jsReadRoot: root, denoCommand }) as JsPlugin;
+    plugins.push(plugin);
+    await expect(sandboxed(plugin).import(modulePath)).rejects.toThrow(/Deno runtime is required[\s\S]*exited during startup without a word/);
+  });
+
+  it('names the signal, not a missing Deno, when the worker is killed during startup', async () => {
+    const modulePath = writeModule('export const x = 1;');
+    const root = path.dirname(modulePath);
+    const denoCommand = path.join(root, 'killed-deno');
+    fs.writeFileSync(denoCommand, '#!/bin/sh\nkill -9 $$\n', { mode: 0o755 });
+    const plugin = jsPlugin({ jsReadRoot: root, denoCommand }) as JsPlugin;
+    plugins.push(plugin);
+    const failure = await sandboxed(plugin).import(modulePath).then(() => undefined, (err: unknown) => String(err));
+    expect(failure).toMatch(/stopped during startup by SIGKILL/);
+    expect(failure).not.toMatch(/Deno runtime is required/);
+  });
+
+  it('runs a render after an engine started ahead of time is let go while it starts', async () => {
+    const modulePath = writeModule('export const x = 1;');
+    const root = path.dirname(modulePath);
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+    plugin.prewarmEngine({
+      compiler: probe,
+      compilerOptions: {},
+      entryDir: root,
+      jsReadRoot: root,
+      extension: undefined
+    });
+
+    // Spawned, not yet ready: the stopped start settles only after the render below begins.
+    while (Reflect.get(plugin, 'worker') === undefined) {
+      await new Promise(resolve => setTimeout(resolve, 1));
+    }
+    plugin.releaseEngine();
+    expect((await sandboxed(plugin).import(modulePath)).x).toBe(1);
+    expect((await sandboxed(plugin).import(modulePath)).x).toBe(1);
   });
 });

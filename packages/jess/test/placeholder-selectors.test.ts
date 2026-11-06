@@ -61,4 +61,78 @@ describe('placeholder selectors', () => {
     // authored flag is recorded so that diagnostic is an engine change alone.
     expect(await render('.a { @extend %missing !optional; }\n')).toBe('');
   });
+
+  /*
+   * A placeholder a mixin call places is extended exactly as one written where the
+   * `@include` stands: placement is evaluation, so where a rule came from cannot change
+   * the output (ledger X22; extend folds after the one walk, X12).
+   */
+  describe('placed by @include (jess#499)', () => {
+    const renderIn = (src: string, collapseNesting: false | 'native' | 'compact', compress = false) =>
+      new Compiler({ output: { collapseNesting, compress } }).renderString(src, { extension: '.scss' });
+
+    it('keeps the extend of a placeholder the mixin places', async () => {
+      const src = [
+        '%button-base {',
+        '  padding: 4px 8px;',
+        '  border: 1px solid;',
+        '}',
+        '',
+        '@mixin button-styles {',
+        '  %button-reset {',
+        '    margin: 0;',
+        '    background: none;',
+        '  }',
+        '}',
+        '',
+        '@include button-styles;',
+        '',
+        '.btn {',
+        '  @extend %button-reset;',
+        '  @extend %button-base;',
+        '  color: blue;',
+        '}',
+        ''
+      ].join('\n');
+      const expected = '.btn {\n  padding: 4px 8px;\n  border: 1px solid;\n}\n'
+        + '.btn {\n  margin: 0;\n  background: none;\n}\n'
+        + '.btn {\n  color: blue;\n}\n';
+      expect(await renderIn(src, false)).toBe(expected);
+      expect(await renderIn(src, 'native')).toBe(expected);
+    });
+
+    const shapes: Array<[placeholder: string, rest: string]> = [
+      ['%ph { a: b; }', '.x { @extend %ph; } .y { @extend %ph; }'],
+      ['%ph { a: b; .c { d: e; } }', '.x { @extend %ph; }'],
+      ['%ph { a: b; .c { d: e; } }', '.a { x: y; } .b { @extend .a; }'],
+      ['%ph { a: b; &-e { c: d; } e: f; }', '.a { x: y; } .b { @extend .a; }'],
+      ['%ph { .c { d: e; } }', '.x { @extend .c; }']
+    ];
+    for (const [placeholder, rest] of shapes) {
+      for (const inRule of [false, true]) {
+        const written = `${inRule ? `.w { ${placeholder} }` : placeholder} ${rest}`;
+        const placed = `@mixin m { ${placeholder} } ${inRule ? '.w { @include m; }' : '@include m;'} ${rest}`;
+        it(`places \`${written}\` as written`, async () => {
+          for (const mode of [false, 'native', 'compact'] as const) {
+            for (const compress of [false, true]) {
+              expect(await renderIn(placed, mode, compress), `${String(mode)} compress=${String(compress)}`)
+                .toBe(await renderIn(written, mode, compress));
+            }
+          }
+        });
+      }
+    }
+
+    // PINNED-DEFECTS-AUDIT DF12: the blanked placeholder leaves `@media print {}`.
+    it.fails('leaves nothing for a placed placeholder an extend names but cannot reach', async () => {
+      const src = '@mixin m { @media print { %ph { a: b; } } }\n@include m;\n@media screen { .x { @extend %ph; } }\n';
+      expect(await renderIn(src, false)).toBe('');
+    });
+
+    it('extends a placeholder the mixin places inside a rule', async () => {
+      const src = '@mixin m { %ph { a: b; } }\n.w { @include m; }\n.x { @extend %ph; }\n';
+      expect(await renderIn(src, 'native')).toBe('.w .x {\n  a: b;\n}\n');
+      expect(await renderIn(src, false)).toBe('.w {\n  .x {\n    a: b;\n  }\n}\n');
+    });
+  });
 });

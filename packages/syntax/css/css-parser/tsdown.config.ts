@@ -1,3 +1,6 @@
+import { readdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'tsdown';
 import parseman from 'parseman/plugin';
 import { grammarVariantBuilds, parserEntryBuild } from '../../../../tools/tsdown/grammar-variants.mts';
@@ -20,6 +23,29 @@ const CST_HOST = 'cst-host';
  */
 const PARSER_SHARED_EXTERNAL = [/^@jesscss\/parser-shared(\/|$)/];
 
+const here = dirname(fileURLToPath(import.meta.url));
+
+/*
+ * Selective assembly: generated code for the sites this corpus calls most. The
+ * budget is a share of the module's code, comments and whitespace aside, and 2.72
+ * buys what one length of the raw source bought before parseman 0.61.3. Measured
+ * against parseman 0.55.2 on `benchmark.css`, more budget up to 2.75 of the raw
+ * source parsed at the same speed (marginal instructions within run-to-run spread,
+ * JIT and `--jitless`) and import time rose with it, so this is the smallest
+ * budget on that plateau.
+ */
+const ASSEMBLY = {
+  assemblyBudget: 2.72,
+  assemblyProfile: {
+    entry: 'Stylesheet',
+    files: [
+      resolve(here, '../../../jess/benchmark/benchmark.css'),
+      resolve(here, '../../../../node_modules/bootstrap/dist/css/bootstrap.css'),
+      ...readdirSync(resolve(here, 'test/css')).filter(f => f.endsWith('.css')).map(f => resolve(here, 'test/css', f))
+    ]
+  }
+};
+
 export default defineConfig([
   parserEntryBuild({
     /*
@@ -37,11 +63,11 @@ export default defineConfig([
       [CST_HOST]: './src/cst-host.ts'
     },
     external: PARSER_SHARED_EXTERNAL,
-    plugins: [parseman.rolldown({})]
+    plugins: [parseman.rolldown(ASSEMBLY)]
   }),
   ...grammarVariantBuilds({
     extraEntries: ['base'],
     external: PARSER_SHARED_EXTERNAL,
-    plugins: [parseman.rolldown({})]
+    plugins: [parseman.rolldown(ASSEMBLY)]
   })
 ]);

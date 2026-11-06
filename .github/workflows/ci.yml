@@ -1,6 +1,6 @@
 name: CI
 
-# The blocking PR gate. THREE jobs, run in parallel, that together prove the repo
+# The blocking PR gate. FOUR jobs, run in parallel, that together prove the repo
 # is healthy along every axis — build, lint, types, tests, structural/perf
 # invariants, owner rulings — and are dialect-AGNOSTIC by construction:
 # per-dialect correctness is not a separate "Less readiness" headline, it lives
@@ -10,6 +10,9 @@ name: CI
 #   verify       — full clean build + lint + strict types + the jess ratchet
 #                  (the CLI app's corpus/plugin suite, which needs BUILT artifacts)
 #                  + every structural/perf gate. Add THIS to branch protection.
+#   grammar-speed — per-grammar parse cost in instructions (Valgrind), against
+#                  a committed baseline. Its own job so its counting stays off
+#                  the critical path. Add it too.
 #   test-source  — the build-free opt-out test suite (`pnpm -r --filter='!jess'
 #                  test`), primed by a ~3s core/fns/parser-shared build instead of
 #                  the full 22-package chain. Runs concurrently with `verify` so
@@ -124,10 +127,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The structure assertion (6) parses TypeScript, so the no-install runs
-      # above skip it. Here the parser is installed, and a skip would fail.
-      - name: Guardrails — structure only shrinks
-        run: node scripts/check-guardrails.mjs --require-structure
+      # A baseline entry added with its violation passes a same-tree comparison, so
+      # a pull request is also compared with its base branch: entries only go.
+      - name: Fetch the base branch for the baseline shrink check
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+
+      # The structure assertion (6) and the grammar scan (8) parse TypeScript, so
+      # the no-install runs above skip them. Here the parser is installed, and a
+      # skip would fail.
+      - name: Guardrails — structure and grammar scan
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-guardrails.mjs --require-structure ${BASE_REF:+--shrink-against=origin/$BASE_REF}
+
+      # Assertion 8's canaries: each grammar rule and each known way around one goes
+      # red on a planted violation and stays green on a clean grammar.
+      - name: Grammar guardrail canaries
+        run: node --test scripts/__tests__/grammar-guardrails.test.mjs
 
       # Clean build every run: delete every workspace lib then rebuild. Incremental
       # builds mask errors (a stale lib once masked a grammar compose failure).
@@ -159,6 +178,20 @@ jobs:
 
       - name: Macro-buildability check
         run: node scripts/check-macro-buildable.mjs --no-build
+
+      # check:macro only proves nothing fell back to the interpreter. A table
+      # with no precompiled assembly is "fully compiled" and still slow: that is
+      # how Less, SCSS and .jess lost their fast path on 2026-08-31 with every
+      # gate green (jesscss/jess#508). This gate counts each grammar artifact's
+      # precompiled assembly and bytes per source byte (parseman's 5x budget)
+      # against scripts/grammar-artifacts.baseline.json; growth, lost assembly
+      # and unnamed debt fail. The canaries show each failure class going red,
+      # starting with the real css ast.js stripped to `a: []`.
+      - name: Grammar gate canaries
+        run: node --test scripts/__tests__/grammar-gates.test.mjs
+
+      - name: Gate — grammar artifact size + precompiled assembly
+        run: node scripts/check-grammar-artifacts.mjs
 
       # A dialect composes onto css's compose base from the matching build:
       # compiled over compiled, interpreter over interpreter, and never through
@@ -206,6 +239,11 @@ jobs:
       # re-run lint + core-public-types a second time)
       - name: Lint
         run: pnpm run lint
+
+      # `as any`, `: any`, `@ts-ignore` and `@ts-nocheck` are absent from the
+      # parser packages, so the repo-wide absolute ban is blocking there.
+      - name: Absolute ban — parser packages
+        run: pnpm run lint:absolute:parsers
 
       - name: Strict production types
         run: pnpm run verify:types
@@ -280,6 +318,84 @@ jobs:
       # site fails the PR instead of first surfacing in the release preflight.
       - name: Gate — parser runtime boundary
         run: pnpm run verify:parser-runtime-boundary
+
+  # Capability contracts (COD, `capabilities/*/capability.json`): every
+  # contract's review must be current, and its native checker must pass the real
+  # owner and consumers while rejecting each declared copy and unused-owner
+  # decoy (`pnpm verify:capabilities`, the pinned toolkit in scripts/cod.mjs).
+  # Its own job, in parallel with `verify`; the toolkit's engines stop at Node
+  # 24. Add it to branch protection too.
+  capabilities:
+    name: Capability contracts · cod verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LESS_TEST_DATA_ROOT: ${{ github.workspace }}/less-corpus/packages/test-data
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Less.js corpus (matthew-dean/less.js@alpha)
+        uses: actions/checkout@v4
+        with:
+          repository: matthew-dean/less.js
+          ref: alpha
+          path: less-corpus
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r --filter='!jess-docs' --filter='!@jesscss/docs-less' --filter='!@jesscss/docs-content' build
+
+      - name: pnpm verify:capabilities
+        run: pnpm run verify:capabilities
+
+  # Per-grammar parse cost: marginal instructions per AST parse, counted by
+  # Valgrind (GitHub-hosted runners expose no hardware instruction counter),
+  # against scripts/grammar-speed.baseline.json. Its own job, in parallel with
+  # `verify`, so its 2-4 minutes of counting stay off the critical path. It
+  # builds only the four parsers and what they depend on. Instruction counts
+  # depend on the OS image, the Valgrind build and the Node version, so the job
+  # pins the image and Node and the baseline records all three; changing any of
+  # them re-records the baseline (`--propose`, on CI) in the same reviewed
+  # change. Add it to branch protection too.
+  grammar-speed:
+    name: Grammar speed (instructions per parse)
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js (pinned for the instruction baseline)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the four parsers
+        run: pnpm -r --filter '@jesscss/css-parser...' --filter '@jesscss/less-parser...' --filter '@jesscss/scss-parser...' --filter '@jesscss/jess-parser...' build
+
+      - name: Install Valgrind
+        run: sudo apt-get install -y -qq valgrind > /dev/null && valgrind --version
+
+      - name: Gate — grammar speed (marginal instructions per parse)
+        run: node scripts/grammar-speed-gate.mjs --require-env
 
   # Build-free source tests, run IN PARALLEL with `verify`. vitest source-aliases
   # every `@jesscss/*` to `src`, so this suite does not need the full build — only

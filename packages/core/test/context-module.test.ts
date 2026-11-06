@@ -112,7 +112,7 @@ describe('Context.getModule', () => {
 
     const context = new Context({}, [new ResolverOnlyPlugin()]);
     await expect(context.getModule(scriptFile)).rejects.toThrow(
-      'Feature not supported. Install @jesscss/plugin-js to enable script execution features.'
+      'Feature not supported. Install @jesscss/plugin-js where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.'
     );
   });
 
@@ -123,7 +123,7 @@ describe('Context.getModule', () => {
 
     const context = new Context({}, [new ResolverOnlyPlugin()]);
     await expect(context.getPluginModule(pluginFile)).rejects.toThrow(
-      'Feature not supported. Install @jesscss/plugin-js to enable script execution features.'
+      'Feature not supported. Install @jesscss/plugin-js where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.'
     );
   });
 

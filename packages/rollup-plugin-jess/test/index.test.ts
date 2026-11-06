@@ -2,9 +2,17 @@ import * as rollup from 'rollup';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { Compiler } from 'jess';
 import jess from '../src/index.js';
 import commonJs from '@rollup/plugin-commonjs';
 import nodeResolve from '@rollup/plugin-node-resolve';
+
+type Runtime = { css: string; vars: (values: Record<string, string>) => Record<string, string> };
+
+/** The bundled module, once it is known to export the runtime. */
+function isRuntime(module: unknown): module is Runtime {
+  return typeof module === 'object' && module !== null && 'vars' in module && typeof module.vars === 'function';
+}
 
 const buildFile = async (filePath: string) => {
   const input = path.resolve(__dirname, filePath);
@@ -17,6 +25,47 @@ const buildFile = async (filePath: string) => {
 };
 
 describe('rollup-plugin-jess', () => {
+  it('exports the runtime of a stylesheet that exposes variables', async () => {
+    const bundle = await rollup.rollup({ input: path.resolve(__dirname, './runtime.less'), plugins: [nodeResolve(), commonJs(), jess()] });
+    const { output } = await bundle.generate({ format: 'es' });
+    const css = output.find(item => item.type === 'asset' && item.fileName === 'runtime.css');
+    expect(css && css.type === 'asset' ? String(css.source) : '').toContain('opacity: var(--brand-lightness, 40%);');
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rollup-plugin-jess-'));
+    try {
+      const file = path.join(directory, 'runtime.mjs');
+      fs.writeFileSync(file, output[0].code);
+      const module: unknown = await import(file);
+      const recompiled = await new Compiler().renderString('@use "#less";\n.a { b: @less.lightness(#08f); }', { filePath: 'entry.less', extension: '.less' });
+      expect(isRuntime(module)).toBe(true);
+      if (isRuntime(module)) {
+        expect(recompiled).toContain(`b: ${module.vars({ brand: '#08f' })['--brand-lightness']};`);
+        expect(module.vars({ brand: '#08f' })['--brand']).toBe('#08f');
+      }
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('adds no function to the runtime of a stylesheet that prints only CSS forms', async () => {
+    const bundle = await rollup.rollup({ input: path.resolve(__dirname, './printed.less'), plugins: [nodeResolve(), commonJs(), jess()] });
+    const { output } = await bundle.generate({ format: 'es' });
+    const css = output.find(item => item.type === 'asset' && item.fileName === 'printed.css');
+    expect(css && css.type === 'asset' ? String(css.source) : '').toContain('color: rgb(from var(--brand, #c00) r g b / 0.5);');
+    expect(output[0].code).not.toContain('--brand-');
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rollup-plugin-jess-'));
+    try {
+      const file = path.join(directory, 'printed.mjs');
+      fs.writeFileSync(file, output[0].code);
+      const module: unknown = await import(file);
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+      expect(isRuntime(module) && module.vars({ brand: '#08f' })).toEqual({ '--brand': '#08f' });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('renders a `.jess` module with Jess syntax through the public compiler integration', async () => {
     const result = await buildFile('./direct.jess');
     const css = result.find(item => item.type === 'asset' && item.fileName === 'direct.css');

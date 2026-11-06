@@ -24,7 +24,7 @@ export type UnitMode = typeof UNIT_MODES[number];
  *
  * Governs an OPTIONAL (fallback) function reference — every bare/global
  * `fn(args)` — that resolves to a registered function but can't produce a value
- * (no matching signature, or the function throws), e.g. `unit(80/16)`,
+ * (no matching signature, or the function throws), e.g. `unit(red)`,
  * `color("x")`.
  *
  * - `preserve`: render the call as-is (like an unknown CSS function)

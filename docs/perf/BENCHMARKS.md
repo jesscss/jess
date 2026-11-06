@@ -9,7 +9,27 @@ serialize — the full `Compiler.render` path), not parse time alone. Parse spee
 is a someday-concern; do not lead with the parse ratio. North-star: jess's total
 render on `benchmark.less` at or near Less 4.x's total render.
 
-Reference point (2026-08-28, parseman 0.50.0, contended machine so indicative):
+Reference point (2026-10-30, `8b62ab0c8`, parseman 0.55.2, node 24.11.1, lessc
+4.9.1, M-series at load ~7, so indicative). Marginal per-compile time after
+warm-up, jess and lessc interleaved in one process in alternating AB/BA rounds,
+jess configured as `measure:less:hotpath` configures it. Parse is jess
+`Compiler.compile` (parse plus static imports) against `less.parse` (parse plus
+imports); eval+render is total minus parse. ¹ The file `bootstrap4.less` imports,
+`bootstrap-less-port@0.3.0/less/bootstrap.less` from `packages/less-corpus-fixture-deps`,
+rendered with the fixture's `math: 0`.
+
+| Fixture | Parse jess / lessc | Eval+render jess / lessc | Total jess / lessc |
+|---|---|---|---|
+| `benchmark.less` | 28.3 / 7.1 ms (4.0×) | 23.7 / 28.3 ms (0.78×) | 52.0 / 35.4 ms (1.42×) |
+| `bootstrap4.less`¹ | 60.8 / 9.7 ms (6.3×) | 250.5 / 71.5 ms (3.5×) | 311 / 81 ms (3.8×) |
+
+Marginal instructions retired per compile point the same way: `benchmark.less`
+1.03G / 0.76G (1.36×), `bootstrap4.less` 3.43G / 2.07G (1.66×). About half of
+jess's `bootstrap4.less` wall time is idle, waiting on the worker that runs the
+fixture's `@plugin` JavaScript. The driver that produced this table is not
+committed: there is still no committed total-render-vs-lessc harness (TL;DR).
+
+Earlier reference point (2026-08-28, parseman 0.50.0, contended machine so indicative):
 jess total render of `benchmark.less` ≈ **42ms** vs lessc 4.6.3 ≈ **38ms** —
 ~10%, essentially parity within noise. (lessc renders `benchmark.less` FINE — it
 is ordinary Less; there is no "v5-only" blocker. The perf-gate can't pair-time it
@@ -27,6 +47,10 @@ which is a harness limitation, not a syntax one.)
 | jess vs Less 4.x / PostCSS / dart-sass (**PARSE only**) | `pnpm run perf:gate:report` | jess PARSE time as a ratio vs each reference parser. Parse only — not the priority metric right now; postcss/sass comparators must be installed to resolve. |
 | jess vs an OLD jess commit (parse) | `pnpm run perf:ab:prepare <commit>` then `pnpm run perf:ab:compare --case benchmark.less` | current worktree vs `~/git/worktrees/jess/bench-b` parked on `<commit>`; bias-controlled ratios. |
 | jess parser parse-bench | `pnpm run bench:jess:parse` (`:record` to save) | raw jess-parser parse throughput. |
+| **per-grammar parse cost, CI-gated** | `pnpm run check:grammar-speed` | marginal instructions per AST parse for each grammar against `scripts/grammar-speed.baseline.json`. See §6. |
+| **real SCSS parse cost**, AST and CST | `pnpm run bench:scss:real` (`--base <checkout>` for a before/after with A/A) | function calls and marginal instructions per pass over vendored Bootstrap and Foundation, with the generated `gen-workload` beside them. See §9. |
+| **per-grammar artifact size + precompiled assembly, CI-gated** | `pnpm run check:grammar-artifacts` | bytes per source byte (parseman's 5× budget) and precompiled-assembly count per `lib/grammar/*.js`. See §6. |
+| **CLI cold start** vs lessc 4.x | `pnpm run measure:cli:cold-start [--fixture bootstrap4] [--base <jess checkout>]` | spawn-to-exit CLI time, module load, first and second compile in a fresh process; every sample a new process, arms interleaved. See §7. |
 | **byte identity of a refactor** (not timing) | `pnpm run compare:less:builds -- --corpus --record .scratch/corpus-baseline.json` before the change, `... --corpus --baseline .scratch/corpus-baseline.json` after rebuilding | every corpus fixture × 6 output modes, compared by name. See §5. |
 
 `measure:less:hotpath` is the canonical jess total-render harness. `perf:gate`
@@ -78,11 +102,115 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 - `--filter <regex>` narrows fixtures by name (a baseline is narrowed the same way); `--json` prints the diff. The corpus root is `$LESS_TEST_DATA_ROOT`, else `@less/test-data`, else `../less.js/packages/test-data`.
 - A full run is about 6 s per build on an M-series laptop (359 fixtures × 6 modes).
 
+## 6. Grammar gates — size and speed per grammar, enforced in CI
+
+`check:grammar-artifacts` runs in the CI `verify` job; `check:grammar-speed` runs in its own parallel `grammar-speed` job, off the critical path. Their canaries are in `scripts/__tests__/grammar-gates.test.mjs` (`pnpm run test:grammar-gates`).
+
+- **`check:grammar-artifacts`** (`scripts/check-grammar-artifacts.mjs`, about 1 s) reads every `lib/grammar/**/*.js` of the four parsers. For each one it records the bytes, the bytes per byte of `src/grammar.ts` and the number of precompiled functions in its `a: [{ factory }]` inventory.
+  - It fails on size growth, on lost assembly, and on any artifact over 5× or tables-only grammar that has no named debt entry. Size growth is any byte over the baseline: grammar source the change adds (comments included) does not buy generated bytes.
+  - Over-5× debt applies only under the parseman version it was recorded with (`debtParseman`). Under any other version, every artifact must be within 5×.
+  - Wins must be pinned with `--ratchet`, which never raises a ceiling.
+  - Baseline: `scripts/grammar-artifacts.baseline.json`.
+- **`check:grammar-speed`** (`scripts/grammar-speed-gate.mjs`) runs each grammar's own `test/parse-bench.mjs` under an instruction counter and takes the marginal per parse.
+  - The fixtures are `benchmark.css` (CSS, and `.jess`, which has no committed `.jess` fixture large enough to measure), `benchmark.less` (Less) and `gen-workload` (SCSS, the committed generator's default output: generated, not real authoring; see §9).
+  - On Linux the counter is Valgrind's Cachegrind, because GitHub-hosted runners expose no hardware instruction counter. On macOS it is `/usr/bin/time -l`.
+  - It runs V8's interpreter (`--jitless`). The script header gives the JIT measurements that ruled the JIT out on CI, and what the interpreter does not see.
+  - The baseline (`scripts/grammar-speed.baseline.json`) records its environment: counter, platform, Node version and method. It is compared only under that environment. The CI job pins Node and passes `--require-env`.
+  - A faster result must be banked with `--lower`. Raising a value is a reviewed edit. `--propose` writes `<baseline>.new` for a new environment.
+
+## 7. measure:cli:cold-start — a one-file CLI run, jess against lessc 4.x
+
+- Script: `scripts/measure-cli-cold-start.mjs`. Build first (`pnpm run build:release`).
+- Every sample is a fresh `node` process. Per round it times `jess <fixture> <out>` and `lessc <fixture> <out>` spawn to exit (`cli`), then, in another fresh process, the imports the CLI needs to compile (`load`), the first compile and the second compile. It prints the median of `--runs` rounds (default 21), and the arm order alternates each round.
+- `--fixture benchmark` (default) is `packages/jess/benchmark/benchmark.less`. `--fixture bootstrap4` is the less.js corpus `bootstrap4.less` with its `styles.config.cjs` (`math: 0`), resolving `bootstrap-less-port` from `packages/less-corpus-fixture-deps`; lessc gets `--math=always` and that package as an include path, so both compile the same sources.
+- `--base <checkout>` adds another built jess checkout as an arm, for a before/after in one interleaved run.
+- Reference point (2026-10-31, parseman 0.57.0, node 24.11.1, lessc 4.9.1, M4 Pro at load averages 4–8, so indicative), median of 21, ms:
+
+| Fixture | Arm | CLI | Load | First compile | Second compile |
+|---|---|---|---|---|---|
+| `benchmark.less` | jess `98e132094` | 346.1 | 143.1 | 133.6 | 62.3 |
+| | jess, dialect plugins loaded on demand | 236.7 | 62.6 | 141.9 | 64.7 |
+| | lessc 4.9.1 | 138.3 | 23.0 | 92.4 | 49.9 |
+| `bootstrap4.less` | jess `98e132094` | 695.8 | 147.4 | 480.7 | 299.4 |
+| | jess, dialect plugins loaded on demand | 593.0 | 66.9 | 506.1 | 297.7 |
+| | lessc 4.9.1 | 206.1 | 23.6 | 149.7 | 107.6 |
+
+## 8. Per-construct marginals — what they can and cannot decide
+
+A per-construct marginal parses N copies of one small construct (`.r { color: red; }`, `.a .b > .c { }`, …) and takes `(I(N2) − I(N1)) / (N2 − N1)` instructions retired. Under `--jitless` it is stable and attributable. Under the JIT it measures inlining and tier-up decisions as much as the code under review. On one pair of identical builds, reviewing jesscss/jess#542, these swung it:
+
+- **Source string shape.** A source built in-process with `String.prototype.repeat` is a cons string; a source read from a file is flat. CSS `.r { }` read +26% as a cons string and −1.8% read from a file. The same switch moved another harness from +22% to −6%.
+- **Call-site structure.** Less `.r { w: 1px + 2px; }` read +0.5% when all sizes ran through one shared parse closure and +6.3% with a separate call site per size.
+- **Size window.** SCSS `.r { }` read +3.4% for N 200 → 1200 and −35% for N 1200 → 2200.
+- **Construct boundaries.** N rules with one declaration each and one rule holding N declarations are different constructs, and they move independently.
+
+How to use it:
+
+1. **Read sources from files.** A verdict never uses a repeated cons string (a `cons.mjs`-style in-process `.repeat`). Results from such a harness are not valid for a verdict.
+2. **The verdict is whole files under both engines, every construct under `--jitless`, and the CI gates** (`check:grammar-speed`, `check:grammar-artifacts`).
+3. **A per-construct JIT marginal within ±5% of `dev` is not a verdict either way.** Report it with its A/A spread and use it to find where to look. A larger per-construct JIT change has to be reproduced from flat file sources, and in a second size window, before it counts.
+
+## 9. bench:scss:real — real SCSS parse cost
+
+- Script: `scripts/bench-scss-real.mjs`, which runs `scss-parser/test/parse-bench.mjs`. Build `@jesscss/scss-parser` first. The fixtures are committed, so it needs no network.
+- It measures parse only: compiling these libraries is tracked in jesscss/jess#591.
+- It reports each library, their total and `gen-workload`, for AST and CST:
+  - function calls per pass, from V8's precise coverage after one warm-up pass;
+  - marginal instructions per pass, N 100 → 300 on the default runtime, median of 3.
+- `--jitless` measures N 2 → 6 under the speed gate's flags. It is a diagnostic. `--base <checkout>` measures another built checkout in the same run, twice for an A/A; that checkout needs the fixtures and the bench. One arm takes about 5 minutes at a load average of 100.
+- **Every file must parse whole, and a run refuses anything less.** It exits 1 and names the file. The CST entry reports a failed or partial parse in its result rather than throwing, so counting throws would miss it. The bench checks the result's `ok`, `errors` and `unconsumedFrom`, and that only trivia follows the end of each surface's span. The canary is in `scripts/__tests__/grammar-gates.test.mjs`.
+- **The run refuses on a checkout without the SCSS parse fixes in jesscss/jess#580 to #594.** At `75fd9b87c`, 48 of the 92 Bootstrap files and 16 of the 113 Foundation files do not parse.
+- **A pass is one parse per file, not one concatenated file**, because a compile parses each file on its own. Concatenating also changes the workload:
+  - Foundation stops being valid input: its `@use "sass:color"` lands after rules, and the parse refuses it.
+  - Bootstrap keeps its call count (−0.3% AST, −0.2% CST), but instructions rise 5.4% for AST and 54.5% for CST. The extra cost comes with file size and has not been attributed.
+- **It is not in the speed gate yet.** A library row cannot be added until every file parses on `dev`. Under `--jitless` the two libraries cost 9.9G instructions per pass together, about 5G each against `gen-workload`'s 7.7G, so at the gate's 6 parses per row they add about 60G to a run of about 80G. That run's gate step takes about 3 minutes on CI, so it would take an estimated 5. No single process gets longer than the `gen-workload` one. That is cheap enough for a job off the critical path. To add them, put one `GRAMMARS` row per library in `scripts/grammar-speed-gate.mjs` and record each count from CI's output.
+
+Reference point (2026-11-05, node 24.11.1, M-series at load averages of 80–280, hardware instructions retired, default runtime, N 100 → 300, median of 3, A/A within 0.3% except where noted). The tree is `e4f68db7a`, the top of those SCSS fixes, on parseman 0.59.0 before the arrow and with parseman 0.61.3's change (jesscss/jess#605) applied after it.
+
+| Fixture | Surface | Calls | Instructions | Per KB |
+|---|---|--:|--:|--:|
+| `bootstrap-5.3.8` | AST | 6,012,195 → 5,577,779 (−7.2%) | 689.5M → 631.2M (−8.5%) | 2.1M → 2.0M |
+| | CST | 6,733,533 → 5,708,870 (−15.2%) | 777.4M → 648.4M (−16.6%) | 2.4M → 2.0M |
+| `foundation-6.9.0` | AST | 4,942,711 → 4,649,763 (−5.9%) | 581.9M → 543.8M (−6.5%) | 1.6M → 1.5M |
+| | CST | 5,414,732 → 4,744,908 (−12.4%) | 626.8M → 545.9M (−12.9%) | 1.7M → 1.5M |
+| Total | AST | 10,954,906 → 10,227,542 (−6.6%) | 1271.4M → 1175.0M (−7.6%) | 1.8M → 1.7M |
+| | CST | 12,148,265 → 10,453,778 (−14.0%) | 1404.2M → 1194.3M (−15.0%) | 2.0M → 1.7M |
+| `gen-workload` | AST | 8,353,040 → 7,681,657 (−8.0%) | 971.9M → 876.6M (−9.8%) | 3.5M → 3.1M |
+| | CST | 9,273,262 → 7,959,568 (−14.2%) | 1697.2M → 1485.0M (−12.5%, A/A 1.45%, reps spread up to 14.6%) | 6.0M → 5.3M |
+
+`gen-workload` costs 1.8 times what real SCSS costs per KB on AST, and 3.1 times on CST. The AST per-call cost is the same (about 115 instructions), so the difference is how much parsing each byte asks for. Its CST row is too noisy on the default runtime to carry a verdict.
+
+## 10. Render marginals — what can resolve a few percent
+
+`measure:less:hotpath` under an instruction counter, `(I(K2) − I(K1)) / (K2 − K1)` over `K` renders in a fresh process, does not resolve single digits on the standard fixtures at K 100 → 300. Two runs of one build on one machine (2026-11):
+
+| Fixture | Same-build q25 | Same-build median | Paired rounds |
+| --- | --- | --- | --- |
+| `benchmark.less` | ±5% | ±5% | −23% to +30% |
+| `k-plain`, a small file of plain rules (`.k1 { a: 1px; }`) | ±2% | ±5% | −8% to +9% |
+
+The cause is that the number of mark-compacts in a process is not fixed. On `k-plain`, K 300 runs 3 or 4 of them, and one more is about +0.85G instructions, or about 5% of the marginal. It is the bimodal median above. Two builds with the same count agree to 0.04% (30.637G and 30.625G).
+
+How to use it:
+
+1. **To decide a few percent, use a small fixture of the shape under review**, where the code under review is most of the marginal, with interleaved arms. Run each build as two arms and report that same-build spread beside the result. A change smaller than that spread is not a result.
+2. **Or compare only runs with the same mark-compact count**: record the count per process and take medians per count.
+3. **Do not read a single-digit difference from `benchmark.less` or `k-plain` at K 100 → 300**, in either direction. They still catch a large change.
+
 ## Fixtures (the standard inputs)
 
 - `packages/jess/benchmark/benchmark.less` (104KB) + `benchmark.css` (expected) — the main perf fixture. EXEMPT from byte-identity gates.
 - `~/git/oss/less.js/packages/test-data/tests-config/3rd-party/bootstrap4.less` — the bootstrap corpus (the jess `bootstrap-*` tests render `bootstrap-less-port` from node_modules for correctness/memory, not timing).
 - `packages/jess/benchmark/gen-workload.less` / `.scss` (large generated) + `gen-workload.mjs` to regenerate.
+- `packages/jess/benchmark/scss-real/` — real SCSS, unmodified from the npm packages, each with its MIT `LICENSE`:
+
+| SCSS fixture | Holds | Stands for |
+|---|---|---|
+| `bootstrap-5.3.8` | `bootstrap@5.3.8` `scss/`: 92 files, 321 KB | Declarative authoring: variables and maps, `@each` over a utilities map, heavy interpolation (2,094 `#{`, 1,043 `!default`), a thin mixin layer. One file, `_variables.scss`, is 77 KB. Line comments are 17% of the bytes. |
+| `foundation-6.9.0` | `foundation-sites@6.9.0` `scss/` and `_vendor/sassy-lists`, which `foundation.scss` imports: 113 files, 372 KB | Control-flow authoring: 338 mixins, 60 functions, 592 `@if`/`@else`, 146 loops. Line comments are 38% of the bytes. The package's `test/sass` (sass-true assertions) and `docs/assets/scss` are left out as not library code. |
+| `gen-workload` | Generated: 1 file, 281 KB | A worst case, not real authoring: 1,540 `@include` of 2 mixins in deep nesting with variable math, and no `@function`, `@if`, loop, interpolation, `!default` or comment. It suits a parser hot path, not a claim about real stylesheets. |
+
+The copies don't follow `bootstrap` and `foundation-sites` in `packages/jess/package.json`, so a lockfile refresh can't move the benchmark. A new upstream version is a new directory and a new row. The two trees add 1.2 MB on disk and about 172 KB compressed.
 - The `@less/test-data` corpus (links to `~/git/oss/less.js/packages/test-data`) — the tests-unit fixtures used by measure:less:hotpath.
 
 ## Historical / baseline data (the "old perf data")

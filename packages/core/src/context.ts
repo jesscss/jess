@@ -1,10 +1,12 @@
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
-import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
+import type { ISafeParseResult, ParsedDocument, PluginInterface, ScriptSandboxRoute, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
+import type { ImportTargets } from './import-targets.js';
 import type { TriviaMap } from './types/index.js';
 import type { ApplySelectorKind, ExtendSelectorKind, OutputOptions } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
 import { FunctionMode, MathMode, UnitMode } from './types/modes.js';
+import { attachDocumentFacts, DocumentContext, documentTriviaOf } from './document-context.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
@@ -28,7 +30,7 @@ import {
 
 /** Extensions of script modules and executable `@plugin` scripts. */
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
-const SCRIPT_RUNTIME_MISSING_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js to enable script execution features.';
+const SCRIPT_RUNTIME_MISSING_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.';
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
 
 /**
@@ -216,6 +218,20 @@ export interface ContextOptions {
   loadPluginForExtension?(extension: string): Promise<PluginInterface | undefined> | PluginInterface | undefined;
 
   /**
+   * How this render moves into the script sandbox when it reaches a script
+   * boundary; passed to the script plugin's `import` / `importPlugin`. Set by
+   * the compiler per render.
+   */
+  scriptSandbox?: ScriptSandboxRoute;
+
+  /**
+   * Awaited before a source file is parsed, so the settings it is about to read
+   * (`sourceOptions`) can be prepared asynchronously first: the script sandbox
+   * decodes the config chain a file needs only then.
+   */
+  prepareSource?: (filePath: string) => Promise<void> | void;
+
+  /**
    * The settings that cover one source file, computed for its language (its
    * `styles.config` merged under the settings passed in; global settings under
    * its language's) — supplied by the host. Called once when the file is parsed
@@ -364,48 +380,7 @@ export interface DocumentContextOptions extends ContextOptions {
   plugin?: PluginInterface;
 }
 
-/** Private parser-provenance slot on the exported document identity. */
-const DOCUMENT_TRIVIA: unique symbol = Symbol('jess.context.document-trivia');
-
-/**
- * Source identity carried by canonical AST documents for one Context session.
- * It intentionally has no legacy node scope, selector cache, or placement state.
- */
-export class DocumentContext {
-  private _options: Readonly<ResolvedOptions>;
-
-  /** Immutable view of the resolved policy owned by the active source. */
-  get options(): Readonly<ResolvedOptions> {
-    return this._options;
-  }
-
-  isModule: boolean | undefined;
-  file?: DocumentContextOptions['file'];
-  plugin?: PluginInterface;
-
-  constructor(options: Readonly<ResolvedOptions>, opts: DocumentContextOptions = {}) {
-    this._options = options;
-    this.isModule = opts.isModule;
-    this.file = opts.file;
-    this.plugin = opts.plugin;
-  }
-}
-
-/** Attach canonical-document trivia without changing the public class declaration. */
-function attachDocumentFacts(
-  context: DocumentContext,
-  trivia: TriviaMap | undefined
-): void {
-  Object.defineProperty(context, DOCUMENT_TRIVIA, { value: trivia });
-}
-
-/** Core-internal access; intentionally absent from the package-root exports. */
-export function documentTriviaOf(context: DocumentContext): TriviaMap | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- canonical contexts receive this module-private slot in rememberDocumentContext.
-  return (context as DocumentContext & {
-    readonly [DOCUMENT_TRIVIA]: TriviaMap | undefined;
-  })[DOCUMENT_TRIVIA];
-}
+export { DocumentContext, documentTriviaOf };
 
 /** The source facts of the active canonical document. */
 export type SourceContext = Pick<DocumentContext, 'options' | 'file' | 'plugin'>;
@@ -931,6 +906,9 @@ export class Context {
 
   /** Full resolved path -> canonical parsed document (legacy Rules during migration or AST v2 Stylesheet). */
   sourceTrees = new Map<string, ParsedDocument>();
+
+  /** Set before a render to record what each import it evaluates resolved to. Unset, nothing is recorded. */
+  importTargets?: ImportTargets;
   private readonly parsedSourceTrees = new Map<string, ParsedDocument>();
 
   /**
@@ -1014,6 +992,11 @@ export class Context {
    */
   withDocument<T>(document: Stylesheet, run: () => T | Promise<T>): T | Promise<T> {
     return this.withSourceOwner(this.documentContexts.get(document), run);
+  }
+
+  /** The plugin that parsed a document of this session. */
+  pluginOf(document: Stylesheet): PluginInterface | undefined {
+    return this.documentContexts.get(document)?.plugin;
   }
 
   /**
@@ -1344,6 +1327,15 @@ export class Context {
     }
 
     const source = await this.readSource(resolvedPath, locator);
+    const loading = plugin.loadParser?.();
+    if (loading) {
+      await loading;
+    }
+
+    /* Only a host that prepares sources waits here: a render outside the sandbox goes straight on. */
+    if (this.opts.prepareSource) {
+      await this.opts.prepareSource(resolvedPath);
+    }
     const { result: parseResult, settings } = this.parseSource(plugin, resolvedPath, source, importOptions);
 
     // Collect normalized errors and warnings from plugin
@@ -1528,6 +1520,10 @@ export class Context {
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);
+    const loading = plugin.loadParser?.();
+    if (loading) {
+      await loading;
+    }
     const { result, settings } = this.parseSource(plugin, virtualPath, content);
     if (sourceOffset || sourceEnd !== undefined) {
       const owner = { sourceOffset, sourceEnd };
@@ -1651,7 +1647,7 @@ export class Context {
       }
     }
 
-    const module = await plugin.import!(resolvedPath);
+    const module = await plugin.import!(resolvedPath, this.opts.scriptSandbox);
     if (!module) {
       throw new Error(`File "${friendlyPath}" not supported`);
     }
@@ -1708,26 +1704,41 @@ export class Context {
     throw new Error(`Plugin not found: ${importPath} (tried ${tried.join(', ')})`);
   }
 
+  /** The plugin that loads an executable Plugin module of this extension, as {@link getPluginModule} selects it. */
+  private async pluginModuleLoaderFor(ext: string): Promise<PluginInterface | undefined> {
+    /* A plugin already here that loads it wins; only without one is a plugin for the extension loaded, and kept. */
+    const plugin = this.plugins.find(candidate => candidate.supportedExtensions?.includes(ext) && candidate.importPlugin)
+      ?? await this.opts.loadPluginForExtension?.(ext);
+    if (plugin && !this.plugins.includes(plugin)) {
+      this.plugins.push(plugin);
+    }
+    return plugin && plugin.supportedExtensions?.includes(ext) && plugin.importPlugin ? plugin : undefined;
+  }
+
+  /** Where an executable Plugin module comes from, and the plugin that loads it, as {@link getPluginModule} finds them. */
+  private async pluginModuleTarget(importPath: string) {
+    refuseRemoteModule(this.importTarget(importPath));
+    const resolved = await this._getPluginPath(importPath);
+    refuseRemoteModule(resolved.resolvedPath);
+    return { ...resolved, plugin: await this.pluginModuleLoaderFor(resolved.ext) };
+  }
+
+  /**
+   * Whether the executable Plugin module `importPath` names loads, as
+   * {@link getPluginModule} would load it, through a plugin that runs every
+   * script in the sandbox (`sandboxesScripts`); false when it does not load.
+   */
+  sandboxesPluginScript(importPath: string): Promise<boolean> {
+    return this.pluginModuleTarget(importPath).then(({ plugin }) => plugin?.sandboxesScripts === true, () => false);
+  }
+
   /**
    * Load an executable Plugin module through the same Context-owned path and
    * extension dispatch used by ordinary modules. The active dialect adapter
    * interprets the returned module; Context does not know a dialect ABI.
    */
   async getPluginModule(importPath: string, options: string | null = null) {
-    refuseRemoteModule(this.importTarget(importPath));
-    const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPluginPath(importPath);
-    refuseRemoteModule(resolvedPath);
-    let plugin = this.plugins.find(candidate =>
-      candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
-    if (!plugin) {
-      plugin = await this.opts.loadPluginForExtension?.(ext);
-      if (plugin && !this.plugins.includes(plugin)) {
-        this.plugins.push(plugin);
-      }
-      if (plugin && (!plugin.supportedExtensions?.includes(ext) || !plugin.importPlugin)) {
-        plugin = undefined;
-      }
-    }
+    const { resolvedPath, triedPaths, friendlyPath, ext, plugin } = await this.pluginModuleTarget(importPath);
     if (!plugin?.importPlugin) {
       if (SCRIPT_MODULE_EXTENSIONS.has(ext)) {
         throw new Error(SCRIPT_RUNTIME_MISSING_MESSAGE);
@@ -1739,7 +1750,7 @@ export class Context {
     if (cached !== undefined) {
       return cached;
     }
-    const loading = plugin.importPlugin(resolvedPath, options).then(module => ({
+    const loading = plugin.importPlugin(resolvedPath, options, this.opts.scriptSandbox).then(module => ({
       module,
       triedPaths,
       resolvedPath

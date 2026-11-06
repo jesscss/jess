@@ -92,8 +92,8 @@ test('coverage-enabled macro CSS reports structural grammar coverage across publ
     expect(importResult.ok && importResult.unconsumedFrom === null).toBe(true);
     const importCoverage = collector.snapshot();
     expect(importCoverage.hits.filter(id => !coverage.hits.includes(id))).toEqual([
-      'choice:Stylesheet/node:0/sequence:1/many:0/choice:0/lazy:0/node:0/sequence:1/arm:1',
-      'choice:Stylesheet/node:0/sequence:1/many:0/choice:0/lazy:0/node:0/sequence:1/choice:1/lazy:0/node:0/sequence:1/optional:0/arm:1',
+      'choice:ImportTarget/lazy:0/arm:1',
+      'choice:ImportUrl/lazy:0/node:0/sequence:1/optional:0/arm:1',
       'rule:ImportUrl',
       'rule:ImportUrlUnquoted'
     ]);

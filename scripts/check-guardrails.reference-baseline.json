@@ -123,9 +123,6 @@
   "packages/core/src/ast/css-grammar-helpers.ts": [
     "Contents that read a binding — the dialect's interpolation (SCSS `(#{$q})`, Less `(foo: @{x} baz)`) or a variable reference (SCSS `(foo: $bar baz)`) — have no authored bytes to print: the binding is evaluated (P16), so the value stays structured and the emitter substitutes it, as dart-sass and lessc 4.9.1 write `(foo: 1px baz)`."
   ],
-  "packages/core/src/ast/evaluator.ts": [
-    "This mirrors less.js, which keeps such calls verbatim."
-  ],
   "packages/core/src/ast/extend/ir.ts": [
     "Chaining an extend off a HIDDEN extender branch yields a hidden result (matching less.js's per-chain `visibilityInfo`), whereas an extend off an original hidden seed keeps the extender's own visibility — so the two must be told apart."
   ],
@@ -173,17 +170,11 @@
   "packages/fns/src/less/__tests__/round.test.ts": [
     "it('breaks an exact tie away from zero, at any precision, as Less 4.x does', () => {"
   ],
-  "packages/fns/src/less/color-helper.ts": [
-    "A `#`-hex input keeps HEX format ONLY when the literal already encoded an alpha channel (`#rgba` / `#rrggbbaa`); an opaque hex (`#rgb` / `#rrggbb`) turns to `rgba(…)` the moment it becomes translucent (Less 4.x/v5 parity — e.g."
-  ],
   "packages/fns/src/less/e.ts": [
     "The result is an escaped string, written with `\"` as Less 4.x writes it."
   ],
   "packages/fns/src/less/escape.ts": [
     "Returns raw text (`Any`), as Less 4.x returns an `Anonymous`, so it is also valid standing alone as a statement, like `e()`."
-  ],
-  "packages/fns/src/less/hsl.ts": [
-    "ACHROMATIC canonicalization (Less 4.x/v5 parity): a grey/black/white result (`s === 0 || l === 0 || l === 1`) carries no meaningful hue/saturation, so it round-trips through rgb — hue + saturation collapse to `0` and the authored unit is dropped (`hsl(380deg, 150%, 150%)` → `hsl(0, 0%, 100%)`)."
   ],
   "packages/fns/src/util/mime.ts": [
     "Mirrors Less 4.x `environment.mimeLookup` + `charsetLookup`."
@@ -220,9 +211,6 @@
   ],
   "packages/jess/test/less/extend-public-contract.test.ts": [
     "Cross-import closure and reference-import visibility already live in `extend-cross-import.test.ts` with real files and Less 4 output oracles."
-  ],
-  "packages/jess/test/less/function-mode.test.ts": [
-    "Default `'preserve'` keeps it as a call, silently, with its arguments evaluated and canonically spaced (`unit(80/16,rem)` → `unit(80 / 16, rem)`); `'error'` throws the underlying error (Less 4.x parity)."
   ],
   "packages/jess/test/less/functions.test.ts": [
     "it('rounds an exact tie away from zero, as Less 4.x does', async () => {",

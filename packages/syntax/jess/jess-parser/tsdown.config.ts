@@ -20,6 +20,14 @@ const COMPOSE_EXTERNAL = [
   /^@jesscss\/core(\/|$)/
 ];
 
+/*
+ * No selective assembly. Measured against parseman 0.55.2, every budget from 0
+ * to 1.5 parses at the same speed within run-to-run spread, and each step up
+ * costs import time; budget 0 is the fastest under `--jitless` and the only one
+ * whose cold start is no worse than 0.55.2's.
+ */
+const ASSEMBLY = { assemblyBudget: 0 };
+
 export default defineConfig([
   parserEntryBuild({
     entry: {
@@ -29,7 +37,7 @@ export default defineConfig([
       'cst/positions': './src/cst/positions.ts'
     },
     external: COMPOSE_EXTERNAL,
-    plugins: [parseman.rolldown({})]
+    plugins: [parseman.rolldown(ASSEMBLY)]
   }),
-  ...grammarVariantBuilds({ external: COMPOSE_EXTERNAL, plugins: [parseman.rolldown({})] })
+  ...grammarVariantBuilds({ external: COMPOSE_EXTERNAL, plugins: [parseman.rolldown(ASSEMBLY)] })
 ]);

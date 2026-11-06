@@ -1,4 +1,4 @@
-import { AbstractPlugin, type Context, Fn } from '@jesscss/core';
+import { AbstractPlugin, type Context, Fn, recordPluginModule } from '@jesscss/core';
 import { LessApiBridge, type NativeLessPlugin } from './less-api-bridge.js';
 
 /**
@@ -51,7 +51,8 @@ export class LessCompatPlugin extends AbstractPlugin {
   }
 }
 
-const lessCompatPlugin = (opts?: LessCompatPluginOptions) => new LessCompatPlugin(opts);
+const lessCompatPlugin = (opts?: LessCompatPluginOptions) =>
+  recordPluginModule(new LessCompatPlugin(opts), import.meta.url, 'default', [opts]);
 
 export default lessCompatPlugin;
 export { lessCompatPlugin };

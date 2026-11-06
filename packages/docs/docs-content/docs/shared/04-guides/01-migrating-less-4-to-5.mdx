@@ -312,6 +312,56 @@ side effect does not rewrite an already-evaluated sibling declaration.
   outermost parentheses of each condition of a guard's `when ( … )` are not a
   paren group, and every pair inside them is: write `when ((1 + 2 = 3))` or
   `when ((1 + 2) = 3)` to compute.
+- Under `parens-division` (the default), a `/` divides inside parentheses, and
+  outside them a slash list stays as written (`font: 12px/1.5`, `grid-area: 1 / 2`,
+  `@f: 12px/1.5; font: @f`). A slash list is converted to its quotient only
+  where its use is unambiguous: as the whole argument of a function parameter
+  that takes a number, written in place or stored (`percentage(16/17)` is
+  `94.11764706%`, `unit(80/16, rem)` is `5rem`), and as one operand of math,
+  which a variable always is (`@d: 10px/2; @d * 2` is `10px`;
+  `@h: 1/2; percentage(@h + 1)` is `150%`). A slash written beside other math is
+  kept as written, because nothing says which side the math belongs to:
+  `font-size: 12px / 1 + 1` and `percentage(1/2 + 1)` stay as they are (write
+  `percentage((1/2) + 1)` for `150%`). A comparison never converts a slash list,
+  stored or written: with `@h: 1/2`, `when (@h = 0.5)` does not match, and
+  neither does `when (10px/2 = 5px)` (write `when ((10px/2) = 5px)`). It is not
+  converted by a function that accepts any value (`length(16/17)` is `2`),
+  directly in a CSS function such as `calc()` or `clamp()`, or where it is
+  written out as a value.
+
+```less
+@f: 12px/1.5;
+@d: 10px/2;
+@h: 1/2;
+.a {
+  font: @f;
+  width: @d * 2;
+  top: percentage(16/17);
+  left: unit(80/16, rem);
+  right: percentage(@d);
+  bottom: percentage(@h + 1);
+  z-index: length(16/17);
+  height: calc(10px/2);
+  font-size: 12px / 1 + 1;
+  margin: percentage(1/2 + 1);
+}
+```
+
+{/* v5-example */}
+```css
+.a {
+  font: 12px / 1.5;
+  width: 10px;
+  top: 94.11764706%;
+  left: 5rem;
+  right: 500%;
+  bottom: 150%;
+  z-index: 2;
+  height: calc(10px / 2);
+  font-size: 12px / 1 + 1;
+  margin: percentage(1 / 2 + 1);
+}
+```
 
 ```bash
 # old

@@ -11,8 +11,8 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  * `functionMode` — mirrors `unitMode`. Governs an optional/global function call
  * that matched a registered function but couldn't be evaluated (bad args, or the
  * function threw). Default `'preserve'` keeps it as a call, silently, with its
- * arguments evaluated and canonically spaced (`unit(80/16,rem)` →
- * `unit(80 / 16, rem)`); `'error'` throws the underlying error (Less 4.x parity).
+ * arguments evaluated and canonically spaced (`unit(12px/normal,rem)` →
+ * `unit(12px / normal, rem)`); `'error'` throws the underlying error.
  *
  * Every Less error fixture that renders only because of this default (ledger
  * C17), with the declaration it renders.
@@ -20,15 +20,26 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 const TD = resolveLessTestDataRoot();
 const FIXTURES: ReadonlyArray<readonly [fixture: string, declaration: string]> = [
   ['tests-error/eval/color-func-invalid-color', 'color: color("NOT A COLOR");'],
-  ['tests-error/eval/percentage-css-var', 'b: percentage(var(--x));'],
-  ['tests-error/eval/percentage-non-number-argument', 'percentage: percentage(16 / 17);'],
   ['tests-error/eval/svg-gradient1', 'a: svg-gradient(horizontal, black, white);'],
   ['tests-error/eval/svg-gradient2', 'a: svg-gradient(to bottom, black, orange, 45%, white);'],
   ['tests-error/eval/svg-gradient3', 'a: svg-gradient(black, orange);'],
   ['tests-error/eval/svg-gradient4', 'a: svg-gradient(horizontal, black, white);'],
   ['tests-error/eval/svg-gradient5', 'a: svg-gradient(to bottom, black, orange, 45%, white);'],
-  ['tests-error/eval/svg-gradient6', 'a: svg-gradient(black, orange);'],
-  ['tests-error/eval/unit-function', 'font-size: unit(80 / 16, rem);']
+  ['tests-error/eval/svg-gradient6', 'a: svg-gradient(black, orange);']
+];
+
+/*
+ * Error fixtures that compute in every functionMode: a slash written in place
+ * converts where the parameter takes a number (ledger P35, owner 2026-10-30:
+ * "Since functions can specify types, it seems like we could use type hints
+ * to auto-convert here? since obviously percentage() does not accept a slash
+ * list?"), and a built-in is its CSS form over an input only the browser knows
+ * (CSS-NATIVE-BUILTINS Q8).
+ */
+const COMPUTED: ReadonlyArray<readonly [fixture: string, declaration: string]> = [
+  ['tests-error/eval/percentage-css-var', 'b: calc(var(--x) * 100%);'],
+  ['tests-error/eval/percentage-non-number-argument', 'percentage: 94.11764706%;'],
+  ['tests-error/eval/unit-function', 'font-size: 5rem;']
 ];
 
 function makeCompiler(compileExtra: Record<string, unknown> = {}) {
@@ -62,9 +73,19 @@ describe('functionMode', () => {
     }
   }, 60000);
 
+  it('computes a slash written in place for a parameter that takes a number, in every functionMode', async () => {
+    for (const functionMode of ['preserve', 'error'] as const) {
+      for (const [f, declaration] of COMPUTED) {
+        const r = await makeCompiler({ functionMode }).renderToResult(path.join(TD, `${f}.less`), { breakOnError: true });
+        expect(r.errors ?? [], `${f} should render under ${functionMode}`).toHaveLength(0);
+        expect(r.warnings ?? [], `${f} should render silently`).toHaveLength(0);
+        expect(r.css, `${f} should compute`).toContain(declaration);
+      }
+    }
+  }, 60000);
+
   it('evaluates a failing call in a variable only where the variable is referenced (lazy variables, R1)', async () => {
-    // tests-error/eval/color-func-invalid-color-2 declares this variable and never reads it.
-    const declared = '@base-color: darken(var(--baseColor, red), 50%);';
+    const declared = '@base-color: darken(10px, 50%);';
     const referenced = `${declared}\n.a { color: @base-color; }`;
     const options = { filePath: 'entry.less', extension: '.less' };
 
@@ -72,7 +93,17 @@ describe('functionMode', () => {
     await expect(makeCompiler({ functionMode: 'error' }).renderString(referenced, options))
       .rejects.toMatchObject({ code: 'eval/invalid-function', line: 1, column: 14 });
     await expect(makeCompiler().renderString(referenced, options))
-      .resolves.toContain('color: darken(var(--baseColor, red), 50%)');
+      .resolves.toContain('color: darken(10px, 50%)');
+  }, 60000);
+
+  it('prints a built-in\'s CSS form over an input only the browser knows, in every mode', async () => {
+    // tests-error/eval/color-func-invalid-color-2 declares this variable and never reads it.
+    const source = '@base-color: darken(var(--baseColor, red), 50%);\n.a { color: @base-color; }';
+    const options = { filePath: 'entry.less', extension: '.less' };
+    for (const functionMode of ['preserve', 'error'] as const) {
+      await expect(makeCompiler({ functionMode }).renderString(source, options))
+        .resolves.toContain('color: hsl(from var(--baseColor, red) h s clamp(0, l - 50, 100))');
+    }
   }, 60000);
 
   it('leaves unknown (non-registered) function names as-is WITHOUT warning, even in error mode', async () => {

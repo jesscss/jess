@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { emitJess } from '@jesscss/core';
 import { parse as parseLess } from '@jesscss/less-parser';
 import { parse as parseScss } from '@jesscss/scss-parser';
+import { jessFunctions } from '@jesscss/plugin-scss';
 import { Compiler } from '../../src/index.js';
 
 /**
@@ -78,8 +79,8 @@ describe('scss: `selector.parse()` reads a selector string', () => {
     ['a variable left in a plain string', '@use "sass:selector"; .r { x: selector.parse("$sel"); }', 'expected selector.']
   ] as const;
 
-  it.each(invalid)('writes the call as authored for %s', async (_name, source) => {
-    await expect(render(source)).resolves.toBe(`.r {\n  x: ${source.slice(source.indexOf('selector.parse('), source.indexOf(');') + 1)};\n}\n`);
+  it.each(invalid)('fails the compile for %s under the default functionMode (ruling J1)', async (_name, source, message) => {
+    await expect(render(source)).rejects.toMatchObject({ reason: expect.stringContaining(message) });
   });
 
   it.each(invalid)('fails the compile for %s under functionMode: error', async (_name, source, message) => {
@@ -118,7 +119,7 @@ describe('scss: `selector.parse()` reads a selector string', () => {
  */
 describe('scss → jess: `selector.parse()`', () => {
   /* The converter's fact that `selector-parse` is a Sass built-in (`#sass` exports it as `selectorParse`). */
-  const functions = { from: '#sass', names: new Map([['selector-parse', 'selectorParse']]) };
+  const functions = jessFunctions();
 
   it.each(cases)('%s', async (_name, source) => {
     const jess = emitJess(parseScss(source), { functions });

@@ -35,6 +35,14 @@ interface ParamSpecBase {
 
   /** Hand the body a typed thunk; evaluation and validation happen on invocation. */
   readonly lazy?: boolean;
+
+  /**
+   * Whether a built-in's CSS form holds this value where an exposed variable reads
+   * it, given the call's other arguments (docs/design/CSS-NATIVE-BUILTINS.md Q2, Q3).
+   * Any other value keeps the call's runtime recipe, as does a slot without this
+   * field, which has no form.
+   */
+  readonly fits?: (value: ValueGroup, vals: readonly ValueGroup[]) => boolean;
 }
 
 type ParamTypeSpec = ParamSpecBase & {
@@ -221,4 +229,13 @@ export type Fn = ((value: ValueGroup, ctx: FnCtx) => MaybePromise<ValueGroup>) &
   readonly name: string;
   readonly params: readonly ParamSpec[];
   readonly variadic?: boolean;
+
+  /** The module export a function imported into a stylesheet binds (module-values.ts `bindModuleFunction`). */
+  readonly origin?: FnOrigin;
 };
+
+/** Where an imported function comes from: the module as the stylesheet names it, and the export. */
+export interface FnOrigin {
+  readonly module: string;
+  readonly name: string;
+}

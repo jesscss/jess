@@ -22,7 +22,7 @@
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { JessArithmeticOutsideExpressionError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
-import { NO_SPAN, adoptForgivenSelectorItems, any, authoredSource, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan, valueLayoutOf, withValueLayout, isValueSlotArray, branch, ifValue, inParens, funcCall, callArg, queryFeatureNameValue } from '@jesscss/core/ast';
+import { NO_SPAN, adoptForgivenSelectorItems, any, authoredSource, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan, valueLayoutOf, withValueLayout, isValueSlotArray, branch, ifValue, inParens, funcCall, callArg, queryFeatureNameValue, guardCompare, guardLogical, guardNot, guardValue } from '@jesscss/core/ast';
 import type { Any, SelectorCapture, Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, FunctionCall, IfValue, IfValueBranch } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -615,7 +615,8 @@ function jessFunctionOpenName(child: unknown): string {
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isVarDeclaration(child) && !isMixinDefinition(child) && !isMixinCall(child) && !isApply(child) && !isReference(child) && !isRuleset(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isJessDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isUnknownAtRuleBlock(child)) {
+    /* The guards gate on distinct types; the statements a body holds most are tried first. */
+    if (!isJessDeclaration(child) && !isRuleset(child) && !isVarDeclaration(child) && !isMixinCall(child) && !isMixinDefinition(child) && !isApply(child) && !isReference(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isUnknownAtRuleBlock(child)) {
       throw new TypeError('Jess grammar produced a non-statement child.');
     }
     statements.push(child);
@@ -625,15 +626,20 @@ function requireStatements(children: readonly unknown[]): Statement[] {
 
 /*
  * Block bodies whose grammar admits array-producing arms (`$extend`) and a bare
- * `;` arm: flatten mixin-call arrays, drop other arrays and stray tokens.
+ * `;` arm: flatten mixin-call arrays, drop other arrays and stray tokens, in one
+ * pass over `children[open .. -1)`.
  */
 function collectBlockStatements(children: readonly unknown[], open: number): Statement[] {
-  return requireStatements(children.slice(
-    open,
-    -1
-  )
-    .flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child])
-    .filter(child => !isToken(child)));
+  const out: unknown[] = [];
+  for (let at = open; at < children.length - 1; at++) {
+    const child = children[at];
+    if (isMixinCallArray(child)) {
+      out.push(...child);
+    } else if (!Array.isArray(child) && !isToken(child)) {
+      out.push(child);
+    }
+  }
+  return requireStatements(out);
 }
 
 /*
@@ -641,11 +647,16 @@ function collectBlockStatements(children: readonly unknown[], open: number): Sta
  * token arms other than mixin-call expansion: flatten mixin-call arrays only.
  */
 function collectBodyStatements(children: readonly unknown[], open: number): Statement[] {
-  return requireStatements(children.slice(
-    open,
-    -1
-  )
-    .flatMap(child => isMixinCallArray(child) ? child : [child]));
+  const out: unknown[] = [];
+  for (let at = open; at < children.length - 1; at++) {
+    const child = children[at];
+    if (isMixinCallArray(child)) {
+      out.push(...child);
+    } else {
+      out.push(child);
+    }
+  }
+  return requireStatements(out);
 }
 
 function requireStatementList(value: unknown): Statement[] {
@@ -760,7 +771,7 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
  * positions genuinely differ (§4.2a) and it gets a reducer each, below.
  */
 function reduceGuardTruth(children: readonly unknown[]): GuardNode {
-  return { g: 'truth', value: requireExpressionFact(children[0]).value, parens: 0 };
+  return guardValue('truth', requireExpressionFact(children[0]).value, 0);
 }
 
 /*
@@ -773,36 +784,22 @@ function reduceGuardTruth(children: readonly unknown[]): GuardNode {
  * than one node plus an eval-time context read.
  */
 function reduceIfCompare(children: readonly unknown[]): GuardNode {
-  return {
-    g: 'cmp',
-    op: requireToken(children[1]).value.trim(),
-    left: requireExpressionFact(children[0]).value,
-    right: requireExpressionFact(children[2]).value,
-    implied: false,
-    parens: 0
-  };
+  return guardCompare('cmp', requireToken(children[1]).value.trim(), requireExpressionFact(children[0]).value, requireExpressionFact(children[2]).value, false);
 }
 function reduceGuardCompare(children: readonly unknown[]): GuardNode {
-  return {
-    g: 'match',
-    op: requireToken(children[1]).value.trim(),
-    left: requireExpressionFact(children[0]).value,
-    right: requireExpressionFact(children[2]).value,
-    implied: false,
-    parens: 0
-  };
+  return guardCompare('match', requireToken(children[1]).value.trim(), requireExpressionFact(children[0]).value, requireExpressionFact(children[2]).value, false);
 }
 function reduceGuardAnd(children: readonly unknown[]): GuardNode {
   let result = requireGuardNode(children[0]);
   for (let index = 2; index < children.length; index += 2) {
-    result = { g: 'and', left: result, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
+    result = guardLogical('and', result, requireGuardNode(children[index]), requireToken(children[index - 1]).value, NO_SPAN);
   }
   return result;
 }
 function reduceGuardOr(children: readonly unknown[]): GuardNode {
   let result = requireGuardNode(children[0]);
   for (let index = 2; index < children.length; index += 2) {
-    result = { g: 'or', left: result, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
+    result = guardLogical('or', result, requireGuardNode(children[index]), requireToken(children[index - 1]).value, NO_SPAN);
   }
   return result;
 }
@@ -1106,7 +1103,7 @@ function ifCondition(value: ValueSlot): GuardNode {
     };
     const negation = word(items[0]);
     if (items.length === 2 && negation !== undefined && negation.toLowerCase() === 'not') {
-      return { g: 'not', inner: ifCondition(items[1]!), word: negation, gluedAt: NO_SPAN, parens: 0 };
+      return guardNot(ifCondition(items[1]!), negation, NO_SPAN, 0);
     }
     const keyword = (index: number): 'and' | 'or' | undefined => {
       const lower = word(items[index])?.toLowerCase();
@@ -1124,7 +1121,7 @@ function ifCondition(value: ValueSlot): GuardNode {
       for (let index = 1; index < items.length; index += 2) {
         const right = ifCondition(items[index + 1]!);
         if (keyword(index) === 'and') {
-          conjunction = { g: 'and', left: conjunction, right, word: word(items[index])!, gluedAt: NO_SPAN, parens: 0 };
+          conjunction = guardLogical('and', conjunction, right, word(items[index])!, NO_SPAN);
         } else {
           disjuncts.push({ word: joiner, operand: conjunction });
           joiner = word(items[index])!;
@@ -1133,7 +1130,7 @@ function ifCondition(value: ValueSlot): GuardNode {
       }
       disjuncts.push({ word: joiner, operand: conjunction });
       return disjuncts.slice(1).reduce<GuardNode>(
-        (left, next) => ({ g: 'or', left, right: next.operand, word: next.word, gluedAt: NO_SPAN, parens: 0 }),
+        (left, next) => guardLogical('or', left, next.operand, next.word, NO_SPAN),
         disjuncts[0]!.operand
       );
     }
@@ -1142,12 +1139,12 @@ function ifCondition(value: ValueSlot): GuardNode {
     const [part] = value.parts;
     if (part !== undefined && 'ref' in part && part.ref.type === 'Expression' && part.ref._asCall === null) {
       const inner = part.ref.value;
-      return !isValueSlotArray(inner) && inner.type === 'Condition' ? inner.guard : { g: 'truth', value: inner, parens: 0 };
+      return !isValueSlotArray(inner) && inner.type === 'Condition' ? inner.guard : guardValue('truth', inner, 0);
     }
   } else if (value.type === 'Block' && value.delimiter === 'paren' && value.escaped !== true) {
     return inParens(ifCondition(value.value));
   }
-  return { g: 'css', value, parens: 0 };
+  return guardValue('css', value, 0);
 }
 
 /**

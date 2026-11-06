@@ -10,7 +10,7 @@
     "access": "public"
   },
   "description": "Jess compiler preset shared by product entrypoints",
-  "version": "2.0.0-alpha.31",
+  "version": "2.0.0-alpha.32",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
@@ -21,6 +21,11 @@
       "types": "./lib/index.d.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
+    },
+    "./css": {
+      "types": "./lib/css.d.ts",
+      "import": "./lib/css.js",
+      "require": "./lib/css.cjs"
     },
     "./package.json": "./package.json"
   },

@@ -23,10 +23,10 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, withoutLineComments, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout, lookupStep, referenceCall, guardCall, guardCompare, guardDefault, guardLogical, guardNot, withFields, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
+import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, MixinPathSegment, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
-import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
+import { LESS_NODE_TRIVIA_STRIDE, type ValuePieceKind, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex, valueRunSeparators } from './trivia-layout.js';
 import { diagnosticsOf, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
 import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
@@ -98,11 +98,11 @@ type RulesetTailFact = {
   readonly firstExtensions: readonly ExtendTargetFact[];
   readonly branches: readonly SelectorBranchFact[];
   readonly selectorEnd: number;
-  readonly guard?: MixinGuard;
+  readonly guard: MixinGuard | undefined;
   readonly rules: readonly Statement[];
   readonly extensions: readonly ExtendInstruction[];
-  readonly bodySpan?: SourceSpan;
-  readonly terminated?: true;
+  readonly bodySpan: SourceSpan | undefined;
+  readonly terminated: boolean;
 };
 type CustomValuePart = string | InterpolationFact | Lookup | readonly CustomValuePart[];
 type EnclosedNameFact = { readonly name: string };
@@ -371,7 +371,7 @@ function staticText(value: unknown): string {
   throw new TypeError('Less grammar produced a non-static import fragment.');
 }
 
-function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
+function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[], dropLineComments = false): string {
   const gapBefore = new Set<number>();
   for (let index = 0; index < lessTriviaEntryCount(triviaLog); index += 1) {
     gapBefore.add(lessTriviaEntryInsertIndex(triviaLog, index));
@@ -388,7 +388,7 @@ function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: reado
     text += ' ';
   }
 
-  return semanticGapText(text);
+  return semanticGapText(dropLineComments ? withoutLineComments(text) : text);
 }
 
 /**
@@ -398,7 +398,7 @@ function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: reado
  */
 function atRulePreludeFrom(children: readonly unknown[], triviaLog: readonly number[]): Any | Interpolation | null {
   if (!children.some(isInterpolationFact)) {
-    const text = staticTextWithTriviaGaps(children, triviaLog).trim();
+    const text = staticTextWithTriviaGaps(children, triviaLog, true).trim();
     return text === '' ? null : any(text);
   }
   const gapBefore = new Set<number>();
@@ -424,7 +424,7 @@ function atRulePreludeFrom(children: readonly unknown[], triviaLog: readonly num
       trimmed.push(part);
       continue;
     }
-    let lit = semanticGapText(part.lit);
+    let lit = semanticGapText(withoutLineComments(part.lit));
     lit = index === 0 ? lit.trimStart() : lit;
     lit = index === parts.length - 1 ? lit.trimEnd() : lit;
     if (lit !== '') {
@@ -559,7 +559,7 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
   for (const child of accessors) {
     const accessor = requireInterpolationAccessorFact(child);
     raw += `[${accessor.src}]`;
-    steps.push({ type: 'LookupStep', kind: accessor.keyKind, name: accessor.key });
+    steps.push(lookupStep(accessor.keyKind, accessor.key));
   }
   return reference(base, steps, raw);
 }
@@ -575,17 +575,17 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
  */
 function referenceBracketTailFact(children: readonly unknown[]): ReferenceTailFact {
   const accessor = requireInterpolationAccessorFact(children[0]);
-  return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
+  return { step: lookupStep(accessor.keyKind, accessor.key), src: `[${accessor.src}]` };
 }
 
 function referenceDotTailFact(children: readonly unknown[]): ReferenceTailFact {
   const name = requireToken(children[1]).value;
-  return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
+  return { step: lookupStep('member', name), src: `.${name}` };
 }
 
 function referenceCallTailFact(children: readonly unknown[]): ReferenceTailFact {
   const args = mixinArgumentsFromChildren(children);
-  return { step: { type: 'Call', args }, src: `(${args.map(callArgumentSource).join(', ')})` };
+  return { step: referenceCall(args), src: `(${args.map(callArgumentSource).join(', ')})` };
 }
 
 function referenceWithTails(base: ValueNode | MixinCall, baseRaw: string, tails: readonly unknown[]): Reference {
@@ -948,28 +948,15 @@ function valuePieceReducerWithTrivia(
   if (values.length === 1) {
     return values[0]!;
   }
+  return withValueLayout(values, valueRunSeparators(children, triviaLog, state, valuePieceKind));
+}
 
-  /* A delim is glued to its neighbours unless trivia stands between them (ledger N18). */
-  const separators: string[] = [];
-  let previousValue = -1;
-  for (let index = 0; index < children.length; index += 1) {
-    const child = children[index];
-    if (!isValuePiece(child)) {
-      continue;
-    }
-    if (previousValue >= 0) {
-      const trivia = triviaTextAtInsertIndex(triviaLog, state, index);
-      separators.push(trivia.length > 0
-        ? trivia
-        : children.slice(previousValue + 1, index).some(isAdjacentComponentBoundary)
-          || ((isDelimPiece(child) || isDelimPiece(children[previousValue])) && !hasTriviaAtInsertIndex(triviaLog, index))
-          ? ''
-          : ' ');
-    }
-    previousValue = index;
+/* What a value run's child is to its layout. */
+function valuePieceKind(child: unknown): ValuePieceKind {
+  if (isValuePiece(child)) {
+    return isDelimPiece(child) ? 'delim' : 'piece';
   }
-
-  return withValueLayout(values, separators);
+  return isAdjacentComponentBoundary(child) ? 'glue' : 'other';
 }
 
 /** A value piece: a value node, or the bare `-` / `%` a value may hold. */
@@ -1225,7 +1212,7 @@ function lessValueSlot(value: ValueSlot): ValueSlot {
     return value.parts;
   }
   if (isValueNode(value) && value.type === 'Block' && isSequence(value.value)) {
-    return { ...value, value: value.value.parts };
+    return withFields(value, { value: value.value.parts });
   }
   return value;
 }
@@ -1326,14 +1313,14 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
    * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
   const fold = (kind: 'and' | 'or'): MixinGuard =>
     args.slice(1).reduce<MixinGuard>(
-      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value), word: call.name, gluedAt: NO_SPAN, parens: 0 }),
+      (left, arg) => guardLogical(kind, left, lessConditionGuard(arg.value), call.name, NO_SPAN),
       lessConditionGuard(first)
     );
   switch (call.name.toLowerCase()) {
     case 'boolean':
       return args.length === 1 ? boundaryCondition(lessConditionGuard(first), call) : call;
     case 'not':
-      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first), word: call.name, gluedAt: NO_SPAN, parens: 0 }) : call;
+      return args.length === 1 ? boundaryCondition(guardNot(lessConditionGuard(first), call.name, NO_SPAN, 0)) : call;
     case 'and':
       return boundaryCondition(fold('and'));
     case 'or':
@@ -1534,7 +1521,7 @@ function lessBranchSegments(branch: SelectorBranch): [{ combinator?: SelectorCom
   return [segments[0]!, ...segments.slice(1)];
 }
 
-type MixinPrefixSegment = { readonly combinator: ' ' | '>'; readonly selector: string };
+type MixinPrefixSegment = MixinPathSegment;
 
 function mixinPrefixFromSelectorBranch(branch: SelectorBranch): readonly MixinPrefixSegment[] | null {
   const prefix: MixinPrefixSegment[] = [];
@@ -1549,10 +1536,7 @@ function mixinPrefixFromSelectorBranch(branch: SelectorBranch): readonly MixinPr
       if (!isSimpleSelector(token) || token.text === null || (!token.text.startsWith('.') && !token.text.startsWith('#'))) {
         return null;
       }
-      prefix.push({
-        combinator: prefix.length === 0 ? ' ' : segment.combinator ?? ' ',
-        selector: token.text
-      });
+      prefix.push(mixinPathSegment(prefix.length === 0 ? ' ' : segment.combinator ?? ' ', token.text));
     }
   }
   return prefix.length === 0 ? null : prefix;
@@ -1572,11 +1556,7 @@ function mixinCallFromSelectorBranch(
     throw new SyntaxError('Less mixin calls require a class or id selector path.');
   }
   const call = mixinCall(final.selector, args);
-  return withSourceSpan({
-    ...call,
-    ...(prefix.length > 1 ? { path: prefix.slice(0, -1) } : {}),
-    ...(important ? { important: true } : {})
-  }, span);
+  return withSourceSpan(withMixinPath(call, prefix.length > 1 ? prefix.slice(0, -1) : call.path, important || call.important), span);
 }
 
 function mixinDefinitionNameFromSelectorBranch(branch: SelectorBranch): string {
@@ -1827,11 +1807,7 @@ function isBareMixinCallFact(value: unknown): value is BareMixinCallFact {
 }
 
 function isRulesetTailFact(value: unknown): value is RulesetTailFact {
-  return typeof value === 'object' && value !== null
-    && 'firstExtensions' in value && Array.isArray(value.firstExtensions) && value.firstExtensions.every(isExtendTargetFact)
-    && 'branches' in value && Array.isArray(value.branches) && value.branches.every(isSelectorBranchFact)
-    && 'rules' in value && Array.isArray(value.rules) && value.rules.every(isStatement)
-    && 'extensions' in value && Array.isArray(value.extensions) && value.extensions.every(isExtendInstruction);
+  return typeof value === 'object' && value !== null && 'firstExtensions' in value;
 }
 
 function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExtendsFact {
@@ -2051,14 +2027,14 @@ function mixinCallArgsFromInterior(interior: MixinInteriorFact): MixinCallArgume
  * never `(1 == true and 2 == true)` (ledger J20).
  */
 function lessTruth(value: ValueSlot): MixinGuard {
-  return { g: 'cmp', op: '==', left: value, right: keyword('true'), implied: true, parens: 0 };
+  return guardCompare('cmp', '==', value, keyword('true'), true);
 }
 
 /** {@link lessTruth} in `when` position — the same lowering, as a MATCH test
  *  (§4.2a), so a `when` tree contains no value-position assertion. `==` never
  *  raises, so this changes no answer; it keeps the invariant readable. */
 function lessGuardTruth(value: ValueSlot): MixinGuard {
-  return { g: 'match', op: '==', left: value, right: keyword('true'), implied: true, parens: 0 };
+  return guardCompare('match', '==', value, keyword('true'), true);
 }
 
 function isMixinGuard(value: unknown): value is MixinGuard {
@@ -2130,8 +2106,8 @@ function isLessGuardOperand(value: unknown): value is LessGuardOperand {
 function bareOperandGuard(value: ValueNode): MixinGuard {
   if (isFunctionCall(value)) {
     return isDefaultGuardCall(value)
-      ? { g: 'default', parens: 0 }
-      : { g: 'call', name: value.name, args: value.args.map(arg => requireValueNode(arg.value)), parens: 0 };
+      ? guardDefault(0)
+      : guardCall(value.name, value.args.map(arg => requireValueNode(arg.value)), 0);
   }
   return lessGuardTruth(value);
 }
@@ -2217,7 +2193,7 @@ function mixinGuardTermFrom(
       term = isLessGuardOperand(inner)
         ? { kind: 'less-guard-operand', run: guardGroupValue(inner, span, state), guard: inParens(requireGuardTerm(inner, state)) }
         : inParens(requireGuardTerm(inner, state));
-      return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), gluedAt: NO_SPAN, parens: 0 } : term;
+      return negated ? guardNot(requireGuardTerm(term, state), requireTerminalText(children[0]), NO_SPAN, 0) : term;
     }
     const operand = continueGuardMathRun(guardGroupValue(inner, span, state), children, rawChildren, index + 3);
     left = operand.run;
@@ -2240,16 +2216,9 @@ function mixinGuardTermFrom(
      * and so does the owner-maintained expected CSS. Value position keeps
      * the assertion, built separately in `FunctionConditionTerm`.
      */
-    term = {
-      g: 'match',
-      op: operator,
-      left: lessMathInValue(left, state),
-      right: lessMathInValue(requireMathOperand(children[index + 1]), state),
-      implied: false,
-      parens: 0
-    };
+    term = guardCompare('match', operator, lessMathInValue(left, state), lessMathInValue(requireMathOperand(children[index + 1]), state), false);
   }
-  return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), gluedAt: NO_SPAN, parens: 0 } : term;
+  return negated ? guardNot(requireGuardTerm(term, state), requireTerminalText(children[0]), NO_SPAN, 0) : term;
 }
 
 /** One `MathSum` reduction: an operand, or an unfolded run. */
@@ -2272,7 +2241,7 @@ function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], rawCh
     if (isMixinGuard(child) || isLessGuardOperand(child)) {
       result = result === undefined
         ? child
-        : { g: kind, left: requireGuardTerm(result, state), right: requireGuardTerm(child, state), word, gluedAt: NO_SPAN, parens: 0 };
+        : guardLogical(kind, requireGuardTerm(result, state), requireGuardTerm(child, state), word, NO_SPAN);
     } else if (isLessKeyword(child, kind) || isLessTerminalText(child, ',')) {
       /* The keyword as the author spelled it (`AND`), or the `,` a guard writes `or` as. */
       word = requireTerminalText(child);
@@ -2403,7 +2372,7 @@ function functionConditionTermFrom(
   if (index < children.length && (index + 2 < children.length || guardOperatorText(children[index]) === null || children.some(holdsDelimRun))) {
     const run = flattenRuns(functionConditionRun(left, children, index, triviaLog, state));
     const fact = { guard: lessTruth(spaced(run)), src: run.map((value, at) => `${at === 0 ? '' : valueLayoutOf(run)?.[at - 1] ?? ' '}${functionConditionSource(value)}`).join(''), grouped: false, hasComparison: false };
-    return negated ? { ...fact, guard: { g: 'not', inner: fact.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${fact.src})` } : { ...fact, run };
+    return negated ? { ...fact, guard: guardNot(fact.guard, notWord, notGluedAt, 0), src: `${notWord}(${fact.src})` } : { ...fact, run };
   }
   const operator = guardOperatorText(children[index]);
 
@@ -2414,15 +2383,15 @@ function functionConditionTermFrom(
   if (operator === null) {
     const grouped = left.grouped;
     if (negated) {
-      return withCss({ guard: { g: 'not', inner: left.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison }, cssNegation(left, notWord, notGluedAt, rawChildren[0]));
+      return withCss({ guard: guardNot(left.guard, notWord, notGluedAt, 0), src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison }, cssNegation(left, notWord, notGluedAt, rawChildren[0]));
     }
     return { ...left, grouped };
   }
   const right = functionConditionOperandFact(children[index + 1], state);
-  const guard: MixinGuard = { g: 'cmp', op: operator, left: functionConditionValue(left, state), right: functionConditionValue(right, state), implied: false, parens: 0 };
+  const guard: MixinGuard = guardCompare('cmp', operator, functionConditionValue(left, state), functionConditionValue(right, state), false);
   const src = `${left.src} ${operator} ${right.src}`;
   return negated
-    ? { guard: { g: 'not', inner: guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
+    ? { guard: guardNot(guard, notWord, notGluedAt, 0), src: `${notWord}(${src})`, grouped: false, hasComparison: true }
     : { guard, src, grouped: false, hasComparison: true };
 }
 
@@ -2672,7 +2641,7 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[],
       hasComparison = child.hasComparison;
       continue;
     }
-    guard = { g: kind, left: guard, right: child.guard, word, gluedAt, parens: 0 };
+    guard = guardLogical(kind, guard, child.guard, word, gluedAt);
     src += ` ${word} ${child.src}`;
     hasComparison ||= child.hasComparison;
   }
@@ -2698,6 +2667,7 @@ function isStatement(value: unknown): value is Statement {
   }
   switch (value.type) {
     case 'ModuleImport':
+    case 'VariableExpose':
       return true;
     case 'StyleImport':
       return isStyleImport(value);
@@ -2894,9 +2864,9 @@ const LESS_SUM_OPERATORS: ReadonlySet<string> = new Set(['+', '-']);
  * Fold `operands[from..to]` left-associatively, product before sum. Each folded
  * pair records whether Less's configured `math:` policy computes it with no
  * enclosing math context, so the evaluator never reads that policy from ambient
- * config (§12.6b).
+ * config (§12.6b). With `kept`, no pair computes: the run is kept as written.
  */
-function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown): ValueNode {
+function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown, kept: boolean): ValueNode {
   if (from === to) {
     return run.operands[from]!;
   }
@@ -2918,7 +2888,7 @@ function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown
       const left = nextOperands.pop()!;
       const leftSpan = nextSpans.pop();
       const rightSpan = spans[index + 1];
-      const folded = operation(operator, left, operands[index + 1]!, false, lessMathOutsideParens(state, operator));
+      const folded = operation(operator, left, operands[index + 1]!, false, !kept && lessMathOutsideParens(state, operator));
       const span = leftSpan === undefined || rightSpan === undefined
         ? undefined
         : { start: leftSpan.start, end: rightSpan.end };
@@ -2938,7 +2908,7 @@ function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown
  * product-before-sum precedence.
  */
 function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueNode {
-  return isLessMathRun(value) ? foldLessMath(value, 0, value.operands.length - 1, state) : value;
+  return isLessMathRun(value) ? foldLessMath(value, 0, value.operands.length - 1, state, false) : value;
 }
 
 /**
@@ -2948,12 +2918,14 @@ function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueN
  * - where the policy divides a bare slash (`math: always`), the slash is a
  *   division at product precedence like every other operator;
  * - where it does not, the slash binds LOOSEST of the math operators —
- *   everything on each side of it is that side's own math (P35), so
+ *   everything on each side of it is that side's own operand (P35), so
  *   `4 / 2 + 5em` is `4` and `2 + 5em`, and the result is a slash-separated
- *   `List` of the two sides. That list sits INSIDE a space-separated value
- *   (`font: 12px/1.5 Arial` is `[12px / 1.5, Arial]`), where the css slash
- *   rung sits above the space level (`12px / [1.5 Arial]`); which level is
- *   right for Less is an open question for the owner, not decided here.
+ *   `List` of the two sides. Math beside that slash does not compute: the
+ *   run is kept as written (`4 / 2 + 5em`). That list sits INSIDE a
+ *   space-separated value (`font: 12px/1.5 Arial` is `[12px / 1.5, Arial]`),
+ *   where the css slash rung sits above the space level
+ *   (`12px / [1.5 Arial]`); which level is right for Less is an open question
+ *   for the owner, not decided here.
  */
 function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueNode {
   if (!isLessMathRun(value)) {
@@ -2961,17 +2933,25 @@ function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueN
   }
   const last = value.operands.length - 1;
   if (lessMathOutsideParens(state, '/')) {
-    return lessComputation(foldLessMath(value, 0, last, state));
+    return lessComputation(foldLessMath(value, 0, last, state, false));
   }
+
+  /*
+   * A slash the policy does not divide, written beside other math, makes that
+   * math ambiguous (`12px / 1 + 1`: is it `12px / 2`, or `13px`?), so none of
+   * the run computes and it is kept as written (ledger P35, owner 2026-10-30:
+   * *"it should be as-written if they have parens-division. They stated that
+   * as their intent!!"*). A run with no slash computes as usual.
+   */
   let sides: ValueNode[] | undefined;
   let from = 0;
   for (let index = 0; index < value.operators.length; index += 1) {
     if (value.operators[index] === '/') {
-      (sides ??= []).push(lessComputation(foldLessMath(value, from, index, state)));
+      (sides ??= []).push(lessComputation(foldLessMath(value, from, index, state, true)));
       from = index + 1;
     }
   }
-  const tail = lessComputation(foldLessMath(value, from, last, state));
+  const tail = lessComputation(foldLessMath(value, from, last, state, sides !== undefined));
   if (sides === undefined) {
     return tail;
   }

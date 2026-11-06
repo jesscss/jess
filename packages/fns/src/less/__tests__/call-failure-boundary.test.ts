@@ -45,16 +45,21 @@ describe('built-in call failures', () => {
 
   it('does not spread a slash-separated argument into min/max candidates', () => {
     /*
-     * `min(12px/1.5/3, 2px)`: a Less slash that does not divide is a separator,
-     * so the first argument is ONE slash list, not three candidates. It is not a
+     * `@d: 12px/1.5/3; min(@d, 2px)`: a Less slash that does not divide is a
+     * separator, so the first argument is ONE slash list, not three candidates.
+     * A slash list a reference delivers where a number is expected is its
+     * quotient, `2.67px` (ledger P35, owner 2026-10-30), so `min` answers `2px`;
+     * spread, `1.5` would win. A slash list that is not all numbers is not a
      * number, so the call fails and is preserved whole.
      */
     const args = makeList([
       makeList([makeDimension(12, 'px'), makeDimension(1.5), makeDimension(3)], '/'),
       makeDimension(2, 'px')
     ], ',');
-    const result = evaluator.call('min', args, { unitMode: 'preserve' });
-    expect(result).toMatchObject({ bytes: 'min(12px / 1.5 / 3, 2px)' });
+    expect(evaluator.call('min', args, { unitMode: 'preserve' })).toMatchObject({ bytes: '2px' });
+    expect(evaluator.call('max', args, { unitMode: 'preserve' })).toMatchObject({ bytes: '2.6666666667px' });
+    const words = makeList([makeList([makeDimension(12, 'px'), makeKeyword('normal')], '/'), makeDimension(2, 'px')], ',');
+    expect(evaluator.call('min', words, { unitMode: 'preserve' })).toMatchObject({ bytes: 'min(12px / normal, 2px)' });
   });
 
   it('preserves the WHOLE unreducible min/max call, never a partial reduction', () => {

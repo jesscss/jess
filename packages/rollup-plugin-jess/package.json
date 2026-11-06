@@ -1,7 +1,7 @@
 {
   "name": "rollup-plugin-jess",
   "type": "module",
-  "version": "2.0.0-alpha.31",
+  "version": "2.0.0-alpha.32",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
@@ -31,14 +31,15 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
+    "@jesscss/fns": "workspace:*",
     "jess": "workspace:*"
   },
   "peerDependencies": {
-    "rollup": "^2.0.0"
+    "rollup": "^3.0.0 || ^4.0.0"
   },
   "devDependencies": {
     "tsdown": "~0.21.7",
-    "rollup": "^3.20.7"
+    "rollup": "^4.63.1"
   },
   "author": "Matthew Dean",
   "license": "MIT"

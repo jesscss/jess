@@ -600,6 +600,49 @@ describe('Less AST grammar facts', () => {
     }
   });
 
+  it('reads a glued declaration whose call argument is no pseudo argument as the spaced declaration', () => {
+    /*
+     * A glued `<ident>:` head reads as a nested rule first (ledger P44). Where
+     * the call's argument is not a pseudo argument (`@c`, an empty `()`), the
+     * selector reading fails inside the pseudo, and the declaration must still
+     * be read. The gap after the colon is layout, so both spellings produce the
+     * same tree.
+     */
+    const pairs: ReadonlyArray<readonly [string, string]> = [
+      ['a { color:darken(@c, 10%); }', 'a { color: darken(@c, 10%); }'],
+      ['a{b:f(@d)}', 'a{b: f(@d)}'],
+      ['a{b:url(@d)}', 'a{b: url(@d)}'],
+      ['.m(){color:fade(@c,5%)}', '.m(){color: fade(@c,5%)}'],
+      ['a{color:rgba(0,0,0,@a)}', 'a{color: rgba(0,0,0,@a)}'],
+      ['a{color:darken(lighten(@c, 5%), 10%)}', 'a{color: darken(lighten(@c, 5%), 10%)}'],
+      ['a{color:fade(@c, 5%) !important}', 'a{color: fade(@c, 5%) !important}'],
+      ['a{width:percentage(@@n)}', 'a{width: percentage(@@n)}'],
+      ['a{b:f()}', 'a{b: f()}'],
+      ['a{b:not(@d)}', 'a{b: not(@d)}'],
+      ['color:darken(@c);', 'color: darken(@c);'],
+      ['@r: { color:darken(@c); };', '@r: { color: darken(@c); };'],
+      ['@font-face{src:local(\'Foo\')}', '@font-face{src: local(\'Foo\')}']
+    ];
+    const shape = (source: string): unknown => {
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      return bare(JSON.parse(
+        JSON.stringify(result.value, (key, value) =>
+          key === 'span' ? undefined : value
+        )
+      ));
+    };
+    for (const [glued, spaced] of pairs) {
+      expect(shape(glued), glued).toEqual(shape(spaced));
+      const cst = parseLessCst(glued);
+      expect(cst.errors, glued).toHaveLength(0);
+      expect(cst.unconsumedFrom, glued).toBeNull();
+    }
+  });
+
   it('keeps a glued variable reference out of the value when the gap is a statement boundary', () => {
     const result = run(lessGrammar.Document, '@x: 1px;\n@v: 2px;', {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
@@ -4880,6 +4923,50 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('keeps every item of a variable value that starts with a lookup and carries !important', () => {
+    const source =
+      '@font-stack: @typography[family], sans-serif !important; @border: #theme.colors()[primary] 1px solid !important;';
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+
+    expect(parseLessCst(source).errors).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'VariableDeclaration',
+          name: 'font-stack',
+          value: {
+            type: 'Important',
+            value: {
+              type: 'List',
+              sep: ',',
+              value: [
+                { type: 'Reference', raw: '@typography[family]' },
+                { type: 'Keyword', src: 'sans-serif' }
+              ]
+            }
+          }
+        },
+        {
+          type: 'VariableDeclaration',
+          name: 'border',
+          value: {
+            type: 'Important',
+            value: [
+              { type: 'Reference', raw: '#theme .colors()[primary]' },
+              { type: 'Dimension', src: '1px' },
+              { type: 'Keyword', src: 'solid' }
+            ]
+          }
+        }
+      ]
+    });
+  });
+
   it('constructs generic static at-rule blocks and statements through canonical at-rule nodes', () => {
     const source =
       '@charset "utf-8"; @namespace url(http://www.w3.org/1999/xhtml); @namespace foo url(http://www.example.com); @font-face { font-family: Inter; src: url(font.woff2); } @media screen { .card { color: red; } } .outer { @layer utilities { color: blue; } }';
@@ -5283,6 +5370,8 @@ describe('Less AST grammar facts', () => {
     for (const source of [
       '.-();',
       '#-();',
+      '.-;',
+      '#-;',
       '.-() { color: red; }'
     ]) {
       expect(

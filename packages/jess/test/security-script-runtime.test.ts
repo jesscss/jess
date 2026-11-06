@@ -224,11 +224,16 @@ describe("Jess restricted script runtime integration", () => {
       suppressWarnings: true,
     });
     expect(css).toBe("");
+
+    /*
+     * The render runs whole in the Deno sandbox, whose read root (ledger A19)
+     * does not reach the other folder: Deno answers the script's path "not
+     * found", so the script never loads.
+     */
     expect(
       errors.some(
-        (error) =>
-          error.message.includes("outside jsReadRoot") &&
-          error.message.includes(pluginPath)
+        error => error.code === 'import/not-found'
+          && String(error.reason).includes(pluginPath)
       )
     ).toBe(true);
   });

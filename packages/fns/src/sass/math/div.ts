@@ -1,4 +1,4 @@
-import { defineFunction, emitValue, groupItems, isValueGroupArray, operate, type Dimension, type ValueGroup } from '@jesscss/core';
+import { defineFunction, emitValue, groupItems, isValueGroupArray, operate, type Dimension, type ValueGroup } from '@jesscss/core/value';
 
 const number = (item: ValueGroup, name: string): Dimension => {
   if (isValueGroupArray(item) || item.type !== 'Dimension') {
@@ -33,8 +33,8 @@ const number = (item: ValueGroup, name: string): Dimension => {
  */
 const div = defineFunction('div', {
   params: [
-    { name: 'number1', type: 'any' },
-    { name: 'number2', type: 'any' }
+    { name: 'number1', type: 'Dimension' },
+    { name: 'number2', type: 'Dimension' }
   ],
   variadic: true,
   body: (args, ctx) => {

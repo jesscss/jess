@@ -194,14 +194,13 @@ describe('Less mixin semantic contracts through the public AST route', () => {
       .resolves.toBe(nestedInPrint('@supports (display: grid)'));
 
     /*
-     * PINNED DEFECT (nested output): a target a mixin or detached ruleset PLACES under a
-     * rule block is not rewritten in nested output, whoever extends it — EXTEND-SEMANTICS
-     * §6 "placed TARGET" — so these extend nothing there.
+     * A target a mixin or detached ruleset places under a rule block is written as one
+     * written there is (ledger X22).
      */
     await expect(parseAndRender('.m() { @media print { &:extend(.y .z); .z { c: 3; } } }\n.y { .m(); }', false))
-      .resolves.toBe('.y {\n  @media print {\n    .z {\n      c: 3;\n    }\n  }\n}\n');
+      .resolves.toBe(nestedInPrint('@media print'));
     await expect(parseAndRender('@r: { @media print { &:extend(.y .z); .z { c: 3; } } };\n.y { @r(); }', false))
-      .resolves.toBe('.y {\n  @media print {\n    .z {\n      c: 3;\n    }\n  }\n}\n');
+      .resolves.toBe(nestedInPrint('@media print'));
   });
 
   /*

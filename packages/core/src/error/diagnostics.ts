@@ -746,6 +746,7 @@ type Common = {
   severity?: JessErrorInit['severity'];
 
   meta?: Record<string, unknown>;
+  cause?: unknown;
 };
 
 /**
@@ -847,6 +848,41 @@ export const ERR = {
       ...args
     });
   },
+  exposeNotAValue(args: Common & { meta: { symbol: string; name: string; where: string } }) {
+    return makeJessError({
+      code: 'eval/expose-not-a-value',
+      phase: 'eval',
+      ...args
+    });
+  },
+  exposeNotTopLevel(args: Common) {
+    return makeJessError({
+      code: 'eval/expose-not-top-level',
+      phase: 'eval',
+      ...args
+    });
+  },
+  exposeNotDeclared(args: Common & { meta: { name: string } }) {
+    return makeJessError({
+      code: 'eval/expose-not-declared',
+      phase: 'eval',
+      ...args
+    });
+  },
+  exposeConflict(args: Common & { meta: { name: string; other: string } }) {
+    return makeJessError({
+      code: 'eval/expose-conflict',
+      phase: 'eval',
+      ...args
+    });
+  },
+  exposeKeyConflict(args: Common & { meta: { name: string; key: string; other: string; at: string } }) {
+    return makeJessError({
+      code: 'eval/expose-key-conflict',
+      phase: 'eval',
+      ...args
+    });
+  },
   invalidFunction(args: Common & { meta: { name: string; reason: string } }) {
     return makeJessError({
       code: 'eval/invalid-function',
@@ -892,6 +928,13 @@ export const ERR = {
   rulesetOnProperty(args: Common & { meta: { what: string } }) {
     return makeJessError({
       code: 'eval/ruleset-on-property',
+      phase: 'eval',
+      ...args
+    });
+  },
+  uncalledMixinReference(args: Common & { meta: { name: string } }) {
+    return makeJessError({
+      code: 'eval/uncalled-mixin-reference',
       phase: 'eval',
       ...args
     });

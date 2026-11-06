@@ -1,12 +1,10 @@
-import { defineFunction } from '@jesscss/core';
-import type { Fn } from '@jesscss/core';
-import { colorBlend, requireColor } from './color-helper.js';
+import { defineForm } from '@jesscss/core/form';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
+import { COLOR_ARG } from './color-form.js';
+import * as forms from './css-forms.generated.js';
 
-/** per-channel `average` blend (non-W3C Less extension). */
-export const averageBase = (cb: number, cs: number): number => (cb + cs) / 2;
-
-/** `average(color1, color2)` — per-channel average blend. Byte-faithful to `less/average`. */
-export const average: Fn = defineFunction('average', {
-  params: [{ type: 'Color' }, { type: 'Color' }],
-  body: (c1, c2) => colorBlend(averageBase, requireColor(c1), requireColor(c2))
+/** `average(color1, color2)`: `color-mix(in srgb, color1, color2)`. */
+export const average: Fn = /* @__PURE__ */ defineForm('average', {
+  params: [COLOR_ARG, COLOR_ARG],
+  form: (a: ValueGroup, b: ValueGroup) => [forms.average, a, b]
 });

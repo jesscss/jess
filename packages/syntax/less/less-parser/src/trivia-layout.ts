@@ -26,7 +26,12 @@ export function lessTriviaEntryInsertIndex(triviaLog: readonly number[], index: 
 
 /** Whether any trivia stands before raw child `insertIndex`. */
 export function hasTriviaAtInsertIndex(triviaLog: readonly number[], insertIndex: number): boolean {
-  return triviaLog.some((value, at) => at % LESS_NODE_TRIVIA_STRIDE === 2 && value === insertIndex);
+  for (let at = 2; at < triviaLog.length; at += LESS_NODE_TRIVIA_STRIDE) {
+    if (triviaLog[at] === insertIndex) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** The layout text of the trivia before raw child `insertIndex` ({@link triviaTextAt}). */
@@ -84,4 +89,46 @@ export function separatorWithSurroundingTrivia(
   return triviaTextAtInsertIndex(triviaLog, state, rawIndex)
     + separator
     + triviaTextAtInsertIndex(triviaLog, state, rawIndex + 1);
+}
+
+/** A value run child, as its layout reads it: a delim piece, another piece, the adjacent-component marker, or neither. */
+export type ValuePieceKind = 'delim' | 'piece' | 'glue' | 'other';
+
+/*
+ * The separators between a value run's pieces. A delim is glued to its
+ * neighbours unless trivia stands between them, and an adjacent-component
+ * marker glues the pieces either side of it (ledger N18). The log's insert
+ * indices never decrease, so one cursor reads every gap.
+ */
+export function valueRunSeparators(
+  children: readonly unknown[],
+  triviaLog: readonly number[],
+  state: unknown,
+  kindOf: (child: unknown) => ValuePieceKind
+): string[] {
+  const out: string[] = [];
+  const source = sourceFromState(state);
+  let entry = 0;
+  let prev: ValuePieceKind = 'other';
+  let boundary = false;
+  for (let at = 0; at < children.length; at += 1) {
+    const kind = kindOf(children[at]);
+    if (kind === 'other' || kind === 'glue') {
+      boundary ||= kind === 'glue';
+      continue;
+    }
+    if (prev !== 'other') {
+      while (entry < triviaLog.length && triviaLog[entry + 2]! < at) {
+        entry += LESS_NODE_TRIVIA_STRIDE;
+      }
+      const hasTrivia = entry < triviaLog.length && triviaLog[entry + 2] === at;
+      const trivia = hasTrivia && source !== undefined ? triviaTextAt(triviaLog, source, at, entry) : '';
+      out.push(trivia.length > 0
+        ? trivia
+        : boundary || ((kind === 'delim' || prev === 'delim') && !hasTrivia) ? '' : ' ');
+    }
+    prev = kind;
+    boundary = false;
+  }
+  return out;
 }

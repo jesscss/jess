@@ -156,7 +156,7 @@ describe('public module imports', () => {
     compiler['createJsPluginProxy'] = () => undefined;
 
     await expect(compiler.render(entry)).rejects.toThrow(
-      'Install @jesscss/plugin-js to enable script execution features'
+      'Install @jesscss/plugin-js where the compiler is installed (beside @jesscss/jess or less) to enable script execution features'
     );
   });
 });

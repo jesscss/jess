@@ -7,10 +7,27 @@
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
 import type {
-  Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
+  Any, Arithmetic, Block, Bool, CallResult, Collection, CollectionEntry, Color, Dimension, EvalValue, FunctionCall, Keyword, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
 } from './value-eval.js';
-import { colorRgb, colorSourceRgb, hslToRgb, rgbToHsl, serializeColor } from './color.js';
+import { isMathFunctionName } from './math-functions.js';
+import type { Operation } from './nodes.js';
+import { colorRgb, colorSourceRgb, HSL, hslToRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
+import {
+  AnyValueNode, BlockValueNode, BoolValueNode, CollectionValueNode, ColorValueNode, CompoundDimensionValueNode, DimensionValueNode,
+  ArithmeticValueNode, FunctionCallValueNode, HslColorValueNode, KeywordValueNode, ListValueNode, NullValueNode, QuotedValueNode, UrlValueNode, copyNode as copyNodeOf, withFields as withFieldsOf
+} from './node-ctors.js';
+
+/*
+ * Typed here, not re-exported, because `node-ctors.d.ts` is source-only: an
+ * `export … from './node-ctors.js'` would leave the published declarations
+ * pointing at a file the package does not ship.
+ */
+/** A copy of a node rebuilt through its shape's constructor: `{ ...node }` without a literal's class (V8 invariant 12). */
+export const copyNode: <T extends { readonly type: string }>(node: T) => T = copyNodeOf;
+
+/** `{ ...node, ...patch }` that keeps the node's constructor-built class (V8 invariant 12). */
+export const withFields: <T extends { readonly type: string }>(node: T, patch: { readonly [K in keyof T]?: T[K] }) => T = withFieldsOf;
 
 /** A writable view of a value object, so a constructor can stamp `bytes` in place. */
 type Mutable<T> = { -readonly [P in keyof T]: T[P] };
@@ -54,7 +71,7 @@ export const colorRawRgb = colorSourceRgb;
 /* -------------------------------------------------------- constructors */
 
 export function makeDimension(number: number, unit = ''): Dimension {
-  const n: Mutable<Dimension> = { type: 'Dimension', number, unit, bytes: '' };
+  const n: Mutable<Dimension> = new DimensionValueNode(number, unit, '');
   n.bytes = serializeDimension(n);
   return n;
 }
@@ -73,7 +90,7 @@ export function makeCompoundDimension(
   backupUnit: string | undefined,
   preserved?: string
 ): Dimension {
-  const n: Mutable<Dimension> = { type: 'Dimension', number, unit, numerator, denominator, bytes: '' };
+  const n: Mutable<Dimension> = new CompoundDimensionValueNode(number, unit, numerator, denominator, '');
   if (backupUnit !== undefined) {
     n.backupUnit = backupUnit;
   }
@@ -86,7 +103,9 @@ export function makeCompoundDimension(
 
 /** `d` with `preserved` as its authored spelling (see {@link Dimension.preserved}); the value is unchanged. */
 export function makeSpelledDimension(d: Dimension, preserved: string): Dimension {
-  const n: Mutable<Dimension> = { ...d, preserved, bytes: '' };
+  const n: Mutable<Dimension> = copyNode(d);
+  n.preserved = preserved;
+  n.bytes = '';
   n.bytes = serializeDimension(n);
   return n;
 }
@@ -98,7 +117,7 @@ export function makeColorRgb(
   format: number,
   opts?: { modernSyntax?: boolean; src?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number }
 ): Color {
-  const c: Mutable<Color> = { type: 'Color', rgb, alpha, format, bytes: '' };
+  const c: Mutable<Color> = new ColorValueNode(rgb, alpha, format, '');
   if (opts?.modernSyntax) {
     c.modernSyntax = true;
   }
@@ -125,9 +144,12 @@ export function makeColorHsl(
   alpha: number,
   format: number,
   modernSyntax?: boolean,
-  opts?: { hueUnit?: string; alphaPct?: number }
+  opts?: { hueUnit?: string; alphaPct?: number; src?: string }
 ): Color {
-  const c: Mutable<Color> = { type: 'Color', rgb: hslToRgb(hsl[0], hsl[1], hsl[2]), alpha, hsl, format, bytes: '' };
+  const c: Mutable<Color> = new HslColorValueNode(hslToRgb(hsl[0], hsl[1], hsl[2]), alpha, hsl, format, '');
+  if (opts?.src !== undefined) {
+    c.src = opts.src;
+  }
   if (modernSyntax) {
     c.modernSyntax = true;
   }
@@ -142,21 +164,62 @@ export function makeColorHsl(
 }
 
 export function makeQuoted(value: string, quote: string, escaped: boolean): Quoted {
-  const q: Mutable<Quoted> = { type: 'Quoted', value, quote, escaped, bytes: '' };
+  const q: Mutable<Quoted> = new QuotedValueNode(value, quote, escaped, '');
   q.bytes = serializeQuoted(q);
   return q;
 }
 
-export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text, groups: 0 });
+export const makeKeyword = (text: string): Keyword => new KeywordValueNode(text, text, 0);
+
+/** A keyword written inside `groups` paren groups (see {@link Keyword.groups}). */
+export const makeGroupedKeyword = (text: string, groups: number): Keyword => new KeywordValueNode(text, text, groups);
+
+/** The CSS colour functions a call's type reads by name (css-color-4 §5–§10, css-color-5 §3, §8, css-color-4 §6.5 `light-dark`). */
+const COLOR_FUNCTIONS: ReadonlySet<string> = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix', 'contrast-color', 'light-dark']);
+
+/** The CSS type a call produces, by its name ({@link CallResult}). */
+function callResult(name: string): CallResult {
+  const lower = name.toLowerCase();
+  return COLOR_FUNCTIONS.has(lower) ? 'color' : isMathFunctionName(lower) ? 'numeric' : null;
+}
+
+/** A call written out as-is, spelled `bytes` ({@link FunctionCall}). */
+export const makeFunctionCall = (name: string, args: ValueGroup, bytes: string): FunctionCall =>
+  new FunctionCallValueNode(name, args, callResult(name), false, bytes);
+
+/** `call` as a keyword: how a reader that does not ask for its structure reads a call written out as-is, or arithmetic. */
+export const callKeyword = (call: FunctionCall | Arithmetic): Keyword => new KeywordValueNode(call.bytes, call.bytes, 0);
+
+/** Arithmetic spelled `bytes` ({@link Arithmetic}). */
+export const makeArithmetic = (op: string, left: EvalValue, right: EvalValue, kept: boolean, bytes: string): Arithmetic =>
+  new ArithmeticValueNode(op, left, right, kept, bytes, null);
+
+/** Arithmetic written in a math function, its numbers still the operation's ({@link arithmeticOperand}). */
+export const makeWrittenMath = (written: Operation, left: EvalValue, right: EvalValue, bytes: string): Arithmetic =>
+  new ArithmeticValueNode(written.operator, left, right, false, bytes, written);
+
+/** One side of arithmetic as a value: a number written in a math function is the number it is, its text never read. */
+export function arithmeticOperand(math: Arithmetic, side: 'left' | 'right'): EvalValue {
+  const node = math.written?.[side];
+  return node?.type === 'Dimension' ? new DimensionValueNode(node.number, node.unit, node.src) : math[side];
+}
+
+/** A `calc()` over what it holds, spelled `bytes` ({@link FunctionCall}). */
+export const makeCalc = (args: ValueGroup, bytes: string, computed = false): FunctionCall =>
+  new FunctionCallValueNode('calc', args, 'numeric', computed, bytes);
+
+/** A CSS math function the compile wrote for math only the browser knows, spelled `bytes`. */
+export const makeComputedCall = (name: string, args: ValueGroup, bytes: string): FunctionCall =>
+  new FunctionCallValueNode(name, args, 'numeric', true, bytes);
 
 /** Opaque text; `escapedQuote` is set only for an escaped string (see {@link Any.escapedQuote}). */
-export const makeAny = (bytes: string, escapedQuote = '', groups = 0): Any => ({ type: 'Any', bytes, escapedQuote, groups });
+export const makeAny = (bytes: string, escapedQuote = '', groups = 0): Any => new AnyValueNode(bytes, escapedQuote, groups);
 
 /** Project an evaluated AST `Url` into the typed value domain. */
-export const makeUrlValue = (bytes: string): UrlValue => ({ type: 'Url', bytes });
+export const makeUrlValue = (bytes: string): UrlValue => new UrlValueNode(bytes);
 
 /** A boolean value result (`true`/`false` — the shape guards and `is*` predicates emit). */
-export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes: value ? 'true' : 'false' });
+export const makeBool = (value: boolean): Bool => new BoolValueNode(value, value ? 'true' : 'false');
 
 /**
  * The canonical empty / absent value (§4.3). TWO frozen singletons, one per
@@ -164,10 +227,10 @@ export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes:
  * and a different fact. Both share one shape, so no `Null` allocates and none
  * splits the hidden class.
  */
-export const NULL: Null = { type: 'Null', explicit: false, bytes: '' };
+export const NULL: Null = new NullValueNode(false);
 
 /** The AUTHOR-WRITTEN `null` literal. */
-export const NULL_LITERAL: Null = { type: 'Null', explicit: true, bytes: '' };
+export const NULL_LITERAL: Null = new NullValueNode(true);
 
 export const makeNull = (explicit = false): Null => (explicit ? NULL_LITERAL : NULL);
 
@@ -176,7 +239,7 @@ export function makeList(
   sep: ListSeparator = ',',
   selector = false
 ): List {
-  const l: Mutable<List> = { type: 'List', value, sep, selector, bytes: '' };
+  const l: Mutable<List> = new ListValueNode(value, sep, selector, '');
   l.bytes = serializeValue(l);
   return l;
 }
@@ -189,7 +252,7 @@ export function makeList(
  * direct value-domain callers may deliberately retain authored pairs.
  */
 export function makeCollection(entries: readonly CollectionEntry[]): Collection {
-  const c: Mutable<Collection> = { type: 'Collection', entries, bytes: '' };
+  const c: Mutable<Collection> = new CollectionValueNode(entries, '');
   c.bytes = serializeValue(c);
   return c;
 }
@@ -200,7 +263,7 @@ export function makeBlock(
   delimiter: Block['delimiter'],
   escaped = false
 ): Block {
-  const block: Mutable<Block> = { type: 'Block', value, delimiter, bytes: '' };
+  const block: Mutable<Block> = new BlockValueNode(value, delimiter, '');
   if (escaped) {
     block.escaped = true;
   }

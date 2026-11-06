@@ -1,5 +1,5 @@
-import type { Value, ValueGroup } from '@jesscss/core';
-import { isValueGroupArray, makeAny, makeKeyword, makeQuoted } from '@jesscss/core';
+import type { Value, ValueGroup } from '@jesscss/core/value';
+import { isValueGroupArray, makeAny, makeKeyword, makeQuoted } from '@jesscss/core/value';
 
 /**
  * A string function's result in its input's kind: a quoted input stays quoted

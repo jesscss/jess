@@ -146,11 +146,15 @@ for (const [name, files] of [...Object.entries(CASES), ...SPLIT_CASES.map(n => [
     if (surfaces && !surfaces.has(surface)) {
       continue;
     }
+    let thrown = 0;
     const once = () => {
       for (const s of sources) {
         try {
           fn(s);
-        } catch { /* deliberate corpus errors are part of the workload */ }
+        } catch {
+          /* deliberate corpus errors are part of the workload */
+          thrown++;
+        }
       }
     };
     for (let i = 0; i < warmup; i++) {
@@ -166,6 +170,7 @@ for (const [name, files] of [...Object.entries(CASES), ...SPLIT_CASES.map(n => [
     out[`${name}/${surface}`] = {
       files: sources.length,
       kb: +(bytes / 1024).toFixed(1),
+      thrown,
       median: +samples[Math.floor(samples.length / 2)].toFixed(4),
       min: +samples[0].toFixed(4),
       max: +samples[samples.length - 1].toFixed(4),

@@ -477,8 +477,9 @@ describe('Less math boundaries', () => {
       .toBe('.x { w: calc(100% - 12px); k: 12px; }');
   });
 
-  it('validates the units of every slash-list side, as it does a lone operation', async () => {
-    await expect(render('.x { w: 2px*3px/1px; }', { unitMode: 'strict' })).rejects.toThrow('Invalid unit arithmetic');
+  it('validates the units of a lone operation, and keeps math beside a non-dividing slash as written (P35)', async () => {
+    expect(await render('.x { w: 2px*3px/1px; }', { unitMode: 'strict' })).toBe('.x { w: 2px * 3px / 1px; }');
+    await expect(render('.x { w: (2px*3px)/1px; }', { unitMode: 'strict' })).rejects.toThrow('Invalid unit arithmetic');
     await expect(render('.x { w: 2px*3px; }', { unitMode: 'strict' })).rejects.toThrow('Invalid unit arithmetic');
   });
 

@@ -17,16 +17,17 @@
       "big.js",
       "chalk"
     ],
-    "bytes": 492083
+    "bytes": 564015
   },
   "@jesscss/core/ast": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js"
     ],
     "externals": [],
-    "bytes": 50933
+    "bytes": 99940
   },
   "@jesscss/core/diagnostics": {
     "modules": [
@@ -34,7 +35,7 @@
       "packages/core/lib/diagnostics2.js"
     ],
     "externals": [],
-    "bytes": 32357
+    "bytes": 38627
   },
   "@jesscss/core/value": {
     "modules": [
@@ -42,12 +43,15 @@
       "packages/core/lib/value.js",
       "packages/core/lib/value2.js"
     ],
-    "externals": [],
-    "bytes": 32379
+    "externals": [
+      "big.js"
+    ],
+    "bytes": 68675
   },
   "@jesscss/css-parser": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -60,11 +64,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3667790
+    "bytes": 2153668
   },
   "@jesscss/css-parser/cst": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -77,7 +82,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1792901
+    "bytes": 1906631
   },
   "@jesscss/css-parser/cst-host": {
     "modules": [
@@ -87,11 +92,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 941478
+    "bytes": 967182
   },
   "@jesscss/css-parser/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -104,11 +110,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1793068
+    "bytes": 1906805
   },
   "@jesscss/css-parser/grammar/ast": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -118,11 +125,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2867859
+    "bytes": 1328973
   },
   "@jesscss/css-parser/grammar/ast/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -132,11 +140,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 990205
+    "bytes": 1079331
   },
   "@jesscss/css-parser/grammar/cst": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -146,11 +155,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 990379
+    "bytes": 1079502
   },
   "@jesscss/css-parser/grammar/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -160,11 +170,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 990351
+    "bytes": 1079481
   },
   "@jesscss/css-parser/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -177,11 +188,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1789961
+    "bytes": 1903851
   },
   "@jesscss/jess-parser": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -196,11 +209,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2406141
+    "bytes": 2594572
   },
   "@jesscss/jess-parser/cst": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -216,11 +231,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2407433
+    "bytes": 2588536
   },
   "@jesscss/jess-parser/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -236,11 +253,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2416915
+    "bytes": 2596166
   },
   "@jesscss/jess-parser/grammar/ast": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -252,11 +271,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1604254
+    "bytes": 1760732
   },
   "@jesscss/jess-parser/grammar/ast/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -268,11 +289,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1613292
+    "bytes": 1767924
   },
   "@jesscss/jess-parser/grammar/cst": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -284,11 +307,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1604359
+    "bytes": 1760855
   },
   "@jesscss/jess-parser/grammar/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -300,11 +325,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1613584
+    "bytes": 1768228
   },
   "@jesscss/jess-parser/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -319,7 +346,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2415003
+    "bytes": 2601302
   },
   "@jesscss/less-parser": {
     "modules": [
@@ -340,11 +367,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2663305
+    "bytes": 2939236
   },
   "@jesscss/less-parser/cst": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -361,11 +389,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2632065
+    "bytes": 2811798
   },
   "@jesscss/less-parser/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -382,11 +411,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2636749
+    "bytes": 2816161
   },
   "@jesscss/less-parser/grammar/ast": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -398,11 +428,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1827601
+    "bytes": 2110674
   },
   "@jesscss/less-parser/grammar/ast/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -414,11 +445,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1832106
+    "bytes": 1986904
   },
   "@jesscss/less-parser/grammar/cst": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -430,11 +462,12 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1827985
+    "bytes": 1983111
   },
   "@jesscss/less-parser/grammar/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -446,7 +479,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1832410
+    "bytes": 1987215
   },
   "@jesscss/less-parser/positions": {
     "modules": [
@@ -467,11 +500,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2667509
+    "bytes": 2815165
   },
   "@jesscss/scss-parser": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -486,11 +521,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2336536
+    "bytes": 2601329
   },
   "@jesscss/scss-parser/cst": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -506,11 +543,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2340124
+    "bytes": 2513258
   },
   "@jesscss/scss-parser/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -526,11 +565,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2347362
+    "bytes": 2519398
   },
   "@jesscss/scss-parser/grammar/ast": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -542,11 +583,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1536842
+    "bytes": 1774469
   },
   "@jesscss/scss-parser/grammar/ast/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -558,11 +601,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1543785
+    "bytes": 1691200
   },
   "@jesscss/scss-parser/grammar/cst": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -574,11 +619,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1537050
+    "bytes": 1685577
   },
   "@jesscss/scss-parser/grammar/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -590,11 +637,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1544031
+    "bytes": 1691460
   },
   "@jesscss/scss-parser/positions": {
     "modules": [
       "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
       "packages/core/lib/guard-node.js",
       "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
@@ -609,6 +658,6 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2343303
+    "bytes": 2517573
   }
 }

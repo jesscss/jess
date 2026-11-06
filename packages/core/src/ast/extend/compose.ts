@@ -19,6 +19,7 @@ import {
   cloneBranch,
   cloneSeg,
   cloneSimple,
+  branchSharesAtom,
   descendantBranch,
   isSimple,
   levelFromSelectorList,
@@ -695,6 +696,18 @@ function buildsName(b: Branch): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Whether a name a `&` of the rule at the end of `path` builds on its parent shares an
+ * atom with `atoms`. The own-level fast-reject cannot see such a name: `.a { &-b {} }`
+ * holds `.a` and `&-b`, never `.a-b`, which `.q:extend(.a-b)` names (ledger X5, J13).
+ * Only a rule whose own level builds a name is composed.
+ */
+export function buildsSharedName(path: Level[], atoms: Set<string>): boolean {
+  const own = path[path.length - 1];
+  return own !== undefined && own.some(b => buildsName(withNamesJoined(b)))
+    && composePath(path).some(b => branchSharesAtom(b, atoms));
 }
 
 /** Whether a compound of `b` holds a `&` after another of its simples (`.x&`). */

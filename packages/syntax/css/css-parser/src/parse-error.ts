@@ -16,8 +16,8 @@ function expectedIncludes(expected: ReadonlySet<string>, value: string): boolean
  * leaks parser internals to the author and makes the text a function of the
  * compiled table. Mirrors the Less parser's `expectedMessage`; CSS surfaces its
  * value atoms as raw regexes rather than Less's token-class names, so the value
- * position is recognized by the value opener's one identifier token
- * (`IdentToken`) and the function `(` that only a value slot admits together.
+ * position is recognized by the string opener `"` and the function `(`, which
+ * only a value slot admits together.
  */
 function expectedMessage(expected: readonly string[]): string {
   if (expected.length === 0) {
@@ -47,7 +47,7 @@ function expectedMessage(expected: readonly string[]): string {
     }
   }
   const looksLikeValueProduction =
-    expectedIncludes(expectedSet, 'IdentToken')
+    expectedIncludes(expectedSet, '"\\""')
     && expectedIncludes(expectedSet, '"("');
   if (looksLikeValueProduction) {
     return 'Unexpected CSS syntax. Expected a CSS value.';

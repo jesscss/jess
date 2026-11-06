@@ -33,6 +33,7 @@ import {
   ifTestCall,
   blockStatements,
   branchSegments,
+  charsetPreludeFrom,
   queryConditionChain,
   queryFeatureBlock,
   generalEnclosedGroup,
@@ -121,6 +122,7 @@ type GrammarRuleName =
   | 'AttributeNamespace'
   | 'AttributeOperator'
   | 'AttributeSelector'
+  | 'AttributeValue'
   | 'BasicSelector'
   | 'BlockCommentToken'
   | 'CalcCall'
@@ -203,6 +205,7 @@ type GrammarRuleName =
   | 'EnclosedGroup'
   | 'EnclosedQuoted'
   | 'ImportStatement'
+  | 'ImportTarget'
   | 'ImportTail'
   | 'ImportTailBody'
   | 'ImportTailRaw'
@@ -235,6 +238,7 @@ type GrammarRuleName =
   | 'PseudoArgument'
   | 'PseudoSelector'
   | 'RelativeSelector'
+  | 'forgivingSelectorRestPart'
   | 'ForgivingSelectorRest'
   | 'ForgivingSelectorItem'
   | 'ForgivingSelectorList'
@@ -313,6 +317,7 @@ type GrammarRuleName =
   | 'stylesheetBodyBlock'
   | 'declarationListBlock'
   | 'descriptorBodyBlock'
+  | 'descriptorBodyItem'
   | 'declarationListItem'
   | 'declarationListDeclaration'
   | 'simpleSelectorAtom'
@@ -337,9 +342,12 @@ type GrammarRuleName =
   | 'routedDeclarationListBody'
   | 'calcFunctionArguments'
   | 'functionArgument'
+  | 'functionArgumentGap'
   | 'branchLead'
+  | 'varName'
   | 'VarFallbackOpener'
   | 'VarFallbackLead'
+  | 'identOrFunction'
   | 'MediaTest'
   | 'MediaTestBody'
   | 'StyleTestBody'
@@ -361,14 +369,16 @@ type GrammarRuleName =
 type GrammarSelf = {
   readonly [K in GrammarRuleName]: K extends keyof typeof cssSyntax
     ? (typeof cssSyntax)[K]
-    : Combinator<unknown>
+    : K extends 'identOrFunction'
+      ? Combinator<string>
+      : Combinator<unknown>
 };
 
 /*
  * The expected-set atom a refused `@charset` prelude reports, and the one public
  * spelling of it. `CharsetStatement` below is what emits it; the three
  * dialects' `expectedMessage` helpers recognize it by this exact string, the way
- * they already recognize `'")"'` and `'IdentToken'` — those helpers
+ * they already recognize `'")"'` — those helpers
  * deliberately hold no grammar import, and the parseman macro cannot read a
  * cross-module constant inside a combinator argument (it needs a literal), so
  * the less grammar spells the same string rather than importing this one. Each
@@ -416,9 +426,15 @@ const compoundTrivia = classifiedTrivia({ blockComment });
 const commentTrivia = classifiedTrivia({ blockComment });
 
 /*
- * The value ladder runs under `ValueSequence`'s `noTrivia`, and parseman scopes
- * trivia dynamically — clearing it covers every rule reached through a `g.`
- * reference, not just the terms written inside the wrapper. So every interior
+ * The value ladder runs under `ValueSequence`'s `noTrivia`. Clearing trivia reaches
+ * through a reference only to a target with no boundary of its own. A target that
+ * is a multi-term `sequence`, a `many`, `oneOrMore` or `sepBy`, or a `choice` with
+ * such an arm takes its ambient trivia back when it is entered from a cleared
+ * region (parseman's `hasOwnTriviaBoundary`), and the ambient skip then reads the
+ * padding before its own term can. A rule like that which needs its padding as
+ * bytes clears trivia itself, as `CurlyValue`, `BranchValues` and the `var()`
+ * fallback rules do; `ParenValue` and `SquareValue` don't, so the ambient skip can
+ * read theirs first. Every interior
  * that admits authored padding has to spell it, and it must spell `cssValueTrivia`
  * rather than a bare whitespace run: css-syntax-3 §4 makes a comment trivia
  * wherever whitespace is trivia. The `[ \t\n\r\f]+` spellings these replaced are
@@ -636,9 +652,12 @@ const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
  * selector choice it must resolve a concrete first-set (`.`/`#`/`-`/letter/digit/
  * `*`) so the compiler first-char-gates the whole compound choice; a cross-
  * composition reference reads as `any`, entering the simple-selector node frame
- * at every compound-selector boundary (`{`, `,`, whitespace).
+ * at every compound-selector boundary (`{`, `,`, whitespace). A class or id name
+ * may start `--`: `--b` is an ident (css-syntax-3 §4.3.9), so `.--b` is a class
+ * selector and `#--b` an id selector (selectors-4 §3.2). A type selector may not,
+ * so `--x:…` stays a custom property's.
  */
-const simpleSelectorToken = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
+const simpleSelectorToken = regex(/(?:(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))|[.#]--)(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
 
 /*
  * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
@@ -852,15 +871,11 @@ const cssFactory = (g: GrammarSelf) => {
     identWord('calc'),
     literal('(')
   ));
-  const varOpen = noTrivia(sequence(
+  const varOpen = token(noTrivia(sequence(
     identWord('var'),
     literal('(')
-  ));
-
-  const pseudoIdentOrFunction = token(noTrivia(sequence(
-    g.Identifier,
-    optional(literal('('))
   )));
+
   const pseudoArgumentContent = scanTo(
     literal(')'),
     {
@@ -937,6 +952,7 @@ const cssFactory = (g: GrammarSelf) => {
    * boundary's authored layout, and needs the `;` among its children to tell an
    * empty group from a full one.
    */
+  /* A slot because Less has `//` comments too, and overrides it to read them. */
   const functionArgumentGap = optional(cssValueTrivia);
   const functionArgumentComma = noTrivia(sequence(
     literal(','),
@@ -951,7 +967,7 @@ const cssFactory = (g: GrammarSelf) => {
   const functionArgumentCommaRest = many(sequence(
     functionArgumentComma,
     g.functionArgument,
-    functionArgumentGap
+    g.functionArgumentGap
   ));
 
   /*
@@ -960,7 +976,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const functionArgumentGroup = optional(sequence(
     g.functionArgument,
-    functionArgumentGap,
+    g.functionArgumentGap,
     functionArgumentCommaRest
   ));
 
@@ -990,7 +1006,7 @@ const cssFactory = (g: GrammarSelf) => {
   const genericFunctionArguments = optional(choice(
     sequence(
       g.branchLead,
-      functionArgumentGap,
+      g.functionArgumentGap,
       choice(
         g.BranchRest,
         plainArgumentsAfterFirst
@@ -1066,7 +1082,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const branchListGroup = optional(sequence(
     g.branchLead,
-    functionArgumentGap,
+    g.functionArgumentGap,
     choice(
       sequence(
         branchColon,
@@ -1083,13 +1099,13 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const BranchValues = node(
     'BranchValues',
-    sequence(
+    noTrivia(sequence(
       functionArgumentGroup,
       many(sequence(
         functionArgumentSemicolon,
         branchListGroup
       ))
-    ),
+    )),
     children => branchRest(children)
   );
   const BasicSelector = node(
@@ -1121,6 +1137,18 @@ const cssFactory = (g: GrammarSelf) => {
     )),
     children => simpleSelector(children.map(tokenText).join(''))
   );
+
+  /**
+   * The value an attribute selector compares against: a `<string-token>` or
+   * an `<ident-token>` (selectors-4 §6). A slot, so a dialect whose strings
+   * differ in this position overrides the value alone, not the selector:
+   * `.jess` reads a string that does not interpolate here, where its `Quoted`
+   * does.
+   */
+  const AttributeValue = choice(
+    g.Quoted,
+    g.Identifier
+  );
   const AttributeSelector = node(
     'AttributeSelector',
     sequence(
@@ -1129,10 +1157,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.Identifier,
       optional(sequence(
         g.AttributeOperator,
-        choice(
-          g.Quoted,
-          g.Identifier
-        ),
+        g.AttributeValue,
         optional(g.AttributeModifier)
       )),
       literal(']')
@@ -1406,6 +1431,27 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * One run of a forgiving item's rest: text up to the item's end, with nested
+   * groups and blocks skipped whole. The leading `not()` keeps it from matching
+   * nothing (`scanTo` succeeds empty when its sentinel is next). A dialect
+   * overrides this slot with a choice of its interpolation and the same scan
+   * stopped also at the interpolation opener.
+   */
+  const forgivingSelectorRestPart = sequence(
+    not(choice(literal(','), literal(')'))),
+    scanTo(
+      choice(literal(','), literal(')')),
+      {
+        skip: [
+          balanced('(', ')'),
+          balanced('[', ']'),
+          balanced('{', '}')
+        ]
+      }
+    )
+  );
+
+  /*
    * `:is()` and `:where()` take a `<forgiving-selector-list>` (Selectors 4
    * §4.2, §4.4, §16.1): an item that is not a selector is dropped by a browser
    * and the others still match, so `.card:is(.active, 1px)` is
@@ -1413,30 +1459,17 @@ const cssFactory = (g: GrammarSelf) => {
    * match nothing. Each comma-separated item is read once, at the current
    * token: the dialect's `RelativeSelector` as far as it goes, then any rest of
    * the item up to its `,` or `)` — balanced, so a nested group or block is
-   * part of it. The rest's leading `not()` keeps it from matching nothing
-   * (`scanTo` succeeds empty when its sentinel is next); a dialect overrides
-   * the rest to read its interpolation there. An item with a rest, a relative
-   * item and an empty item beside another are kept as written, their structure
-   * kept so their interpolations and `&` evaluate (`forgivingSelectorItem`,
-   * which records them for the compiler's `css/forgiving-selector-item`
-   * warning). Trivia is the caller's: each dialect's pseudo reads this list
-   * under its own selector trivia.
+   * part of it. The rest is one or more `forgivingSelectorRestPart`s, and a
+   * dialect overrides that part to read its interpolation there. An item with
+   * a rest, a relative item and an empty item beside another are kept as
+   * written, their structure kept so their interpolations and `&` evaluate
+   * (`forgivingSelectorItem`, which records them for the compiler's
+   * `css/forgiving-selector-item` warning). Trivia is the caller's: each
+   * dialect's pseudo reads this list under its own selector trivia.
    */
   const ForgivingSelectorRest = node(
     'ForgivingSelectorRest',
-    sequence(
-      not(choice(literal(','), literal(')'))),
-      scanTo(
-        choice(literal(','), literal(')')),
-        {
-          skip: [
-            balanced('(', ')'),
-            balanced('[', ']'),
-            balanced('{', '}')
-          ]
-        }
-      )
-    ),
+    oneOrMore(g.forgivingSelectorRestPart),
     children => forgivingSelectorRest(children)
   );
   const ForgivingSelectorItem = node(
@@ -1465,13 +1498,17 @@ const cssFactory = (g: GrammarSelf) => {
    * Functional pseudos consume a CSS function-token opener: the name and `(` are
    * adjacent bytes. `:not (.a)` must not become `:not(.a)` through ambient
    * interstitial trivia, even though spacing inside the argument remains valid.
+   *
+   * The name is an `<ident-token>`, so it may start `--`: `:--heading` is a
+   * custom selector's use (css-extensions-1 `<custom-selector>`), `--heading` an ident
+   * (css-syntax-3 §4.3.9).
    */
   const PseudoSelector = node(
     'PseudoSelector',
     sequence(
       pseudoColon,
       dispatch(
-        pseudoIdentOrFunction,
+        g.identOrFunction,
         cssCase(
           ['nth-child(', 'nth-last-child('],
           sequence(
@@ -1708,6 +1745,9 @@ const cssFactory = (g: GrammarSelf) => {
     g.CustomPropertyName,
     children => keyword(tokenText(children[0]))
   );
+
+  /* The name a `var()` reads: CSS's `<custom-property-name>`, as its value leaf. */
+  const varName = g.CustomPropertyValue;
   const Color = node(
     'Color',
     hexColor,
@@ -1959,7 +1999,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackParen = node(
     'VarFallbackParen',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackParenCrossBracket,
         varFallbackParenCrossBrace
@@ -1967,7 +2007,7 @@ const cssFactory = (g: GrammarSelf) => {
       literal('('),
       optional(cssValueTrivia),
       optional(g.VarFallback),
-      functionArgumentGap,
+      g.functionArgumentGap,
       many(sequence(
         functionArgumentSemicolon,
 
@@ -1979,11 +2019,11 @@ const cssFactory = (g: GrammarSelf) => {
         optional(sequence(
           not(literal(')')),
           g.VarFallback,
-          functionArgumentGap
+          g.functionArgumentGap
         ))
       )),
       literal(')')
-    ),
+    )),
     children => parenGroupBlock(children)
   );
 
@@ -1995,7 +2035,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackBracket = node(
     'VarFallbackBracket',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackBracketCrossParen,
         varFallbackBracketCrossBrace
@@ -2008,12 +2048,12 @@ const cssFactory = (g: GrammarSelf) => {
         }
       ),
       literal(']')
-    ),
+    )),
     children => any(children.map(tokenText).join(''))
   );
   const VarFallbackBrace = node(
     'VarFallbackBrace',
-    sequence(
+    noTrivia(sequence(
       not(choice(
         varFallbackBraceCrossParen,
         varFallbackBraceCrossBracket
@@ -2026,7 +2066,7 @@ const cssFactory = (g: GrammarSelf) => {
         }
       ),
       literal('}')
-    ),
+    )),
     children => any(children.map(tokenText).join(''))
   );
 
@@ -2049,13 +2089,13 @@ const cssFactory = (g: GrammarSelf) => {
 
   const VarFallbackTerm = node(
     'VarFallbackTerm',
-    sequence(
+    noTrivia(sequence(
       varFallbackComponent,
       many(sequence(
         optional(cssValueTrivia),
         varFallbackComponent
       ))
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1 ? values[0]! : values;
@@ -2072,14 +2112,14 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const VarFallbackLead = node(
     'VarFallbackTerm',
-    sequence(
+    noTrivia(sequence(
       varFallbackComponent,
       many(sequence(
         optional(cssValueTrivia),
         not(literal(':')),
         varFallbackComponent
       ))
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1 ? values[0]! : values;
@@ -2107,10 +2147,10 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const VarFallback = node(
     'VarFallback',
-    oneOrMoreSep(
+    noTrivia(oneOrMoreSep(
       g.VarFallbackItem,
       varFallbackComma
-    ),
+    )),
     (children) => {
       const values = valueSlotChildren(children);
       return values.length === 1
@@ -2134,7 +2174,7 @@ const cssFactory = (g: GrammarSelf) => {
   const fallbackItemCommaRest = many(sequence(
     varFallbackComma,
     optional(g.VarFallbackItem),
-    functionArgumentGap
+    g.functionArgumentGap
   ));
 
   /*
@@ -2147,12 +2187,12 @@ const cssFactory = (g: GrammarSelf) => {
   const fallbackGroup = choice(
     sequence(
       g.VarFallbackLead,
-      functionArgumentGap,
+      g.functionArgumentGap,
       choice(
         sequence(
           branchColon,
           optional(g.VarFallbackItem),
-          functionArgumentGap,
+          g.functionArgumentGap,
           fallbackItemCommaRest
         ),
         fallbackItemCommaRest
@@ -2165,7 +2205,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const VarFallbackCall = node(
     'VarFallbackCall',
-    sequence(
+    noTrivia(sequence(
       routed(),
       optional(cssValueTrivia),
       optional(sequence(
@@ -2186,31 +2226,8 @@ const cssFactory = (g: GrammarSelf) => {
         ))
       )),
       literal(')')
-    ),
+    )),
     children => fallbackCall(children)
-  );
-  const VarCall = node(
-    'VarCall',
-    sequence(
-      varOpen,
-      optional(cssValueTrivia),
-      g.CustomPropertyValue,
-      optional(cssValueTrivia),
-      optional(sequence(
-        literal(','),
-        optional(cssValueTrivia),
-        choice(
-          g.VarFallback,
-          g.VarFallbackEmpty
-        ),
-        optional(cssValueTrivia)
-      )),
-      literal(')')
-    ),
-    children => funcCall(
-      functionOpenName(children[0]),
-      children.filter(isValueSlotValue)
-    )
   );
 
   /*
@@ -2466,7 +2483,9 @@ const cssFactory = (g: GrammarSelf) => {
    * with `--`; css-mixins-1 calls a dashed ident glued to `(` a
    * `<dashed-function>` (`--*( <declaration-value>#? )`). Both dispatches route
    * `--f(` to the generic call tail and a bare `--x` (by its `--` prefix) to its
-   * `CustomPropertyValue` node.
+   * `CustomPropertyValue` node. It is a rule key, read through `g` by every
+   * value-position dispatch here and by a pseudo's name in every dialect, so a
+   * dialect reads the same opener and an override of it reaches all of them.
    */
   const identOrFunction = token(noTrivia(
     sequence(
@@ -2563,12 +2582,27 @@ const cssFactory = (g: GrammarSelf) => {
       );
     }
   );
-  const VarFunction = node(
+
+  /*
+   * `var( <custom-property-name> , <declaration-value>? )` (css-variables-1
+   * §3), one rule for the key and every CSS dispatch: routed from a `var(`
+   * arm it reuses the opener the dispatch already read, and entered directly
+   * `routed(varOpen)` reads the opener itself. The name is the `varName` slot,
+   * so a dialect that accepts more than a `<custom-property-name>` there
+   * overrides only the name.
+   *
+   * CSS's own dispatches read this binding, not `g.VarCall`: `.jess` overrides
+   * the key with a fallback in its value grammar, and through `g` that override
+   * would reach the query values `.jess` inherits (`(var(--x, 1px + 2px) <
+   * width)` stops parsing). Whether inherited CSS positions should take the
+   * dialect's fallback is a semantics decision, not a slot change.
+   */
+  const VarCall = node(
     'VarCall',
     sequence(
-      routed(),
+      routed(varOpen),
       optional(cssValueTrivia),
-      g.CustomPropertyValue,
+      g.varName,
       optional(cssValueTrivia),
       optional(sequence(
         literal(','),
@@ -2614,7 +2648,7 @@ const cssFactory = (g: GrammarSelf) => {
    * a parenthesized value because the opener is parsed with noTrivia.
    */
   const IdentOrFunction = dispatch(
-    identOrFunction,
+    g.identOrFunction,
     cssCase(
       'url(',
       UrlFunction
@@ -2639,7 +2673,7 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     cssCase(
       'var(',
-      VarFunction
+      VarCall
     ),
     cssCase(
       'media(',
@@ -2670,7 +2704,7 @@ const cssFactory = (g: GrammarSelf) => {
     otherwise(IdentBlockOrKeyword)
   );
   const typedIdentOrFunction = dispatch(
-    identOrFunction,
+    g.identOrFunction,
     cssCase(
       'url(',
       UrlFunction
@@ -2695,7 +2729,7 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     cssCase(
       'var(',
-      VarFunction
+      VarCall
     ),
 
     /*
@@ -2730,7 +2764,7 @@ const cssFactory = (g: GrammarSelf) => {
    * fallback's own permissive body (`VarFallbackCall`, ledger P2).
    */
   const VarFallbackOpener = dispatch(
-    identOrFunction,
+    g.identOrFunction,
     cssCase(
       'url(',
       UrlFunction
@@ -2741,7 +2775,7 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     cssCase(
       'var(',
-      VarFunction
+      VarCall
     ),
     when(endsWith('\\('), g.RoutedKeyword),
     when(matches(/^--[\s\S]*\($/), GenericFunction),
@@ -3048,14 +3082,23 @@ const cssFactory = (g: GrammarSelf) => {
     )),
     children => any(sourceText(children[children.length - 1]!))
   );
+
+  /**
+   * What `@import` names: a `<string>` or a `<url>` (css-cascade-5 §2). A
+   * slot for another spelling of that one static target: the reducer takes
+   * the first `Quoted` or `Url` node, so an override must still produce exactly
+   * one of those. A target of another kind, or a list of targets, needs the
+   * reducer changed with it.
+   */
+  const ImportTarget = choice(
+    g.Quoted,
+    g.ImportUrl
+  );
   const ImportStatement = node(
     'ImportStatement',
     sequence(
       importAtKeyword,
-      choice(
-        g.Quoted,
-        g.ImportUrl
-      ),
+      g.ImportTarget,
       optional(g.ImportTail),
       literal(';')
     ),
@@ -3168,23 +3211,20 @@ const cssFactory = (g: GrammarSelf) => {
    * and less and a NODE in scss, so a bare quoted string is a rule that only
    * works in two of the three; spelling the comment positions makes ONE rule
    * correct in all of them, and it costs css nothing because trivia has already
-   * consumed them by the time `many` runs. They are dropped from the reduced
-   * prelude, which is what css produced for the same source before.
+   * consumed them by the time `many` runs. The reduced prelude is the `charset`
+   * field alone, so a comment never reaches it.
    */
   const CharsetPrelude = node(
     'CharsetPrelude',
     sequence(
       many(g.BlockCommentToken),
-      g.AtRulePreludeQuoted,
+      field(
+        'charset',
+        g.AtRulePreludeQuoted
+      ),
       many(g.BlockCommentToken)
     ),
-    children => any(
-      children
-        .map(child => tokenText(child))
-        .filter(text => !text.startsWith('/*'))
-        .join('')
-        .trim()
-    )
+    (_children, fields) => charsetPreludeFrom(fields)
   );
 
   /*
@@ -3607,7 +3647,7 @@ const cssFactory = (g: GrammarSelf) => {
   const RoutedVarQueryValue = node(
     'QueryValue',
     sequence(
-      node('TypedValue', VarFunction, { project: 0 }),
+      node('TypedValue', VarCall, { project: 0 }),
       queryRatioTail
     ),
     children => queryValueRatio(children)
@@ -4580,7 +4620,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const ifTestHead = choice(
     g.UnicodeRangeToken,
-    identOrFunction
+    g.identOrFunction
   );
 
   /*
@@ -4829,10 +4869,17 @@ const cssFactory = (g: GrammarSelf) => {
     )
   );
   const declarationListItem = choice(g.declarationListDeclaration, g.NestedConditionalBlock, g.DeclarationListAtRule, g.Ruleset, literal(';'));
+
+  /*
+   * An item of a declarations-only block (descriptor at-rules, page-margin
+   * boxes, keyframes, font-feature values). A rule key read through `g`, so a
+   * dialect that adds an item there overrides this one choice rather than
+   * restating the block.
+   */
   const descriptorBodyItem = choice(g.declarationListDeclaration, literal(';'));
   const conditionalGroupBodyItem = choice(g.ConditionalBlock, g.ConditionalGroupAtRule, g.TopLevelRuleset);
   const stylesheetBodyItem = choice(g.ConditionalBlock, g.StylesheetAtRule, g.TopLevelRuleset);
-  const descriptorBodyBlock = sequence(literal('{'), many(descriptorBodyItem), literal('}'));
+  const descriptorBodyBlock = sequence(literal('{'), many(g.descriptorBodyItem), literal('}'));
   const declarationListBlock = sequence(literal('{'), many(g.declarationListItem), literal('}'));
   const conditionalGroupBodyBlock = sequence(literal('{'), many(conditionalGroupBodyItem), literal('}'));
   const stylesheetBodyBlock = sequence(literal('{'), many(g.stylesheetBodyItem), literal('}'));
@@ -5332,9 +5379,11 @@ const cssFactory = (g: GrammarSelf) => {
     BasicSelector,
     AttributeNamespace,
     NamespaceTypeSelector,
+    AttributeValue,
     AttributeSelector,
     PseudoSelector,
     RelativeSelector,
+    forgivingSelectorRestPart,
     ForgivingSelectorRest,
     ForgivingSelectorItem,
     ForgivingSelectorList,
@@ -5370,6 +5419,7 @@ const cssFactory = (g: GrammarSelf) => {
     VarFallbackItem,
     VarFallback,
     VarCall,
+    varName,
     CalcIdentOrFunction,
     CalcParen,
     ParenValue,
@@ -5396,6 +5446,7 @@ const cssFactory = (g: GrammarSelf) => {
     Important,
     Declaration,
     ImportStatement,
+    ImportTarget,
     ImportUrl,
     ImportUrlUnquoted,
     ImportTailRaw,
@@ -5487,6 +5538,7 @@ const cssFactory = (g: GrammarSelf) => {
     stylesheetBodyBlock,
     declarationListBlock,
     descriptorBodyBlock,
+    descriptorBodyItem,
     declarationListItem,
     declarationListDeclaration,
     RoutedAtRuleStatement,
@@ -5509,9 +5561,11 @@ const cssFactory = (g: GrammarSelf) => {
     StyleTest,
     SupportsDeclaration,
     functionArgument,
+    functionArgumentGap,
     branchLead,
     VarFallbackOpener,
     VarFallbackLead,
+    identOrFunction,
     whitespace,
     rw: whitespace
   };

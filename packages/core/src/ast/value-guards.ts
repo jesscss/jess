@@ -13,6 +13,7 @@ import {
   type ValueGroup,
   type Value
 } from './value-eval.js';
+import { DimensionValueNode } from './node-ctors.js';
 import { unify, unitMultisetKey } from './value-units.js';
 import { namedColor } from './color-names.js';
 import type { UnitMode } from '../types/modes.js';
@@ -252,7 +253,7 @@ const noGround = (): Compared => NO_GROUND;
  * {@link dimensionCompare} and inherits its unit rules unchanged — `null = 0` is
  * true, and `null = 0px` answers whatever `1 = 1px` answers.
  */
-const NULL_AS_ZERO: Dimension = { type: 'Dimension', number: 0, unit: '', bytes: '0' };
+const NULL_AS_ZERO: Dimension = new DimensionValueNode(0, '', '0');
 
 /**
  * §4.1's `null` row, taken by the PAIR before any typed dispatch.
@@ -767,6 +768,15 @@ function groupBytes(v: ValueGroup): string {
 }
 
 /**
+ * The Less type predicates, which ask what a value is (`isruleset` is answered
+ * from the binding, not here). `isdefined` asks whether a name is bound, not
+ * what it holds, so it is not one.
+ */
+export const TYPE_PREDICATES: ReadonlySet<string> = new Set([
+  'iscolor', 'isnumber', 'isstring', 'iskeyword', 'isurl', 'ispixel', 'ispercentage', 'isem', 'isunit', 'isruleset'
+]);
+
+/**
  * Guard type-predicate (`iscolor(@a)` / `isnumber(@a)` / …) evaluated directly by
  * kind. Covers the foundation's predicate set; predicates that key off legacy
  * machinery are out of foundation scope (return `false`).
@@ -783,10 +793,10 @@ export function typeCheck(name: string, args: readonly Value[]): boolean {
      * `iskeyword(red)` is false — matching pre-convergence Less, where `red` was
      * a `Color` node. `asColor` already folds the named-colour table.
      */
-    case 'iscolor': return asColor(a) !== undefined;
-    case 'isnumber': return a.type === 'Dimension';
+    case 'iscolor': return asColor(a) !== undefined || (a.type === 'FunctionCall' && a.computed && a.result === 'color');
+    case 'isnumber': return a.type === 'Dimension' || (a.type === 'FunctionCall' && a.computed && a.result === 'numeric');
     case 'isstring': return a.type === 'Quoted';
-    case 'iskeyword': return a.type === 'Keyword' && asColor(a) === undefined;
+    case 'iskeyword': return (a.type === 'FunctionCall' && !(a.computed && a.result !== null)) || (a.type === 'Keyword' && asColor(a) === undefined);
     case 'isurl': return a.type === 'Url';
     case 'ispixel': return a.type === 'Dimension' && a.unit === 'px';
     case 'ispercentage': return a.type === 'Dimension' && a.unit === '%';

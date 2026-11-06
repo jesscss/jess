@@ -26,6 +26,40 @@ describe('namespaced mixin-call variable values', () => {
 `);
   });
 
+  /*
+   * The tests-config/namespacing/namespacing-5.less shape with a flat mixin:
+   * a called mixin held by a variable carries `!important` the same way, and
+   * so does the spaced `! important` spelling.
+   */
+  it.each([
+    ['a flat call', '.colors() !important'],
+    ['a flat call, spaced priority', '.colors() ! important'],
+    ['a namespaced call, spaced priority', '#theme.dark.navbar.colors() ! important']
+  ])('propagates the call-level importance of %s through accessors', async (_label, value) => {
+    const result = await new Compiler({ compile: { plugins: [lessPlugin()] } }).renderToResult({
+      source: `
+#theme.dark.navbar {
+  .colors() { primary: rebeccapurple; secondary: lightblue; }
+}
+.colors() { primary: rebeccapurple; secondary: lightblue; }
+.card {
+  @theme-colors: ${value};
+  background: @theme-colors[primary];
+  border-color: @theme-colors[secondary];
+}
+`,
+      filePath: 'entry.less',
+      extension: '.less'
+    }, { breakOnError: false });
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe(`.card {
+  background: rebeccapurple !important;
+  border-color: lightblue !important;
+}
+`);
+  });
+
   it('continues an imported namespace call result through a local accessor', async () => {
     const input = join(
       resolveLessTestDataRoot(),

@@ -10,7 +10,7 @@
  * `map.set` and the `map.deep-*` members have no global spelling and are
  * deliberately absent.
  */
-import { defineFunction } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
 import get from './get.js';
 import hasKey from './has-key.js';
 import keys from './keys.js';
