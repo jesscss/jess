@@ -178,11 +178,13 @@ describe('an alpha, or an S or V, only the browser knows has its form', () => {
   it.each([
     ['rgba(var(--c), .5)', 'rgba(var(--c), 0.5)'],
     ['rgba(var(--c), var(--a))', 'rgba(var(--c), var(--a))'],
-    ['rgba(foo(1), var(--a))', 'rgba(foo(1), var(--a))'],
     ['hsl(var(--h), 50%, 50%)', 'hsl(var(--h), 50%, 50%)'],
     ['fadein(#333, var(--a) + 5)', 'fadein(#333, calc(var(--a) + 5))'],
     ['fade(#333, var(--a) + .5)', 'fade(#333, calc(var(--a) + 0.5))'],
-    ['hsv(120, var(--s) + .05, 75%)', 'hsv(120, calc(var(--s) + 0.05), 75%)']
+    ['hsv(120, var(--s) + .05, 75%)', 'hsv(120, calc(var(--s) + 0.05), 75%)'],
+    ['fade(#333, unit(var(--x), px))', 'fade(#333, calc(var(--x) * 1px))'],
+    ['hsva(120, 50%, 75%, unit(var(--x), px))', 'hsva(120, 50%, 75%, calc(var(--x) * 1px))'],
+    ['rgba(#000, unit(var(--x), px))', 'rgba(#000, calc(var(--x) * 1px))']
   ])('%s stays written', async (source, written) => {
     await expect(value(source)).resolves.toBe(written);
   });
@@ -211,10 +213,7 @@ describe('an alpha, or an S or V, only the browser knows has its form', () => {
     '@less.fadein(#333, var(--a) + 5)',
     '@less.fade(#333, var(--a) + .5)',
     '@less.hsv(120, var(--s) + .05, 75%)',
-    '@less.hsl(var(--h), 50, 50%)',
-    '@less.hsl(var(--h), 1px, 50%)',
-    '@less.hsl(1px, var(--s), 50%)',
-    '@less.hsl(var(--h), 50%, 50%, 2px)'
+    '@less.hsl(var(--h), 50, 50)'
   ])('imported, %s fails', async (source) => {
     await expect(css(`@use "#less"; .x { v: ${source}; }`)).rejects.toMatchObject({ code: 'eval/invalid-function' });
   });

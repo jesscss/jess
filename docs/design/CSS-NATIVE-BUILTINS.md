@@ -397,7 +397,13 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 - A form over an `hsl()` can leave float residue in a channel, in a weighted `invert` and in Less and Sass `mix` alike: `invert(hsl(359,1%,99%), 50%)` and `mix(hsl(359,1%,99%), hsl(179,1%,1%))` print `hsl(0, 0.000000000000011102230246%, 50%)`. It is valid and computes the same.
 - `rgba(10 20 30, .5)` prints as written, `rgba(10 20 30, 0.5)`, where it was `rgba(10, 20, 30, 0.5)`. The input is invalid either way.
 - `fade(#333, var(--a))` with `--a: .5` is an alpha of 0.5, where `fade(#333, .5)` is 0.005, because a Less amount is on 0–100 whatever its unit, and an alpha over its `var()` is read by CSS.
-- `fadein(#333, var(--a))` and `hsv(120, var(--s), 75%)` take a percentage (Q2). A number in the variable is invalid at computed-value time: no spelling in CSS reads both. Math of a type that has no form stays written, and fails under `@less.`: `fadein(#333, var(--a) + 5)`, `fade(#333, var(--a) + .5)`, `hsv(120, var(--s) + .05, 75%)`.
+- `fadein(#333, var(--a))` and `hsv(120, var(--s), 75%)` take a percentage (Q2). A number in the variable is invalid at computed-value time: no spelling in CSS reads both. Math of a type that has no form stays written, and fails under `@less.`: `fadein(#333, var(--a) + 5)`, `fade(#333, var(--a) + .5)`, `hsv(120, var(--s) + .05, 75%)`, `hsva(120, 50%, 75%, unit(var(--x), px))`, `rgba(#000, unit(var(--x), px))`.
+- `@a: 2px` in `@less.hsl(@a, 50%, 50%)` keeps its recipe and prints `var(--a-hsl, hsl(2px, 50%, 50%))`, whose default Chrome 152 rejects.
+- Conversion to `.jess` calls `rgba()` by its Less or Sass function: `rgba(var(--c), .5)` and `rgba(var(--c), var(--a))` convert to `$rgba(…)`, and the `.jess` fails with `eval/invalid-function`. `rgba(#000, calc(var(--a) * 2))` in `.less` converts to `$rgba(#000, calc(var(--a) * 2))`, which fails at parse.
+- `.scss` fails at parse on `--alpha(red / 50%)`. `.less` and `.css` print it.
+- `fade(#333, ~"var(--a)")` stays written.
+- `rgb(from fade(#333, var(--a)) r g b)` stays written, and Chrome 152 reads it as invalid.
+- `@less.hsl(var(--hsl))`, `@less.hsl(120, var(--sl))` and `@less.rgb(10, var(--gb))` fail with `eval/invalid-function`, where Chrome 152 reads each as written with `--hsl: 120, 50%, 50%`, `--sl: 50%, 50%` and `--gb: 20, 30`. Without the import they print as written.
 - `@less.hsl(120 50% 50%)` and `@less.rgb(1 0 0)`, a space-separated call under `@use`, fail with `Invalid arguments`, known inputs and `var()` alike. Written without the import they print as written.
 - `-moz-filter`, `-o-filter` and `-ms-filter` take the colour form: no current browser reads them. `-webkit-filter` is the filter.
 - `round(1.005, 0.01)` is `1.01` at compile time, in base 10 (V8), and `1` in the browser over `var(--x)`, as Less's decimal places are. A step that is no power of ten at or below 1 rounds in floats, as the browser does.

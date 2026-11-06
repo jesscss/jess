@@ -30,9 +30,17 @@ export const CHANNEL_UNITS: readonly string[] = ['', '%'];
 /** An alpha, read as written. */
 export const ALPHA_ARG = { type: ['Dimension', 'FunctionCall'], fits: (value: ValueGroup): boolean => inUnits(value, CHANNEL_UNITS) } as const;
 
-/** An alpha on 0–1 while known; what only the browser knows goes in the slot as it is. */
-export const alphaOf = (alpha: Dimension | WrittenCall): Dimension | WrittenCall =>
-  alpha.type === 'Dimension' ? makeDimension(clamp01(fractionOf(alpha))) : alpha;
+/** An alpha on 0–1 while known; what only the browser knows goes in the slot as it is, and math of another type has no form. */
+export function alphaOf(name: string, alpha: Dimension | WrittenCall): Dimension | WrittenCall {
+  if (alpha.type === 'Dimension') {
+    return makeDimension(clamp01(fractionOf(alpha)));
+  }
+  const unit = knownUnit(alpha);
+  if (unit !== undefined && !CHANNEL_UNITS.includes(unit)) {
+    throw new TypeError(`${name}: an alpha is a number or a percentage`);
+  }
+  return alpha;
+}
 
 /** What only the browser knows of a slot that takes a percentage; math of another type has no form. */
 export function deferredPercent(name: string, value: WrittenCall): WrittenCall {

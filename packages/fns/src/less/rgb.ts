@@ -66,7 +66,7 @@ export const colorWithAlpha = /* @__PURE__ */ defineForm('rgba', {
     if ((!isValueGroupArray(color) && color.type === 'FunctionCall' && color.result !== 'color') || (alpha.type === 'FunctionCall' && alpha.result === 'color')) {
       throw new TypeError('rgba: a substitution may hold the channels, so the call is CSS as written');
     }
-    return [form, color, alphaOf(alpha)];
+    return [form, color, alphaOf('rgba', alpha)];
   }
 });
 

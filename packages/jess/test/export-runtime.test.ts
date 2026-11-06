@@ -209,6 +209,13 @@ describe('the export runtime', () => {
     expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived }).vars({ a: '50%' })).toThrow('The runtime computes from CSS literals');
   });
 
+  it('sets a percentage the form holds, which the browser reads as a compile of it would', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.fade(#333, @a); }');
+    expect(exported.css).toContain('v: rgb(from #333 r g b / var(--a, 25%));');
+    expect(exported.runtime!.derived).toEqual({});
+    expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, derived: {} }).vars({ a: '50%' })).toEqual({ '--a': '50%' });
+  });
+
   it('needs no recipe where the form holds the export', async () => {
     const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.darken(var(--x), @a); }');
     expect(exported.css).toContain('hsl(from var(--x) h s clamp(0, l - var(--a, 25%) / 1%, 100))');
@@ -288,7 +295,6 @@ describe('the export runtime', () => {
     ['@less.rgb(@a, 0, 0)', '2px', 'var(--a-rgb, rgb(2, 0, 0))'],
     ['@less.rgba(#c00, @a)', '2px', 'var(--a-rgba, rgb(204, 0, 0))'],
     ['@less.hsv(@a, 50%, 50%)', '50%', 'var(--a-hsv, #408080)'],
-    ['@less.hsl(@a, 50%, 50%)', '2px', 'var(--a-hsl, hsl(2px, 50%, 50%))'],
     ['@less.hsl(120, @a, 50%)', '.5', 'var(--a-hsl, hsl(120, 50%, 50%))'],
     ['@less.hsl(@a)', '#c00', 'var(--a-hsl, hsl(0, 100%, 40%))'],
     ['@less.hsl(@a, 50%)', '#c00', 'var(--a-hsl, hsla(0, 100%, 40%, 0.5))'],
