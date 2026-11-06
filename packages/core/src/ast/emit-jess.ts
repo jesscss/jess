@@ -41,6 +41,7 @@ import type {
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
 import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
+import { isFilterProperty, writtenAsFilter } from './filter-position.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
@@ -201,6 +202,7 @@ class JessPrinter {
 
   /** Set while a property's value prints: a value written to the output, not one a callable reads. */
   #propertyValue = false;
+  #filterProperty = false;
 
   /** Set while a CSS call's arguments print, where a `{ … }` is CSS's own argument braces (`CurlyList`). */
   #cssCall = false;
@@ -464,10 +466,12 @@ class JessPrinter {
       value = this.customValue(node.value);
     } else {
       this.#propertyValue = true;
+      this.#filterProperty = typeof node.name === 'string' && isFilterProperty(node.name);
       try {
         value = this.value(node.value, At.Value);
       } finally {
         this.#propertyValue = false;
+        this.#filterProperty = false;
       }
     }
     return `${name}: ${value}${node.important ? ' !important' : ''}`;
@@ -966,7 +970,7 @@ class JessPrinter {
      * Anywhere a callable or a variable can read it, it computes, and goes
      * through its binding.
      */
-    const exported = this.#propertyValue && at === At.Value && isCssColorFunction(node) ? undefined : this.#functions?.names.get(lower);
+    const exported = (this.#propertyValue && at === At.Value && isCssColorFunction(node)) || writtenAsFilter(node, lower, this.#functions?.names, this.#propertyValue && at === At.Value ? (this.#filterProperty ? 'filter' : 'item') : undefined) ? undefined : this.#functions?.names.get(lower);
     if (exported !== undefined) {
       this.calledFunctions.set(lower, exported);
     }

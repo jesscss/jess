@@ -2,7 +2,7 @@
  * The `sass:color` kernels — value-domain only, and deliberately Sass-local.
  *
  * Where the math is the same in Less, the kernel lives in `shared/color/kernels.ts`
- * (`clamp01`, `percentOf`, `rotateHue`). What stays here is where Sass and Less
+ * (`clamp01`, `percentOf`). What stays here is where Sass and Less
  * disagree: argument scale, clamping, format preservation and rounding. Every
  * rule below is pinned to an executed case in the `sass-spec` conformance corpus
  * (see `color-sass-spec.test.ts`).
@@ -48,7 +48,7 @@ export { clamp01 };
 
 /**
  * A Sass `$amount` on the PERCENTAGE scale (`lighten`/`darken`/`saturate`/
- * `desaturate`/`mix`/`invert`): `10%` and a bare `10` both mean 0.1. dart-sass
+ * `desaturate`/`invert`): `10%` and a bare `10` both mean 0.1. dart-sass
  * restricts these to 0-100% (`desaturate(#f00, 200%)` → `$amount: Expected 200%
  * to be within 0% and 100%`), and `lighten(hsl(0,0%,90%), 0.2)` → `hsl(0, 0%,
  * 90.2%)` proves the unitless form is the same percentage scale, not a fraction.
@@ -110,54 +110,6 @@ export function withAlpha(color: Color, newAlpha: number): Color {
   return color.hsl
     ? makeColorHsl(colorHsl(color), alpha, format)
     : makeColorRgb(colorRawRgb(color), alpha, format);
-}
-
-/**
- * The four HSL single-channel adjusters (`lighten`/`darken` on `l`,
- * `saturate`/`desaturate` on `s`). `channel` indexes `[h, s, l]`; `sign` adds or
- * subtracts. The written-back channel is clamped to 0-1 (dart-sass:
- * `lighten(#fff, 50%)` → `white`, `lighten(hsl(0,0%,90%), 20%)` →
- * `hsl(0, 0%, 100%)`).
- *
- * Sass takes exactly two arguments — Less's third `relative`/`absolute` method
- * argument is an arity error there (`lighten(#800, 10%, relative)` → `Only 2
- * arguments allowed, but 3 were passed`), so a supplied third slot throws and the
- * call is left verbatim rather than silently answering the two-argument result.
- */
-export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: Value[]) => Value {
-  return (c, amt, extra) => {
-    if (extra !== undefined) {
-      throw new TypeError('Only 2 arguments allowed, but 3 were passed.');
-    }
-    const color = requireColor(c);
-    const hsl = colorHsl(color);
-    const out: [number, number, number] = [hsl[0], hsl[1], hsl[2]];
-    out[channel] = clamp01(out[channel] + sign * percentAmount(amt));
-    return makeColorHsl(out, color.alpha, color.format);
-  };
-}
-
-/**
- * Sass `mix`'s weighted blend. Identical alpha-aware weighting to Less's, but
- * over the RAW (unrounded) channels and always emitted in rgb format — dart-sass
- * `mix(#f00, #00f)` → `rgb(127.5, 0, 127.5)` (not Less's hex-quantized
- * `#800080`) and `mix(hsl(120,50%,50%), #00f)` → `rgb(31.875, 95.625, 159.375)`.
- */
-export function mixColors(c1: Color, c2: Color, weight: number): Color {
-  const p = weight;
-  const w = p * 2 - 1;
-  const a1 = clamp01(c1.alpha);
-  const a2 = clamp01(c2.alpha);
-  const a = a1 - a2;
-  const w1 = ((w * a === -1 ? w : (w + a) / (1 + w * a)) + 1) / 2;
-  const w2 = 1 - w1;
-  const r1 = colorRawRgb(c1);
-  const r2 = colorRawRgb(c2);
-  return makeColorRgb(
-    [r1[0] * w1 + r2[0] * w2, r1[1] * w1 + r2[1] * w2, r1[2] * w1 + r2[2] * w2],
-    a1 * p + a2 * (1 - p),
-    RGB
-  );
 }
 
 /* ------------------------------------------------ constructor kernels */

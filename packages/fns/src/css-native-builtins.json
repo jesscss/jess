@@ -85,7 +85,7 @@
       "class": "exact",
       "css": "color-mix(in srgb, C1 W%, C2)",
       "spec": "css-color-5 §3.3, §3.5",
-      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime; naming no export it fails). A colour written with none stays in the form",
+      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime; naming no export it fails). A colour written with none stays in the form. built: slice 8, stage 2, on one code path with Less mix; Sass's alpha-weighted result is replaced, per Q1",
       "extended": "rgb(from C clamp(0, (r * alpha * w + q_r) / (alpha * w + p), 255) ... / calc(alpha * w + p)), w the share of the colour not known, p and q the known colour's opacity and premultiplied channels"
     },
     {
@@ -203,7 +203,7 @@
       "css": "contrast-color(C)",
       "withColors": "rgb(from contrast-color(C) calc(Dr + (Lr - Dr) * r / 255) calc(Dg + (Lg - Dg) * r / 255) calc(Db + (Lb - Db) * r / 255) / calc(Da + (La - Da) * r / 255))",
       "spec": "css-color-5 §8",
-      "notes": "built: slice 7. Ruled 2026-11-01 (Q13): a known input picks dark/light by the larger WCAG 2.1 contrast ratio, so contrast(#999) = black; an explicit threshold keeps the luma rule for a known input and has no CSS form for an unknown one (it fails, or runs on the runtime). A lone ambient contrast(<unknown>) stays as written, since a number there is CSS's filter function (coordinator's ruling, open for the owner). Black and white agree with contrast-color() in Chrome 152 on every origin of the grid; a custom pair can disagree, because the form switches where black and white do. Dark and light must be known for the withColors form"
+      "notes": "built: slice 7. Ruled 2026-11-01 (Q13): a known input picks dark/light by the larger WCAG 2.1 contrast ratio, so contrast(#999) = black; an explicit threshold keeps the luma rule for a known input and has no CSS form for an unknown one (it fails, or runs on the runtime). A lone contrast(<unknown>) goes by where it stands: directly in filter or backdrop-filter it is CSS's filter function, directly in any other declaration contrast-color(), and where no position is known as written (owner 2026-11-05 for grayscale and invert; the coordinator's extension to contrast). A number stays the filter. Black and white agree with contrast-color() in Chrome 152 on every origin of the grid; a custom pair can disagree, because the form switches where black and white do. Dark and light must be known for the withColors form"
     },
     {
       "dialect": "less",
@@ -422,49 +422,56 @@
       "name": "lighten",
       "class": "exact",
       "css": "hsl(from C h s clamp(0, l + A, 100))",
-      "spec": "css-color-5 §4.4"
+      "spec": "css-color-5 §4.4",
+      "notes": "built: slice 8, stage 2. A known input computes through this form; an amount only the browser knows takes it too"
     },
     {
       "dialect": "scss",
       "name": "darken",
       "class": "exact",
       "css": "hsl(from C h s clamp(0, l - A, 100))",
-      "spec": "css-color-5 §4.4"
+      "spec": "css-color-5 §4.4",
+      "notes": "built: slice 8, stage 2. A known input computes through this form; an amount only the browser knows takes it too"
     },
     {
       "dialect": "scss",
       "name": "saturate",
       "class": "exact",
       "css": "hsl(from C h clamp(0, s + A, 100) l)",
-      "spec": "css-color-5 §4.4"
+      "spec": "css-color-5 §4.4",
+      "notes": "built: slice 8, stage 2. A known input computes through this form; an amount only the browser knows takes it too. A lone saturate(C) stays CSS's filter function, since the built-in takes two arguments"
     },
     {
       "dialect": "scss",
       "name": "desaturate",
       "class": "exact",
       "css": "hsl(from C h clamp(0, s - A, 100) l)",
-      "spec": "css-color-5 §4.4"
+      "spec": "css-color-5 §4.4",
+      "notes": "built: slice 8, stage 2. A known input computes through this form; an amount only the browser knows takes it too"
     },
     {
       "dialect": "scss",
       "name": "adjust-hue",
       "class": "exact",
       "css": "hsl(from C calc(h + A) s l)",
-      "spec": "css-color-5 §4.4"
+      "spec": "css-color-5 §4.4",
+      "notes": "built: slice 8, stage 2. A known input computes through this form; an amount only the browser knows takes it too"
     },
     {
       "dialect": "scss",
       "name": "complement",
       "class": "exact",
       "css": "hsl(from C calc(h + 180) s l)",
-      "spec": "css-color-5 §4.4"
+      "spec": "css-color-5 §4.4",
+      "notes": "built: slice 8, stage 2. A known input computes through this form; an amount only the browser knows takes it too"
     },
     {
       "dialect": "scss",
       "name": "grayscale",
       "class": "exact",
       "css": "hsl(from C h 0 l)",
-      "spec": "css-color-5 §4.4"
+      "spec": "css-color-5 §4.4",
+      "notes": "built: slice 8, stage 2. A known input computes through this form. A lone call over an unknown: directly in filter or backdrop-filter it is CSS's filter function, directly in any other declaration the form, and where no position is known (a variable, a mixin argument, inside another function) as written (owner 2026-11-05, Q13). A number stays the filter. color.grayscale(C) always takes the form"
     },
     {
       "dialect": "scss",
@@ -473,35 +480,39 @@
       "css": "rgb(from C calc(255 - r) calc(255 - g) calc(255 - b))",
       "weighted": "color-mix(in srgb, rgb(from C calc(255 - r) calc(255 - g) calc(255 - b)) W%, C)",
       "spec": "css-color-5 §3, §4.3",
-      "notes": "the inverted colour keeps C's alpha, so the weighted mix is exact"
+      "notes": "the inverted colour keeps C's alpha, so the weighted mix is exact. built: slice 8, stage 2. A known input computes through this form. A lone call over an unknown: directly in filter or backdrop-filter it is CSS's filter function, directly in any other declaration the form, and where no position is known (a variable, a mixin argument, inside another function) as written (owner 2026-11-05, Q13). A number stays the filter. color.invert(C) always takes the form; a weight makes it a colour by arity"
     },
     {
       "dialect": "scss",
       "name": "opacify",
       "class": "exact",
       "css": "rgb(from C r g b / calc(alpha + A))",
-      "spec": "css-color-5 §4.1"
+      "spec": "css-color-5 §4.1",
+      "notes": "built: slice 8, stage 2. A known input computes through this form; an amount only the browser knows takes it too"
     },
     {
       "dialect": "scss",
       "name": "fade-in",
       "class": "exact",
       "css": "rgb(from C r g b / calc(alpha + A))",
-      "spec": "css-color-5 §4.1"
+      "spec": "css-color-5 §4.1",
+      "notes": "built: slice 8, stage 2. A known input computes through this form; an amount only the browser knows takes it too"
     },
     {
       "dialect": "scss",
       "name": "transparentize",
       "class": "exact",
       "css": "rgb(from C r g b / calc(alpha - A))",
-      "spec": "css-color-5 §4.1"
+      "spec": "css-color-5 §4.1",
+      "notes": "built: slice 8, stage 2. A known input computes through this form; an amount only the browser knows takes it too"
     },
     {
       "dialect": "scss",
       "name": "fade-out",
       "class": "exact",
       "css": "rgb(from C r g b / calc(alpha - A))",
-      "spec": "css-color-5 §4.1"
+      "spec": "css-color-5 §4.1",
+      "notes": "built: slice 8, stage 2. A known input computes through this form; an amount only the browser knows takes it too"
     },
     {
       "dialect": "scss",
@@ -509,7 +520,7 @@
       "class": "exact",
       "css": "color-mix(in srgb, C1 W%, C2)",
       "spec": "css-color-5 §3",
-      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime; naming no export it fails). A colour written with none stays in the form",
+      "notes": "ruled 2026-11-01: color-mix(in srgb) for 0-100% (no legacy weighting); a weight outside 0-100% takes the relative form when one colour is known, else rung 4 (compile time + JS runtime; naming no export it fails). A colour written with none stays in the form. built: slice 8, stage 2, on one code path with Less mix; Sass's alpha-weighted result is replaced, per Q1",
       "extended": "rgb(from C1 clamp(0, r * W + K * (1 - W), 255) ...), K the known C2 channel; or symmetric with C1 known"
     },
     {
@@ -541,7 +552,7 @@
       "class": "exact-if",
       "css": "rgb(from C r g b / A)",
       "spec": "css-color-5 §4.3",
-      "notes": "as Less rgba"
+      "notes": "as Less rgba; built: slice 8, stage 2"
     },
     {
       "dialect": "scss",
