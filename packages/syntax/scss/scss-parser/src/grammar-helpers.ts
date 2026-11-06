@@ -985,7 +985,8 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
       separators
     );
   }
-  return call;
+
+  return span !== undefined ? withSourceSpan(call, span) : call;
 }
 
 /** A Sass map key stays an authored value node; equality belongs to value-domain

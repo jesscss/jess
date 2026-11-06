@@ -347,6 +347,32 @@ the call's other arguments; a slot without it has no form): `@r: 10` in
 `@less.rgb(@r, 0, 0)` prints the form, and `@r: 2px` keeps its recipe, which computes `rgb(2, 0, 0)`. A known channel of a unit CSS does
 not take beside a `var()` fails: `@less.rgb(var(--r), 1px, 0)`.
 
+### 3.9 Asking to be told: `unresolvedBuiltins`
+
+`@less.darken(var(--x), 10%)` looks like a compile-time call, and what it prints works only where the browser supports that form. The owner, verbatim: *"maybe we could... have a flag you could optionally turn ON ... if you EXPLICITLY use a Less/Sass function (explicit by namespacing) that does not resolve at compile time?"*, and on opt-in and off by default, *"ok sold. agreed."*
+
+`unresolvedBuiltins: 'off' | 'warn' | 'error'` is a compile option beside `functionMode`, default `'off'`. It is not a lint rule, because `packages/lint` reads parse diagnostics and does not evaluate, so it cannot know whether a call resolved.
+
+- **Counts:** a call through a namespace (`@less.x(…)`, `.scss` `color.adjust(…)`, or `m.sqrt(…)` under `as m`) that printed a form or declined to the CSS call: `@less.fade(#333, var(--a))`, `@less.rgb(var(--r), 0, 0)`, `math.sqrt(var(--x))`. A known input that only has a form counts too: `color.change(#c00, $lightness: 120%)` prints `hsl(from #c00 h s 120)`.
+- **Does not count:** a bare call or a bare name under `as *`, in `.scss` and `.jess` alike, which are ambient; a namespaced call that computed; a value the call only handed back from its arguments (`map.get($theme, brand)`); a call that fails, which keeps its own error. The namespace itself never warns.
+- **An exposed variable** is deferred on purpose: `@less.fade(#333, @a)` with `@expose a` does not count, whatever its value, a recipe included, nor does math over it (`@a * 2`, `-@a`, `calc(@a * 2)`). Beside a real unknown it counts: `@less.fade(var(--x), @a)`, `@a * var(--x)`.
+- **One report per written call,** in the file and at the place it was written, however often a variable holding it is read or a mixin runs it. An outer call over an inner one that fired reports too, each at its own place, since the outer call printed a form of its own. When the inner call read an export, the outer call takes it as that export and only the inner call reports: `@less.darken(@less.fade(var(--y), @a), 10%)` reports once.
+- **`'warn'`** goes through the warning channel, so its limits apply: by default a code shows five sites and a count of the rest.
+- **`'error'`** records the error and evaluates on, so every such call is reported until a hard error stops the compile, and the compile fails at the end (P45).
+
+The message says what the call printed and that the output depends on browser support for that form.
+
+Every `.scss` call carries a span, as a Less call does, so a report names its place, and every call gets a source-map segment: `color.adjust(#c00, $red: 10)` and `f(1px)` map their values where they did not before. CSS is unchanged. The worst case is one more mapping per call: an all-dotted fixture went from 2,100 to 3,900 segments and from 10,922 to 19,922 map bytes, with the option off.
+
+Gaps:
+
+- A form that never reaches the output still reports: `@debug math.sqrt(var(--x));` and `@less.iscolor(@less.fade(var(--c), 50%))`.
+- A call printed unevaluated doesn't report, because it never runs: `.x { v: var(--y, @less.fade(#333, var(--a))); }` prints `var(--y, {}.fade(#333, var(--a)))`, and `rgb(from @less.fade(var(--c), 50%) r g b)` prints as written.
+- An inner call that read an export names the value it computed over, not the export's `var()`: `@less.darken(@less.fade(var(--y), @a), 10%)` says `rgb(from var(--y) r g b / 0.25)`, where the output has `var(--a, 25%)`.
+- A variable from a file `@import`ed inside a rule reports in the importing file's name, with the partial's offset.
+- A call evaluated only after an await (a plugin value) reports in the reader's file.
+- `eval/invalid-function` still names the reader's file for a call in a partial's variable: only this report follows the writing document.
+
 ## 4. Slice plan
 
 Each slice: ruled ledger text, `semantics-reviewer` and
@@ -414,7 +440,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 - `math.div(var(--x), 0)` and `(var(--x) / 0)` print `calc(var(--x) / 0)`: V7 fails only a division it knows of.
 - Conversion to `.jess` reports a gap for a call as an operand of `.scss` math (`var(--x) * 2`, `env(a) * 2`, `calc($x * 2) * 3`), because `$( … )` takes no call, and for `($x / 2)`, as it does for `(1 / 2)`. `$x * 2`, `-$x`, `$x % 3` and the rest over a reference convert and render the same.
 - A `@forward`ed member is not found through a dotted call.
-- A `.scss` diagnostic for a call reports 1:1, because a `FunctionCall` has no span.
+- Some `.scss` diagnostics about a call still report 1:1: `eval/bad-call-arity` for a user `@function` (`f()` where `f` takes `$x`), and `resolve/name-not-found` (`map-get(1px, a)`). `eval/invalid-function` names where the call was written, plain or dotted.
 - `color.invert(1)`, `color.grayscale(50%)` and `color.opacity(50%)` are errors, per J1, where the bare calls are CSS filters.
 - A bare operator in an argument of a call written out stays as written in `.scss`, invalid CSS as it was before: `translate(-$x, 0)` is `translate(-1 * var(--x), 0)`, `translate(-$x, $x * 2)` is `translate(-1 * var(--x), var(--x) * 2)`, and `repeat(2, $x * 2)` is `repeat(2, var(--x) * 2)`. A group's route takes no dialect, and Less's bare `foo(var(--a) * 2)` stays as written, so this needs `.scss` told apart on the written call.
 - `translate(1px, 2px) + 1`, `math.div(linear-gradient(red, blue), 2)`, `ceil(linear-gradient(red, blue))` and `min(1px, 1em) + 1` reach `calc()` or a form as a call of no known type. They are known CSS types; widening the list of them (`other`) is later work.
@@ -581,7 +607,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 
 - **Q14 — the syntax a built-in writes its result in, for an input written in modern syntax.** OPEN, not ruled. Slices 2b and 3 change no byte for it on `hsl()`: `darken(hsl(120 50% 40%), 5%)` stays `hsl(120, 50%, 35%)`, legacy syntax, in the one function that spells a resolved form's result (`spelled`, `css-form.ts`), so the answer is a one-line change. Its scope grew with slice 3, which computes a space-separated `rgb()` for the first time: `darken(rgb(10 20 30), 5%)` prints legacy `rgb(4, 7, 11)` and `fade(rgb(10 20 30), 50%)` prints modern `rgb(10 20 30 / 0.5)`, both new bytes where the call was written out before, so the answer also picks these. With slice 2a a built-in can receive a colour written in modern syntax (`darken(hsl(120 50% 40%), 5%)`), and the kernels disagree: `darken`, `lighten`, `saturate`, `desaturate` and `spin` write legacy syntax (`hsl(120, 50%, 35%)`), while `fade` keeps the modern syntax (`rgb(51 153 51 / 0.5)`). V10 decides the format (HSL in, HSL out), not the syntax. Recommendation: modern in, modern out. The conformance test pins the colour, not this spelling.
 
-- **Q15 — a check for a namespaced built-in that does not resolve at compile time.** **Ruled, owner 2026-11-05: opt-in, off by default** (the owner, on that recommendation: *"ok sold. agreed."*). `@less.darken(var(--x), 10%)` looks like a compile-time call, and its output depends on the browser's support for the form. Someone with a browser target can ask to be told. The namespace itself never warns, since naming a dependency is what we want. A variable exposed with `@expose` is deferred on purpose, so it does not count. Not built yet; `functionMode: 'error'` cannot do it, because a printed form counts as success there. The option's name and home are open.
+- **Q15 — a check for a namespaced built-in that does not resolve at compile time.** **Ruled, owner 2026-11-05: opt-in, off by default** (the owner, on that recommendation: *"ok sold. agreed."*). `@less.darken(var(--x), 10%)` looks like a compile-time call, and its output depends on the browser's support for the form. Someone with a browser target can ask to be told. The namespace itself never warns, since naming a dependency is what we want. A variable exposed with `@expose` is deferred on purpose, so it does not count. `functionMode: 'error'` cannot do it, because a printed form counts as success there. Built as `unresolvedBuiltins` (§3.9).
 
 ### The owner's framing (2026-11-01): built-ins are sugar for CSS
 
