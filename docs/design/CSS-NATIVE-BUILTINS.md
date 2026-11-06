@@ -357,6 +357,7 @@ not take beside a `var()` fails: `@less.rgb(var(--r), 1px, 0)`.
 - **Does not count:** a bare call or a bare name under `as *`, which are ambient; a namespaced call that computed; a value the call only handed back from its arguments (`map.get($theme, brand)`); a call that fails, which keeps its own error. The namespace itself never warns.
 - **An exposed variable** is deferred on purpose: `@less.fade(#333, @a)` with `@expose a` does not count, whatever its value, a recipe included. Beside a real unknown it counts: `@less.fade(var(--x), @a)`.
 - **One report per written call,** at the place it was written, however often a variable holding it is read or a mixin runs it. An outer call over an inner one that fired reports too, each at its own place: the outer call printed a form of its own.
+- **`'warn'`** goes through the warning channel, so its limits apply: by default a code shows five sites and a count of the rest.
 - **`'error'`** records the error and evaluates on, so every such call is reported, and the compile fails at the end (P45).
 
 The message says what the call printed and that the output depends on browser support for that form.
