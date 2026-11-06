@@ -193,9 +193,9 @@ export function slashOperated(node: Pick<Operation, 'operator' | 'left' | 'mathO
 }
 
 /**
- * A value in a call written out: math on what only the browser knows is a
- * `calc()` at any depth of a space or slash list, there being no bare math or
- * `(...)` in CSS (`translate((var(--a) * 2), 1px)`, `hsl((var(--h) + 1) 50% 50%)`).
+ * A value in a call written out: a group of math on what only the browser knows
+ * is a `calc()` at any depth of a space or slash list, there being no `(...)` in
+ * CSS (`translate((var(--a) * 2), 1px)`, `hsl((var(--h) + 1) 50% 50%)`).
  */
 export function writtenCallValue(v: ValueGroup, emit: (v: ValueGroup) => string): string {
   if (isValueGroupArray(v)) {
@@ -204,7 +204,7 @@ export function writtenCallValue(v: ValueGroup, emit: (v: ValueGroup) => string)
   if (v.type === 'List' && v.sep === '/') {
     return joinGroup(v.value, ' / ', item => writtenCallValue(item, emit));
   }
-  return v.type === 'Arithmetic' ? (v.op === '' ? `calc${v.bytes}` : `calc(${v.bytes})`) : emit(v);
+  return v.type === 'Arithmetic' && v.op === '' ? `calc${v.bytes}` : emit(v);
 }
 
 /** An operand of math kept for the browser: what a glued minus means, its numbers compressed under `compress` (§3.5). */

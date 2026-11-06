@@ -596,6 +596,8 @@ export function exportCall<F>(
           return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe, node.name)), result], ','), e.modes);
         };
         if (outer === undefined && (typeof checks === 'object' || checks === 'argument') && isFormResult(computed, vals) && takesForm(fn, knownSlots ?? vals.map(val => slotValue(val, e.ev)), vals, inputs, e.ev)) {
+          /* After an await the lane holds no argument, so the reads below cannot mark this one. */
+          markArgument(argument);
           return mapMaybe(
             recovering(() => dispatch(asWritten(e, checks, args).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value)))), onNoForm(recorded)),
             form => isUnwrittenBuiltin(form) ? recorded() : form

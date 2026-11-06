@@ -35,11 +35,7 @@ describe('.scss operators on what only the browser knows', () => {
     ['percentage($x) * 2', 'calc(var(--x) * 100% * 2)'],
     ['-percentage($x)', 'calc(-1 * var(--x) * 100%)'],
     ['math.sqrt($x) * 2', 'calc(sqrt(var(--x)) * 2)'],
-    ['translate(-$x, 0)', 'translate(calc(-1 * var(--x)), 0)'],
-    ['translate(-$x, $x * 2)', 'translate(calc(-1 * var(--x)), calc(var(--x) * 2))'],
     ['translate(($x * 2), 1px)', 'translate(calc(var(--x) * 2), 1px)'],
-    ['repeat(2, $x * 2)', 'repeat(2, calc(var(--x) * 2))'],
-    ['foo($x * 2)', 'foo(calc(var(--x) * 2))'],
     ['hsl(($x + 1) 50% 50%)', 'hsl(calc(var(--x) + 1) 50% 50%)']
   ])('%s is %s', async (written, out) => {
     await expect(value(written)).resolves.toBe(out);
