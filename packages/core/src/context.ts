@@ -10,7 +10,7 @@ import { attachDocumentFacts, DocumentContext, documentTriviaOf } from './docume
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
-import { NO_SPAN, sourceStartOf, triviaMapOf } from './ast/provenance.js';
+import { NO_SPAN, recordNodeOwner, sourceStartOf, triviaMapOf } from './ast/provenance.js';
 import { forgivenSelectorItemsOf } from './ast/forgiving-selector.js';
 import { INJECTED_TEXT_NOTE, extractRelevantLines, fileAt, lineColAt } from './error/code-frame.js';
 import { inAuthoredFile } from './error/diagnostics.js';
@@ -873,7 +873,13 @@ export class Context {
    * required by the retained Context resolver when an import enters a child
    * document.
    */
-  private readonly documentContexts = new WeakMap<Stylesheet, DocumentContext>();
+  private readonly documentContexts = new Map<Stylesheet, DocumentContext>();
+
+  /** The document that parsed each node, filled by {@link fileOfNode} on the first diagnostic that asks. */
+  private readonly nodeDocuments = new WeakMap<object, DocumentContext>();
+
+  /** How many of {@link documentContexts}, in the order they entered, {@link nodeDocuments} covers. */
+  private indexedDocuments = 0;
 
   /**
    * Deferred executable bodies retain the source document that introduced
@@ -1091,6 +1097,24 @@ export class Context {
   /** The source owner that authored a callable body, if one is known. */
   sourceOwnerForBody(body: object): object | null {
     return this.documentBodyContexts.get(body) ?? this._documentContext ?? null;
+  }
+
+  /**
+   * The file that wrote a parsed node, or undefined for a node no document holds.
+   * A diagnostic asks this, so the cost is one walk of each document the first time
+   * a diagnostic is raised after it entered, and nothing on a compile that raises none.
+   */
+  fileOfNode(node: object): DocumentContext['file'] | undefined {
+    if (this.indexedDocuments < this.documentContexts.size) {
+      let position = 0;
+      for (const [document, owner] of this.documentContexts) {
+        if (position++ >= this.indexedDocuments) {
+          recordNodeOwner(document, owner, this.nodeDocuments);
+        }
+      }
+      this.indexedDocuments = this.documentContexts.size;
+    }
+    return this.nodeDocuments.get(node)?.file;
   }
 
   /** The document that recorded `body` (a root definition's body or a root variable's value), if one did. */

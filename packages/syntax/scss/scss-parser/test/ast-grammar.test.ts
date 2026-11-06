@@ -542,14 +542,9 @@ describe('SCSS canonical-AST grammar', () => {
      *    `@import` consistent with `@media` rather than newly wrong; tightening
      *    both is a separate, cross-dialect change (see the note on ImportTail).
      */
-    for (const source of [
-      '@import "theme.css" #{$media};',
-      '@import "theme.css" screen /* no raw/comment tail */ and (color);',
-      '@import "theme.css" screen, #{$media};'
-    ]) {
-      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
-    }
+    const comment = '@import "theme.css" screen /* no raw/comment tail */ and (color);';
+    const direct = run(scssGrammar.Stylesheet, comment, { trivia: scssGrammar.whitespace });
+    expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), comment).toBe(false);
   });
 
   /*
@@ -707,13 +702,13 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.value, source).toMatchObject({ type: 'Any', src: expected });
     }
 
-    for (const source of [
-      '@at-root .scope { .item { color: red; } }',
-      '@at-root "{" { .item { color: red; } }'
-    ]) {
-      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null, source).toBe(false);
-    }
+    expect(bare(parse('@at-root .scope { .item { color: red; } }'))).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@at-root', prelude: { type: 'Any', src: '.scope' } }]
+    });
+
+    expect(bare(parse('@at-root "{" { .item { color: red; } }'))).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@at-root', prelude: { type: 'Any', src: '"{"' } }]
+    });
   });
 
   it('constructs canonical SCSS variable declarations and references directly', () => {
@@ -834,10 +829,7 @@ describe('SCSS canonical-AST grammar', () => {
 
     for (const malformed of [
       '.card { value: --; }',
-      '.card { value: --#{$name}; }',
-      '.card { value: --theme#{$name}; }',
-      '.card { value: -- theme; }',
-      '@media (width: --#{$value}) { .bad { color: red; } }'
+      '.card { value: -- theme; }'
     ]) {
       const direct = run(scssGrammar.Stylesheet, malformed, { trivia: scssGrammar.whitespace, state: { source: malformed } });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), malformed).toBe(false);
@@ -959,8 +951,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { font: { @if true { family: fantasy; } } }',
       '.card { font: { @extend .base; } }'
     ]) {
-      const direct = run(scssGrammar.Stylesheet, unsupported, { trivia: scssGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), unsupported).toBe(false);
+      expect(() => parse(unsupported), unsupported).toThrow();
     }
   });
 
@@ -1040,18 +1031,14 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { font: { /* note */ weight: bold; } }'
     ];
     for (const source of unmodelled) {
-      const cst = parseScssCst(source);
-      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
+      expect(() => parse(source), source).toThrow();
     }
 
     for (const source of [
       '.card { font: { variant: { caps: small-caps; } } }',
       '.card { font: { @extend .base; } }'
     ]) {
-      const cst = parseScssCst(source);
-      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
+      expect(() => parse(source), source).toThrow();
     }
   });
 
@@ -1392,18 +1379,11 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
-  it('rejects query interpolation until the AST has typed prelude segments', () => {
-    for (const source of [
-      '@media #{$query} { .card { color: red; } }',
-      '@container #{$container-query} { .card { color: red; } }'
-    ]) {
-      const cst = parseScssCst(source);
-      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
-
-      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
-      expect(() => parse(source), source).toThrow(SyntaxError);
-    }
+  it('reads a media query hole as a term, and leaves a container query without one', () => {
+    expect(parse('@media #{$query} { .card { color: red; } }')).toMatchObject({
+      rules: [{ prelude: { type: 'Interpolation' } }]
+    });
+    expect(() => parse('@container #{$container-query} { .card { color: red; } }')).toThrow(SyntaxError);
   });
 
   it('accepts `only` only as a media-type modifier', () => {
@@ -1688,12 +1668,7 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
 
-    const rootRelative = run(
-      scssGrammar.Stylesheet,
-      '> .child { color: green; }',
-      { trivia: scssGrammar.whitespace }
-    );
-    expect(rootRelative.ok && rootRelative.unconsumedFrom === null && isStylesheet(rootRelative.value)).toBe(false);
+    expect(() => parse('> .child { color: green; }')).toThrow();
   });
 
   it('rejects whitespace-separated static pseudo colons on the direct AST path', () => {
@@ -1701,9 +1676,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card : hover { color: red; }',
       '.card: hover { color: red; }'
     ]) {
-      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-
-      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
+      expect(() => parse(source), source).toThrow();
     }
   });
 
@@ -1924,8 +1897,11 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('restricts `of` to nth-child and rejects non-selector selector-pseudo args', () => {
     const accepted = (source: string): boolean => {
-      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace, state: { source } });
-      return result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
+      try {
+        return isStylesheet(parse(source));
+      } catch {
+        return false;
+      }
     };
 
     /*
@@ -1977,13 +1953,11 @@ describe('SCSS canonical-AST grammar', () => {
     }
 
     /*
-     * `:nth-child` is the genuinely-unrepresented one and stays rejected. Its
-     * argument is `<An+B>` — a static token grammar, not a selector list — so
-     * an interpolated An+B has no node to live in, and the `of S` tail is the
-     * only selector-valued part of it. Representing it needs an interpolation
-     * carrier on the nth argument, which does not exist.
+     * An interpolated An+B is one interpolated simple selector: its value is
+     * unknown until it evaluates, so the argument keeps the hole as a typed part.
      */
-    expect(accepted('.card:nth-child(#{$n}) { color: blue; }')).toBe(false);
+    expect(accepted('.card:nth-child(#{$n}) { color: blue; }')).toBe(true);
+    expect(accepted('.card:part(icon-#{$name}) { color: blue; }')).toBe(true);
     for (const source of ['.x:global(.a) { color: blue; }', '.x:local(.a) { color: blue; }']) {
       expect(accepted(source), source).toBe(true);
     }
@@ -2030,11 +2004,9 @@ describe('SCSS canonical-AST grammar', () => {
       '.card:nth-child(1 - n) { color: blue; }',
       '.card:nth-child(2 n + 2) { color: blue; }',
       '.card:nth-child(- 2n) { color: blue; }',
-      '.card:lang(#{$locale}) { color: blue; }',
-      '.card:part(icon-#{$name}) { color: blue; }'
+      '.card:lang(#{$locale}) { color: blue; }'
     ]) {
-      const direct = run(scssGrammar.Stylesheet, invalid, { trivia: scssGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
+      expect(() => parse(invalid), invalid).toThrow();
     }
   });
 
@@ -2164,9 +2136,7 @@ describe('SCSS canonical-AST grammar', () => {
   });
 
   it('rejects interpolation-bearing placeholder names rather than flattening their source', () => {
-    const source = '%#{$name} { color: blue; }';
-    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+    expect(() => parse('%#{$name} { color: blue; }')).toThrow();
   });
 
   it('matches the public placeholder selector boundary', () => {

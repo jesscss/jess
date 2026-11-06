@@ -52,13 +52,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'maps', name: 'nested paren list, single line', src: '$e: (("<", "%3c"), (">", "%3e"));', supported: true },
   { group: 'maps', name: 'nested paren list, multiline', src: '$e: (\n  ("<", "%3c"),\n  (">", "%3e")\n);', supported: true },
   { group: 'maps', name: 'multiline paren list as a function argument', src: '$u: f(\n  $x,\n  (\n    "a",\n    "b"\n  )\n);', supported: true },
-  {
-    group: 'maps',
-    name: 'line comment inside a paren list',
-    src: '$m: (\n  // c\n  a: 1\n);',
-    supported: false,
-    note: 'comments parse fine at top level and inside rule bodies'
-  },
+  { group: 'maps', name: 'line comment inside a paren list', src: '$m: (\n  // c\n  a: 1\n);', supported: true },
 
   // ── control flow ───────────────────────────────────────────────────────────
   { group: 'control flow', name: '@if with a comparison', src: '@if $x == 1 { c: red; }', supported: true },
@@ -132,13 +126,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'selectors', name: 'explicit & with combinator', src: '.a { & > :last-child { margin: 0; } }', supported: true },
   { group: 'selectors', name: 'leading combinator (implicit &)', src: '.a { > .b { margin: 0; } }', supported: true },
   { group: 'selectors', name: 'interpolation as a standalone compound', src: '#{$x} .b { color: red; }', supported: true },
-  {
-    group: 'selectors',
-    name: 'interpolated pseudo-element',
-    src: '.a { &::#{$x} { color: red; } }',
-    supported: false,
-    note: 'also fails for `:#{$x}` and without the leading &'
-  },
+  { group: 'selectors', name: 'interpolated pseudo-element', src: '.a { &::#{$x} { color: red; } }', supported: true },
 
   // ── custom properties ──────────────────────────────────────────────────────
   { group: 'custom properties', name: 'plain custom property declaration', src: '.a { --x: red; }', supported: true },
@@ -157,13 +145,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'custom properties', name: 'var() reference', src: '.a { w: var(--x); }', supported: true },
   { group: 'custom properties', name: 'var() with fallback', src: '.a { w: var(--x, red); }', supported: true },
   { group: 'custom properties', name: 'var() inside a function call', src: '.a { w: rgba(var(--x), .5); }', supported: true },
-  {
-    group: 'custom properties',
-    name: 'interpolation inside a var() name',
-    src: '.a { w: var(--#{$p}x); }',
-    supported: false,
-    note: 'plain `var(--x)` parses'
-  },
+  { group: 'custom properties', name: 'interpolation inside a var() name', src: '.a { w: var(--#{$p}x); }', supported: true },
 
   // ── module system / diagnostics / misc ─────────────────────────────────────
   { group: 'module system', name: '@import', src: '@import "x";', supported: true },
@@ -174,7 +156,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'diagnostics', name: '@warn', src: '@mixin m { @warn "x"; }', supported: true },
   { group: 'diagnostics', name: '@error', src: '@mixin m { @error "x"; }', supported: true },
   { group: 'diagnostics', name: '@debug', src: '@debug "x";', supported: true },
-  { group: 'misc', name: '@at-root', src: '.a { @at-root .b { color: red; } }', supported: false },
+  { group: 'misc', name: '@at-root', src: '.a { @at-root .b { color: red; } }', supported: true, note: 'parses; the compile reports parse/at-root-placement' },
   { group: 'misc', name: 'if() function in a value', src: '.a { w: if($x, 1, 2); }', supported: true },
   { group: 'misc', name: 'interpolation in a media query', src: '@media (min-width: #{$x}) { .a { color: red; } }', supported: true },
   { group: 'misc', name: 'interpolation inside a string', src: '$a: "#{$x}-y";', supported: true }

@@ -8,13 +8,12 @@
  * HARD MODULE BOUNDARY: value domain + built-in fns only.
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { isValueGroup, isValueGroupArray, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
+import { isValueGroup, isValueGroupArray, type ArgumentKeyword, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { calcOperand, numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { callKeyword, makeCollection, makeList, NULL } from './value-factory.js';
 import { keepAsWritten } from './value-operate.js';
-import type { CallArg, ValueSlot } from './nodes.js';
 import type {
   DefinedFunction,
   Fn,
@@ -564,7 +563,7 @@ export function createFnRegistry(): FnRegistry {
  * silent wrong lowering this exists to prevent.
  */
 export function orderKeywordArgs(
-  args: readonly CallArg<ValueSlot>[],
+  args: readonly ArgumentKeyword[],
   vals: ValueGroup[],
   params: readonly (string | undefined)[] | undefined
 ): ValueGroup[] {
