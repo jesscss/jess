@@ -104,12 +104,12 @@ const DART_SASS: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string,
 const NOT_IMPLEMENTED = new Set(['list.slash', 'map.deep-remove', 'inspect']);
 const divergence = (fn: string, input: string, wrap: 'value' | 'type', [value, type]: readonly [string, string]): string | undefined => {
   /*
-   * A call to a function Jess lacks is written out as-is, which is typed a
-   * string, as `inspect()` returns; written out with an empty list it fails, as
-   * Dart Sass fails `map.deep-remove((), a)`.
+   * `inspect()`, which Jess lacks, is written out as-is, which is typed a string
+   * as `inspect()` returns. A module member Jess lacks is
+   * `resolve/name-not-found`, so it fails where Dart Sass fails.
    */
-  const writtenAsIs = fn === 'inspect' && wrap === 'type' ? input !== '()' : fn === 'map.deep-remove' && wrap === 'value' && input === '()';
-  if (NOT_IMPLEMENTED.has(fn) && !writtenAsIs) {
+  const agrees = fn === 'inspect' ? wrap === 'type' && input !== '()' : (wrap === 'value' ? value : type) === 'ERROR';
+  if (NOT_IMPLEMENTED.has(fn) && !agrees) {
     return 'not implemented in Jess';
   }
   if ((fn === 'map.get' || fn === 'map-get') && (input === '()' || input === '[]')) {
