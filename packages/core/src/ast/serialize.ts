@@ -222,7 +222,7 @@ import { UnitArithmeticError, carryKeptClash, writtenCalcInner, findFinalValue, 
 import { makeAny, makeWrittenMath, makeBlock, makeCalc, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
-import { mayBeFilter } from './filter-position.js';
+import { cssFilterCall, mayBeFilter } from './filter-position.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
@@ -9183,10 +9183,7 @@ function dispatchCall(
       ? { args: ordered === vals ? args : (node.modern ? vals : makeList(vals, ',')), keywords: node.args }
       : undefined;
     try {
-      /* A lone filter call is written out as a call to no function is (Q13). */
-      const result = reach !== 'imported' && vals.length === 1 && mayBeFilter(node, vals[0], e, selected, ev)
-        ? ev.call(node.name, args, modes, null, e.s.io, undefined, false, written, node.args)
-        : ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', written, node.args);
+      const result = ev.call(node.name, args, modes, null, e.s.io, reach !== 'imported' && vals.length === 1 && mayBeFilter(node, vals[0], e, selected, ev) ? cssFilterCall : selected, reach === 'ambient', written, node.args);
       if (isThenable(result)) {
         return result.then((value) => {
           warnConsumedKept(vals, value, node, e);

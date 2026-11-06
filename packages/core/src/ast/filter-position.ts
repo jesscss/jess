@@ -11,6 +11,7 @@ import { isMathFunctionName } from './math-functions.js';
 import { isCssColorFunction } from './nodes.js';
 import type { Declaration, FunctionCall, ValueSlot } from './nodes.js';
 import type { Fn } from './functions/types.js';
+import { defineFunction, FunctionDeclined } from './value-dispatch.js';
 import { isValueGroupArray, type ValueGroup } from './value-eval.js';
 
 const COLOR_OVERLOADS: ReadonlySet<string> = new Set(['contrast', 'grayscale', 'invert']);
@@ -18,6 +19,15 @@ const COLOR_OVERLOADS: ReadonlySet<string> = new Set(['contrast', 'grayscale', '
 const FILTER_PROPERTY = /^(?:-webkit-)?(?:backdrop-)?filter$/i;
 
 export const isFilterProperty = (name: string): boolean => FILTER_PROPERTY.test(name);
+
+/** The callable of a lone call that is the filter: it declines, so the call is the CSS function it names. */
+export const cssFilterCall: Fn = /* @__PURE__ */ defineFunction('filter', {
+  params: [],
+  variadic: true,
+  body: () => {
+    throw new FunctionDeclined();
+  }
+});
 
 /** Whether `node` is an item of the value, not an argument of a call in it. */
 function isItemOf(value: ValueSlot, node: FunctionCall): boolean {
