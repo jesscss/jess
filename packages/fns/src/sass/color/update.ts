@@ -1,35 +1,36 @@
 /**
- * The engine behind `color.adjust`, `color.scale` and `color.change` (and the
- * globals `adjust-color`, `scale-color`, `change-color`), to Dart Sass's
- * semantics for the legacy colour spaces.
+ * `color.adjust`, `color.scale` and `color.change` (and the globals
+ * `adjust-color`, `scale-color`, `change-color`) in the legacy colour spaces, as
+ * one relative colour whose named channels are its slots: what is not named
+ * holds its keyword, so the form says only what was asked for.
  *
  * A call names channels by keyword. Its working space is `$space` when given,
  * else the one its channels belong to: any of `$red`/`$green`/`$blue` is rgb,
  * `$saturation`/`$lightness` is hsl, `$whiteness`/`$blackness` is hwb, and a lone
  * `$hue` is hsl. A channel from another space is an error (`color.adjust(red,
  * $red: 1, $lightness: 1%)` → `$lightness: Color space rgb doesn't have a channel
- * with this name.`). The colour is read in the working space, each named channel
- * is updated, and the result goes back to the colour's own space: an hsl colour
- * stays hsl, everything else is rgb.
+ * with this name.`).
  *
- * - **adjust** adds. rgb channels are clamped to 0-255 and saturation at 0;
- *   lightness, whiteness and blackness are not clamped (`color.adjust(red,
- *   $lightness: -100%)` is `hsl(0, 100%, -50%)` in Dart Sass). Alpha is clamped.
+ * - **adjust** adds. rgb channels, saturation and lightness are clamped to their
+ *   range; hue, whiteness and blackness are not. Alpha is clamped by the colour.
  * - **scale** moves a channel that fraction of the way to its bound and takes
- *   only a `%` within -100% and 100%; hue cannot be scaled.
+ *   only a `%` within -100% and 100%. The sign picks the formula, so a percentage
+ *   only the browser knows has no form; hue cannot be scaled.
  * - **change** replaces, unclamped. Only `$alpha` is range-checked.
  *
  * Only the rgb, hsl and hwb spaces exist in jess's colour model, so `$space`
  * accepts those three. Every other CSS colour space is a gap, and so is a
- * missing (`none`) channel. Channel values carry full precision; the output
- * boundary quantizes them (an out-of-gamut channel is clamped there).
+ * missing (`none`) channel.
  *
  * HARD MODULE BOUNDARY: value domain only.
  */
-import type { Color, DefinedFunction, Dimension, ValueGroup } from '@jesscss/core/value';
-import { HEX, HSL, RGB, colorHsl, colorRawRgb, defineFunction, hslToRgb, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core/value';
-import { clamp01, percentOf, wrapHue } from '../../shared/color/kernels.js';
-import { degreesOf, requireColor, requireValue } from './kernels.js';
+import { asNumber, channelForm, defineForm, knownUnit, type FormCall, type FormSlot } from '@jesscss/core/form';
+import type { Color, Dimension, Fn, FunctionCall, ValueGroup } from '@jesscss/core/value';
+import { colorHsl, colorRawRgb, isUnknownNumber, isValueGroupArray, makeDimension } from '@jesscss/core/value';
+import * as forms from '../../less/css-forms.generated.js';
+import { percentOf } from '../../shared/color/kernels.js';
+import { COLOR } from './color-form.js';
+import { degreesOf } from './kernels.js';
 
 type Op = 'adjust' | 'scale' | 'change';
 type Space = 'rgb' | 'hsl' | 'hwb';
@@ -38,25 +39,31 @@ type Triple = [number, number, number];
 const CHANNELS = ['red', 'green', 'blue', 'hue', 'saturation', 'lightness', 'whiteness', 'blackness'] as const;
 type Channel = typeof CHANNELS[number];
 
-/** A channel's slot in its space's triple, its bound, and which ends `adjust` clamps. */
+/** A channel's slot in its space's form, the keyword it reads there, its range, and whether `adjust` clamps it. */
 interface ChannelInfo {
   readonly space: Space | 'polar';
-  readonly index: 0 | 1 | 2;
+  readonly slot: 0 | 1 | 2;
+  readonly keyword: string;
   readonly max: number;
-  readonly lower: boolean;
-  readonly upper: boolean;
+  readonly clamped: boolean;
 }
 
-const rgbChannel = (index: 0 | 1 | 2): ChannelInfo => ({ space: 'rgb', index, max: 255, lower: true, upper: true });
 const INFO: Record<Channel, ChannelInfo> = {
-  red: rgbChannel(0),
-  green: rgbChannel(1),
-  blue: rgbChannel(2),
-  hue: { space: 'polar', index: 0, max: 360, lower: false, upper: false },
-  saturation: { space: 'hsl', index: 1, max: 1, lower: true, upper: false },
-  lightness: { space: 'hsl', index: 2, max: 1, lower: false, upper: false },
-  whiteness: { space: 'hwb', index: 1, max: 1, lower: false, upper: false },
-  blackness: { space: 'hwb', index: 2, max: 1, lower: false, upper: false }
+  red: { space: 'rgb', slot: 0, keyword: 'r', max: 255, clamped: true },
+  green: { space: 'rgb', slot: 1, keyword: 'g', max: 255, clamped: true },
+  blue: { space: 'rgb', slot: 2, keyword: 'b', max: 255, clamped: true },
+  hue: { space: 'polar', slot: 0, keyword: 'h', max: 360, clamped: false },
+  saturation: { space: 'hsl', slot: 1, keyword: 's', max: 100, clamped: true },
+  lightness: { space: 'hsl', slot: 2, keyword: 'l', max: 100, clamped: true },
+  whiteness: { space: 'hwb', slot: 1, keyword: 'w', max: 100, clamped: false },
+  blackness: { space: 'hwb', slot: 2, keyword: 'b', max: 100, clamped: false }
+};
+
+/** Each space's form, with and without an alpha of its own, and the channels it reads. */
+const SPACES: Record<Space, { readonly form: FormCall[0]; readonly alpha: FormCall[0]; readonly keywords: readonly [string, string, string] }> = {
+  rgb: { form: forms.rgbSlots, alpha: forms.rgbSlotsAlpha, keywords: ['r', 'g', 'b'] },
+  hsl: { form: forms.hslSlots, alpha: forms.hslSlotsAlpha, keywords: ['h', 's', 'l'] },
+  hwb: { form: forms.hwbSlots, alpha: forms.hwbSlotsAlpha, keywords: ['h', 'w', 'b'] }
 };
 
 /** The CSS colour spaces Dart Sass knows that jess's colour model does not have yet. */
@@ -65,9 +72,12 @@ const UNSUPPORTED_SPACES = new Set([
   'rec2020', 'xyz', 'xyz-d50', 'xyz-d65', 'lab', 'lch', 'oklab', 'oklch'
 ]);
 
+/** A colour in one of those spaces: `$lightness` there is its own channel, and hsl's here. */
+const MODERN_COLORS = new Set(['lab', 'lch', 'oklab', 'oklch', 'color']);
+
 /** The parameters, in declared order. `excess` catches a second positional argument. */
 const PARAMS = [
-  { name: 'color', type: 'Color' },
+  COLOR,
   { name: 'excess', type: 'any', optional: true },
   { name: 'red', type: 'any', optional: true },
   { name: 'green', type: 'any', optional: true },
@@ -84,9 +94,9 @@ const PARAMS = [
 const describe = (v: ValueGroup): string =>
   isValueGroupArray(v) ? v.map(describe).join(' ') : v.type === 'Null' ? 'null' : v.bytes;
 
-/** The argument as a number, or Dart Sass's type error. `none` is a gap: there are no missing channels. */
-function numberArg(op: Op, name: string, v: ValueGroup): Dimension {
-  if (!isValueGroupArray(v) && v.type === 'Dimension') {
+/** The argument as a number, one only the browser knows or not, or Dart Sass's type error. `none` is a gap: there are no missing channels. */
+function numberArg(op: Op, name: string, v: ValueGroup): Dimension | FunctionCall {
+  if (!isValueGroupArray(v) && (v.type === 'Dimension' || (v.type === 'FunctionCall' && isUnknownNumber(v)))) {
     return v;
   }
   if (op === 'change' && !isValueGroupArray(v) && v.type === 'Keyword' && v.bytes === 'none') {
@@ -124,46 +134,6 @@ function sniffSpace(given: readonly Channel[]): Space | null {
   return given.length > 0 ? 'hsl' : null;
 }
 
-/** The colour's channels in `space`: rgb 0-255, hsl/hwb as [degrees, 0-1, 0-1]. */
-function channelsIn(color: Color, space: Space): Triple {
-  if (space === 'hsl') {
-    return colorHsl(color);
-  }
-  const rgb = colorRawRgb(color);
-  if (space === 'rgb') {
-    return rgb;
-  }
-  return [colorHsl(color)[0], Math.min(...rgb) / 255, 1 - Math.max(...rgb) / 255];
-}
-
-/** hwb → rgb 0-255. A whiteness and blackness summing past 100% are scaled down to a grey. */
-function hwbToRgb([h, w0, b0]: Triple): Triple {
-  const sum = w0 + b0;
-  const w = sum > 1 ? w0 / sum : w0;
-  const factor = 1 - w - (sum > 1 ? b0 / sum : b0);
-  const pure = hslToRgb(wrapHue(h), 1, 0.5);
-  return [pure[0] * factor + w * 255, pure[1] * factor + w * 255, pure[2] * factor + w * 255];
-}
-
-/** An `adjust` result clamped as Dart Sass clamps it: never past a clamped bound the old value was within. */
-function clampAdjusted(old: number, result: number, info: ChannelInfo): number {
-  if (info.lower && result < 0) {
-    return old < 0 ? Math.max(old, result) : 0;
-  }
-  if (info.upper && result > info.max) {
-    return old > info.max ? Math.min(old, result) : info.max;
-  }
-  return result;
-}
-
-/** `scale`: move `old` the fraction `factor` of the way to `max` (or to 0 when negative). */
-function scaled(old: number, factor: number, max: number): number {
-  if (factor > 0) {
-    return old >= max ? old : old + (max - old) * factor;
-  }
-  return factor < 0 && old > 0 ? old + old * factor : old;
-}
-
 /** A `scale` argument: a `%` within -100% and 100%, as a fraction. */
 function scaleFactor(name: string, d: Dimension): number {
   if (d.unit !== '%') {
@@ -189,95 +159,135 @@ function channelAmount(name: Channel, d: Dimension): number {
     }
     return percentOf(d, 255);
   }
-  return info.space === 'polar' ? degreesOf(d) : d.number / 100;
+  return info.space === 'polar' ? degreesOf(d) : d.number;
 }
 
-/** The new alpha. `adjust` adds the bare number (Dart Sass ignores its unit); `change` reads `%` as a fraction and checks the range. */
-function updateAlpha(op: Op, old: number, d: Dimension): number {
-  if (op === 'scale') {
-    return scaled(old, scaleFactor('alpha', d), 1);
-  }
-  if (op === 'adjust') {
-    return clamp01(old + d.number);
-  }
-  const percent = d.unit === '%';
-  const value = percent ? d.number / 100 : d.number;
-  if (value < 0 || value > 1) {
-    throw new RangeError(`$alpha: Expected ${d.bytes} to be within 0${percent ? '%' : ''} and ${percent ? '100%' : '1'}.`);
-  }
-  return value;
+/** A `scale` of `factor` in a channel: which way it moves picks the formula. */
+function scaledSlot(keyword: string, factor: number, max: number): FormSlot {
+  return factor > 0
+    ? channelForm(forms.channelUp, keyword, makeDimension(max), makeDimension(factor))
+    : factor < 0 ? channelForm(forms.channelDown, keyword, makeDimension(factor)) : keyword;
 }
 
-/** Update one channel of `triple` in place. */
-function updateChannel(op: Op, triple: Triple, name: Channel, d: Dimension): void {
-  const info = INFO[name];
-  const old = triple[info.index];
+/** A number only the browser knows in a channel: on a 0–100 channel it is taken to hold a percentage (Q2). */
+function unknownSlot(op: Op, name: Channel, amount: FunctionCall): FormSlot {
+  const { space, keyword, clamped, max } = INFO[name];
   if (op === 'scale') {
-    if (info.space === 'polar') {
+    throw new TypeError(`$${name}: ${amount.bytes} is not known, and its sign picks how a channel scales.`);
+  }
+  const unit = knownUnit(amount);
+  if (space === 'rgb' && unit === '%') {
+    throw new TypeError(`$${name}: ${amount.bytes} has no form as a percentage of an rgb channel.`);
+  }
+  const deferred = space !== 'rgb' && space !== 'polar' && (unit === undefined || unit === '%');
+  const n = deferred ? amount : asNumber(amount, unit);
+  if (op === 'change') {
+    return deferred ? channelForm(forms.channelSetDeferred, n) : n;
+  }
+  if (clamped) {
+    return channelForm(deferred ? forms.channelClampedDeferred : forms.channelClamped, keyword, n, makeDimension(max));
+  }
+  return channelForm(deferred ? forms.channelMovedDeferred : forms.channelMoved, keyword, n);
+}
+
+/** What a channel's slot holds. */
+function channelSlot(op: Op, name: Channel, amount: Dimension | FunctionCall): FormSlot {
+  if (amount.type !== 'Dimension') {
+    return unknownSlot(op, name, amount);
+  }
+  const { space, keyword, clamped, max } = INFO[name];
+  if (op === 'scale') {
+    if (space === 'polar') {
       throw new TypeError(`$${name}: Channel isn't scalable.`);
     }
-    triple[info.index] = scaled(old, scaleFactor(name, d), info.max);
-    return;
+    return scaledSlot(keyword, scaleFactor(name, amount), max);
   }
-  const amount = channelAmount(name, d);
-  triple[info.index] = op === 'change' ? amount : clampAdjusted(old, old + amount, info);
+  const n = makeDimension(channelAmount(name, amount));
+  if (op === 'change') {
+    return n;
+  }
+  return clamped ? channelForm(forms.channelClamped, keyword, n, makeDimension(max)) : channelForm(forms.channelMoved, keyword, n);
+}
+
+/** What the alpha's slot holds. `adjust` adds the bare number (Dart Sass ignores its unit); `change` reads `%` as a fraction and checks the range. */
+function alphaSlot(op: Op, amount: Dimension | FunctionCall): FormSlot {
+  if (amount.type !== 'Dimension') {
+    if (op === 'scale') {
+      throw new TypeError(`$alpha: ${amount.bytes} is not known, and its sign picks how a channel scales.`);
+    }
+    return op === 'adjust' ? channelForm(forms.channelMoved, 'alpha', amount) : amount;
+  }
+  if (op === 'scale') {
+    return scaledSlot('alpha', scaleFactor('alpha', amount), 1);
+  }
+  if (op === 'adjust') {
+    return channelForm(forms.channelMoved, 'alpha', makeDimension(amount.number));
+  }
+  const percent = amount.unit === '%';
+  const value = percent ? amount.number / 100 : amount.number;
+  if (value < 0 || value > 1) {
+    throw new RangeError(`$alpha: Expected ${amount.bytes} to be within 0${percent ? '%' : ''} and ${percent ? '100%' : '1'}.`);
+  }
+  return makeDimension(value);
 }
 
 /**
- * Whether the hue of `triple` is powerless in `space` — grey in hsl, whiteness
- * and blackness filling it in hwb. Dart Sass reads that hue as missing when
- * `$space` asks for the space, and refuses to adjust it.
+ * Whether the hue of a known colour is powerless in `space` — grey in hsl,
+ * whiteness and blackness filling it in hwb. Dart Sass reads that hue as missing
+ * when `$space` asks for the space, and refuses to adjust it.
  */
-function huePowerless(space: Space, [, a, b]: Triple): boolean {
-  return space === 'hsl' ? Math.abs(a) < 1e-11 : space === 'hwb' && a + b >= 1 - 1e-11;
-}
-
-/** Build the result in the colour's own space: hsl stays hsl; rgb is hex when opaque, else `rgba()`. */
-function result(color: Color, space: Space | null, triple: Triple | null, alpha: number): Color {
-  const format = color.format === HSL ? HSL : alpha < 1 ? RGB : HEX;
-  if (triple === null) {
-    return format === HSL ? makeColorHsl(colorHsl(color), alpha, HSL) : makeColorRgb(colorRawRgb(color), alpha, format);
-  }
+function huePowerless(space: Space, color: Color): boolean {
   if (space === 'hsl') {
-    return makeColorHsl([wrapHue(triple[0]), triple[1], triple[2]], alpha, format);
+    return Math.abs(colorHsl(color)[1]) < 1e-11;
   }
-  return makeColorRgb(space === 'hwb' ? hwbToRgb(triple) : triple, alpha, format);
+  const rgb = colorRawRgb(color);
+  return space === 'hwb' && Math.min(...rgb) >= Math.max(...rgb) - 1e-9;
 }
 
-function update(op: Op, args: readonly (ValueGroup | undefined)[]): Color {
+function update(op: Op, args: readonly (ValueGroup | undefined)[]): FormCall | Color {
   if (args[1] !== undefined) {
     throw new TypeError('Only one positional argument is allowed. All other arguments must be passed by name.');
   }
-  const color = requireColor(requireValue(args[0]));
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the first parameter is required.
+  const color = args[0] as Color | FunctionCall;
+  if (color.type === 'FunctionCall' && MODERN_COLORS.has(color.name.toLowerCase())) {
+    throw new TypeError(`$color: The ${color.name} color space is not supported yet.`);
+  }
   const given = CHANNELS.filter((_, i) => args[i + 2] !== undefined);
   const alphaArg = args[CHANNELS.length + 2];
   const spaceValue = args[CHANNELS.length + 3];
   const space = spaceValue === undefined ? sniffSpace(given) : spaceArg(spaceValue);
-  if (space === null) {
-    return alphaArg === undefined ? color : result(color, null, null, updateAlpha(op, color.alpha, numberArg(op, 'alpha', alphaArg)));
+  if (given.length === 0 && alphaArg === undefined && color.type === 'Color') {
+    return color;
   }
-  const triple = channelsIn(color, space);
+  const working = space ?? 'rgb';
+  const { form, alpha, keywords } = SPACES[working];
+  const slots: [FormSlot, FormSlot, FormSlot] = [keywords[0], keywords[1], keywords[2]];
   for (const name of given) {
     const owner = INFO[name].space;
-    if (owner !== space && !(owner === 'polar' && space !== 'rgb')) {
-      throw new TypeError(`$${name}: Color space ${space} doesn't have a channel with this name.`);
+    if (owner !== working && !(owner === 'polar' && working !== 'rgb')) {
+      throw new TypeError(`$${name}: Color space ${working} doesn't have a channel with this name.`);
     }
   }
   for (const name of given) {
-    const d = numberArg(op, name, args[CHANNELS.indexOf(name) + 2]!);
-    if (name === 'hue' && op === 'adjust' && spaceValue !== undefined && huePowerless(space, triple)) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- `given` holds the channels passed.
+    const amount = numberArg(op, name, args[CHANNELS.indexOf(name) + 2] as ValueGroup);
+    if (name === 'hue' && op === 'adjust' && spaceValue !== undefined && color.type === 'Color' && huePowerless(working, color)) {
       throw new TypeError(`$hue: Because the CSS working group is still deciding on the best behavior, Sass doesn't currently support modifying missing channels (color: ${color.bytes}).`);
     }
-    updateChannel(op, triple, name, d);
+    slots[INFO[name].slot] = channelSlot(op, name, amount);
   }
-  const alpha = alphaArg === undefined ? color.alpha : updateAlpha(op, color.alpha, numberArg(op, 'alpha', alphaArg));
-  return result(color, space, triple, alpha);
+  if (alphaArg === undefined) {
+    return [form, color, ...slots];
+  }
+  const a = alphaSlot(op, numberArg(op, 'alpha', alphaArg));
+  return a === 'alpha' ? [form, color, ...slots] : [alpha, color, ...slots, a];
 }
 
 /** A colour-update function under `name` (a `sass:color` member or its global spelling). */
-export function defineColorUpdate(name: string, op: Op): DefinedFunction<typeof PARAMS> {
-  return defineFunction(name, {
+export function defineColorUpdate(name: string, op: Op): Fn {
+  return defineForm(name, {
     params: PARAMS,
-    body: (...args) => update(op, args)
+    form: (...args: readonly (ValueGroup | undefined)[]) => update(op, args)
   });
 }

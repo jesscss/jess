@@ -41,3 +41,16 @@ $invert: @($color) > { result: rgb(from $color calc(255 - r) calc(255 - g) calc(
 $invert-weighted: @($color, $weight) > { result: color-mix(in srgb, rgb(from $color calc(255 - r) calc(255 - g) calc(255 - b)) $weight, $color); }
 $contrast: @($color) > { result: contrast-color($color); }
 $contrast-between: @($color, $r, $red, $g, $green, $b, $blue, $a, $alpha) > { result: rgb(from contrast-color($color) calc($r + $red * r / 255) calc($g + $green * r / 255) calc($b + $blue * r / 255) / calc($a + $alpha * r / 255)); }
+$rgb-slots: @($color, $r, $g, $b) > { result: rgb(from $color $r $g $b); }
+$rgb-slots-alpha: @($color, $r, $g, $b, $a) > { result: rgb(from $color $r $g $b / $a); }
+$hsl-slots: @($color, $h, $s, $l) > { result: hsl(from $color $h $s $l); }
+$hsl-slots-alpha: @($color, $h, $s, $l, $a) > { result: hsl(from $color $h $s $l / $a); }
+$hwb-slots: @($color, $h, $w, $b) > { result: hwb(from $color $h $w $b); }
+$hwb-slots-alpha: @($color, $h, $w, $b, $a) > { result: hwb(from $color $h $w $b / $a); }
+$channel-clamped: @($ch, $n, $max) > { result: clamp(0, $ch + $n, $max); }
+$channel-clamped-deferred: @($ch, $n, $max) > { result: clamp(0, $ch + $n / 1%, $max); }
+$channel-moved: @($ch, $n) > { result: calc($ch + $n); }
+$channel-moved-deferred: @($ch, $n) > { result: calc($ch + $n / 1%); }
+$channel-set-deferred: @($n) > { result: calc($n / 1%); }
+$channel-up: @($ch, $max, $f) > { result: calc($ch + ($max - $ch) * $f); }
+$channel-down: @($ch, $f) > { result: calc($ch + $ch * $f); }

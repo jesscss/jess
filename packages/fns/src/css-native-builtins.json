@@ -536,9 +536,9 @@
       "dialect": "scss",
       "name": "color.adjust",
       "class": "exact",
-      "css": "rgb(from C calc(r + R) ...) / hsl(from C ...)",
+      "css": "rgb(from C clamp(0, r + R, 255) g b), hsl(from C calc(h + H) clamp(0, s + S, 100) clamp(0, l + L, 100)), hwb(from C h calc(w + W) calc(b + B))",
       "spec": "css-color-5 §4.3, §4.4",
-      "notes": "legacy rgb/hsl channels; one relative colour per channel family"
+      "notes": "built: slice 8, stage 4. One relative colour for the call: a named channel fills its slot, the others print their keywords. A known input computes through this form; an amount only the browser knows takes it too, as a percentage on a 0-100 channel"
     },
     {
       "dialect": "scss",
@@ -546,14 +546,15 @@
       "class": "exact-if",
       "css": "hsl(from C h s calc(l + (100 - l) * F))",
       "spec": "css-color-5 §4.4",
-      "notes": "F known: its sign picks the formula (positive: calc(l + (100 - l) * F), negative: calc(l + l * F))"
+      "notes": "built: slice 8, stage 4. One relative colour for the call. F known: its sign picks the formula (positive: calc(l + (100 - l) * F), negative: calc(l + l * F)). F only the browser knows has no form, and fails"
     },
     {
       "dialect": "scss",
       "name": "color.change",
       "class": "exact",
       "css": "hsl(from C h s L)",
-      "spec": "css-color-5 §4.4"
+      "spec": "css-color-5 §4.4",
+      "notes": "built: slice 8, stage 4. One relative colour for the call. A channel outside its range stays printed on a known colour, which the browser gamut-maps"
     },
     {
       "dialect": "scss",
