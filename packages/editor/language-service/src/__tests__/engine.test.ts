@@ -842,7 +842,7 @@ describe('JessLanguageServiceEngine', () => {
       expect((diag?.range.end.character ?? -1)).toBeGreaterThanOrEqual(lastChar.character);
     });
 
-    it('uses the full saved span for unsupported SCSS @at-root filter diagnostics', () => {
+    it('uses the full saved span for the SCSS @at-root diagnostic', () => {
       const engine = createEngine();
       const input = `@at-root (without: media) {
   .a { color: red; }
@@ -852,11 +852,7 @@ describe('JessLanguageServiceEngine', () => {
 
       const diagnostics = engine.getDiagnostics(doc.uri);
 
-      // Same as @forward: the filter form parses, but is never evaluated.
-      const diag = diagnostics.find(d =>
-        d.code === 'unsupported/sass-form'
-        && d.message.includes('@at-root prelude/filter forms are not yet supported in Jess')
-      );
+      const diag = diagnostics.find(d => d.code === 'parse/at-root-placement');
 
       expect(diag).toBeDefined();
       expect(diag?.range.start.line).toBe(0);

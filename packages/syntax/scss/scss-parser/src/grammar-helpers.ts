@@ -16,8 +16,8 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout, lookupStep, guardCompare, guardLogical, guardNot, guardValue, withWrite, withParens } from '@jesscss/core/ast';
-import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, keyword, interpolation, appendInterpolationLiteral, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, withSourceSpan, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, inParens, isGuardNodeOf, isInterpolation, isMathOperator, isQuoted, isStaticQuoted, isToken, isValueSlotArray, isValueSlotOf, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout, lookupStep, guardLogical, guardNot, guardValue, withWrite, withParens } from '@jesscss/core/ast';
+import type { Any, AstSourceSpan, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
@@ -137,21 +137,6 @@ export function scssRelativeCombinator(value: unknown): '>' | '+' | '~' {
 
 export function isScssImportTarget(value: unknown): value is Quoted | Url | Interpolation {
   return isQuoted(value) || isUrl(value) || isInterpolation(value);
-}
-
-/**
- * An `:nth-*()` pseudo from its glued opener (`:nth-child(`) and reduced
- * argument: structured when the argument is an `An+B`, the opaque raw text it
- * always was otherwise.
- */
-export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
-  if (isNthArgument(arg)) {
-    return pseudoSelector(opener.slice(0, -1), arg.of, null, null, arg.nth);
-  }
-  if (typeof arg !== 'string') {
-    throw new TypeError('SCSS nth pseudo lost its argument.');
-  }
-  return simpleSelector(`${opener}${arg.trim()})`);
 }
 
 /**
@@ -504,8 +489,9 @@ export const COMPARISON_OPERATORS = new Set(['==', '!=', '>=', '<=', '>', '<']);
  * run, written as authored (ledger N18).
  */
 export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
-  if (children.length === 1) {
-    return callArg(requireValueSlot(children[0]));
+  if (children.length === 1 && !isArgumentDelim(children[0])) {
+    /* `!important` is an unquoted string where an argument stands: `if($e, !important, null)`. */
+    return callArg(children[0] === true ? any('!important') : requireValueSlot(children[0]));
   }
 
   /*
@@ -514,10 +500,18 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * the run.
    */
   const last = children.findLast(child => !isArgumentGap(child));
-  if (isComparisonToken(children[0]) || isComparisonToken(last)) {
-    return callArg(argumentRun(children));
+
+  /* A padded sign before a number is that number's sign (`abs(+ 1)`, `calc(+ 1px + 2px)`). */
+  if (isToken(children[0]) && children[0].value === '+' && isScssValue(last) && (last.type === 'Dimension' || last.type === 'Operation')) {
+    return callArg(last);
+  }
+  if (isArgumentDelim(children[0]) || isComparisonToken(last)) {
+    return callArg(argumentRun(isToken(last) && last.value === '>' && !isArgumentDelim(children[0]) ? [dataTypeRun(requireValueSlot(children[0])), ...children.slice(1)] : children));
   }
   const left = requireValueSlot(children[0]);
+  if (isSpreadMark(last)) {
+    return withSourceSpan(callArg(left, undefined, true), last.spreadAt);
+  }
 
   /*
    * `$name: value` is a KEYWORD argument (§4.5.2) — the same construct
@@ -543,24 +537,35 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
     }
     return value === undefined ? callArg(argumentRun(children)) : callArg(value, left.name, false, '$');
   }
-  const at = children.findIndex(child => isToken(child) && !isScssValue(child) && COMPARISON_OPERATORS.has(child.value));
-  const operator = requireToken(children[at]).value;
-  const right = requireValueSlot(children[children.length - 1]);
-  if (holdsDelim(left) || holdsDelim(right)) {
-    return callArg(argumentRun(children));
-  }
 
   /*
-   * `==` / `!=` lower to the named primitive `sass-equal`, NOT to an
-   * operator (§5.1) — the SAME lowering `IfComparison` performs, because a
-   * comparison must not mean one thing in a guard and another in an
-   * argument. `!=` is that comparison under `not`.
+   * A comparison the value rung did not read (its right side is no operand, as
+   * in `a == ~b`) is the CSS run it is.
    */
-  const comparison = guardCompare('cmp', operator === '==' || operator === '!=' ? 'sass-equal' : operator, requireValue(left), requireValue(right), false);
-  return callArg(expression(condition(
-    operator === '!=' ? guardNot(comparison, 'not', NO_SPAN, 0) : comparison,
-    `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
-  )));
+  return callArg(argumentRun(children));
+}
+
+/** A delim that opens an argument: a comparison with nothing before it, or the opener of a selector the argument cannot be (`li:is(.a)`). */
+function isArgumentDelim(child: unknown): boolean {
+  return isToken(child) && !isScssValue(child);
+}
+
+/*
+ * `<` and a `>` with nothing after it are a CSS data type, not a comparison and a
+ * delim: `attr(x <length>)` (css-values-5 §7.7) has read as `x < length`, then `>`.
+ * It is the run css builds.
+ */
+function dataTypeRun(value: ValueSlot): ValueSlot {
+  const parts = isValueSlotArray(value) ? value : [value];
+  const last = parts.at(-1);
+  const test = last !== undefined && !isValueSlotArray(last) && last.type === 'Expression' && !isValueSlotArray(last.value) && last.value.type === 'Condition' ? last.value.guard : undefined;
+  if (test?.g !== 'cmp' || test.op !== 'sass<') {
+    return value;
+  }
+  return withValueLayout(
+    [...parts.slice(0, -1), test.left, any('<'), test.right],
+    [...(valueLayoutOf(value) ?? parts.slice(1).map(() => ' ')), ' ', '']
+  );
 }
 
 function isComparisonToken(child: unknown): boolean {
@@ -571,9 +576,27 @@ function isComparisonToken(child: unknown): boolean {
  * A call argument read as the css run of its components: each operator a
  * delim, each operand spliced in, with the padding written before it.
  */
-/** The padding a call argument's tokens carry between its parts: a token that is no value, comparison or `:`. */
-function isArgumentGap(child: unknown): boolean {
-  return isToken(child) && !isScssValue(child) && !COMPARISON_OPERATORS.has(child.value) && child.value !== ':';
+/** One term from what is glued together: a hole makes it an interpolation (`scr#{$s}`). */
+export function gluedTerm(children: readonly unknown[]): Interpolation {
+  return interpolation(children.flatMap(child => isInterpolation(child) ? child.parts : [{ lit: isScssValue(child) ? scssConditionSource(child) : scssSourceText(child) }]));
+}
+
+/** The padding a call argument holds between its parts, by its node, so no delim reads as one. */
+export interface ScssArgumentGap {
+  readonly gap: string;
+}
+
+/** A spread argument's `...`, by its node. */
+export interface ScssSpreadMark {
+  readonly spreadAt: AstSourceSpan;
+}
+
+function isSpreadMark(child: unknown): child is ScssSpreadMark {
+  return typeof child === 'object' && child !== null && 'spreadAt' in child;
+}
+
+function isArgumentGap(child: unknown): child is ScssArgumentGap {
+  return typeof child === 'object' && child !== null && 'gap' in child;
 }
 
 function argumentRun(children: readonly unknown[]): ValueSlot {
@@ -582,7 +605,7 @@ function argumentRun(children: readonly unknown[]): ValueSlot {
   let gap = '';
   for (const child of children) {
     if (isArgumentGap(child)) {
-      gap = requireToken(child).value;
+      gap = child.gap;
       continue;
     }
     if (isToken(child) && !isScssValue(child)) {
@@ -635,7 +658,7 @@ export function leaveIfTest(state: unknown): unknown {
  * an attempt the parser abandons (`div:hover & { … }` is tried as a
  * declaration first), so without a sink the report is dropped, never thrown.
  */
-function reportRecovered(error: ScssRecoveredError, state: unknown): void {
+export function reportRecovered(error: ScssRecoveredError, state: unknown): void {
   const sink: unknown = typeof state === 'object' && state !== null && 'diagnostics' in state ? state.diagnostics : null;
   if (Array.isArray(sink)) {
     sink.push(error);
@@ -650,11 +673,6 @@ export function leadingSeparatorValue(children: readonly unknown[], span: { read
   const operator = any(requireToken(children[0]).value);
   reportRecovered(new LeadingSeparatorValueError(span.start, span.end, operator.src, operator), state);
   return [operator, customValueFromChildren(children.slice(1))];
-}
-
-/** A space list holding a delim component — the `Any` a `PunctuationValue` builds. */
-function holdsDelim(value: ValueSlot): boolean {
-  return isValueSlotArray(value) && value.some(item => !isValueSlotArray(item) && item.type === 'Any');
 }
 
 /**
@@ -1057,6 +1075,9 @@ export function scssConditionSource(value: ValueSlot): string {
     case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${scssConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     case 'Sequence': return node.parts.map(scssConditionSource).join(' ');
     case 'List': return node.value.map(scssConditionSource).join(node.sep === ',' ? ', ' : ' / ');
+    case 'Collection': return `(${node.entries.map(entry => 'key' in entry ? `${scssConditionSource(entry.key)}: ${scssConditionSource(entry.value)}` : '').join(', ')})`;
+    case 'Interpolation': return node.parts.map(part => 'lit' in part ? part.lit : `#{${scssConditionSource(part.ref)}}`).join('');
+    case 'Url': return `url(${scssConditionSource(node.value)})`;
     default: throw new TypeError(`SCSS condition cannot preserve ${node.type}.`);
   }
 }
@@ -1066,54 +1087,17 @@ export interface ConditionWord {
   readonly conditionWord: string;
 }
 
+/** A comparison's operator, and where the error at a comparison that cannot order points. */
+export interface ComparisonWord extends ConditionWord {
+  readonly at: AstSourceSpan;
+}
+
 export function conditionWord(children: readonly unknown[]): ConditionWord {
   return { conditionWord: requireToken(children[0]).value.trim() };
 }
 
-function isConditionWord(child: unknown): child is ConditionWord {
+export function isConditionWord(child: unknown): child is ConditionWord {
   return typeof child === 'object' && child !== null && 'conditionWord' in child;
-}
-
-/**
- * Fold one logical rung left-associatively onto `Operation` nodes carrying the
- * word itself as the operator. The operator token is kept out of the fold by
- * shape (only values participate), so the rung reduces the same way whether it
- * spelled `and` or `or`.
- *
- * In a CSS `if()` condition the keyword arrives as authored ({@link
- * ConditionWord}); one not in lower case (`AND`) folds to the condition
- * written as authored ({@link Condition}, its `word` kept, ledger J20), which
- * {@link ifCondition} reads as the condition's own `and` / `or` (ledger P38:
- * "in CSS it comes out as written"). Its truth is Sass's `and` / `or`'s, so a
- * Sass `if()` that consumes it decides as before.
- */
-export function foldLogicalOperation(children: readonly unknown[]): ValueNode {
-  const values = children.filter(isScssValue);
-  const words: string[] = [];
-  for (const child of children) {
-    if (isConditionWord(child)) {
-      words.push(child.conditionWord);
-    } else if (isToken(child)) {
-      const word = child.value.trim().toLowerCase();
-      if (word === 'and' || word === 'or') {
-        words.push(word);
-      }
-    }
-  }
-  let result = requireValue(values[0]);
-  for (let index = 1; index < values.length; index += 1) {
-    const word = words[index - 1]!;
-    const right = values[index]!;
-    if (word === 'and' || word === 'or') {
-      result = operation(word, result, right, false, cssBaseMathOutsideParens(word));
-    } else {
-      const guard: GuardNode = guardLogical(word.toLowerCase() === 'and' ? 'and' : 'or', scssTruth(result), scssTruth(right), word, NO_SPAN);
-
-      /* Written from its guard (`word`, ledger J20), so no source text is kept: an operand may be one `scssConditionSource` cannot spell (`#{$a}`). */
-      result = condition(guard, '');
-    }
-  }
-  return result;
 }
 
 export function scssOptionalValue(value: unknown): ValueNode | null {
@@ -1153,43 +1137,6 @@ export function isScssValuePair(value: unknown): value is ScssValuePair {
     && typeof value.separator === 'string'
     && 'value' in value
     && isScssValueSlotValue(value.value);
-}
-
-/**
- * `ValueTerm`'s reduction. A slash groups only its DIRECT neighbours
- * (DESIGN-DECISIONS P33 as amended 2026-09-24, P35): comma, then whitespace,
- * then slash. A slash tail joins the item before it — `12px/1.5 Arial` is
- * `[12px / 1.5, Arial]` — and a space tail starts a new item.
- */
-export function scssSlashGroupedTerm(children: readonly unknown[]): ValueSlot {
-  const items: ValueNode[] = [requireValue(children[0])];
-  const grouped: boolean[] = [false];
-  const separators: string[] = [];
-  for (const child of children.slice(1)) {
-    if (!isScssValueTail(child)) {
-      throw new TypeError('SCSS value term produced an invalid list boundary.');
-    }
-    const last = items.length - 1;
-    const previous = items[last]!;
-    if (child.kind === 'slash') {
-      items[last] = grouped[last] === true && previous.type === 'List'
-        ? list([...previous.value, child.value], '/')
-        : list([previous, child.value], '/');
-      grouped[last] = true;
-    } else {
-      items.push(child.value);
-      grouped.push(false);
-      separators.push(child.separator);
-      if (child.glued !== null) {
-        items.push(child.glued);
-        grouped.push(false);
-        separators.push('');
-      }
-    }
-  }
-  return items.length === 1
-    ? items[0]!
-    : withValueLayout(items, separators);
 }
 
 export function isScssValueTail(value: unknown): value is ScssValueTail {

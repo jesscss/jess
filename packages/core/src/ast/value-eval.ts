@@ -879,6 +879,54 @@ export const writtenArgument = (keyword: ArgumentKeyword, bytes: string, compres
     ? bytes
     : `${keyword.sigil ?? ''}${keyword.name}${compress === true ? ':' : ': '}${bytes}`;
 
+/** The keyword of an item a `$list...` stands for: none, and no layout of its own. */
+const SPREAD_ITEM: ArgumentKeyword = { name: undefined, sigil: undefined, value: {} };
+
+/** The opening word of a relative colour (`hsl(from red h s l)`), as a value. */
+const opensRelativeColor = (value: ValueGroup): boolean =>
+  !isValueGroupArray(value) && value.type === 'Keyword' && value.text.toLowerCase() === 'from';
+
+/**
+ * A call's arguments with each `$list...` as its items, and at the same index the
+ * keyword each is written with, so a keyword stays on its own value. `builtin` is
+ * the called built-in's name. A map's keys would name arguments, and a relative
+ * colour is one argument, so neither has items to pass: they are errors, not a
+ * call that reads its map as a value (ledger P55). A built-in left with no
+ * arguments reads as `foo($e...)` does.
+ */
+export function spreadArguments(
+  args: ReadonlyArray<ArgumentKeyword & { readonly spread?: boolean | undefined }>,
+  evaluated: readonly ValueGroup[],
+  builtin: string | undefined,
+  color: boolean
+): { readonly vals: ValueGroup[]; readonly keywords: readonly ArgumentKeyword[] } {
+  const vals: ValueGroup[] = [];
+  const keywords: ArgumentKeyword[] = [];
+  for (let index = 0; index < evaluated.length; index++) {
+    const value = evaluated[index]!;
+    if (args[index]?.spread !== true) {
+      vals.push(value);
+      keywords.push(args[index] ?? SPREAD_ITEM);
+      continue;
+    }
+    const items = isValueGroupArray(value) ? value : value.type === 'List' ? value.value : [value];
+    if (!isValueGroupArray(value) && value.type === 'Collection') {
+      throw new Error('A map passed with `...` names its arguments, which is not implemented for a function call.');
+    }
+    if (color && items[0] !== undefined && opensRelativeColor(items[0])) {
+      throw new Error('A colour function takes a relative colour as one argument, not as the items of a list passed with `...`.');
+    }
+    for (const item of items) {
+      vals.push(item);
+      keywords.push(SPREAD_ITEM);
+    }
+  }
+  if (builtin !== undefined && vals.length === 0) {
+    throw new EmptyListValueError(`An empty list passed with \`...\` leaves \`${builtin}()\` no arguments; an empty list has no CSS spelling.`);
+  }
+  return { vals, keywords };
+}
+
 export interface ValueEvaluator {
   /** Binary operation on two materialized operands (direct / delegated math). */
   operate(op: string, left: Value, right: Value, modes: EvalModes): Value;

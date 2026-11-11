@@ -130,8 +130,9 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(grammarTypes.get('Interpolation')).toBeGreaterThan(0);
     expect(grammarTypes.get('TypedNthPseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('SelectorOnlyPseudoArgument')).toBeGreaterThan(0);
-    expect(grammarTypes.get('IfBodyRule')).toBeGreaterThan(0);
-    expect(grammarTypes.get('IfBodyConditionalBlock')).toBe(1);
+    expect(grammarTypes.get('IfBody')).toBeGreaterThan(0);
+    expect(grammarTypes.get('NestedRuleset')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryAtRuleBlock')).toBe(1);
     expectNoModeLabels(result.tree);
   });
 

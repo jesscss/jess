@@ -5808,13 +5808,6 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (gt === 'AtRootFilter') {
-      push(
-        LINT_CODES.unsupportedSassForm, 'warning',
-        '@at-root prelude/filter forms are not yet supported in Jess. Write the hoisted rules directly instead.',
-        node.span
-      );
-    }
     if (gt === 'ForwardRule') {
       const prelude = forwardPreludeOf(node, source);
       if (prelude !== null) {
