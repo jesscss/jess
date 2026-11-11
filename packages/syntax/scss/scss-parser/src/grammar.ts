@@ -52,7 +52,7 @@ type ScssRules = {
   MapOrGroup: Combinator<ValueNode>;
   EmptyList: Combinator<Block>;
   ReturnRule: Combinator<AtRuleStatement>;
-  ReturnDirective: Combinator<[string, unknown]>;
+  SassBodyDirective: Combinator<[string, unknown]>;
   FunctionRule: Combinator<VariableDeclaration>;
   Square: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
@@ -3047,8 +3047,7 @@ const scssFactory = (g: ScssInputRules) => {
    * every name the typed arms own, so it can only win where nothing else could.
    */
   const nestedAtStatement = choice(
-    g.SassDirective,
-    g.ReturnDirective,
+    g.SassBodyDirective,
     g.NestedConditionalBlock,
     g.NestedStartingStyleBlock,
     g.NestedLayerBlock,
@@ -3252,7 +3251,6 @@ const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.Comment,
         g.VariableDeclaration,
-        g.ReturnDirective,
         g.SassControlDirective
       )),
       literal('}')
@@ -4284,62 +4282,54 @@ const scssFactory = (g: ScssInputRules) => {
     AtRootBlock
   );
 
-  /**
-   * `@return` routes on the at-keyword. `ReturnRule` opens with a field and ends
-   * in an optional `;`, which parseman reads as able to match nothing, so a bare
-   * arm can't be gated by its first set and would run at every `}` that closes a
-   * body.
-   */
-  const ReturnDirective = dispatch(
-    g.AtRuleKeyword,
-    caseInsensitive('@return', g.ReturnRule)
-  );
-
   /*
    * Sass directive contexts differ by the directives they allow, not by the
    * spelling or AST/CST shape of a directive. Each dispatcher consumes the
-   * shared at-keyword once and routes to the existing `routed()` tail. The
-   * full and nested contexts intentionally differ only by `@function`; a
-   * function body accepts control directives but not a nested function/mixin.
+   * shared at-keyword once and routes to the existing `routed()` tail, and each
+   * arm below is defined once and listed by every context that allows it. The
+   * root and nested contexts differ only by `@function`; a body that may return
+   * adds `@return`; a function body accepts control directives and `@return` but
+   * not a nested function or mixin.
+   *
+   * `@return` is an arm, never a choice arm of its own: `ReturnRule` opens with a
+   * field and ends in an optional `;`, which parseman reads as able to match
+   * nothing, so a bare arm can't be gated by its first set and would run at
+   * every `}` that closes a body. As a separate dispatch it would also read the
+   * at-keyword a second time after a sibling dispatch missed.
    */
+  const includeArm = caseInsensitive('@include', g.MixinCallRule);
+  const mixinArm = caseInsensitive('@mixin', g.MixinDefinitionRule);
+  const functionArm = caseInsensitive('@function', g.FunctionRule);
+  const ifArm = caseInsensitive('@if', g.IfRule);
+  const eachArm = caseInsensitive('@each', g.EachRule);
+  const forArm = caseInsensitive('@for', g.ForRule);
+  const contentArm = caseInsensitive('@content', g.ContentRule);
+  const whileArm = caseInsensitive('@while', g.WhileRule);
+  const debugArm = caseInsensitive('@debug', g.DiagnosticDirective);
+  const warnArm = caseInsensitive('@warn', g.DiagnosticDirective);
+  const errorArm = caseInsensitive('@error', g.DiagnosticDirective);
+  const atRootArm = caseInsensitive('@at-root', g.AtRootContinuation);
+  const returnArm = caseInsensitive('@return', g.ReturnRule);
   const SassDirective = dispatch(
     g.AtRuleKeyword,
-    caseInsensitive('@include', g.MixinCallRule),
-    caseInsensitive('@mixin', g.MixinDefinitionRule),
-    caseInsensitive('@function', g.FunctionRule),
-    caseInsensitive('@if', g.IfRule),
-    caseInsensitive('@each', g.EachRule),
-    caseInsensitive('@for', g.ForRule),
-    caseInsensitive('@content', g.ContentRule),
-    caseInsensitive('@while', g.WhileRule),
-    caseInsensitive('@debug', g.DiagnosticDirective),
-    caseInsensitive('@warn', g.DiagnosticDirective),
-    caseInsensitive('@error', g.DiagnosticDirective),
-    caseInsensitive('@at-root', g.AtRootContinuation)
+    includeArm, mixinArm, functionArm, ifArm, eachArm, forArm, contentArm, whileArm,
+    debugArm, warnArm, errorArm, atRootArm
+  );
+
+  /** The Sass directives a rule or block body reads: `SassDirective`'s, plus `@return`. */
+  const SassBodyDirective = dispatch(
+    g.AtRuleKeyword,
+    includeArm, mixinArm, functionArm, ifArm, eachArm, forArm, contentArm, whileArm,
+    debugArm, warnArm, errorArm, atRootArm, returnArm
   );
   const SassNestedDirective = dispatch(
     g.AtRuleKeyword,
-    caseInsensitive('@include', g.MixinCallRule),
-    caseInsensitive('@mixin', g.MixinDefinitionRule),
-    caseInsensitive('@if', g.IfRule),
-    caseInsensitive('@each', g.EachRule),
-    caseInsensitive('@for', g.ForRule),
-    caseInsensitive('@content', g.ContentRule),
-    caseInsensitive('@while', g.WhileRule),
-    caseInsensitive('@debug', g.DiagnosticDirective),
-    caseInsensitive('@warn', g.DiagnosticDirective),
-    caseInsensitive('@error', g.DiagnosticDirective),
-    caseInsensitive('@at-root', g.AtRootContinuation)
+    includeArm, mixinArm, ifArm, eachArm, forArm, contentArm, whileArm,
+    debugArm, warnArm, errorArm, atRootArm
   );
   const SassControlDirective = dispatch(
     g.AtRuleKeyword,
-    caseInsensitive('@if', g.IfRule),
-    caseInsensitive('@each', g.EachRule),
-    caseInsensitive('@for', g.ForRule),
-    caseInsensitive('@while', g.WhileRule),
-    caseInsensitive('@debug', g.DiagnosticDirective),
-    caseInsensitive('@warn', g.DiagnosticDirective),
-    caseInsensitive('@error', g.DiagnosticDirective)
+    ifArm, eachArm, forArm, whileArm, debugArm, warnArm, errorArm, returnArm
   );
 
   /*
@@ -5615,7 +5605,7 @@ const scssFactory = (g: ScssInputRules) => {
     MapOrGroup,
     EmptyList,
     ReturnRule,
-    ReturnDirective,
+    SassBodyDirective,
     FunctionRule,
     Square,
     ValueAtom,
