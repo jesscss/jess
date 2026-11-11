@@ -38,6 +38,9 @@ export interface ExportRuntime {
   /** The compile-time CSS of each export a derived value reads. */
   readonly defaults: Map<string, string>;
 
+  /** The unit of each export a CSS form reads, which is the only one the runtime takes for it ({@link recordUnits}). */
+  readonly units: Map<string, string>;
+
   /** Each generated custom property, by its name, with how the runtime computes it. */
   readonly derived: Map<string, ExportRecipe>;
 
@@ -57,6 +60,7 @@ export interface ExportRuntimeData {
   /** Each exposed name by its JavaScript key ({@link exportKey}), the one the clash check uses. */
   readonly keys: Readonly<Record<string, string>>;
   readonly defaults: Readonly<Record<string, string>>;
+  readonly units: Readonly<Record<string, string>>;
   readonly derived: Readonly<Record<string, ExportRecipe>>;
 }
 
@@ -66,7 +70,7 @@ export function runtimeData(x: ExportState<unknown>): { runtime?: ExportRuntimeD
   const runtime = x.runtime;
   return runtime === undefined
     ? {}
-    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), derived: Object.fromEntries(runtime.derived) } };
+    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), units: Object.fromEntries(runtime.units), derived: Object.fromEntries(runtime.derived) } };
 }
 
 /** A mixin argument as written, in the caller's frame. */
@@ -301,7 +305,7 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), derived: new Map(), named: new Map() };
+  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), derived: new Map(), named: new Map() };
 }
 
 /**
@@ -596,7 +600,7 @@ export function exportCall<F>(
           markArgument(argument);
           const result: ValueGroup = typeof computed === 'string' ? makeKeyword(computed) : computed;
           const recipe = callRecipe(node, fn, vals, inputs, e);
-          const reads = inputs.flatMap(input => 'export' in input.recipe ? [{ name: input.recipe.export, value: input.value }] : input.reads ?? []);
+          const reads = readsOf(inputs);
           if (outer !== undefined) {
             outer.push({ recipe, value: result, reads });
             return result;
@@ -613,7 +617,7 @@ export function exportCall<F>(
           markArgument(argument);
           return mapMaybe(
             recovering(() => dispatch(asWritten(e, checks, args).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value)))), onNoForm(recorded)),
-            form => isUnwrittenBuiltin(form) ? recorded() : form
+            form => isUnwrittenBuiltin(form) ? recorded() : recordUnits(x.runtime.units, readsOf(inputs), form)
           );
         }
         return recorded();
@@ -624,6 +628,24 @@ export function exportCall<F>(
 function dispatchReading<F>(x: ExportState<F>, inputs: ReadonlyArray<ExportInput>, dispatch: (args: Array<MaybePromise<ValueGroup>>) => MaybePromise<EvalValue>, vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> {
   x.callReads = inputs;
   return dispatch(vals);
+}
+
+/** The exports a call's arguments read, with the values they read. */
+const readsOf = (inputs: ReadonlyArray<ExportInput>): ReadonlyArray<{ name: string; value: ValueGroup }> =>
+  inputs.flatMap(input => 'export' in input.recipe ? [{ name: input.recipe.export, value: input.value }] : input.reads ?? []);
+
+/**
+ * The unit of each dimension export a CSS form reads, so the runtime takes no
+ * other: CSS converts `2em` over `/ 1px`, where Less reads it as 2
+ * (docs/architecture/core/spec/R8-browser-runtime.md). Returns `form`.
+ */
+function recordUnits(units: Map<string, string>, reads: ReadonlyArray<{ name: string; value: ValueGroup }>, form: EvalValue): EvalValue {
+  for (const read of reads) {
+    if (isDimension(read.value)) {
+      units.set(read.name, read.value.unit);
+    }
+  }
+  return form;
 }
 
 /** The compile-time value of each export a recipe reads, the first read standing. */

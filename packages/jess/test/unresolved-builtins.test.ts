@@ -79,7 +79,7 @@ describe('unresolvedBuiltins: a namespaced built-in that did not compute', () =>
     it.each([
       ['a form', '@less.fade(#333, @a)', '25%', 'rgb(from #333 r g b / var(--a, 25%))'],
       ['a recipe', '@less.unit(@a, px)', '50%', 'var(--a-unit, 50px)'],
-      ['a value only the browser knows', '@less.fade(#333, @a)', 'var(--y)', 'rgb(from #333 r g b / var(--a, var(--y)))']
+      ['a value only the browser knows', '@less.fade(#333, @a)', 'var(--y)', 'rgb(from #333 r g b / calc(var(--a, var(--y)) / 100%))']
     ])('an exposed variable, keeping %s', async (_name, call, value, printed) => {
       const { result, reports } = await less(`.x { v: ${call}; }\n@expose a;\n@a: ${value};`, 'error');
       expect(reports).toEqual([]);

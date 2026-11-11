@@ -374,9 +374,9 @@ describe('a built-in is its CSS form', () => {
     expect(value('rgb(#f00, 0.5, 0.5)')).toBe('rgb(#f00, 0.5, 0.5)');
   });
 
-  it('prints the form over an alpha only the browser knows', () => {
-    expect(value('fade(#336699, var(--a))')).toBe('rgb(from #336699 r g b / var(--a))');
-    expect(value('fade(var(--c), var(--a))')).toBe('rgb(from var(--c) r g b / var(--a))');
+  it('prints the form over an amount only the browser knows, a percentage (Q2)', () => {
+    expect(value('fade(#336699, var(--a))')).toBe('rgb(from #336699 r g b / calc(var(--a) / 100%))');
+    expect(value('fade(var(--c), var(--a))')).toBe('rgb(from var(--c) r g b / calc(var(--a) / 100%))');
   });
 
   it('prints hsv() over what only the browser knows', () => {

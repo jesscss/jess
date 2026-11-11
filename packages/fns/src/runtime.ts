@@ -25,6 +25,13 @@ export interface RuntimeSpec {
   /** The compile-time CSS of each export a derived value reads. */
   readonly defaults: Readonly<Record<string, string>>;
 
+  /**
+   * The unit of each export a CSS form reads, `''` for a number: the only one it
+   * takes, since CSS would convert another unit where Less does not
+   * (`unit(7em, px)` is 7px in Less, 112px over `var(--a) / 1px * 1px`).
+   */
+  readonly units: Readonly<Record<string, string>>;
+
   /** Each generated custom property, by name, with how it is computed. */
   readonly derived: Readonly<Record<string, RuntimeRecipe>>;
 }
@@ -62,7 +69,7 @@ export function createRuntime(spec: RuntimeSpec): Runtime {
       if (name === undefined) {
         throw new TypeError(`The stylesheet exposes no variable with the key ${key}.`);
       }
-      values[name] = value;
+      values[name] = checkedUnit(key, value, Object.hasOwn(spec.units, name) ? spec.units[name] : undefined);
     }
     const out: Record<string, string> = {};
     for (const name of Object.keys(values)) {
@@ -85,6 +92,18 @@ export function createRuntime(spec: RuntimeSpec): Runtime {
       }
     }
   };
+}
+
+/** `value`, when it is in `unit` or no form fixes one. */
+function checkedUnit(key: string, value: string, unit: string | undefined): string {
+  if (unit === undefined) {
+    return value;
+  }
+  const read = parseValue(value);
+  if (isValueGroupArray(read) || read.type !== 'Dimension' || read.unit.toLowerCase() !== unit.toLowerCase()) {
+    throw new TypeError(`${key} is read by a CSS form in ${unit === '' ? 'a number' : unit}, as its compile-time value is; ${value} would mean something else there.`);
+  }
+  return value;
 }
 
 function reads(recipe: RuntimeRecipe, values: ExportValues): boolean {

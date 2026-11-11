@@ -1,11 +1,11 @@
 import { aroundUnit, knownUnit } from '@jesscss/core/form';
 import { declineOverUnknown, defineFunction, type Fn, type ValueGroup } from '@jesscss/core/value';
 import { applyMath, requireDimension } from '../shared/math/math-helper.js';
-import { isDimension, NUMBER_ARG, numberOf } from './css-math-args.js';
+import { isDimension, NUMBER_ARG, numberOf, turnsInto } from './css-math-args.js';
 
 /** `pow(x, y)` — `x^y`, keeping `x`'s unit. No angle normalization. CSS's `pow()` reads numbers, so a known unit goes around it: `calc(pow(x / 1px, y) * 1px)`. */
 export const pow: Fn = defineFunction('pow', {
-  params: [NUMBER_ARG, NUMBER_ARG],
+  params: [NUMBER_ARG, { ...NUMBER_ARG, fits: (value: ValueGroup): boolean => turnsInto(value, '') }],
   body: (x: ValueGroup, y: ValueGroup) => {
     const unit = knownUnit(x);
     const exponent = knownUnit(y);
