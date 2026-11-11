@@ -6,6 +6,10 @@
  * values that changed. `@jesscss/fns/runtime` adds what is computed from them.
  */
 
+import { formatNumber } from './format-number.js';
+
+export { formatNumber, TOLERANCE, trimNumber } from './format-number.js';
+
 /** What a compiled stylesheet's module hands {@link exposedVars}. */
 export interface ExposedSpec {
   /** Each exposed variable's name by its JavaScript key: `brandColor` is `brand-color`. */
@@ -38,8 +42,9 @@ const NUMBER = /^[+-]?(?:\d*\.)?\d+(?:e[+-]?\d+)?/i;
 
 /**
  * `n / by` to fifteen significant digits, so `0.1 / 1` is not
- * `0.1000000000000000055`: an exposed percentage's ratio, as the compile and
- * this runtime both write it (`@jesscss/core` re-exports it).
+ * `0.1000000000000000055`: an exposed percentage's ratio, which the compile and
+ * this runtime both compute with it and spell with {@link formatNumber}
+ * (`@jesscss/core` re-exports both).
  */
 export const ratioOf = (n: number, by: number): number => Number((n / by).toPrecision(15));
 
@@ -54,7 +59,7 @@ function held(spec: ExposedSpec, key: string, name: string, value: string): stri
   if (number === undefined || text.slice(number.length).toLowerCase() !== unit.toLowerCase()) {
     throw new TypeError(`${key} is read by a CSS form in ${unit === '' ? 'a number' : unit}, as its compile-time value is; ${value} would mean something else there.`);
   }
-  return spec.ratios.includes(name) ? String(ratioOf(Number(number), 100)) : value;
+  return spec.ratios.includes(name) ? formatNumber(ratioOf(Number(number), 100)) : value;
 }
 
 /**

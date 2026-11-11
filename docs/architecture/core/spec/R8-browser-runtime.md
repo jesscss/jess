@@ -170,7 +170,7 @@ or needs JS) to decide what ships in the bundle.
   compile, as its slot rejects it. A
   stylesheet that prints only forms adds no function: with no exposed variable it
   adds no JS at all, and with one it adds only `exposedVars` and `writeVars` from `@jesscss/patch-css`
-  (measured 2026-11-11 with Vite 6: 992 B for the whole built module, 34.7 KB minified when it bundled the recipe runner). Every other computed function takes rung 4, and so does one with
+  (measured 2026-11-11 with Vite 6: 2,195 B for the whole built module, 1,839 B minified and 1,010 B gzip, 34.7 KB minified when it bundled the recipe runner). Every other computed function takes rung 4, and so does one with
   an exposed variable in an argument its form does not take yet (`@less.darken(#c00, @a)`,
   that task's slice 5). An input of a function on rung 4 stays computed, as the
   runtime reads it: `@less.lightness(@less.darken(@brand, 10%))` is one recipe
@@ -277,7 +277,9 @@ or needs JS) to decide what ships in the bundle.
   and `ratios` in the runtime data lists it. An export that is another one's read
   is the same type: `@b: @a` of a `%` `@a` is a ratio too, its fallback that one's
   ratio, `calc(var(--b, var(--a, 0.25)) * 100%)`. `vars({ a: '50%' })` writes
-  `--a: 0.5`; CSS that sets a `%` export itself writes the ratio (`--a: .3`), as
+  `--a: 0.5`, spelled by the compile's output number policy (`formatNumber`, in
+  `@jesscss/patch-css` beside `ratioOf` and re-exported by core), so
+  `vars({ a: '33.333333333333%' })` writes the fallback's `0.3333333333`; CSS that sets a `%` export itself writes the ratio (`--a: .3`), as
   `--a: 30%` would read as `3000%`. An export of any other unit is held as written.
   Owner, 2026-11-11, on a percentage a form turns into a length or a number: *"right,
   it can be represented by a float"*, then *"but even then, if we're parsing units at
