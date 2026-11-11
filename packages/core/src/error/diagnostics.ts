@@ -1262,6 +1262,14 @@ export const ERR = {
   },
 
   /** A `@plugin`/`@use` function raised — user code failed, not a value mismatch. */
+  unresolvedBuiltin(args: Common & { meta: { name: string; printed: string } }) {
+    return makeJessError({
+      severity: 'error',
+      code: 'eval/unresolved-builtin',
+      phase: 'eval',
+      ...args
+    });
+  },
   pluginFunctionThrew(
     args: Common & { meta: { name: string; reason: string } }
   ) {

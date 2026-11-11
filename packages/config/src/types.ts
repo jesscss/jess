@@ -1,5 +1,6 @@
 import type {
   FunctionMode,
+  UnresolvedBuiltinsMode,
   MathMode,
   ModuleMode,
   OutputOptions as CoreOutputOptions,
@@ -8,7 +9,7 @@ import type {
   UnitMode
 } from '@jesscss/core';
 
-export type { FunctionMode, MathMode, ModuleMode, UnitMode };
+export type { FunctionMode, MathMode, ModuleMode, UnitMode, UnresolvedBuiltinsMode };
 
 /**
  * The selector kinds a `styles.config` may allow. Core's `'placeholder'` kind
@@ -169,6 +170,14 @@ export interface LessOptions {
    * @default 'preserve'
    */
   functionMode?: FunctionMode;
+
+  /**
+   * Whether to report a namespaced built-in (`@less.fade(…)`, `color.adjust(…)`)
+   * that did not compute at compile time, so its output depends on the browser
+   * supporting the form it printed.
+   * @default 'off'
+   */
+  unresolvedBuiltins?: UnresolvedBuiltinsMode;
 
   /**
    * Whether the Less built-in functions are ambient in a `.less` file
@@ -349,6 +358,7 @@ export interface InputOptions extends FileMatchOptions {
   mathMode?: MathMode;
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
+  unresolvedBuiltins?: UnresolvedBuiltinsMode;
   strict?: boolean;
   allowOverloadedImport?: boolean;
   processImports?: boolean;
@@ -476,6 +486,7 @@ export interface StylesConfig {
     mathMode?: MathMode;
     unitMode?: UnitMode;
     functionMode?: FunctionMode;
+    unresolvedBuiltins?: UnresolvedBuiltinsMode;
 
     /** See {@link LessOptions.strict}. Expanded onto the other compile modes. */
     strict?: boolean;
@@ -543,6 +554,7 @@ export interface SourceDialectOptions {
   mathMode?: MathMode;
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
+  unresolvedBuiltins?: UnresolvedBuiltinsMode;
   allowLeakyScope?: boolean;
 
   /** @deprecated See {@link LessOptions.leakyScope}. */
