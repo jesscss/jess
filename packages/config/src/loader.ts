@@ -30,25 +30,73 @@ const SEARCH_PLACES = [
 ];
 
 /**
- * Whether a search from `searchFrom` can find a config: a `styles.config.*` in
- * that folder or one above it, up to and including the package root (or the
- * file-system root, when there is none). The search itself is cosmiconfig's;
- * this only decides whether to load it.
+ * The places cosmiconfig 9.0.2 reads its own meta-config from, each time an
+ * explorer is made (`getUserDefinedOptionsFromMetaConfig`, cosmiconfig
+ * `dist/index.js:19-51`): `metaSearchPlaces` (`dist/defaults.js:74-84`) in
+ * the working directory only (`searchStrategy: 'none'`, `stopDir:
+ * process.cwd()`). A `package.*` counts when it has a `cosmiconfig` key; any
+ * other place counts when it exists, even empty (`ignoreEmptySearchPlaces:
+ * false`).
  */
-const mayFindConfig = (searchFrom: string = process.cwd()): boolean => {
-  let dir = path.resolve(searchFrom);
-  for (;;) {
-    const folder = dir;
-    if (SEARCH_PLACES.some(name => fs.existsSync(path.join(folder, name)))) {
-      return true;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir || isPackageRoot(dir)) {
-      return false;
-    }
-    dir = parent;
+const META_CONFIG_PLACES = [
+  'package.json',
+  'package.yaml',
+  '.config/config.json',
+  '.config/config.yaml',
+  '.config/config.yml',
+  '.config/config.js',
+  '.config/config.ts',
+  '.config/config.cjs',
+  '.config/config.mjs'
+];
+
+/** Whether cosmiconfig would find a meta-config at `file`. Unsure (a `package.yaml`, an unreadable `package.json`) counts as found. */
+const isMetaConfig = (file: string): boolean => {
+  if (!fs.existsSync(file)) {
+    return false;
+  }
+  if (path.basename(file) !== 'package.json') {
+    return true;
+  }
+  try {
+    const manifest: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return typeof manifest !== 'object' || manifest === null || Reflect.get(manifest, 'cosmiconfig') != null;
+  } catch {
+    return true;
   }
 };
+
+let metaConfigFound: boolean | undefined;
+
+/** Whether cosmiconfig finds a meta-config, which can change any search: then it always loads. Looked up once per process. */
+const hasMetaConfig = (): boolean =>
+  (metaConfigFound ??= META_CONFIG_PLACES.some(place => isMetaConfig(path.join(process.cwd(), place))));
+
+const stylesConfigFrom = new Map<string, boolean>();
+
+/**
+ * Whether a `styles.config.*` lies in `dir` or a folder above it, up to and
+ * including the package root (or the file-system root, when there is none).
+ * Answered once per folder for the process, as cosmiconfig caches its searches.
+ */
+const hasStylesConfig = (dir: string): boolean => {
+  let found = stylesConfigFrom.get(dir);
+  if (found === undefined) {
+    const parent = path.dirname(dir);
+    found = SEARCH_PLACES.some(name => fs.existsSync(path.join(dir, name)))
+      || (parent !== dir && !isPackageRoot(dir) && hasStylesConfig(parent));
+    stylesConfigFrom.set(dir, found);
+  }
+  return found;
+};
+
+/**
+ * Whether a search from `searchFrom` can find a config: a `styles.config.*`
+ * ({@link hasStylesConfig}), or a cosmiconfig meta-config ({@link hasMetaConfig}).
+ * The search itself is cosmiconfig's; this only decides whether to load it.
+ */
+const mayFindConfig = (searchFrom: string = process.cwd()): boolean =>
+  hasMetaConfig() || hasStylesConfig(path.resolve(searchFrom));
 
 let explorers: { search: PublicExplorer; searchSync: PublicExplorerSync } | undefined;
 

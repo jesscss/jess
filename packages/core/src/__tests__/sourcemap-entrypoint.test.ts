@@ -22,9 +22,11 @@ const loadsGenMapping = (entry: string): boolean => {
   return run.stdout.trim() === 'true';
 };
 
+/* `module.registerHooks` arrived in Node 22.15, after the Node types this package builds against. */
+const hasLoadHooks = typeof Reflect.get(module, 'registerHooks') === 'function';
+
 describe('@jesscss/core/sourcemap', () => {
-  /* `module.registerHooks` arrived in Node 22.15. */
-  it.runIf(typeof module.registerHooks === 'function')('is the only entry that loads the source-map library', () => {
+  it.runIf(hasLoadHooks)('is the only entry that loads the source-map library', () => {
     expect(loadsGenMapping('index')).toBe(false);
     expect(loadsGenMapping('sourcemap')).toBe(true);
   });

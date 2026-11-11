@@ -18,7 +18,7 @@ fs.mkdirSync(nested, { recursive: true });
 fs.writeFileSync(path.join(project, 'package.json'), '{"private":true}\n');
 
 /** Runs `body` against the built package and reports the config it found and which of the two libraries loaded. */
-const probe = (body: string): { config: unknown; cosmiconfig: boolean; picomatch: boolean } => {
+const probe = (body: string, cwd?: string): { config: unknown; cosmiconfig: boolean; picomatch: boolean } => {
   const script = `
     import { createRequire } from 'node:module';
     const config = await import(${JSON.stringify(lib)});
@@ -30,7 +30,7 @@ const probe = (body: string): { config: unknown; cosmiconfig: boolean; picomatch
       picomatch: loaded.some(file => file.includes('/picomatch/'))
     }));
   `;
-  const run = spawnSync(process.execPath, ['--input-type=module', '-'], { input: script, encoding: 'utf8' });
+  const run = spawnSync(process.execPath, ['--input-type=module', '-'], { input: script, encoding: 'utf8', cwd });
   expect(run.stderr).toBe('');
   const parsed: unknown = JSON.parse(run.stdout.trim());
   return {
@@ -67,7 +67,34 @@ describe('styles-config loads its dependencies on demand', () => {
     }
   });
 
-  it('loads picomatch only to match a glob', () => {
+  /*
+   * cosmiconfig reads a meta-config in the working directory, which can add
+   * search places: with one there, it loads, and its search finds what
+   * cosmiconfig's own search finds.
+   */
+  it('loads cosmiconfig when a .config/config.* meta-config is in the working directory', () => {
+    const dir = path.join(parent, 'meta-file');
+    fs.mkdirSync(path.join(dir, '.config'), { recursive: true });
+    fs.mkdirSync(path.join(dir, 'src', 'deep'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), '{"private":true}\n');
+    fs.writeFileSync(path.join(dir, '.config', 'config.json'), '{"cosmiconfig":{"searchPlaces":["styles.json"]}}\n');
+    fs.writeFileSync(path.join(dir, 'src', 'styles.json'), '{"output":{"sourceMap":true}}\n');
+    expect(probe(`config.loadConfigSync(${JSON.stringify(path.join(dir, 'src', 'deep'))})`, dir))
+      .toMatchObject({ config: { output: { sourceMap: true } }, cosmiconfig: true });
+  });
+
+  it('loads cosmiconfig when the working directory\'s package.json has a cosmiconfig key', () => {
+    const dir = path.join(parent, 'meta-key');
+    fs.mkdirSync(path.join(dir, 'src', 'deep'), { recursive: true });
+
+    /* cosmiconfig 9 reads the `cosmiconfig` key of a package.json twice over, so its options sit one level deeper. */
+    fs.writeFileSync(path.join(dir, 'package.json'), '{"private":true,"cosmiconfig":{"cosmiconfig":{"searchPlaces":["styles.json"]}}}\n');
+    fs.writeFileSync(path.join(dir, 'src', 'styles.json'), '{"output":{"sourceMap":true}}\n');
+    expect(probe(`config.loadConfigSync(${JSON.stringify(path.join(dir, 'src', 'deep'))})`, dir))
+      .toMatchObject({ config: { output: { sourceMap: true } }, cosmiconfig: true });
+  });
+
+  it('loads picomatch only when an exact or basename match fails', () => {
     const options = (file: string) => `config.getOptions({ input: [{ file: ${JSON.stringify(file)}, leakyScope: true }] }, { input: 'src/a.less' }).leakyScope ?? null`;
     expect(probe(options('a.less'))).toEqual({ config: true, cosmiconfig: false, picomatch: false });
     expect(probe(options('src/*.less'))).toEqual({ config: true, cosmiconfig: false, picomatch: true });
