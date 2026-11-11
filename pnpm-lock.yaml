@@ -251,6 +251,9 @@ importers:
       '@jesscss/awaitable-pipe':
         specifier: workspace:*
         version: link:../awaitable-pipe
+      '@jesscss/patch-css':
+        specifier: workspace:*
+        version: link:../patch-css
       '@jridgewell/gen-mapping':
         specifier: ~0.3.12
         version: 0.3.13

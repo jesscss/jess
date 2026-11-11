@@ -16,8 +16,9 @@ set({ brand: '#08f' }); // document.documentElement.style: --brand: #08f
 ```
 
 - `exposedVars(spec, values)` maps each JavaScript key to its `--name` and
-  checks every value a CSS form reads, which must be in the form's unit. A `%`
-  value is held as its ratio, so `50%` becomes `0.5`. It throws for an unknown
+  checks every value a CSS form reads, which must be in the form's unit. An
+  export whose compile-time value is a percentage is held as its ratio, so
+  `50%` becomes `0.5`. `ratioOf` is that division, shared with the compile. It throws for an unknown
   key or a value in the wrong unit.
 - `writeVars(vars, target?)` writes on the target's inline style, the document
   root by default. It writes only a value the style does not already hold.

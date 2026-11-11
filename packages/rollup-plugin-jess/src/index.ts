@@ -209,7 +209,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
       /* Two exports, so a page that imports only `vars` drops the writer. */
       lines.push(
         `import { exposedVars, writeVars } from '@jesscss/patch-css';`,
-        `const spec = { keys: ${JSON.stringify(runtime.keys)}, units: ${JSON.stringify(runtime.units)} };`,
+        `const spec = { keys: ${JSON.stringify(runtime.keys)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)} };`,
         `export const vars = (values) => exposedVars(spec, values);`,
         `export const set = (values, target) => writeVars(exposedVars(spec, values), target);`
       );
@@ -218,7 +218,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
       for (const [module, names] of imports) {
         lines.push(`import { ${names.join(', ')} } from ${JSON.stringify(module)};`);
       }
-      lines.push(`export const { vars, set } = createRuntime({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, derived: { ${derived.join(', ')} } });`);
+      lines.push(`export const { vars, set } = createRuntime({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}, derived: { ${derived.join(', ')} } });`);
     }
   }
   if (!modules) {

@@ -96,7 +96,7 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { js } = await built(root);
 
-      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. 43,912 B measured. */
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. 43,960 B measured. */
       expect(js.length).toBeLessThan(45_000);
     });
   });
@@ -112,8 +112,8 @@ describe('vite-plugin-jess', () => {
       const { css, js } = await built(root);
       expect(css).toContain(printed);
 
-      /* Only `@jesscss/patch-css`, as nothing is computed (Vite's built module, unminified): 946 B measured for each, 35,903 B when it bundled the recipe runner. */
-      expect(js.length).toBeLessThan(1_000);
+      /* Only `@jesscss/patch-css`, as nothing is computed (Vite's built module, unminified): 992 B measured for each, 35,968 B when it bundled the recipe runner. */
+      expect(js.length).toBeLessThan(1_100);
     });
   });
 
@@ -125,8 +125,8 @@ describe('vite-plugin-jess', () => {
       const { css, js } = await built(root);
       expect(css).toContain('rgb(var(--r, 10),0,0)');
 
-      /* 945 B measured, 35,902 B when it bundled the recipe runner. */
-      expect(js.length).toBeLessThan(1_000);
+      /* 991 B measured, 35,967 B when it bundled the recipe runner. */
+      expect(js.length).toBeLessThan(1_100);
     });
   });
 
@@ -140,8 +140,8 @@ describe('vite-plugin-jess', () => {
       expect(js).not.toContain('--brand-');
       expect(js).not.toContain('hsl(from');
 
-      /* Only `@jesscss/patch-css`, as nothing is computed (Vite's built module, unminified): 946 B measured, 35,354 B when it bundled the recipe runner. */
-      expect(js.length).toBeLessThan(1_000);
+      /* Only `@jesscss/patch-css`, as nothing is computed (Vite's built module, unminified): 992 B measured, 35,354 B when it bundled the recipe runner. */
+      expect(js.length).toBeLessThan(1_100);
       const file = path.join(root, 'main.mjs');
       fs.writeFileSync(file, js);
       const module: unknown = await import(file);

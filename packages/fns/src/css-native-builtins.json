@@ -63,7 +63,7 @@
       "css": "rgb(from C r g b / A)",
       "spec": "css-color-5 §4.1, §4.3",
       "deferred": "rgb(from C r g b / calc(A / 100%))",
-      "notes": "A is an amount, a percentage whatever its unit: .5 is 0.005 and 50% is 0.5. What only the browser knows is converted to an alpha: a percentage goes in the slot as it is, a number of known type is its share of 100, and a value of no known type is taken to hold a percentage (Q2; owner: keep short form). A var() with a default, which an exposed variable reads as, of no known type stays in the slot as it is until the unit an exposed variable holds is ruled"
+      "notes": "A is an amount, a percentage whatever its unit: .5 is 0.005 and 50% is 0.5. What only the browser knows is converted to an alpha: a percentage goes in the slot as it is, a number of known type is its share of 100, and a value of no known type is taken to hold a percentage (Q2; owner: keep short form). An exposed variable reads as its var() with its default: of a percentage, the ratio the browser holds times 100% (`@a: 50%` is `calc(var(--a, 0.5) * 100%)`); of a number, its share of 100 (`@a: .5` is `calc(var(--a, 0.5) / 100)`); of no known type, a percentage (`@a: var(--y)` is `calc(var(--a, var(--y)) / 100%)`), the only unit the runtime then takes for it"
     },
     {
       "dialect": "less",

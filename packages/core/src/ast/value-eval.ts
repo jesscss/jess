@@ -694,6 +694,18 @@ export class EmptyOperandError extends Error {
  * out as-is; in `.scss` and `.jess` also a boolean, a list and a map. Not a `TypeError`, so the preserve-mode fallback in
  * `operate` cannot swallow it.
  */
+/**
+ * No CSS form holds this call over what only the browser knows. It fails as any
+ * call does, except that one reading an exposed variable runs on the runtime
+ * instead (docs/design/CSS-NATIVE-BUILTINS.md §3.4a, rung 4).
+ */
+export class NoCssForm extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoCssForm';
+  }
+}
+
 export class InvalidOperandError extends Error {
   constructor(message: string) {
     super(message);

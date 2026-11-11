@@ -15,10 +15,12 @@ export interface ExposedSpec {
    * The unit of each export a CSS form reads, `''` for a number: the only one it
    * takes, since CSS would convert another unit where Less does not
    * (`unit(7em, px)` is 7px in Less, 112px over `var(--a) / 1px * 1px`). A `%`
-   * export read at all is `%`, and is held as its ratio, `50%` as `--a: 0.5`, which
-   * every read multiplies back.
+   * export is `%`.
    */
   readonly units: Readonly<Record<string, string>>;
+
+  /** Each `%` export, held as its ratio, `50%` as `--a: 0.5`, which every read multiplies back. */
+  readonly ratios: readonly string[];
 }
 
 /** Values by JavaScript key: the variable's name with dash-case turned to camelCase (`brandColor` for `@brand-color`), as CSS. */
@@ -34,6 +36,13 @@ declare const document: { readonly documentElement: StyleTarget };
 
 const NUMBER = /^[+-]?(?:\d*\.)?\d+(?:e[+-]?\d+)?/i;
 
+/**
+ * `n / by` to fifteen significant digits, so `0.1 / 1` is not
+ * `0.1000000000000000055`: an exposed percentage's ratio, as the compile and
+ * this runtime both write it (`@jesscss/core` re-exports it).
+ */
+export const ratioOf = (n: number, by: number): number => Number((n / by).toPrecision(15));
+
 /** The value an export's `--name` holds: `value`, or for a `%` one its ratio. Throws when a CSS form reads it in another unit. */
 function held(spec: ExposedSpec, key: string, name: string, value: string): string {
   const unit = Object.hasOwn(spec.units, name) ? spec.units[name] : undefined;
@@ -45,7 +54,7 @@ function held(spec: ExposedSpec, key: string, name: string, value: string): stri
   if (number === undefined || text.slice(number.length).toLowerCase() !== unit.toLowerCase()) {
     throw new TypeError(`${key} is read by a CSS form in ${unit === '' ? 'a number' : unit}, as its compile-time value is; ${value} would mean something else there.`);
   }
-  return unit === '%' ? String(Number((Number(number) / 100).toPrecision(15))) : value;
+  return spec.ratios.includes(name) ? String(ratioOf(Number(number), 100)) : value;
 }
 
 /**

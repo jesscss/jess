@@ -245,6 +245,7 @@ describe('Less @expose variables (A4)', () => {
       keys: { brand: 'brand', gap: 'gap' },
       defaults: { brand: '#c00' },
       units: {},
+      ratios: [],
       derived: {
         // eslint-disable-next-line @typescript-eslint/naming-convention -- a custom property name
         '--brand-lightness': {
