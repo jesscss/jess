@@ -1,4 +1,9 @@
-/* eslint-disable @typescript-eslint/naming-convention -- `__jessBridge` is the fixed cross-worker wire tag. */
+/* eslint-disable @typescript-eslint/naming-convention -- `__jessBridge` is the test wire's tag. */
+/*
+ * The JSON wire between a plugin-js test and the compile engine (`sandboxed.ts`
+ * ↔ `probe.ts`): a result crosses back as a bridge value. A render passes
+ * values directly; only this test harness serializes them.
+ */
 import {
   coerceNamedColorKeyword,
   makeAny,
@@ -234,8 +239,4 @@ export function decodeBridgeValue(value: unknown): unknown {
     return value;
   }
   return value.kind === 'mixin' ? decodeMixin(value) : decodeValue(value);
-}
-
-export function encodeBridgeArgs(args: readonly unknown[]): unknown[] {
-  return args.map(encodeBridgeValue);
 }

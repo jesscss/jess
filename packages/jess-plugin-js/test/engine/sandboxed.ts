@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { decodeBridgeResult, decodeBridgeValue, encodeBridgeArgs } from '../../src/bridge.js';
+import { decodeBridgeResult, decodeBridgeValue } from './bridge.js';
 import type { ContextualPluginFunction, JsPlugin } from '../../src/index.js';
 
 export const probe = { module: pathToFileURL(path.join(path.dirname(new URL(import.meta.url).pathname), 'probe.ts')).href, exportName: 'Probe' };
@@ -35,7 +35,7 @@ export function sandboxed(plugin: JsPlugin, pluginOptions: Record<string, unknow
         const name = String(Reflect.get(Object(item), 'name'));
         const value: unknown = Reflect.get(Object(item), 'value');
         out[name] = Reflect.get(Object(item), 'kind') === 'function'
-          ? async (...args: unknown[]) => decodeBridgeValue(await run({ kind: 'invoke', modulePath, exportName: name, args: encodeBridgeArgs(args) }, modulePath))
+          ? async (...args: unknown[]) => decodeBridgeValue(await run({ kind: 'invoke', modulePath, exportName: name, args }, modulePath))
           : value;
       }
       return out;
@@ -49,7 +49,7 @@ export function sandboxed(plugin: JsPlugin, pluginOptions: Record<string, unknow
           modulePath,
           options,
           functionName,
-          args: encodeBridgeArgs(args === undefined ? [] : Array.isArray(args) ? args : [args])
+          args: args === undefined ? [] : Array.isArray(args) ? args : [args]
         }, modulePath));
       }
       return { functions };

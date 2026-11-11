@@ -1,8 +1,18 @@
 // @ts-nocheck
-/* eslint-disable @typescript-eslint/naming-convention */
 import * as fs from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {
+  coerceNamedColorKeyword,
+  makeAny,
+  makeColorRgb,
+  makeDimension,
+  makeKeyword,
+  makeList,
+  makeQuoted,
+  sniffLiteral,
+  HEX
+} from '@jesscss/core';
 import { renderInEngine, warmEngine } from './engine-runtime.js';
 
 const moduleCache = new Map();
@@ -189,7 +199,7 @@ class Color extends Node {
    * (`new tree.Color(someColor.toCSS().substr(1))`), which is precisely the
    * form bootstrap's `theme-color-level` plugin round-trips through.
    *
-   * `originalForm` is the authored spelling of a colour that crossed the bridge
+   * `originalForm` is the authored spelling of a colour that reached the plugin
    * unmodified (`@white: #fff`), mirroring less.js's Color `value`/originalForm:
    * a pass-through keeps its short form, while a plugin-CONSTRUCTED colour has
    * none and serialises to 6-digit hex.
@@ -353,8 +363,8 @@ class Nil extends Node {
 
 /**
  * A read-only view of a declaration list. Less plugins reach `ruleset.rules`
- * (and `instanceof tree.Declaration` on each entry); nothing on the value
- * bridge can express a ruleset's selectors or nesting, so the shim exposes the
+ * (and `instanceof tree.Declaration` on each entry); a plugin value has no
+ * shape for a ruleset's selectors or nesting, so the shim exposes the
  * declaration list only and refuses anything that would need more.
  */
 class Ruleset extends Node {
@@ -511,7 +521,7 @@ class Assignment extends Node {
 }
 
 /**
- * Structural Less 4 nodes with no value-bridge representation: a function
+ * Structural Less 4 nodes with no compiler-value counterpart: a function
  * plugin returns a value, and the rest of the 4.x tree API is the A12 non-goal.
  * Reaching for one is refused like the plugin-manager hooks, and the host
  * reports it as `plugin/unsupported-feature`, whose wording lives in core.
@@ -596,154 +606,123 @@ export const installLessGlobals = () => {
   globalThis.Less ??= lessFacade;
 };
 
-const isBridgeValue = value =>
-  value
-  && typeof value === 'object'
-  && value.__jessBridge === true
-  && typeof value.kind === 'string';
+/*
+ * ---- Plugin values: the compiler's values as the Less 4 tree a plugin body
+ * reads, and back. Each crossing converts once, in this realm.
+ */
 
-/** A map declaration's `Anonymous` reading aid → the bridge value it stands for. */
+const isRecord = value => typeof value === 'object' && value !== null;
+const isValueNode = value => isRecord(value) && typeof value.type === 'string' && typeof value.bytes === 'string';
+const isDetached = value => isRecord(value) && value.type === 'DetachedRuleset' && Array.isArray(value.rules);
+const quoteOf = quote => (quote === '\'' ? '\'' : '"');
+
+/** A map declaration's `Anonymous` reading aid → the plugin value it stands for. */
 const facadeValues = new WeakMap();
 
-export const decodeBridgeValue = (value) => {
-  if (!isBridgeValue(value)) {
-    return value;
-  }
-  switch (value.kind) {
-    case 'scalar':
-      return value.value;
-    case 'dimension':
-      return new Dimension(value.value, value.unit ?? '');
-    case 'color':
-      return new Color(value.rgb, value.alpha ?? 1, value.bytes);
-    case 'quoted':
-      return new Quoted(value.quote ?? '"', value.value, value.escaped === true);
-    case 'keyword':
-      return new Keyword(value.value);
-    case 'anonymous':
-      return new Anonymous(value.value);
-    case 'list':
-      return new Value((value.items ?? []).map(decodeBridgeValue), value.separator ?? ',');
-    case 'expression':
-      return new Expression((value.items ?? []).map(decodeBridgeValue));
-    case 'mixin': {
-      const rules = (value.rules ?? []).map((decl) => {
-        const decoded = decodeBridgeValue(decl.value);
+/**
+ * A map as a Less 4 plugin reads it: a Mixin of declarations. Legacy map
+ * helpers read a declaration's `.value.value` as raw CSS text (e.g. "576px")
+ * and parseFloat it, so each value is an `Anonymous` of its CSS. That shape is
+ * a reading aid, not the value: one a plugin returns unchanged (`theme-color`
+ * handing back a map colour) converts back from the value it stands for
+ * (`facadeValues`), not from its text.
+ */
+const pluginMap = declarations => new Mixin(declarations.map(({ name, value }) => {
+  const decoded = toPluginValue(value, true);
+  const carrier = new Anonymous(decoded?.toCSS ? decoded.toCSS() : String(decoded));
+  facadeValues.set(carrier, decoded);
+  return new Declaration(name, carrier);
+}));
 
-        /*
-         * Legacy Less @plugin map helpers read the declaration's `.value.value`
-         * as the raw CSS string (e.g. "576px"), then parseFloat it. Mirror the
-         * less.js Anonymous shape so that access pattern keeps working. The
-         * shape is a reading aid, not the value: one a plugin returns
-         * unchanged (`theme-color` handing back a map colour) crosses back as
-         * the typed value it carried (`facadeValues`), not as raw text.
-         */
-        const cssText = decoded?.toCSS ? decoded.toCSS() : String(decoded);
-        const carrier = new Anonymous(cssText);
-        facadeValues.set(carrier, decl.value);
-        return new Declaration(decl.name, carrier);
-      });
-      return new Mixin(rules);
-    }
+/** A compiler value given in the Less facade shape (`{ type: 'Dimension', value, unit }`); `undefined` for another shape. */
+const facadePluginValue = (value) => {
+  switch (value.type) {
+    case 'Dimension':
+      return typeof value.value === 'number' ? new Dimension(value.value, typeof value.unit === 'string' ? value.unit : '') : undefined;
+    case 'Color':
+      return Array.isArray(value.rgb) && value.rgb.length === 3
+        ? new Color([value.rgb[0], value.rgb[1], value.rgb[2]], typeof value.alpha === 'number' ? value.alpha : 1, typeof value.bytes === 'string' ? value.bytes : undefined)
+        : undefined;
+    case 'Quoted':
+      return typeof value.value === 'string' ? new Quoted(quoteOf(value.quote), value.value, value.escaped === true) : undefined;
+    case 'Anonymous':
+    case 'Keyword':
+      return typeof value.value === 'string' ? new (value.type === 'Keyword' ? Keyword : Anonymous)(value.value) : undefined;
+    case 'Expression':
+      return Array.isArray(value.value) ? new Expression(value.value.map(item => toPluginValue(item, true))) : undefined;
+    case 'Value':
+      return Array.isArray(value.value)
+        ? new Value(value.value.map(item => toPluginValue(item, true)), value.separator === '/' || value.separator === ';' ? value.separator : ',')
+        : undefined;
+    case 'Mixin':
+      return isRecord(value.ruleset) && Array.isArray(value.ruleset.rules)
+        ? pluginMap(value.ruleset.rules.filter(rule => isRecord(rule) && rule.type === 'Declaration' && typeof rule.name === 'string'))
+        : undefined;
     default:
-      return value;
+      return undefined;
   }
 };
 
-const encodeBridgeChildValue = (value) => {
-  const encoded = encodeBridgeValue(value);
-  if (isBridgeValue(encoded)) {
-    return encoded;
+/**
+ * A compiler value as the Less 4 tree node a plugin reads. A value with no
+ * tree spelling passes through as it is, or, inside a list, as its text.
+ */
+const toPluginValue = (value, inList = false) => {
+  if (Array.isArray(value)) {
+    return new Expression(value.map(item => toPluginValue(item, true)));
   }
-  return {
-    __jessBridge: true,
-    kind: 'scalar',
-    value: typeof encoded === 'string' || typeof encoded === 'number' || typeof encoded === 'boolean'
-      ? encoded
-      : String(encoded)
-  };
+  if (isValueNode(value)) {
+    /* A named colour (`white`) is a Color to a Less 4.x plugin (`{ rgb: [r, g, b] }`). */
+    const node = coerceNamedColorKeyword(value);
+    switch (node.type) {
+      case 'Dimension': return new Dimension(node.number, node.unit ?? '');
+      case 'Color': return new Color([node.rgb[0], node.rgb[1], node.rgb[2]], node.alpha ?? 1, node.bytes);
+      case 'Quoted': return new Quoted(quoteOf(node.quote), node.value, node.escaped === true);
+
+      /* An escaped string (`~"…"`, `e()`) is an escaped Quoted to a 4.x plugin. */
+      case 'Any': return node.escapedQuote === '' ? new Anonymous(node.bytes) : new Quoted(quoteOf(node.escapedQuote), node.bytes, true);
+      case 'Keyword':
+      case 'Arithmetic':
+      case 'FunctionCall': return new Keyword(node.bytes);
+      case 'List':
+        return node.sep === ',' || node.sep === '/'
+          ? new Value(node.value.map(item => toPluginValue(item, true)), node.sep)
+          : new Anonymous(node.bytes);
+      default: return new Anonymous(node.bytes);
+    }
+  }
+  if (isDetached(value)) {
+    return pluginMap(value.rules);
+  }
+  const facade = isRecord(value) ? facadePluginValue(value) : undefined;
+  if (facade !== undefined) {
+    return facade;
+  }
+  return inList ? String(value) : value;
 };
 
-export const encodeBridgeValue = (value) => {
-  if (value instanceof Dimension) {
-    return {
-      __jessBridge: true,
-      kind: 'dimension',
-      value: value.value,
-      unit: value.unit || undefined
-    };
-  }
-  if (value instanceof Color) {
-    return {
-      __jessBridge: true,
-      kind: 'color',
-      rgb: value.rgb,
-      alpha: value.alpha,
-      bytes: value.originalForm
-    };
-  }
-  if (value instanceof Quoted) {
-    /*
-     * An empty quote character is less.js's "raw text" spelling (bootstrap's
-     * escape-svg returns `new tree.Quoted('', str)`); it must not be re-quoted.
-     */
-    return value.quote === ''
-      ? { __jessBridge: true, kind: 'anonymous', value: String(value.value) }
-      : {
-          __jessBridge: true,
-          kind: 'quoted',
-          value: String(value.value),
-          quote: value.quote,
-          escaped: value.escaped
-        };
-  }
-  const carried = facadeValues.get(value);
-  if (carried !== undefined) {
-    return carried;
-  }
-  if (value instanceof Keyword || value instanceof Anonymous) {
-    /*
-     * `raw` marks a true `Anonymous` (not a `Keyword`, `Comment`, …): Less 4.x
-     * treats that result as raw text, which is also valid as a statement.
-     */
-    return value.constructor === Anonymous
-      ? { __jessBridge: true, kind: 'anonymous', value: String(value.value), raw: true }
-      : { __jessBridge: true, kind: 'anonymous', value: String(value.value) };
-  }
-  if (value instanceof Expression) {
-    return {
-      __jessBridge: true,
-      kind: 'expression',
-      items: value.value.map(encodeBridgeChildValue)
-    };
-  }
-  if (value instanceof Value) {
-    return {
-      __jessBridge: true,
-      kind: 'list',
-      items: value.value.map(encodeBridgeChildValue),
-      separator: value.separator === '/' || value.separator === ';' ? value.separator : ','
-    };
-  }
-  if (value instanceof Mixin || value instanceof Ruleset || value instanceof DetachedRuleset) {
-    const source = value instanceof Mixin
-      ? value.ruleset.rules
-      : value instanceof DetachedRuleset ? (value.ruleset?.rules ?? []) : value.rules;
-    const rules = source
-      .filter(rule => rule instanceof Declaration && typeof rule.name === 'string')
-      .map(rule => ({ name: rule.name, value: encodeBridgeChildValue(rule.value) }));
-    return { __jessBridge: true, kind: 'mixin', rules };
-  }
+/*
+ * Where a plugin value converts back. A list item (`IN_LIST`) is always a
+ * value: a raw script value becomes its text, and a map is no value. A built-in
+ * call's argument (`CALL_ARG`) reads the same way, except that a map stays a
+ * map. A whole value (`VALUE`: a script export's result, a map value handed
+ * back) passes a raw script value through as it is. A `@plugin` function's own
+ * result (`RESULT`) is a `VALUE` that may also be raw `Anonymous` text, which
+ * Less 4.x treats as raw text, also valid as a statement.
+ */
+const IN_LIST = 0;
+const CALL_ARG = 1;
+const VALUE = 2;
+const RESULT = 3;
 
-  /*
-   * Every remaining shim node is byte-faithful through `toCSS()`; the engine
-   * re-sniffs those bytes into a typed value on the host side.
-   */
-  if (value instanceof Node) {
-    return { __jessBridge: true, kind: 'anonymous', value: value.toCSS() };
-  }
-  return value;
-};
+/*
+ * A function result with no CSS spelling (NaN, ±Infinity), or one that could
+ * not be data at all (a BigInt, a cycle), is refused at its call: NaN would
+ * otherwise read as a declined call or a dropped declaration. While a result
+ * converts, `watch` collects the first such fact, in the order the value's
+ * parts convert.
+ */
+const watch = { on: false, nonFinite: null, notData: false };
 
 const isJsonValue = (value) => {
   try {
@@ -754,26 +733,157 @@ const isJsonValue = (value) => {
   }
 };
 
-/**
- * Why a function result cannot cross the JSON transport back to the engine, or
- * `null` when it can. `JSON.stringify` writes NaN and ±Infinity as `null`,
- * which the engine reads as a declined call (`@plugin`) or a null value that
- * drops its declaration (`@use`) — so a non-finite number is refused here,
- * while it is still visible, and the engine reports it at the call.
- */
-const unsendableResult = (value) => {
-  let nonFinite = null;
-  try {
-    JSON.stringify(value, (_key, item) => {
-      if (nonFinite === null && typeof item === 'number' && !Number.isFinite(item)) {
-        nonFinite = String(item);
-      }
-      return item;
-    });
-  } catch {
-    return 'is not JSON-serializable';
+/** Notes a part of a result that is not finite, or (for an object or BigInt) not data. */
+const note = (part) => {
+  if (!watch.on) {
+    return;
   }
-  return nonFinite === null ? null : `is ${nonFinite}, which has no CSS spelling`;
+  if (typeof part === 'number') {
+    if (watch.nonFinite === null && !Number.isFinite(part)) {
+      watch.nonFinite = String(part);
+    }
+    return;
+  }
+  if (typeof part === 'bigint') {
+    watch.notData = true;
+    return;
+  }
+  if (isRecord(part)) {
+    try {
+      JSON.stringify(part, (_key, item) => {
+        note(typeof item === 'number' ? item : undefined);
+        return item;
+      });
+    } catch {
+      watch.notData = true;
+    }
+  }
+};
+
+/**
+ * Why a function result cannot be a CSS value, or `null`: `convert` runs while
+ * it is watched. A part already noted is the reason, also when the compiler
+ * then refuses to make a value of it (`makeDimension(Infinity)` throws).
+ */
+const watched = (convert) => {
+  watch.on = true;
+  watch.nonFinite = null;
+  watch.notData = false;
+  try {
+    let value;
+    try {
+      value = convert();
+    } catch (err) {
+      if (!watch.notData && watch.nonFinite === null) {
+        throw err;
+      }
+    }
+    const why = watch.notData
+      ? 'is not JSON-serializable'
+      : watch.nonFinite === null ? null : `is ${watch.nonFinite}, which has no CSS spelling`;
+    return { value, why };
+  } finally {
+    watch.on = false;
+  }
+};
+
+/** A map value a plugin returned unchanged: converted as the value it stands for. */
+const fromCarried = (carried, at) => {
+  if (at === IN_LIST) {
+    return fromPluginValue(carried, IN_LIST);
+  }
+  return typeof carried === 'string' ? sniffLiteral(carried) : fromPluginValue(carried, VALUE);
+};
+
+/** A plugin's map (or ruleset) as the Less 4 map shape the compiler reads. */
+const compilerMap = (rules) => {
+  const nil = { type: 'Nil', value: '' };
+  const mixin = {
+    type: 'Mixin',
+    name: nil,
+    args: nil,
+    ruleset: {
+      rules: rules.map(rule => ({
+        type: 'Declaration',
+        name: rule.name,
+        value: fromPluginValue(rule.value, IN_LIST),
+        eval() {
+          return this;
+        }
+      }))
+    },
+    eval() {
+      return mixin;
+    }
+  };
+  return mixin;
+};
+
+/** A Less 4 tree value from a plugin as the compiler's value (see `IN_LIST` … `RESULT`). */
+const fromPluginValue = (value, at) => {
+  if (value instanceof Dimension) {
+    note(value.value);
+    note(value.unit || undefined);
+    return makeDimension(value.value, value.unit || '');
+  }
+  if (value instanceof Color) {
+    note(value.rgb);
+    note(value.alpha);
+    note(value.originalForm);
+    return makeColorRgb(value.rgb, value.alpha ?? 1, HEX, value.originalForm === undefined ? undefined : { src: value.originalForm });
+  }
+  if (value instanceof Quoted) {
+    /*
+     * An empty quote character is less.js's "raw text" spelling (bootstrap's
+     * escape-svg returns `new tree.Quoted('', str)`); it must not be re-quoted.
+     */
+    if (value.quote === '') {
+      return sniffLiteral(String(value.value));
+    }
+    note(value.quote);
+    note(value.escaped);
+    return value.escaped === true
+      ? makeAny(String(value.value), value.quote ?? '"')
+      : makeQuoted(String(value.value), value.quote ?? '"', false);
+  }
+  const carried = facadeValues.get(value);
+  if (carried !== undefined) {
+    return fromCarried(carried, at);
+  }
+  if (value instanceof Anonymous) {
+    return at === RESULT && value.constructor === Anonymous
+      ? { type: 'Anonymous', value: String(value.value) }
+      : sniffLiteral(String(value.value));
+  }
+  if (value instanceof Expression) {
+    return value.value.map(item => fromPluginValue(item, IN_LIST));
+  }
+  if (value instanceof Value) {
+    return makeList(value.value.map(item => fromPluginValue(item, IN_LIST)), value.separator === '/' ? '/' : ',');
+  }
+  if (value instanceof Mixin || value instanceof Ruleset || value instanceof DetachedRuleset) {
+    const source = value instanceof Mixin
+      ? value.ruleset.rules
+      : value instanceof DetachedRuleset ? (value.ruleset?.rules ?? []) : value.rules;
+    const map = compilerMap(source.filter(rule => rule instanceof Declaration && typeof rule.name === 'string'));
+
+    /* A map inside a list is no value of its own; its parts are still checked. */
+    return at === IN_LIST ? makeKeyword('') : map;
+  }
+
+  /* Every other tree node is byte-faithful through `toCSS()`, re-read as a typed value. */
+  if (value instanceof Node) {
+    const css = value.toCSS();
+    note(css);
+    return sniffLiteral(css);
+  }
+  if (at === IN_LIST || at === CALL_ARG) {
+    const scalar = typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? value : String(value);
+    note(scalar);
+    return typeof scalar === 'number' ? makeDimension(scalar) : sniffLiteral(String(scalar));
+  }
+  note(value);
+  return value;
 };
 
 /**
@@ -892,8 +1002,8 @@ const isRequirableFile = candidate => fs.statSync(candidate, { throwIfNoEntry: f
 /**
  * `require()` for a legacy `@plugin` file: RELATIVE specifiers only, resolved
  * against the requiring file as Node resolves a file path. Every stat and read
- * goes through the same permission broker as the plugin file itself, so a
- * require can never reach past jsReadRoot. A `.json` file is parsed. Any other
+ * is checked by the sandbox's read permission, as the plugin file's own read
+ * is, so a require can never reach past the read set. A `.json` file is parsed. Any other
  * required file is plain CommonJS: it gets `module`, `exports`, `require`,
  * `__filename`, `__dirname` and the plugin's own `less` (so its hook refusals
  * and function registry too), not the other plugin globals, and no Node
@@ -908,8 +1018,8 @@ const createLegacyRequire = (fromPath, cache, less) => (specifier) => {
   let resolved;
   try {
     /*
-     * Resolve from the requiring file's real path, as Node does: the broker
-     * compares canonical paths, and a candidate that does not exist cannot be
+     * Resolve from the requiring file's real path, as Node does: the read
+     * check compares canonical paths, and a candidate that does not exist cannot be
      * canonicalized, so under a symlinked read root it would read as outside.
      */
     const base = resolve(dirname(fs.realpathSync(fromPath)), request);
@@ -1057,34 +1167,35 @@ const refuseRegistrationInBody = () => {
   throw new Error('Less @plugin: functions and plugins can only be added while the plugin loads, not from inside a function body.');
 };
 
-/**
- * Builds the `this` a Less 4 plugin function body expects: `this.context` with
- * `frames` / `importantScope` / `pluginManager`, plus `this.currentFileInfo`.
- * Without this the body's `this` is the sandbox global and every `this.context`
- * read is `undefined`. The `pluginManager` is the one the plugin was installed
- * with, its `less` serving built-ins from the live call site.
- */
+/** A variable the live call site resolved, as a plugin body reads it from `frame.variable()`. */
 const liveVariable = entry => (entry === null || entry === undefined
   ? null
-  : { value: decodeBridgeValue(entry.value), important: entry.important ? '!important' : '' });
+  : { value: toPluginValue(entry.value), important: entry.important ? '!important' : '' });
 
 const liveCall = (fnName, answer) => {
   if (answer === null || answer === undefined) {
     throw new Error(`Less @plugin: built-in function "${fnName}" could not be evaluated with these arguments.`);
   }
-  return decodeBridgeValue(answer);
+  return toPluginValue(answer);
 };
 
-const createPluginCallContext = (facts, manager) => {
-  const importantScope = [{ important: '' }];
+/**
+ * The `this` a Less 4 plugin function body expects: `this.context` with
+ * `frames` / `importantScope` / `pluginManager`, plus `this.currentFileInfo`.
+ * Without it the body's `this` is the sandbox global and every `this.context`
+ * read is `undefined`. The `pluginManager` is the one the plugin was installed
+ * with, its `less` serving built-ins from the live call site.
+ *
+ * One is built per plugin and reused by its calls; `enter` gives each call its
+ * own facts, frames and `importantScope`, so an `!important` one call marks
+ * never reaches the next. A call that starts while another is still awaiting
+ * gets a site of its own.
+ */
+const createCallSite = (manager) => {
+  let facts;
 
+  /* The live call site answers: the script and the compiler share the engine's realm. */
   const frame = {
-    /**
-     * Answers from the host-resolved snapshot for this call. A name the host
-     * already reported as unbound resolves to `null` (less.js's "no such
-     * variable" answer); anything not yet known raises a fact request.
-     */
-    /* The live call site answers: the script and the compiler share the engine's realm. */
     variable(name) {
       return liveVariable(facts.variable(String(name)));
     },
@@ -1097,7 +1208,7 @@ const createPluginCallContext = (facts, manager) => {
   const functionRegistry = {
     get(name) {
       const fnName = String(name);
-      return (...callArgs) => liveCall(fnName, facts.call(fnName, callArgs.map(encodeBridgeChildValue)));
+      return (...callArgs) => liveCall(fnName, facts.call(fnName, callArgs.map(arg => fromPluginValue(arg, CALL_ARG))));
     },
     add: refuseRegistrationInBody
   };
@@ -1114,23 +1225,52 @@ const createPluginCallContext = (facts, manager) => {
   });
 
   const context = {
-    frames: [frame],
-    importantScope,
+    frames: null,
+    importantScope: null,
     pluginManager,
     compress: false,
     numPrecision: 8
   };
+  const self = {
+    context,
+    currentFileInfo: null,
+    index: 0,
+    importantScope: null,
+    pluginManager
+  };
 
   return {
-    context,
-    currentFileInfo: facts.fileInfo ?? { filename: '', entryPath: '' },
-    index: 0,
-    importantScope,
-    pluginManager
+    busy: false,
+    enter(callFacts) {
+      facts = callFacts;
+      const importantScope = [{ important: '' }];
+      context.frames = [frame];
+      context.importantScope = importantScope;
+      context.pluginManager = pluginManager;
+      context.compress = false;
+      context.numPrecision = 8;
+      self.context = context;
+      self.currentFileInfo = callFacts.fileInfo ?? { filename: '', entryPath: '' };
+      self.index = 0;
+      self.importantScope = importantScope;
+      self.pluginManager = pluginManager;
+      this.busy = true;
+      return self;
+    }
   };
 };
 
-export const invokeLessPluginFunction = async (modulePath: string, functionName: string, args: unknown[], options: string | null, facts: object) => {
+const callSiteFor = (runtime) => {
+  const cached = runtime.callSite;
+  if (cached !== undefined && !cached.busy) {
+    return cached;
+  }
+  const site = createCallSite(runtime.manager);
+  runtime.callSite ??= site;
+  return site;
+};
+
+export const invokeLessPluginFunction = async (modulePath: string, functionName: string, args: readonly unknown[], options: string | null, facts: object) => {
   const cacheKey = lessPluginCacheKey(modulePath, options);
   if (!lessPluginRuntimeCache.has(cacheKey)) {
     await loadLessPlugin(modulePath, options);
@@ -1141,24 +1281,26 @@ export const invokeLessPluginFunction = async (modulePath: string, functionName:
     throw new Error(`Less @plugin function "${functionName}" is not registered.`);
   }
   const logs = [];
-  const callContext = createPluginCallContext(facts, runtime.manager);
+  const site = callSiteFor(runtime);
+  const callContext = site.enter(facts);
+  const { importantScope } = callContext;
   const previousSink = activeLogSink;
   activeLogSink = logs;
   let raw;
   try {
-    raw = await fn.apply(callContext, args.map(decodeBridgeValue));
+    raw = await fn.apply(callContext, args.map(arg => toPluginValue(arg)));
   } finally {
     activeLogSink = previousSink;
+    site.busy = false;
   }
-  const result = encodeBridgeValue(raw);
-  const unsendable = unsendableResult(result);
-  if (unsendable !== null) {
-    throw new Error(`Result for Less @plugin function "${functionName}" ${unsendable}.`);
+  const { value, why } = watched(() => fromPluginValue(raw, RESULT));
+  if (why !== null) {
+    throw new Error(`Result for Less @plugin function "${functionName}" ${why}.`);
   }
   return {
-    value: result,
+    value,
     logs,
-    important: callContext.importantScope.some(entry => Boolean(entry?.important))
+    important: importantScope.some(entry => Boolean(entry?.important))
   };
 };
 
@@ -1168,12 +1310,12 @@ export const invokeExport = async (modulePath, exportName, args) => {
   if (typeof target !== 'function') {
     throw new Error(`Export "${exportName}" is not callable.`);
   }
-  const result = encodeBridgeValue(await target(...args.map(decodeBridgeValue)));
-  const unsendable = unsendableResult(result);
-  if (unsendable !== null) {
-    throw new Error(`Result for "${exportName}" ${unsendable}.`);
+  const raw = await target(...args.map(arg => toPluginValue(arg)));
+  const { value, why } = watched(() => fromPluginValue(raw, VALUE));
+  if (why !== null) {
+    throw new Error(`Result for "${exportName}" ${why}.`);
   }
-  return result;
+  return value;
 };
 
 export const computeResponse = async (req) => {
