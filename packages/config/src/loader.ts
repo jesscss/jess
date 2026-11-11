@@ -54,6 +54,11 @@ const explorerSync = cosmiconfigSync('styles', explorerOptions);
  * Where to look for the next config above the one at `filepath`: its folder's
  * parent, or none when its folder is the package root (has a `package.json` or
  * `package.yaml`, where cosmiconfig's `project` search stops) or the file-system root.
+ *
+ * A search can return a file it already returned: cosmiconfig reads a `styles`
+ * key in the working directory's meta-config (`.config/config.*`) as a config,
+ * and the folder above `.config` finds it again. The loops stop at a file they
+ * have already taken.
  */
 function searchAbove({ filepath }: { filepath: string }): string | undefined {
   const dir = path.dirname(filepath);
@@ -88,8 +93,10 @@ function mergeFound(found: ReadonlyArray<{ config: unknown; filepath: string }>,
  */
 export async function loadConfig(searchFrom?: string): Promise<StylesConfig | null> {
   const found: Array<NonNullable<CosmiconfigResult>> = [];
+  const seen = new Set<string>();
   let result = await explorer.search(searchFrom);
-  while (result) {
+  while (result && !seen.has(result.filepath)) {
+    seen.add(result.filepath);
     found.push(result);
     const above = searchAbove(result);
     result = above === undefined ? null : await explorer.search(above);
@@ -116,8 +123,10 @@ export function loadConfigSync(searchFrom?: string): StylesConfig {
  */
 export function loadConfigSyncWithMeta(searchFrom?: string, below?: LoadedConfigMeta): LoadedConfigMeta {
   const found: Array<NonNullable<CosmiconfigResult>> = [];
+  const seen = new Set<string>();
   let result = explorerSync.search(searchFrom);
-  while (result) {
+  while (result && !seen.has(result.filepath)) {
+    seen.add(result.filepath);
     found.push(result);
     const above = searchAbove(result);
     result = above === undefined ? null : explorerSync.search(above);
