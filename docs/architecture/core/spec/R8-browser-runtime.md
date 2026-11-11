@@ -170,7 +170,7 @@ or needs JS) to decide what ships in the bundle.
   compile, as its slot rejects it. A
   stylesheet that prints only forms adds no function: with no exposed variable it
   adds no JS at all, and with one it adds only `exposedVars` and `writeVars` from `@jesscss/patch-css`
-  (measured 2026-11-11 with Vite 6: 1,329 B minified for the whole module, 34.7 KB when it bundled the recipe runner). Every other computed function takes rung 4, and so does one with
+  (measured 2026-11-11 with Vite 6: 946 B for the whole built module, 34.7 KB minified when it bundled the recipe runner). Every other computed function takes rung 4, and so does one with
   an exposed variable in an argument its form does not take yet (`@less.darken(#c00, @a)`,
   that task's slice 5). An input of a function on rung 4 stays computed, as the
   runtime reads it: `@less.lightness(@less.darken(@brand, 10%))` is one recipe
