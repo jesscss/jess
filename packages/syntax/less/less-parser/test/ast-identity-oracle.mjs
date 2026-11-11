@@ -52,7 +52,7 @@
  * insensitive to property insertion order.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,17 +62,17 @@ import { parseLessCst } from '../lib/cst.js';
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..');
 
 /**
- * Corpus roots. Every `.less` and `.css` under each is used. A missing root is
- * skipped silently (the bootstrap port is an optional transitive dep), so check the
- * reported `files=` count against the value in the commit you are comparing to —
- * a differential over a SMALLER corpus is not the same gate.
+ * Corpus roots. Every `.less` and `.css` under each is used. A missing root is an
+ * error, not a skip: a differential over a smaller corpus is not the same gate. The
+ * Bootstrap port is read through `packages/jess`, which depends on it, so the path
+ * does not name pnpm's store directory (that name carries the patch hash).
  */
 const ROOTS = [
   'node_modules/@less/test-data/tests-unit',
   'node_modules/@less/test-data/tests-config',
   'node_modules/@less/test-data/tests-error',
   'node_modules/@less/test-data/data',
-  'node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less',
+  'packages/jess/node_modules/bootstrap-less-port/less',
   'packages/jess/test',
   'packages/syntax/less/less-parser/test',
   'packages/syntax/css/css-parser/test'
@@ -81,19 +81,18 @@ const ROOTS = [
 function listFiles() {
   const out = new Set();
   for (const root of ROOTS) {
-    try {
-      const listing = execFileSync(
-        'find',
-        ['-L', resolve(repo, root), '-type', 'f', '(', '-name', '*.less', '-o', '-name', '*.css', ')'],
-        { encoding: 'utf8', maxBuffer: 1 << 28 }
-      );
-      for (const line of listing.split('\n')) {
-        if (line) {
-          out.add(line);
-        }
+    if (!existsSync(resolve(repo, root))) {
+      throw new Error(`ast-identity-oracle: corpus root ${root} is missing; install the workspace before comparing.`);
+    }
+    const listing = execFileSync(
+      'find',
+      ['-L', resolve(repo, root), '-type', 'f', '(', '-name', '*.less', '-o', '-name', '*.css', ')'],
+      { encoding: 'utf8', maxBuffer: 1 << 28 }
+    );
+    for (const line of listing.split('\n')) {
+      if (line) {
+        out.add(line);
       }
-    } catch {
-      // Root absent in this install — skipped, and reflected in the `files=` count.
     }
   }
   return [...out].sort();
