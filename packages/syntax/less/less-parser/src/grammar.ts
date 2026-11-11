@@ -5874,8 +5874,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const node = withBlockBody(
         rule(
           selectorFact.selector,
-          // The fixed sequence places only direct declaration/comment facts between
-          // the braces. This validates that fact list; it never reparses body text.
+          // The body's statements, as the sequence placed them between the braces;
+          // the selector fact, guard, braces and extend facts are not statements.
           children.filter(isStatement),
           extensions,
           children.find(isMixinGuard)

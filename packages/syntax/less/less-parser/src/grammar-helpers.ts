@@ -23,7 +23,7 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, withoutLineComments, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout, lookupStep, referenceCall, guardCall, guardCompare, guardDefault, guardLogical, guardNot, withFields, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isDeclaration, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, withoutLineComments, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout, lookupStep, referenceCall, guardCall, guardCompare, guardDefault, guardLogical, guardNot, withFields, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, MixinPathSegment, Operation, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, type ValuePieceKind, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex, valueRunSeparators } from './trivia-layout.js';
@@ -1432,15 +1432,9 @@ function requireMixinCallArgumentValue(value: unknown): MixinCallArgument['value
   return value;
 }
 
-function isLessDeclaration(value: unknown): value is Declaration {
-  // The discriminant is the check: only `decl()` writes this `type`, and it
-  // takes a typed name and value (see `isStatement`).
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Declaration';
-}
-
 /** The declaration a declaration item's production puts first. */
 function requireDeclaration(value: unknown): Declaration {
-  if (!isLessDeclaration(value)) {
+  if (!isDeclaration(value)) {
     throw new TypeError('Less declaration item lost its declaration.');
   }
   return value;
@@ -2618,8 +2612,8 @@ function isStatement(value: unknown): value is Statement {
   // A node's `type` is written only by its shape's constructor (V8 invariant 12),
   // and each statement factory takes typed fields, so the discriminant is the
   // check: re-reading those fields would re-walk every declaration value once per
-  // body that holds it. `Reference` is the one type with two readings, a value and
-  // a statement call, so it alone reads further.
+  // body that holds it. `Reference` alone reads further, because only a reference
+  // whose last step is a call is a statement; the type does not say so.
   if (typeof value !== 'object' || value === null || !('type' in value)) {
     return false;
   }
