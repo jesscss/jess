@@ -9,14 +9,14 @@ import type { InputOptions, LessOptions, LintConfig, OutputOptions, ScssOptions,
 type Keys<T> = Record<keyof T, true>;
 
 const COMPILE = {
-  plugins: true, searchPaths: true, mathMode: true, unitMode: true, functionMode: true, strict: true,
+  plugins: true, searchPaths: true, mathMode: true, unitMode: true, functionMode: true, unresolvedBuiltins: true, strict: true,
   allowOverloadedImport: true, allowLeakyScope: true, leakyScope: true, allowCallerScope: true,
   processImports: true, allowExtendSelectors: true, allowApplySelectors: true, disableScriptModules: true,
   disablePluginRule: true, jsReadRoot: true
 } satisfies Keys<NonNullable<StylesConfig['compile']>>;
 
 const INPUT = {
-  file: true, mathMode: true, unitMode: true, functionMode: true, strict: true, allowOverloadedImport: true,
+  file: true, mathMode: true, unitMode: true, functionMode: true, unresolvedBuiltins: true, strict: true, allowOverloadedImport: true,
   processImports: true, allowExtendSelectors: true, disableScriptModules: true, disablePluginRule: true,
   searchPaths: true, javascriptEnabled: true, paths: true, globalVars: true, modifyVars: true, rewriteUrls: true,
   rootpath: true, allowLeakyScope: true, leakyScope: true, allowCallerScope: true, bubbleRootAtRules: true
@@ -32,7 +32,7 @@ const LESS = {
   allowExtendSelectors: true, allowApplySelectors: true, javascriptEnabled: true, disablePluginRule: true,
   depends: true, compress: true, lint: true, paths: true, processImports: true, color: true, strictImports: true,
   insecure: true, ieCompat: true, rootpath: true, rewriteUrls: true, relativeUrls: true, mathMode: true,
-  unitMode: true, functionMode: true, moduleMode: true, math: true, strictMath: true, strictUnits: true,
+  unitMode: true, functionMode: true, unresolvedBuiltins: true, moduleMode: true, math: true, strictMath: true, strictUnits: true,
   globalVars: true, modifyVars: true, urlArgs: true, dumpLineNumbers: true, sourceMap: true, verbose: true,
   silent: true, quiet: true, strict: true, allowOverloadedImport: true, allowLeakyScope: true, leakyScope: true,
   allowCallerScope: true, bubbleRootAtRules: true
@@ -47,7 +47,7 @@ const SOURCE_MAP = {
 } satisfies Keys<Exclude<NonNullable<OutputOptions['sourceMap']>, boolean>>;
 
 const SOURCE_DIALECT = {
-  mathMode: true, unitMode: true, functionMode: true, allowLeakyScope: true, leakyScope: true,
+  mathMode: true, unitMode: true, functionMode: true, unresolvedBuiltins: true, allowLeakyScope: true, leakyScope: true,
   allowCallerScope: true, bubbleRootAtRules: true, processImports: true, allowExtendSelectors: true,
   allowApplySelectors: true
 } satisfies Keys<SourceDialectOptions>;

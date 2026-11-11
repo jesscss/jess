@@ -5,11 +5,11 @@
   "contractDigest": "ccce680820961b8a5f89ee6fbd8e13524bfb4410085296a3cdc42aba9679102f",
   "implementations": {
     "owner": "c4feef9b75ce5c0baad559f8838ec2d8e98eb2f95d6984c709647097ed5d9a2c",
-    "compiler-convert": "073638eb946dbbc4d279a8ae058563e5cad90e8b758826ed84187dca7324ae3e",
+    "compiler-convert": "4a401933258f7ceb5d3c295d30924008825e3b419d775c42386342276dd2bd93",
     "less-equivalence": "ddf02419b51ff689350e3dee0e7aa9c735555dfb38baf2a2471f9925ead4ca08",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "d46a456dacad8fc205dd41cd378c76fcaa88772415fa4016f75bcbc907c20457",
     "sass-selector-parse": "0f15e760ecafc11546d65927c5d0a92168d849ebbf163e4dfe0dfae683096d81"
   },
-  "rationale": "The root package.json gains the measure:less:vs-lessc script; no dependency, export, binding name or module this contract covers changes."
+  "rationale": "The root package.json gains the measure:less:vs-lessc script; no dependency, export, binding name or module this contract covers changes. A namespaced built-in that printed a form can be reported on request (unresolvedBuiltins), with no change to what it binds or prints."
 }
