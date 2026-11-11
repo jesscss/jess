@@ -499,6 +499,9 @@ describe('an export inside a larger argument, by what the slot holds at compile 
     ['5px', '@less.spin(#c00, (@a * 2))', 'hsl(from #c00 calc(h + (var(--a, 5px) * 2) / 1px) s l)']
   ])('@a: %s; %s is its form', async (held, source, form) => {
     await expect(css(exposed(held, source))).resolves.toContain(`v: ${form};`);
+
+    /* R8: no form divides a percentage the property resolves first. */
+    expect(form).not.toMatch(/\/ [\d.]+%/);
   });
 
   it('a bare dividend beside a divisor of its unit is the form too', async () => {
@@ -523,7 +526,6 @@ describe('an export inside a larger argument, by what the slot holds at compile 
     const result = await new Compiler({}).renderToResult({ ...options, source: '@use "#less"; @expose b; @b: #c00; .x { v: @less.contrast(var(--x), @b); }' });
     expect(Object.values(result.runtime?.derived ?? {})).toEqual([{ fn: { module: '@jesscss/fns/less', name: 'contrast' }, args: ['var(--x)', { export: 'b' }] }]);
   });
-
 
   it.each([
     ['5', '@less.ceil((@p * 2))', 'round(up, (var(--a, 5) * 2), 1)'],

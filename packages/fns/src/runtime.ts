@@ -1,6 +1,6 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { Dimension, Fn, ValueGroup } from '@jesscss/core/value';
-import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, sniffLiteral } from '@jesscss/core/value';
+import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, ratioOf, sniffLiteral } from '@jesscss/core/value';
 
 /**
  * The browser runtime for a stylesheet's exported variables (ledger A4,
@@ -29,10 +29,12 @@ export interface RuntimeSpec {
    * The unit of each export a CSS form reads, `''` for a number: the only one it
    * takes, since CSS would convert another unit where Less does not
    * (`unit(7em, px)` is 7px in Less, 112px over `var(--a) / 1px * 1px`). A `%`
-   * export read at all is `%`, and is held as its ratio, `50%` as `--a: 0.5`, which
-   * every read multiplies back.
+   * export is `%`.
    */
   readonly units: Readonly<Record<string, string>>;
+
+  /** Each `%` export, held as its ratio, `50%` as `--a: 0.5`, which every read multiplies back. */
+  readonly ratios: readonly string[];
 
   /** Each generated custom property, by name, with how it is computed. */
   readonly derived: Readonly<Record<string, RuntimeRecipe>>;
@@ -64,6 +66,7 @@ const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !i
 declare const document: { readonly documentElement: StyleTarget };
 
 export function createRuntime(spec: RuntimeSpec): Runtime {
+  const ratios = new Set(spec.ratios);
   const vars = (given: ExportValues): Record<string, string> => {
     const values: Record<string, string> = {};
     const out: Record<string, string> = {};
@@ -84,7 +87,7 @@ export function createRuntime(spec: RuntimeSpec): Runtime {
       values[name] = value;
       const unit = Object.hasOwn(spec.units, name) ? spec.units[name] : undefined;
       const held = unit === undefined ? undefined : checkedUnit(key, value, unit, read(name));
-      out[`--${name}`] = held !== undefined && unit === '%' ? String(Number((held.number / 100).toPrecision(15))) : value;
+      out[`--${name}`] = held !== undefined && ratios.has(name) ? String(ratioOf(held.number, 100)) : value;
     }
     for (const property of Object.keys(spec.derived)) {
       const recipe = spec.derived[property]!;
@@ -105,7 +108,7 @@ export function createRuntime(spec: RuntimeSpec): Runtime {
   };
 }
 
-/** `read`, the value given for `key`, when it is a dimension in `unit`, the unit a form reads it in. A `%` one is written as its ratio, `50%` as `0.5`. */
+/** `read`, the value given for `key`, when it is a dimension in `unit`, the unit a form reads it in. */
 function checkedUnit(key: string, value: string, unit: string, read: ValueGroup): Dimension {
   if (isValueGroupArray(read) || read.type !== 'Dimension' || read.unit.toLowerCase() !== unit.toLowerCase()) {
     throw new TypeError(`${key} is read by a CSS form in ${unit === '' ? 'a number' : unit}, as its compile-time value is; ${value} would mean something else there.`);

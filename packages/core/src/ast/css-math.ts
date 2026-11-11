@@ -106,7 +106,13 @@ export const asNumber = (value: ValueGroup, unit = knownUnit(value)): ValueGroup
 export const formMath = (op: '*' | '/' | '-', left: ValueGroup, right: ValueGroup): ValueGroup =>
   isValueGroupArray(left) || isValueGroupArray(right) ? left : mathOnDeferred(op, negated(left), negated(right));
 
-/** A CSS math function that reads numbers, of `args` with their unit dropped, in the `unit` its known result keeps: `calc(sqrt(var(--a) / 1px) * 1px)`. */
+/**
+ * A CSS math function that reads numbers, of `args` with their unit dropped, in the `unit` its known result keeps: `calc(sqrt(var(--a) / 1px) * 1px)`.
+ *
+ * TODO(compress-form-math): the call's bytes, and the spelling {@link mathOnDeferred} gives the math around it, are written
+ * here with no modes, so under `compress` a form's math is not compressed (`pow(var(--a,4px) / 1px, 0.5)` beside
+ * `pow(var(--x),.5)`). Spelling them from structure at output fixes both; tracker issue to be filed.
+ */
 export function aroundUnit(name: string, args: readonly ValueGroup[], unit: string): ValueGroup {
   const bytes = args.map(arg => (isValueGroupArray(arg) ? null : writtenCalcInner(arg)) ?? emitValue(arg)).join(', ');
   return mathOnDeferred('*', makeFunctionCall(name, makeList(args, ','), `${name}(${bytes})`), makeDimension(1, unit));

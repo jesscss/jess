@@ -96,7 +96,7 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { js } = await built(root);
 
-      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. 43,657 B measured. */
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. 43,722 B measured. */
       expect(js.length).toBeLessThan(45_000);
     });
   });
@@ -112,7 +112,7 @@ describe('vite-plugin-jess', () => {
       const { css, js } = await built(root);
       expect(css).toContain(printed);
 
-      /* 35,903 B measured for each. */
+      /* 35,968 B measured for each. */
       expect(js.length).toBeLessThan(37_000);
     });
   });
@@ -125,7 +125,7 @@ describe('vite-plugin-jess', () => {
       const { css, js } = await built(root);
       expect(css).toContain('rgb(var(--r, 10),0,0)');
 
-      /* 35,902 B measured. */
+      /* 35,967 B measured. */
       expect(js.length).toBeLessThan(37_000);
     });
   });

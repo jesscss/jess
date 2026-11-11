@@ -20,9 +20,9 @@
 import { isMathFunctionName } from './math-functions.js';
 import type { Operation } from './nodes.js';
 import { DivisionByZeroError, InvalidOperandError, emitValue, isValueGroupArray, joinGroup, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
-import { arithmeticOperand, makeDimension, makeKeyword, withFields } from './value-factory.js';
+import { arithmeticOperand, makeDimension, makeKeyword, makeWrittenMath, withFields } from './value-factory.js';
 import { convertible } from './value-units.js';
-import { isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
+import { carryKeptClash, isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, overPercent, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
 
 type Divider = Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>;
 
@@ -230,7 +230,17 @@ export function operated(op: string, left: Value, right: Value, modes: EvalModes
   if (op === '%' && !(keeps && (l.type === 'List' || r.type === 'List'))) {
     return remOn(l, r, modes);
   }
-  return !deferred || keeps ? operate(op, l, r, modes) : mathOnDeferred(op, l, r);
+  return !deferred || keeps ? (op === '/' ? overPercent(l, r) : undefined) ?? operate(op, l, r, modes) : mathOnDeferred(op, l, r);
+}
+
+/**
+ * An operation written in a math function, as the one expression it is: `a / 1%`
+ * folded where `a` holds an exposed percentage's ratio read ({@link overPercent}),
+ * else the arithmetic, carrying a unit clash `written` kept from its operands.
+ */
+export function writtenMath(node: Operation, left: EvalValue, right: EvalValue, bytes: string, written: readonly EvalValue[]): Value {
+  const folded = node.operator === '/' && typeof left === 'object' && typeof right === 'object' && !isValueGroupArray(left) && !isValueGroupArray(right) ? overPercent(left, right) : undefined;
+  return folded ?? carryKeptClash(makeWrittenMath(node, left, right, bytes), written[0]!, written[1]!);
 }
 
 /** Arithmetic a math function holds as written, unless it is a `%` over what only the browser knows and one value on each side, which CSS math has no operator for ({@link remOn}). */

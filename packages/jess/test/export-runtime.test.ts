@@ -24,7 +24,7 @@ function toRuntime(recipe: ExportRecipe | string): RuntimeRecipe {
   if (typeof fn !== 'function') {
     throw new Error(`No ${recipe.fn.name} in ${recipe.fn.module}`);
   }
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- a member of a function module, as the generated module imports it.
+
   return [fn as Fn, recipe.args.map(toRuntime)];
 }
 
@@ -73,7 +73,7 @@ describe('the export runtime', () => {
   ])('writes what a compile writes: %s with %s', async (expression, value) => {
     const exported = await compile(`@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars({ brand: value });
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived }).vars({ brand: value });
     const [property] = Object.keys(derived);
     const recompiled = await compile(`@use "#less";\n@brand: ${value};\n.a { v: ${expression}; }`);
     expect(vars['--brand']).toBe(value);
@@ -138,7 +138,7 @@ describe('the export runtime', () => {
     const exported = await compile(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const [property] = Object.keys(derived);
-    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars({ brand: later });
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived }).vars({ brand: later });
     const recompiled = await compile(`@use "#less";\n@brand: ${later};\n.a { v: ${expression}; }`);
     expect(recompiled.css).toContain(`v: ${vars[property!]};`);
   });
@@ -177,13 +177,13 @@ describe('the export runtime', () => {
     const exported = await compile('@use "#less";\n@expose a, b;\n@a: #336699;\n@b: red;\n.a { v: @less.mix(@a, @b, 150%); }');
     expect(exported.css).toContain('v: var(--a-mix, #0099e6);');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars({ a: '#000', b: '#fff' })['--a-mix']).toBe('#000000');
+    expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived }).vars({ a: '#000', b: '#fff' })['--a-mix']).toBe('#000000');
   });
 
   it('runs rgb() as a recipe inside a function with no CSS form', async () => {
     const exported = await compile('@use "#less";\n@expose r;\n@r: 200;\n.a { v: @less.lightness(@less.rgb(@r, 0, 0)); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars({ r: '100' });
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived }).vars({ r: '100' });
     expect(vars['--r-lightness']).toBe('19.607843137%');
   });
 
@@ -195,7 +195,7 @@ describe('the export runtime', () => {
   ])('compiles %s beside what it cannot read, and says so if the export is set', async (expression) => {
     const exported = await compile(`@use "#less";\n@expose a;\n@a: #c00;\n.x { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars({ a: '#333' })).toThrow('The runtime computes from CSS literals');
+    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived }).vars({ a: '#333' })).toThrow('The runtime computes from CSS literals');
   });
 
   it('holds a percentage as its ratio, which every read multiplies back', async () => {
@@ -203,7 +203,7 @@ describe('the export runtime', () => {
     expect(exported.css).toContain('v: rgb(from #333 r g b / calc(var(--a, 0.25) * 100%));');
     expect(exported.css).toContain('w: calc(var(--a, 0.25) * 100%);');
     expect(exported.runtime!.derived).toEqual({});
-    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived: {} });
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived: {} });
     expect(runtime.vars({ a: '50%' })).toEqual({ '--a': '0.5' });
     expect(runtime.vars({ a: '33.3%' })).toEqual({ '--a': '0.333' });
     expect(() => runtime.vars({ a: '.5' })).toThrow('a is read by a CSS form in %');
@@ -223,11 +223,63 @@ describe('the export runtime', () => {
     ['50%', '@less.sqrt(@a)', 'calc(sqrt(var(--a, 0.5) * 100) * 1%)', '28.2812px on width in a 400px box, as 7.0710678%'],
     ['25%', '@less.fade(#333, @a)', 'rgb(from #333 r g b / calc(var(--a, 0.25) * 100%))', 'alpha 0.25'],
     ['10%', '@less.darken(#c00, @a)', 'hsl(from #c00 h s clamp(0, l - var(--a, 0.1) * 100, 100))', 'rgb(153, 0, 0), as hsl(0, 100%, 30%)'],
-    ['50%', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 0.5) * 100% / 100%) * 75%) 25%)', 'rgb(96, 191, 96), as hwb(120 37.5% 25%)']
+    ['50%', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 0.5)) * 75%) 25%)', 'rgb(96, 191, 96), as hwb(120 37.5% 25%)'],
+    ['50%', '@less.unit((@a + 1%), px)', 'calc((var(--a, 0.5) * 100 + 1) * 1px)', '51px on height in a box of no height'],
+    ['50%', '@less.unit((@a + 1%))', 'calc((var(--a, 0.5) * 100 + 1) * 1)', '51 on z-index'],
+    ['50%', '@less.sqrt((@a + 1%))', 'calc(sqrt(var(--a, 0.5) * 100 + 1) * 1%)', '28.5625px on width in a 400px box, as 7.1414284%'],
+    ['50%', '(@a / 1%)', 'calc(var(--a, 0.5) * 100)', '50 on z-index']
   ])('prints @a: %s in %s as the CSS measured in Chrome', async (value, expression, printed, _measured) => {
     const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime!.units).toEqual({ a: '%' });
+    expect(exported.runtime!.ratios).toEqual(['a']);
+
+    /* R8: no form divides a percentage the property resolves first. */
+    expect(printed).not.toMatch(/\/ [\d.]+%/);
+  });
+
+  it('holds a percentage that is another export\'s read as that one\'s ratio', async () => {
+    const exported = await compile('@use "#less";\n@expose a, b;\n@a: 25%;\n@b: @a;\n.x { v: @b; w: @less.unit(@b, px); }');
+
+    /* Chrome 156.0.8078.75: w is 25px on height with the fallback alone, 50px with --b: 0.5. */
+    expect(exported.css).toContain('v: calc(var(--b, var(--a, 0.25)) * 100%);');
+    expect(exported.css).toContain('w: calc(var(--b, var(--a, 0.25)) * 100 * 1px);');
+    expect(exported.runtime!.ratios).toEqual(['a', 'b']);
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived: {} });
+    expect(runtime.vars({ b: '50%' })).toEqual({ '--b': '0.5' });
+  });
+
+  it('holds a percentage only a recipe reads as its ratio too', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: 50%;\n.x { v: @less.ispercentage(@a); }');
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived });
+    expect(runtime.vars({ a: '20%' })).toEqual({ '--a': '0.2', '--a-ispercentage': 'true' });
+    expect(() => runtime.vars({ a: '.2' })).toThrow('a is read by a CSS form in %');
+  });
+
+  it('takes the unit a form reads an export of no known unit in, as it is', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: var(--y);\n.x { color: @less.fade(#c00, @a); }');
+    expect(exported.css).toContain('color: rgb(from #c00 r g b / calc(var(--a, var(--y)) / 100%));');
+    expect(exported.runtime!.ratios).toEqual([]);
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived: {} });
+    expect(runtime.vars({ a: '50%' })).toEqual({ '--a': '50%' });
+    expect(() => runtime.vars({ a: '.5' })).toThrow('a is read by a CSS form in %');
+  });
+
+  it('has no form for a sum over a percentage a term of which does not fold', async () => {
+    const exported = await compile('@use "#less";\n@expose a, n;\n@a: 50%;\n@n: 2;\n.x { v: @less.unit((@a + 1% * @n), px); }');
+    expect(exported.errors?.[0]).toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('divides a percentage') });
+  });
+
+  it.each([
+    ['@expose a;\n@a: 5px;', '@less.unit((@a * 2), em)', { a: 'px' }, { a: '2em' }],
+    ['@expose a;\n@a: 5;', '@less.darken(#c00, (@a * 2))', { a: '' }, { a: '5%' }],
+    ['@expose a, b;\n@a: 5px;\n@b: 1;', '@less.round(@a, (@b * 2))', { a: 'px', b: '' }, { b: '2px' }]
+  ])('takes only the unit a form reads an export in inside a larger argument: %s %s', async (declared, expression, units, refused) => {
+    const exported = await compile(`@use "#less";\n${declared}\n.x { v: ${expression}; }`);
+    expect(exported.runtime!.units).toEqual(units);
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived: {} });
+    expect(() => runtime.vars(refused)).toThrow('is read by a CSS form in');
   });
 
   it('holds a percentage read only as written as its ratio too, whatever reads it first', async () => {
@@ -262,7 +314,7 @@ describe('the export runtime', () => {
     const exported = await compile(`@use "#less";\n${declared}\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime!.derived).toEqual({});
-    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived: {} }).vars(values)).not.toThrow();
+    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived: {} }).vars(values)).not.toThrow();
   });
 
   it.each([
@@ -272,7 +324,7 @@ describe('the export runtime', () => {
   ])('refuses a unit a CSS form would read differently: %s %s set to %s', async (declared, expression, set, unit) => {
     const exported = await compile(`@use "#less";\n@expose a;\n${declared}\n.x { v: ${expression}; }`);
     expect(exported.runtime!.derived).toEqual({});
-    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived: {} });
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived: {} });
     expect(() => runtime.vars({ a: set })).toThrow(`a is read by a CSS form in ${unit}`);
     expect(() => runtime.vars({ a: '3' + (unit === 'a number' ? '' : unit) })).not.toThrow();
   });
@@ -280,13 +332,13 @@ describe('the export runtime', () => {
   it('takes any unit for an export only read as written or by a recipe', async () => {
     const exported = await compile('@use "#less";\n@expose a;\n@a: 5px;\n.x { v: @a; w: @less.sin(@a); }');
     expect(exported.runtime!.units).toEqual({});
-    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived: {} }).vars({ a: '2em' })).not.toThrow();
+    expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived: {} }).vars({ a: '2em' })).not.toThrow();
   });
 
   it('recomputes @less.sin(@a) where the CSS function does not take a length', async () => {
     const exported = await compile('@use "#less";\n@expose a;\n@a: 0px;\n.x { v: @less.sin(@a); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    expect(Object.values(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars({ a: '0px' }))).toContain('0');
+    expect(Object.values(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived }).vars({ a: '0px' }))).toContain('0');
   });
 
   it.each([
@@ -297,12 +349,12 @@ describe('the export runtime', () => {
   });
 
   it.each([
-    ['red', '.5', '#eee'],
-    ['#c00', '.5', '#eee']
+    ['red', '50%', '#eee'],
+    ['#c00', '50%', '#eee']
   ])('recomputes beside a fixed argument it can read: %s', async (color, set, printed) => {
     const exported = await compile(`@use "#less";\n@expose a;\n@a: 1%;\n.x { v: @less.contrast(${color}, #111, #eee, @a); }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    expect(Object.values(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars({ a: set }))).toContain(printed);
+    expect(Object.values(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived }).vars({ a: set }))).toContain(printed);
   });
 
   it.each([
@@ -326,12 +378,17 @@ describe('the export runtime', () => {
     ['2%', '@less.mod(5px, @a)', 'rem(5px, var(--a, 0.02) * 100 * 1px)'],
     ['50%', '@less.mod(5px, (@a * 2))', 'rem(5px, var(--a, 0.5) * 100 * 2 * 1px)'],
     ['50%', '@less.pow(2, @a)', 'pow(2, var(--a, 0.5) * 100)'],
-    ['50%', '@less.mod(3, @a)', 'rem(3, var(--a, 0.5) * 100)']
+    ['50%', '@less.mod(3, @a)', 'rem(3, var(--a, 0.5) * 100)'],
+    ['50%', '@less.percentage((@a + 1%))', 'calc((var(--a, 0.5) * 100 + 1) * 100%)'],
+    ['50%', '@less.percentage((@a - 1%))', 'calc((var(--a, 0.5) * 100 - 1) * 100%)']
   ])('keeps the form over a percentage held as its ratio: @a: %s in %s', async (value, expression, printed) => {
     const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime!.derived).toEqual({});
     expect(exported.runtime!.units).toEqual({ a: '%' });
+
+    /* R8: no form divides a percentage the property resolves first. */
+    expect(printed).not.toMatch(/\/ [\d.]+%/);
   });
 
   it.each([
@@ -356,7 +413,7 @@ describe('the export runtime', () => {
     ['25%', '@less.spin(var(--x), @a)', 'hsl(from var(--x) calc(h + var(--a, 0.25) * 100) s l)'],
     ['2px', '@less.rgb((@a), 0, 0)', 'rgb(calc(var(--a, 2px) / 1px), 0, 0)'],
     ['.5', '@less.hsl(120, @a, 50%)', 'hsl(120, calc(var(--a, 0.5) * 100%), 50%)'],
-    ['.5', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 0.5) * 100% / 100%) * 75%) 25%)'],
+    ['.5', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 0.5)) * 75%) 25%)'],
     ['.25', '@less.hsv(var(--h), 50%, @a)', 'hwb(var(--h) calc(0.5 * var(--a, 0.25) * 100%) calc(100% - var(--a, 0.25) * 100%))'],
     ['50%', '@less.hsv(@a, 50%, 50%)', 'hwb(calc(var(--a, 0.5) * 100 * 3.6) 25% 50%)'],
     ['16px', '@less.sqrt(@a)', 'calc(sqrt(var(--a, 16px) / 1px) * 1px)'],
@@ -385,7 +442,7 @@ describe('the export runtime', () => {
     ['@a: .5;', '@less.rgba(currentcolor, @a)', 'rgb(from currentcolor r g b / var(--a, 0.5))'],
     ['@a: 10%;', '@less.fadein(#333, @a)', 'rgb(from #333 r g b / calc(alpha + var(--a, 0.1)))'],
     ['@a: 10%;', '@less.fadeout(var(--x), @a)', 'rgb(from var(--x) r g b / calc(alpha - var(--a, 0.1)))'],
-    ['@a: 50%;', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 0.5) * 100% / 100%) * 75%) 25%)'],
+    ['@a: 50%;', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 0.5)) * 75%) 25%)'],
     ['@a: 25%;', '@less.hsv(var(--h), 50%, @a)', 'hwb(var(--h) calc(0.5 * var(--a, 0.25) * 100%) calc(100% - var(--a, 0.25) * 100%))'],
     ['@a: .5;', '@less.hsva(120, 50%, 75%, @a)', 'hwb(120 37.5% 25% / var(--a, 0.5))']
   ])('prints %s %s as the CSS it is', async (declaration, expression, printed) => {
@@ -401,14 +458,14 @@ describe('the export runtime', () => {
   ])('runs a recipe of one export whose default holds a call: %s %s', async (declaration, expression, values, result) => {
     const exported = await compile(`@use "#less";\n@expose a;\n${declaration}\n.x { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars(values);
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived }).vars(values);
     expect(Object.values(vars)).toContain(result);
   });
 
   it('recomputes a string with parens as a compile does', async () => {
     const exported = await compile('@use "#less";\n@expose a;\n@a: c;\n.x { v: @less.replace("a(b)", "b", @a); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars({ a: 'z' });
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived }).vars({ a: 'z' });
     expect(Object.values(vars)).toContain('"a(z)"');
   });
 
@@ -422,13 +479,13 @@ describe('the export runtime', () => {
   it('computes only what reads a given export', async () => {
     const exported = await compile('@use "#less";\n@expose a, b;\n@a: #c00;\n@b: #00c;\n.x { v: @less.lightness(@a); w: @less.lightness(@b); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars({ b: '#fff' })).toEqual({ '--b': '#fff', '--b-lightness': '100%' });
+    expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived }).vars({ b: '#fff' })).toEqual({ '--b': '#fff', '--b-lightness': '100%' });
   });
 
   it('takes each value by its JavaScript key, the name with dash-case turned to camelCase', async () => {
     const exported = await compile('@use "#less";\n@expose brand-color;\n@brand-color: #c00;\n.a { v: @less.lightness(@brand-color); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
-    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived });
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived });
     expect(runtime.vars({ brandColor: '#000' })).toEqual({ '--brand-color': '#000', '--brand-color-lightness': '0%' });
     expect(() => runtime.vars({ 'brand-color': '#000' })).toThrow('no variable with the key brand-color');
   });
