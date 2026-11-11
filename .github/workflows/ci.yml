@@ -413,6 +413,9 @@ jobs:
   #     (`#less`, `sass:*`), for one, load `@jesscss/fns` lib (and that lib's own
   #     `@jesscss/core`) through the plugin's `require`. Both are fast tsdown
   #     bundles; the whole prime is ~3s.
+  #   * `@jesscss/config` — its lazy-loading test starts a fresh Node process on
+  #     the lib to see which libraries a config lookup loads; a vite alias cannot
+  #     reach that process.
   #
   # `pnpm --filter '@jesscss/core...' --filter '@jesscss/fns...'` pulls their shared
   # `awaitable-pipe` dep in too. The parser libs are built only for the
@@ -441,8 +444,8 @@ jobs:
       # `compose([cssBaseRules, …])` grammar fuses from the base's built-lib
       # `composedPieces` provenance, not source, so the base lib must exist. The
       # less/scss/jess W-phase compose flips all rely on this same prime.
-      - name: Prime — build parser-shared + css-parser + core + fns
-        run: pnpm --filter '@jesscss/parser-shared' --filter '@jesscss/css-parser' --filter '@jesscss/core...' --filter '@jesscss/fns...' build
+      - name: Prime — build parser-shared + css-parser + core + fns + config
+        run: pnpm --filter '@jesscss/parser-shared' --filter '@jesscss/css-parser' --filter '@jesscss/core...' --filter '@jesscss/fns...' --filter '@jesscss/config' build
 
       # Each parser's `interpreter-parity.test.ts` compares its two SHIPPED bundles
       # (`lib/grammar/*` vs `lib/grammar/interpreter/*`), so the remaining three
