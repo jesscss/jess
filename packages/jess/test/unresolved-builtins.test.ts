@@ -17,7 +17,7 @@ const scss = (source: string, mode?: Mode) => compile(source, '.scss', mode);
 
 describe('unresolvedBuiltins: a namespaced built-in that did not compute', () => {
   it.each([
-    ['.x { v: @less.fade(#333, var(--a)); }', 'rgb(from #333 r g b / var(--a))', 2, 9],
+    ['.x { v: @less.fade(#333, var(--a)); }', 'rgb(from #333 r g b / calc(var(--a) / 100%))', 2, 9],
     ['.x { v: @less.rgb(var(--r), 0, 0); }', 'rgb(var(--r), 0, 0)', 2, 9]
   ])('warns at %s, naming what it printed', async (source, printed, line, column) => {
     const { result, reports } = await less(source, 'warn');
@@ -97,7 +97,7 @@ describe('unresolvedBuiltins: a namespaced built-in that did not compute', () =>
     const result = await new Compiler({ compile: { unresolvedBuiltins: 'error' } })
       .renderToResult({ source: '@-use "#less" as *;\n.x { v: $fade(#333, var(--a)); }', filePath: 'entry.jess', extension: '.jess', language: 'jess' });
     expect(result.errors).toEqual([]);
-    expect(result.css).toContain('v: rgb(from #333 r g b / var(--a));');
+    expect(result.css).toContain('v: rgb(from #333 r g b / calc(var(--a) / 100%));');
   });
 
   it.each([

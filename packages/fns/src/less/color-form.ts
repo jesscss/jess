@@ -49,12 +49,12 @@ export function channelSlot(value: ValueGroup): ValueGroup {
 export const alphaOf = (alpha: Dimension | WrittenCall): ValueGroup =>
   alpha.type === 'Dimension' ? makeDimension(clamp01(fractionOf(alpha))) : channelSlot(alpha);
 
-/** S, V or L as CSS holds them: a percentage, which a number in any other unit is a fraction of 1 of. */
+/** S, V or L as CSS holds them: a percentage, which a number in any other unit is a fraction of 1 of, clamped to 0–1 as the compile reads it. */
 export function percentSlot(value: ValueGroup): ValueGroup {
   const unit = knownUnit(value);
   return unit === undefined || unit === '%'
     ? value
-    : isDimension(value) ? makeDimension(mulExact(value.number, 100), '%') : formMath('*', asNumber(value, unit), makeDimension(100, '%'));
+    : isDimension(value) ? makeDimension(mulExact(clamp01(value.number), 100), '%') : formMath('*', asNumber(value, unit), makeDimension(100, '%'));
 }
 
 /** A hue, known or only the browser's; written as a call or in degrees. */

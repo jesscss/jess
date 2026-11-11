@@ -153,8 +153,8 @@ describe('a math built-in over a known input', () => {
 
 describe('an alpha, or an S or V, only the browser knows has its form', () => {
   it.each([
-    ['fade(#333, var(--a))', 'rgb(from #333 r g b / var(--a))'],
-    ['fade(var(--c), var(--a))', 'rgb(from var(--c) r g b / var(--a))'],
+    ['fade(#333, var(--a))', 'rgb(from #333 r g b / calc(var(--a) / 100%))'],
+    ['fade(var(--c), var(--a))', 'rgb(from var(--c) r g b / calc(var(--a) / 100%))'],
     ['fade(#333, var(--a) + 5%)', 'rgb(from #333 r g b / calc(var(--a) + 5%))'],
     ['rgba(#000, var(--a))', 'rgb(from #000 r g b / var(--a))'],
     ['rgba(currentcolor, var(--a))', 'rgb(from currentcolor r g b / var(--a))'],
@@ -169,7 +169,7 @@ describe('an alpha, or an S or V, only the browser knows has its form', () => {
     ['hsv(var(--h), var(--s), var(--v))', 'hwb(var(--h) calc((1 - var(--s) / 100%) * var(--v)) calc(100% - var(--v)))'],
     ['hsva(120, 50%, 75%, var(--a))', 'hwb(120 37.5% 25% / var(--a))'],
     ['hsva(120, var(--s), 75%, .5)', 'hwb(120 calc((1 - var(--s) / 100%) * 75%) 25% / 0.5)'],
-    ['darken(fade(#333, var(--a)), 10%)', 'hsl(from rgb(from #333 r g b / var(--a)) h s clamp(0, l - 10, 100))'],
+    ['darken(fade(#333, var(--a)), 10%)', 'hsl(from rgb(from #333 r g b / calc(var(--a) / 100%)) h s clamp(0, l - 10, 100))'],
     ['fade(hsv(120, var(--s), 75%), 50%)', 'rgb(from hwb(120 calc((1 - var(--s) / 100%) * 75%) 25%) r g b / 0.5)'],
     ['fadein(#333, var(--a) + 5)', 'rgb(from #333 r g b / calc(alpha + (var(--a) + 5) / 100))'],
     ['fade(#333, var(--a) + .5)', 'rgb(from #333 r g b / calc((var(--a) + 0.5) / 100))'],
@@ -197,7 +197,7 @@ describe('an alpha, or an S or V, only the browser knows has its form', () => {
   });
 
   it.each([
-    ['@less.fade(#333, var(--a))', 'rgb(from #333 r g b / var(--a))'],
+    ['@less.fade(#333, var(--a))', 'rgb(from #333 r g b / calc(var(--a) / 100%))'],
     ['@less.rgba(#000, var(--a))', 'rgb(from #000 r g b / var(--a))'],
     ['@less.fadein(#333, var(--a))', 'rgb(from #333 r g b / calc(alpha + var(--a) / 100%))'],
     ['@less.hsl(var(--h), 50%, 50%)', 'hsl(var(--h), 50%, 50%)'],
@@ -207,7 +207,7 @@ describe('an alpha, or an S or V, only the browser knows has its form', () => {
     ['@less.fadein(#333, var(--a) + 5)', 'rgb(from #333 r g b / calc(alpha + (var(--a) + 5) / 100))'],
     ['@less.fade(#333, var(--a) + .5)', 'rgb(from #333 r g b / calc((var(--a) + 0.5) / 100))'],
     ['@less.hsv(120, var(--s) + .05, 75%)', 'hwb(120 calc((1 - (var(--s) + 0.05) * 100% / 100%) * 75%) 25%)'],
-    ['@less.hsl(var(--h), 50, 50)', 'hsl(var(--h), 5000%, 5000%)']
+    ['@less.hsl(var(--h), 50, 50)', 'hsl(var(--h), 100%, 100%)']
   ])('imported, %s', async (source, form) => {
     await expect(css(`@use "#less"; .x { v: ${source}; }`)).resolves.toContain(`v: ${form};`);
   });
