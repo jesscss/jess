@@ -722,8 +722,10 @@ const readsOf = (inputs: ReadonlyArray<ExportInput>): ReadonlyArray<{ name: stri
  * The unit of each export a CSS form reads, so the runtime takes no other: CSS
  * converts `2em` over `/ 1px`, where Less reads it as 2. A read is in its
  * compile-time value's unit, `reads` as an argument or a `var()` in `form`
- * inside a larger one (`(@a * 2)`); one of no known unit is in the unit the form
- * divides it by (`var(--a, var(--y)) / 100%`). A `%` export is its ratio's
+ * inside a larger one (`(@a * 2)`); one of no known unit is in the unit its slot
+ * reads: the unit the form divides it by (`var(--a, var(--y)) / 100%`), a number
+ * as an operand or in `sqrt()`, a sibling's unit in `min()` ({@link slotUnit}),
+ * two such units being `eval/expose-unit-conflict`. A `%` export is its ratio's
  * ({@link noteRatio}) (docs/architecture/core/spec/R8-browser-runtime.md).
  * Returns `form`.
  */
@@ -741,13 +743,13 @@ function recordUnits<F>(runtime: ExportRuntime, reads: ReadonlyArray<{ name: str
       runtime.units.set(name, unit);
       runtime.slots.set(name, node.name);
     } else if (had !== unit) {
-      exportNotWritten(node, `@${name}`, name, e, `as ${unitWord(unit)} by ${node.name}(), where ${runtime.slots.get(name) ?? 'another function'}() reads it as ${unitWord(had)}, and no value set at run time is both`);
+      throw ERR.exposeUnitConflict({ node, ...callSiteLocation(node, e.s), meta: { name, fn: node.name, unit: unitWord(unit), other: runtime.slots.get(name) ?? 'another function', otherUnit: unitWord(had) } });
     }
   });
   return form;
 }
 
-const unitWord = (unit: string): string => unit === '' ? 'a number' : unit === '%' ? 'a percentage' : `a length in ${unit}`;
+const unitWord = (unit: string): string => unit === '' ? 'a number' : unit === '%' ? 'a percentage' : `a value in ${unit}`;
 
 /**
  * {@link recordUnits} of each export `var()` in `v`, `over` the unit of the divisor
@@ -764,11 +766,12 @@ function formUnits(runtime: ExportRuntime, v: EvalValue, over: string | undefine
       formUnits(runtime, item, over, operand, reads);
     }
   } else if (v.type === 'Arithmetic') {
-    const divisor = v.op === '/' && typeof v.right !== 'string' && isDimension(v.right) && v.right.unit !== '' ? v.right.unit : over;
-    formUnits(runtime, v.left, divisor, true, reads);
+    const by = typeof v.right !== 'string' && isDimension(v.right) && v.right.unit !== '' ? v.right.unit : undefined;
+    formUnits(runtime, v.left, by === undefined ? over : v.op === '/' ? by : v.op === '*' ? '' : over, true, reads);
     formUnits(runtime, v.right, over, true, reads);
   } else if (v.type === 'FunctionCall' && v.name !== 'var') {
-    formUnits(runtime, v.args, over, operand, reads);
+    const slot = slotUnit(v.name, v.args);
+    formUnits(runtime, v.args, slot ?? over, operand || slot !== undefined, reads);
   } else if (v.type === 'FunctionCall') {
     const [name, held] = groupItems(v.args);
     const key = name !== undefined && !isValueGroupArray(name) && name.type === 'Keyword' ? runtime.properties.get(name.text) : undefined;
@@ -786,6 +789,28 @@ function formUnits(runtime: ExportRuntime, v: EvalValue, over: string | undefine
       reads(key, unit);
     }
   }
+}
+
+/** CSS math functions that read their arguments as numbers (css-values-4 §10.4–10.5). */
+const NUMBER_SLOTS: ReadonlySet<string> = new Set(['sqrt', 'pow', 'exp', 'log', 'asin', 'acos', 'atan']);
+
+/** CSS math functions whose arguments share one type (css-values-4 §10.2, §10.6–10.7). */
+const SHARED_SLOTS: ReadonlySet<string> = new Set(['min', 'max', 'clamp', 'round', 'rem', 'mod', 'hypot', 'atan2']);
+
+/** The unit a math function's arguments are read in: a number, or the unit of an argument that knows one. */
+function slotUnit(name: string, args: ValueGroup): string | undefined {
+  if (NUMBER_SLOTS.has(name)) {
+    return '';
+  }
+  if (SHARED_SLOTS.has(name)) {
+    for (const argument of groupItems(args)) {
+      const unit = knownUnit(argument, true);
+      if (unit !== undefined) {
+        return unit;
+      }
+    }
+  }
+  return undefined;
 }
 
 /** The compile-time value of each export a recipe reads, the first read standing. */

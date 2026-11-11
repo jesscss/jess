@@ -292,9 +292,27 @@ describe('the export runtime', () => {
     expect(runtime.vars({ a: '10' })).toEqual({ '--a': '10' });
   });
 
-  it('has no runtime value for an export of no known unit two slots read in two units', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: var(--y);\n.x { color: @less.fade(#c00, @a); background: @less.spin(#c00, @a); }');
-    expect(exported.errors?.[0]).toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('as a number by less.spin(), where less.fade() reads it as a percentage') });
+  it.each([
+    ['@less.spin(#c00, @a)', 'less.spin() reads it as a number, and less.fade() as a percentage'],
+    ['@less.sqrt(@a)', 'less.sqrt() reads it as a number, and less.fade() as a percentage'],
+    ['@less.min(@a, 5px)', 'less.min() reads it as a value in px, and less.fade() as a percentage'],
+    ['@less.mod(@a, 3px)', 'less.mod() reads it as a value in px, and less.fade() as a percentage']
+  ])('has no runtime value for an export of no known unit a fade amount and %s read in two units', async (expression, reason) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: var(--y);\n.x { color: @less.fade(#c00, @a); background: ${expression}; }`);
+    expect(exported.errors?.[0]).toMatchObject({ code: 'eval/expose-unit-conflict', message: expect.stringContaining('Exposed variable @a read with two units'), reason: expect.stringContaining(reason) });
+  });
+
+  it.each([
+    ['@less.sqrt(@a)', 'sqrt(var(--a, var(--y)))', ''],
+    ['@less.pow(2, @a)', 'pow(2, var(--a, var(--y)))', ''],
+    ['@less.min(@a, 5px)', 'min(var(--a, var(--y)), 5px)', 'px'],
+    ['@less.max(5px, (@a * 2))', 'max(5px, (var(--a, var(--y)) * 2))', 'px'],
+    ['@less.mod(@a, 3px)', 'rem(var(--a, var(--y)), 3px)', 'px'],
+    ['@less.min((@a * 1px), 5px)', 'min((var(--a, var(--y)) * 1px), 5px)', '']
+  ])('takes the unit a CSS math function reads an export of no known unit in: %s', async (expression, printed, unit) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: var(--y);\n.x { v: ${expression}; }`);
+    expect(exported.css).toContain(`v: ${printed};`);
+    expect(exported.runtime!.units).toEqual({ a: unit });
   });
 
   /* Chrome 156.0.8078.75: both are `auto` on z-index, and `0px` on height times 1px, with --a: 0.5 and with the fallback alone. */
