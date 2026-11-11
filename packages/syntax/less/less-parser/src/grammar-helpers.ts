@@ -24,7 +24,7 @@ import { callArgumentSource, expressionWroteParens } from './mixin-reference-sou
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, withoutLineComments, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout, lookupStep, referenceCall, guardCall, guardCompare, guardDefault, guardLogical, guardNot, withFields, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
-import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, MixinPathSegment, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { AnonymousMixin, Any, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, MixinPathSegment, Operation, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, type ValuePieceKind, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex, valueRunSeparators } from './trivia-layout.js';
 import { diagnosticsOf, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
@@ -469,19 +469,6 @@ function isAny(value: unknown): value is Any {
     && value.type === 'Any'
     && 'src' in value
     && typeof value.src === 'string';
-}
-
-function isStyleImport(value: unknown): value is StyleImport {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'StyleImport'
-    && 'name' in value
-    && typeof value.name === 'string'
-    && 'target' in value
-    && (isQuoted(value.target) || isUrl(value.target) || isInterp(value.target))
-    && 'options' in value
-    && 'alias' in value;
 }
 
 function isVarDeclaration(value: unknown): value is VariableDeclaration {
@@ -1446,19 +1433,17 @@ function requireMixinCallArgumentValue(value: unknown): MixinCallArgument['value
 }
 
 function isLessDeclaration(value: unknown): value is Declaration {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Declaration'
-    && 'name' in value
-    && (typeof value.name === 'string' || isInterp(value.name))
-    && 'value' in value
-    && 'value' in value
-    && isLessValueSlotValue(value.value)
-    && 'merge' in value
-    && (value.merge === null || value.merge === ',' || value.merge === ' ')
-    && 'important' in value
-    && typeof value.important === 'boolean';
+  // The discriminant is the check: only `decl()` writes this `type`, and it
+  // takes a typed name and value (see `isStatement`).
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Declaration';
+}
+
+/** The declaration a declaration item's production puts first. */
+function requireDeclaration(value: unknown): Declaration {
+  if (!isLessDeclaration(value)) {
+    throw new TypeError('Less declaration item lost its declaration.');
+  }
+  return value;
 }
 
 function isLessSelectorList(value: unknown): value is SelectorList {
@@ -1639,35 +1624,6 @@ function staticNonSelectorPseudoFrom(head: string, arg: string | null): SimpleSe
   return arg === null
     ? simpleSelector(head)
     : simpleSelector(`${head}(${arg})`);
-}
-
-function isRuleset(value: unknown): value is Ruleset {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Ruleset'
-    && 'selector' in value
-    && isLessSelectorList(value.selector)
-    && 'rules' in value
-    && Array.isArray(value.rules);
-}
-
-function isAtRuleBlock(value: unknown): value is AtRuleBlock {
-  return typeof value === 'object' && value !== null && 'type' in value
-    && value.type === 'AtRuleBlock' && 'name' in value && typeof value.name === 'string'
-    && 'prelude' in value && 'rules' in value && Array.isArray(value.rules);
-}
-
-function isAtRuleStatement(value: unknown): value is AtRuleStatement {
-  return typeof value === 'object' && value !== null && 'type' in value
-    && value.type === 'AtRuleStatement' && 'name' in value && typeof value.name === 'string'
-    && 'prelude' in value;
-}
-
-function isMixinDefinition(value: unknown): value is MixinDefinition {
-  return typeof value === 'object' && value !== null && 'type' in value
-    && value.type === 'MixinDefinition' && 'name' in value && typeof value.name === 'string'
-    && 'params' in value && Array.isArray(value.params) && 'rules' in value && Array.isArray(value.rules);
 }
 
 function isMixinCall(value: unknown): value is MixinCall {
@@ -2659,80 +2615,40 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[],
 }
 
 function isStatement(value: unknown): value is Statement {
-  // Every statement guard gates on a distinct `type`, so dispatch once on the
-  // discriminant instead of trying up to thirteen guards sequentially (each of
-  // which re-runs the object guard). Behaviour is identical.
+  // A node's `type` is written only by its shape's constructor (V8 invariant 12),
+  // and each statement factory takes typed fields, so the discriminant is the
+  // check: re-reading those fields would re-walk every declaration value once per
+  // body that holds it. `Reference` is the one type with two readings, a value and
+  // a statement call, so it alone reads further.
   if (typeof value !== 'object' || value === null || !('type' in value)) {
     return false;
   }
   switch (value.type) {
     case 'ModuleImport':
     case 'VariableExpose':
-      return true;
     case 'StyleImport':
-      return isStyleImport(value);
     case 'VariableDeclaration':
-      return isVarDeclaration(value);
     case 'Declaration':
-      return isLessDeclaration(value);
     case 'Ruleset':
-      return isRuleset(value);
     case 'AtRuleBlock':
-      return isAtRuleBlock(value);
     case 'UnknownAtRuleBlock':
-      return typeof value === 'object' && value !== null && 'type' in value && value.type === 'UnknownAtRuleBlock';
     case 'AtRuleStatement':
-      return isAtRuleStatement(value);
     case 'Plugin':
-      return true;
     case 'MixinDefinition':
-      return isMixinDefinition(value);
     case 'MixinCall':
-      return isMixinCall(value);
+    case 'For':
+    case 'If':
+    case 'FunctionCall':
+      return true;
     case 'Reference':
       return isReferenceCall(value);
-    case 'For':
-      return isFor(value);
-    case 'If':
-      return true;
-    case 'FunctionCall':
-      return isFunctionCall(value);
     default:
       return false;
   }
 }
 
-function requireStatementArray(value: unknown): Statement[] {
-  if (!Array.isArray(value) || !value.every(isStatement)) {
-    throw new TypeError('Less grammar produced an invalid statement list.');
-  }
-  return value;
-}
-
 function isFunctionCall(value: unknown): value is FunctionCall {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'FunctionCall';
-}
-
-function isFor(value: unknown): value is For {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'For'
-    && 'iterable' in value
-    && 'rules' in value
-    && Array.isArray(value.rules)
-    && 'binding' in value;
-}
-
-function requireRulesetBody(children: readonly unknown[]): Statement[] {
-  const statements: Statement[] = [];
-  for (const child of children) {
-    if (!isStatement(child)) {
-      throw new TypeError('Less grammar produced a non-ruleset-body child.');
-    }
-    statements.push(child);
-  }
-  return statements;
 }
 
 /**
@@ -3053,18 +2969,14 @@ export {
   interpolationFactFromChildren,
   interpolationPartsFrom,
   isAny,
-  isAtRuleBlock,
-  isAtRuleStatement,
   isBareMixinCallFact,
   bodyExtensionsOf,
   isBodyExtendFact,
   isComplex,
   isComplexTailFact,
-  isLessDeclaration,
   isExtendInstruction,
   isExtendTargetFact,
   isExtendTargetListFact,
-  isFor,
   isFunctionCall,
   isFunctionConditionFact,
   isAdjacentComponentBoundary,
@@ -3077,7 +2989,6 @@ export {
   isMixinCall,
   isMixinCallArgument,
   isMixinCallFact,
-  isMixinDefinition,
   isMixinDefinitionFact,
   isMixinGuard,
   isMixinInteriorItem,
@@ -3090,7 +3001,6 @@ export {
   isReferenceCall,
   isReferenceTailFact,
   isRelative,
-  isRuleset,
   isRulesetTailFact,
   isLessSelectorBranch,
   isSelectorBranchFact,
@@ -3101,7 +3011,6 @@ export {
   isSimpleSelector,
   isLessSimpleToken,
   isStatement,
-  isStyleImport,
   isLessKeyword,
   isLessTerminalText,
   isUnsupportedVariableNameFact,
@@ -3136,6 +3045,7 @@ export {
   referenceWithTails,
   requireCallbackStatements,
   requireCombinator,
+  requireDeclaration,
   requireField,
   requireFields,
   requireInterpolationAccessorFact,
@@ -3147,12 +3057,10 @@ export {
   referenceCallTailFact,
   referenceDotTailFact,
   requireReferenceTailFact,
-  requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
   rulesetExtensions,
   selectorListWithExtendsFrom,
-  requireStatementArray,
   requireString,
   requireSupportedVariableName,
   requireTerminalText,

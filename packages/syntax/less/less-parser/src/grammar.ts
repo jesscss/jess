@@ -66,7 +66,6 @@ import {
   bodyExtensionsOf,
   isBodyExtendFact,
   isComplexTailFact,
-  isLessDeclaration,
   isExtendTargetFact,
   isExtendTargetListFact,
   isFunctionCall,
@@ -122,6 +121,7 @@ import {
   referenceWithTails,
   requireCallbackStatements,
   requireCombinator,
+  requireDeclaration,
   requireField,
   requireFields,
   requireInterpolationFact,
@@ -131,12 +131,10 @@ import {
   referenceBracketTailFact,
   referenceCallTailFact,
   referenceDotTailFact,
-  requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
   rulesetExtensions,
   selectorListWithExtendsFrom,
-  requireStatementArray,
   requireString,
   requireSupportedVariableName,
   requireTerminalText,
@@ -3750,13 +3748,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.Declaration,
       declarationEnd
     ),
-    (children) => {
-      const declaration = children.find(isLessDeclaration);
-      if (declaration === undefined) {
-        throw new TypeError('Less declaration-list item lost its declaration fact.');
-      }
-      return declaration;
-    },
+    children => requireDeclaration(children[0]),
     { collapse: true }
   );
   const stylesheetEnd = not(regex(/[\s\S]/));
@@ -3769,13 +3761,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         stylesheetEnd
       )
     ),
-    (children) => {
-      const declaration = children.find(isLessDeclaration);
-      if (declaration === undefined) {
-        throw new TypeError('Less root declaration item lost its declaration fact.');
-      }
-      return declaration;
-    },
+    children => requireDeclaration(children[0]),
     { collapse: true }
   );
   const punctuationMapDeclarationItem = node(
@@ -3784,13 +3770,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       PunctuationMapDeclaration,
       declarationEnd
     ),
-    (children) => {
-      const declaration = children.find(isLessDeclaration);
-      if (declaration === undefined) {
-        throw new TypeError('Less punctuation map item lost its declaration fact.');
-      }
-      return declaration;
-    },
+    children => requireDeclaration(children[0]),
     { collapse: true }
   );
   const nestedGuardedRuleset = sequence(rulesetNotDeclaration, g.NestedRulesetWithExtends);
@@ -4510,7 +4490,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         atRuleBlock(
           requireToken(children[0]).value,
           requireValueNode(children[1]),
-          requireStatementArray(body.filter(isStatement)),
+          body.filter(isStatement),
           bodyExtensionsOf(body)
         ),
         span
@@ -5896,7 +5876,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           selectorFact.selector,
           // The fixed sequence places only direct declaration/comment facts between
           // the braces. This validates that fact list; it never reparses body text.
-          requireRulesetBody(children.filter(isStatement)),
+          children.filter(isStatement),
           extensions,
           children.find(isMixinGuard)
         ),
@@ -5923,7 +5903,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const node = withBlockBody(
         rule(
           selectorFact.selector,
-          requireRulesetBody(children.filter(isStatement)),
+          children.filter(isStatement),
           extensions,
           children.find(isMixinGuard)
         ),
