@@ -78,6 +78,7 @@ which is a harness limitation, not a syntax one.)
 | **real SCSS parse cost**, AST and CST | `pnpm run bench:scss:real` (`--base <checkout>` for a before/after with A/A) | function calls and marginal instructions per pass over vendored Bootstrap and Foundation, with the generated `gen-workload` beside them. See §9. |
 | **per-grammar artifact size + precompiled assembly, CI-gated** | `pnpm run check:grammar-artifacts` | bytes per source byte (parseman's 5× budget) and precompiled-assembly count per `lib/grammar/*.js`. See §6. |
 | **CLI cold start** vs lessc 4.x | `pnpm run measure:cli:cold-start [--fixture bootstrap4] [--base <jess checkout>]` | spawn-to-exit CLI time, module load, first and second compile in a fresh process; every sample a new process, arms interleaved. See §7. |
+| **how the page takes new variable values** (browser) | open `packages/patch-css/bench/write-strategy.html` in a browser; results print on the page and on `window.results` | ms per update for each way of writing custom properties, write plus the style and layout it forces, on 12,000 elements reading them. See §10. |
 | **byte identity of a refactor** (not timing) | `pnpm run compare:less:builds -- --corpus --record .scratch/corpus-baseline.json` before the change, `... --corpus --baseline .scratch/corpus-baseline.json` after rebuilding | every corpus fixture × 6 output modes, compared by name. See §5. |
 
 `measure:less:hotpath` is the canonical jess total-render harness, and with
@@ -228,6 +229,45 @@ How to use it:
 1. **To decide a few percent, use a small fixture of the shape under review**, where the code under review is most of the marginal, with interleaved arms. Run each build as two arms and report that same-build spread beside the result. A change smaller than that spread is not a result.
 2. **Or compare only runs with the same mark-compact count**: record the count per process and take medians per count.
 3. **Do not read a single-digit difference from `benchmark.less` or `k-plain` at K 100 → 300**, in either direction. They still catch a large change.
+
+## 10. patch-css write strategy — how the page takes new variable values
+
+`@jesscss/patch-css` writes a stylesheet's exposed variables (`set()` from a
+`.less`/`.jess` module). The harness is
+`packages/patch-css/bench/write-strategy.html`, a static page: open it in a
+browser and read the table it prints, or `window.results`. The page has 3,000
+cards, 12,000 elements, and every card reads ten custom properties, two of which
+size its layout. Each sample writes one update and then forces style and layout,
+so it times the write and the recalc that the write causes. The table shows the
+median of 150 samples, with the median of three rounds taken per cell. Each
+strategy changes the same variables in the same order.
+
+Measured 2026-11-11 in Chrome 156 (the Claude desktop browser pane), in ms per update:
+
+| Scenario | inline `setProperty`, every value | inline, changed values only | adopted sheet, `replaceSync` | adopted sheet, one rule's `style` |
+|---|---|---|---|---|
+| one variable changes | 6.0 | **5.9** | 7.0 | 7.0 |
+| all ten change | **16.8** | 16.9 | 18.1 | 18.0 |
+| nothing changes | 0 | 0 | 0.8 | 0 |
+| five calls before a frame, written at once | 14.1 | 14.2 | 15.0 | 14.8 |
+| five calls before a frame, merged into one write | 14.0 | 13.9 | 14.9 | 14.8 |
+
+What it decided:
+
+- **Write on the root's inline style.** It is the fastest strategy or tied for
+  fastest in every row. An adopted sheet costs about 1 ms more per update, and
+  `replaceSync` re-parses even when nothing changed. Each `--name` is declared
+  once, on the root.
+- **Write only the values that changed.** In Chrome this ties with writing every
+  value, because Chrome already skips an inline value it already has. It is kept
+  because it costs one map lookup and it does not depend on the engine skipping
+  repeats.
+- **Do not batch into an animation frame.** The browser already recomputes
+  style once per frame, so merging five calls saves nothing (14.1 against 14.0)
+  and it would make `set()` asynchronous.
+
+A first run of the harness gave the same ordering. Rerun the page after any
+change to how `writeVars` writes.
 
 ## Fixtures (the standard inputs)
 

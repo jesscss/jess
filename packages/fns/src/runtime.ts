@@ -1,5 +1,6 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
-import type { Dimension, Fn, ValueGroup } from '@jesscss/core/value';
+import { exposedVars, writeVars, type ExportValues, type ExposedRuntime, type ExposedSpec, type StyleTarget } from '@jesscss/patch-css';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
 import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, sniffLiteral } from '@jesscss/core/value';
 
 /**
@@ -18,55 +19,31 @@ import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, sniffLiteral } f
 export type RuntimeRecipe = { readonly export: string } | string | readonly [Fn, readonly RuntimeRecipe[]];
 
 /** What a compiled stylesheet's module hands {@link createRuntime}. */
-export interface RuntimeSpec {
-  /** Each exposed variable's name by its JavaScript key: `brandColor` is `brand-color`. */
-  readonly keys: Readonly<Record<string, string>>;
-
+export interface RuntimeSpec extends ExposedSpec {
   /** The compile-time CSS of each export a derived value reads. */
   readonly defaults: Readonly<Record<string, string>>;
-
-  /**
-   * The unit of each export a CSS form reads, `''` for a number: the only one it
-   * takes, since CSS would convert another unit where Less does not
-   * (`unit(7em, px)` is 7px in Less, 112px over `var(--a) / 1px * 1px`). A `%`
-   * export read at all is `%`, and is held as its ratio, `50%` as `--a: 0.5`, which
-   * every read multiplies back.
-   */
-  readonly units: Readonly<Record<string, string>>;
 
   /** Each generated custom property, by name, with how it is computed. */
   readonly derived: Readonly<Record<string, RuntimeRecipe>>;
 }
 
-/** Values by JavaScript key: the variable's name with dash-case turned to camelCase (`brandColor` for `@brand-color`), as CSS. */
-export type ExportValues = Readonly<Record<string, string>>;
+export type { ExportValues, StyleTarget };
 
-/** An element whose inline style takes custom properties. */
-export interface StyleTarget {
-  readonly style: { setProperty(name: string, value: string): void };
-}
-
-export interface Runtime {
+export interface Runtime extends ExposedRuntime {
   /**
    * The custom properties `values` set: each export given, and each derived
    * value that reads one, computed from `values` and the compile-time value of
    * every export not given. Pure; usable as a React or Vue `style` object.
    */
   vars(values: ExportValues): Record<string, string>;
-
-  /** Write {@link Runtime.vars} on `target`'s inline style, the document root by default. */
-  set(values: ExportValues, target?: StyleTarget): void;
 }
 
 const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value) };
 
-/** The page's document, in a browser; read only when `set` is given no target. */
-declare const document: { readonly documentElement: StyleTarget };
-
 export function createRuntime(spec: RuntimeSpec): Runtime {
   const vars = (given: ExportValues): Record<string, string> => {
     const values: Record<string, string> = {};
-    const out: Record<string, string> = {};
+    const out = exposedVars(spec, given, values);
     const parsed = new Map<string, ValueGroup>();
     const read = (name: string): ValueGroup => {
       let value = parsed.get(name);
@@ -76,16 +53,6 @@ export function createRuntime(spec: RuntimeSpec): Runtime {
       }
       return value;
     };
-    for (const [key, value] of Object.entries(given)) {
-      const name = Object.hasOwn(spec.keys, key) ? spec.keys[key] : undefined;
-      if (name === undefined) {
-        throw new TypeError(`The stylesheet exposes no variable with the key ${key}.`);
-      }
-      values[name] = value;
-      const unit = Object.hasOwn(spec.units, name) ? spec.units[name] : undefined;
-      const held = unit === undefined ? undefined : checkedUnit(key, value, unit, read(name));
-      out[`--${name}`] = held !== undefined && unit === '%' ? String(Number((held.number / 100).toPrecision(15))) : value;
-    }
     for (const property of Object.keys(spec.derived)) {
       const recipe = spec.derived[property]!;
       if (reads(recipe, values)) {
@@ -94,23 +61,7 @@ export function createRuntime(spec: RuntimeSpec): Runtime {
     }
     return out;
   };
-  return {
-    vars,
-    set(values, target = document.documentElement) {
-      const out = vars(values);
-      for (const property of Object.keys(out)) {
-        target.style.setProperty(property, out[property]!);
-      }
-    }
-  };
-}
-
-/** `read`, the value given for `key`, when it is a dimension in `unit`, the unit a form reads it in. A `%` one is written as its ratio, `50%` as `0.5`. */
-function checkedUnit(key: string, value: string, unit: string, read: ValueGroup): Dimension {
-  if (isValueGroupArray(read) || read.type !== 'Dimension' || read.unit.toLowerCase() !== unit.toLowerCase()) {
-    throw new TypeError(`${key} is read by a CSS form in ${unit === '' ? 'a number' : unit}, as its compile-time value is; ${value} would mean something else there.`);
-  }
-  return read;
+  return { vars, set: (values, target) => writeVars(vars(values), target) };
 }
 
 function reads(recipe: RuntimeRecipe, values: ExportValues): boolean {

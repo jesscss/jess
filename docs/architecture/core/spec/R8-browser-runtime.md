@@ -169,8 +169,8 @@ or needs JS) to decide what ships in the bundle.
   `@less.rgb(@brand)`, is `var(--brand, #c00)`. A wrong exposed value fails at the
   compile, as its slot rejects it. A
   stylesheet that prints only forms adds no function: with no exposed variable it
-  adds no JS at all, and with one it adds the runtime that sets it, `createRuntime`
-  with no derived value (measured 2026-11-05 with Vite 6: 34.7 KB minified, 10.6 KB gzip). Every other computed function takes rung 4, and so does one with
+  adds no JS at all, and with one it adds only `exposeVars` from `@jesscss/patch-css`
+  (measured 2026-11-11 with Vite 6: 1,329 B minified for the whole module, 34.7 KB when it bundled the recipe runner). Every other computed function takes rung 4, and so does one with
   an exposed variable in an argument its form does not take yet (`@less.darken(#c00, @a)`,
   that task's slice 5). An input of a function on rung 4 stays computed, as the
   runtime reads it: `@less.lightness(@less.darken(@brand, 10%))` is one recipe
@@ -214,8 +214,11 @@ or needs JS) to decide what ships in the bundle.
   compile ran on the given values and the compile-time value of every export
   not given. It is usable as a React or Vue `style` object.
 - **`set(values, target)`** writes `vars(values)` on `target`'s inline style,
-  `document.documentElement` by default. ponytail: no per-frame batching; a
-  caller setting many values in one frame calls `set` once with all of them.
+  `document.documentElement` by default, and only the values that changed since
+  the last write to that target (`writeVars` in `@jesscss/patch-css`). It writes
+  at once, without per-frame batching: the browser recomputes style once per
+  frame anyway, and the measurement found no gain from batching
+  (`docs/perf/BENCHMARKS.md` §10).
 - **Values are CSS literals** (`#c00`, `8px`, `red`, lists of them); a value
   written as a function (`hsl(…)`, `calc(…)`) raises, since the runtime has no
   CSS parser. `<input type="color">` gives hex.
@@ -294,14 +297,17 @@ or needs JS) to decide what ships in the bundle.
   stylesheet's directory. The plugin's `handleHotUpdate` adds that id to an
   edit of the stylesheet. `<file>?inline` is the same CSS as a string. A
   `<link>` to a `.less` or `.jess` file is not served in dev.
-- **Resolving the runtime.** The module's `@jesscss/fns` imports resolve from
+- **Resolving the runtime.** The module's `@jesscss/patch-css` and `@jesscss/fns` imports resolve from
   the stylesheet, then from the plugin. Vite resolves bare imports itself; a
   Rollup build needs `@rollup/plugin-node-resolve`.
 - **Module.** `export default` is the CSS. A stylesheet with runtime data also
-  has `export const { vars, set } = createRuntime({ keys, defaults, units, derived })`, each
-  recipe function imported by name from its module (`@jesscss/fns/less`).
-  Imports resolve from the stylesheet, then from the plugin, which depends on
-  `@jesscss/fns`.
+  exports `vars` and `set`. With no derived value they come from
+  `exposeVars({ keys, units })` in `@jesscss/patch-css`, which maps keys and
+  checks units and nothing else. Otherwise they come from
+  `createRuntime({ keys, defaults, units, derived })`, which builds on the same
+  `exposedVars`/`writeVars` and imports each recipe function by name from its
+  module (`@jesscss/fns/less`). Imports resolve from the stylesheet, then from
+  the plugin, which depends on `@jesscss/fns` and `@jesscss/patch-css`.
 - **Diagnostics** go through Rollup once: errors as `this.error`, warnings as
   `this.warn`, each with its file, line and column.
 - **Browser-safe functions.** `@jesscss/fns` imports the value barrel
@@ -384,7 +390,7 @@ import styles, { $brand, button } from './card.module.less'
 
 button                            // scoped class (R7.3)
 styles.vars({ brand: '#c00' })    // { '--brand': '#c00', … } — pure
-styles.set({ brand: '#c00' })     // :root, batched per frame
+styles.set({ brand: '#c00' })     // :root, changed values only
 styles.set({ brand: '#c00' }, el) // inline on el: subtree theming
 $brand.value = '#c00'             // per-variable handle
 ```

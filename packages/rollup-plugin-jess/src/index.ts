@@ -56,7 +56,7 @@ const INLINE = '?inline';
  */
 const cssId = (file: string): string => `${file}${MODULES.test(file) ? '.module.css' : '.css'}`;
 
-/** Where the runtime's own imports (`@jesscss/fns/…`) resolve from: this package, which depends on them. */
+/** Where the runtime's own imports (`@jesscss/patch-css`, `@jesscss/fns/…`) resolve from: this package, which depends on them. */
 const ANCHOR = fileURLToPath(import.meta.url);
 
 /**
@@ -64,7 +64,8 @@ const ANCHOR = fileURLToPath(import.meta.url);
  * compiler. The module's default export is the CSS; the CSS is also emitted as
  * an asset (Rollup) or imported (Vite). A stylesheet that exposes variables
  * (`@expose brand;`) also exports `vars(values)` and `set(values,
- * target?)` from `@jesscss/fns/runtime`, which recompute what depends on them
+ * target?)`: from `@jesscss/patch-css` when nothing is computed from an export,
+ * else from `@jesscss/fns/runtime`, which recomputes what depends on them
  * (docs/architecture/core/spec/R8-browser-runtime.md).
  */
 export default function jessRollupPlugin(options: JessRollupPluginOptions = {}): Plugin & { enforce: 'pre'; configResolved(config: { readonly root: string }): void; handleHotUpdate<M>(context: HotUpdate<M>): M[] } {
@@ -204,11 +205,15 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         ? JSON.stringify(recipe)
         : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
     const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
-    lines.push(`import { createRuntime } from '@jesscss/fns/runtime';`);
-    for (const [module, names] of imports) {
-      lines.push(`import { ${names.join(', ')} } from ${JSON.stringify(module)};`);
+    if (derived.length === 0) {
+      lines.push(`import { exposeVars } from '@jesscss/patch-css';`, `export const { vars, set } = exposeVars({ keys: ${JSON.stringify(runtime.keys)}, units: ${JSON.stringify(runtime.units)} });`);
+    } else {
+      lines.push(`import { createRuntime } from '@jesscss/fns/runtime';`);
+      for (const [module, names] of imports) {
+        lines.push(`import { ${names.join(', ')} } from ${JSON.stringify(module)};`);
+      }
+      lines.push(`export const { vars, set } = createRuntime({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, derived: { ${derived.join(', ')} } });`);
     }
-    lines.push(`export const { vars, set } = createRuntime({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, derived: { ${derived.join(', ')} } });`);
   }
   if (!modules) {
     lines.push(`export default ${JSON.stringify(css)};`);

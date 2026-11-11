@@ -505,6 +505,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/patch-css':
+        specifier: workspace:*
+        version: link:../patch-css
       big.js:
         specifier: ^7.0.1
         version: 7.0.1
@@ -727,6 +730,9 @@ importers:
       '@jesscss/fns':
         specifier: workspace:*
         version: link:../fns
+      '@jesscss/patch-css':
+        specifier: workspace:*
+        version: link:../patch-css
       jess:
         specifier: workspace:*
         version: link:../jess
