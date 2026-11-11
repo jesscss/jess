@@ -53,6 +53,9 @@ export interface ExportRuntime {
 
   /** Each generated custom property's name, by its recipe as JSON: one name per recipe, however the call is spelled. */
   readonly named: Map<string, string>;
+
+  /** Each export by its custom property, `--a` for `a`: what a `var()` read names. */
+  readonly properties: Map<string, string>;
 }
 
 /**
@@ -313,7 +316,7 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), named: new Map() };
+  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), named: new Map(), properties: new Map() };
 }
 
 /**
@@ -361,6 +364,7 @@ function settle<F>(x: ExportState<F>): void {
       x.bound.set(name, bound ?? { value: hit.value, frame: hit.frame, site });
       x.keys.set(key, keyed ?? { name, site });
       runtime.exports.add(name);
+      runtime.properties.set(`--${name}`, name);
       if (!isValueSlotArray(hit.value) && hit.value.type === 'Dimension' && hit.value.unit === '%') {
         noteRatio(runtime, name);
       }
@@ -500,7 +504,10 @@ function percentRead(read: ValueGroup, modes: EvalModes, runtime: ExportRuntime)
   if (name === undefined || isValueGroupArray(name) || name.type !== 'Keyword') {
     return read;
   }
-  const key = name.text.slice(2);
+  const key = runtime.properties.get(name.text);
+  if (key === undefined) {
+    return read;
+  }
   let built = runtime.percent.get(key);
   if (built === undefined) {
     const ratio = ratioOfHeld(held);
@@ -746,9 +753,9 @@ function formUnits(runtime: ExportRuntime, v: EvalValue, over: string | undefine
     formUnits(runtime, v.args, over);
   } else if (v.type === 'FunctionCall') {
     const [name, held] = groupItems(v.args);
-    const key = name !== undefined && !isValueGroupArray(name) && name.type === 'Keyword' ? name.text.slice(2) : undefined;
+    const key = name !== undefined && !isValueGroupArray(name) && name.type === 'Keyword' ? runtime.properties.get(name.text) : undefined;
     const unit = isDimension(held) ? held.unit : over;
-    if (key !== undefined && unit !== undefined && runtime.exports.has(key) && !runtime.units.has(key)) {
+    if (key !== undefined && unit !== undefined && !runtime.units.has(key)) {
       runtime.units.set(key, unit);
     }
   }
