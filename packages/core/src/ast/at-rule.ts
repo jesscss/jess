@@ -48,6 +48,13 @@ const importTailStartKey = Symbol.for('jess.ast.import-tail-start');
  */
 const diagnosticKey = Symbol.for('jess.ast.scss-diagnostic');
 
+/*
+ * The same kind of marker for an `AtRuleBlock`: SCSS's `@at-root` moves a rule in
+ * the output, which nothing carries (ledger P10), so the compile reports it (P45).
+ * Less builds this block for an unknown `@at-root` and keeps writing it.
+ */
+const scssAtRootKey = Symbol.for('jess.ast.scss-at-root');
+
 interface ImportSourceSlots {
   [importStartKey]?: number;
   [importEndKey]?: number;
@@ -71,6 +78,7 @@ export interface AtRuleBlock extends SpanSlots, BodySpanSlots {
    * the factory, so a block with one shares the hidden class of one without.
    */
   readonly extendInstructions: ExtendInstruction[] | undefined;
+  [scssAtRootKey]?: boolean;
 }
 
 /**
@@ -146,6 +154,17 @@ export function asDiagnostic<T extends AtRuleStatement>(statement: T): T {
 /** True only for an SCSS-parsed `@debug`/`@warn`/`@error` statement. */
 export function isDiagnosticStatement(statement: AtRuleStatement): boolean {
   return statement[diagnosticKey] === true;
+}
+
+/** Mark a block as an SCSS-parsed `@at-root`. */
+export function asScssAtRoot(block: AtRuleBlock): AtRuleBlock {
+  block[scssAtRootKey] = true;
+  return block;
+}
+
+/** True only for an SCSS-parsed `@at-root` block. */
+export function isScssAtRoot(block: AtRuleBlock): boolean {
+  return block[scssAtRootKey] === true;
 }
 
 /** Retain the parser-owned start of an import's typed tail in its fixed slot. */

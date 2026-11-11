@@ -350,6 +350,9 @@ export function pushParseTwinDiagnostics(
     pushInvalidSupportsConditionTwin(node, source, push);
   } else if (gt === 'ImportStatement') {
     pushInvalidImportSupportsTwin(node, source, push);
+  } else if (gt === 'AtRootBlock' || gt === 'AtRootFilter') {
+    const error = ERR.atRootPlacement();
+    push('parse/at-root-placement', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
   }
 
   /*
@@ -397,8 +400,18 @@ export function pushParseTwinDiagnostics(
     const error = ERR.leadingSeparatorValue(lead?._tag === 'leaf' && lead.value === '/' ? '/' : '*');
     push('parse/leading-separator-value', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
   }
+  if (language === 'scss' && (gt === 'Ruleset' || gt === 'NestedRuleset')) {
+    pushInvalidRulePreludeTwin(node, source, push);
+  }
+  if (language === 'scss' && gt === 'InvalidPseudo' && !coveredPseudos.has(node)) {
+    const error = ERR.invalidRulePrelude();
+    push('parse/invalid-rule-prelude', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
   if (language === 'jess' && gt === 'Stylesheet') {
     pushBareArithmeticTwins(node, source, push);
+  }
+  if (language === 'scss' && gt === 'Stylesheet') {
+    pushReturnPlacementTwins(node, false, push);
   }
 
   /* Less keeps its own text for a separator-led value until its parser takes the shared one. */
@@ -499,6 +512,35 @@ function strayIdentifierInCondition(condition: CssCstNode, source: string): stri
   return (terms.length - first) % 2 === 0 ? childText(terms[terms.length - 1]!, source) : undefined;
 }
 
+/* The `InvalidPseudo`s in a prelude a rule's own error covers, as the compile reports the one error. A rule is visited before its prelude. */
+const coveredPseudos = new WeakSet<CssCstNode>();
+
+function coverInvalidPseudos(node: CssCstNode): void {
+  if (node.grammarType === 'InvalidPseudo') {
+    coveredPseudos.add(node);
+  }
+  for (const part of cstChildrenOf(node)) {
+    if (isCstNode(part)) {
+      coverInvalidPseudos(part);
+    }
+  }
+}
+
+/* The editor twin of `parse/invalid-rule-prelude`, at the prelude as written. */
+function pushInvalidRulePreludeTwin(node: CssCstNode, source: string, push: ParseTwinPusher): void {
+  const children = cstChildrenOf(node);
+  const rest = children.find(child => child._tag === 'node' && child.grammarType === 'RulePreludeRest');
+  if (rest !== undefined) {
+    const selector = children[0];
+    if (selector !== undefined && selector !== rest && isCstNode(selector)) {
+      coverInvalidPseudos(selector);
+    }
+    const error = ERR.invalidRulePrelude();
+    const end = node.span.start + source.slice(node.span.start, rest.span.end).trimEnd().length;
+    push('parse/invalid-rule-prelude', 'error', error.message, { ...node.span, end, endLine: rest.span.endLine, endColumn: rest.span.endColumn }, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
+}
+
 /* The editor twin of `css/invalid-supports-condition`, at the at-rule, where the compiler reports it. */
 function pushInvalidSupportsConditionTwin(node: CssCstNode, source: string, push: ParseTwinPusher): void {
   const prelude = cstChildrenOf(node)[1];
@@ -592,6 +634,25 @@ function isArithmeticOperand(node: CssCstNode | undefined): boolean {
 
 /* What the compiler does not check for arithmetic: a group or a function's arguments (ledger P18(a)), and text it does not read as a run. */
 const NOT_ARITHMETIC_TYPES = new Set(['ParenValue', 'SquareValue', 'CallComponent', 'CallArgument', 'VarCall', 'CustomDeclaration']);
+
+/*
+ * `parse/return-placement`: the compile reports a misplaced `@return` when it runs
+ * it, and the editor reports every one. A function reads it directly in its body
+ * or through `@if`/`@else`, the only nodes that keep `inFunction`.
+ */
+function pushReturnPlacementTwins(node: CssCstNode, inFunction: boolean, push: ParseTwinPusher): void {
+  const gt = node.grammarType;
+  if (gt === 'ReturnRule' && !inFunction) {
+    const error = ERR.returnPlacement();
+    push('parse/return-placement', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
+  const keeps = gt === 'FunctionRule' || (inFunction && (gt === 'IfRule' || gt === 'IfBody'));
+  for (const part of cstChildrenOf(node)) {
+    if (isCstNode(part)) {
+      pushReturnPlacementTwins(part, keeps, push);
+    }
+  }
+}
 
 /*
  * `.jess` arithmetic outside `$( … )` (ledger P17): the compiler's error at a

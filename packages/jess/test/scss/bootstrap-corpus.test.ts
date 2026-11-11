@@ -80,8 +80,6 @@ const PER_FILE_TIMEOUT_MS = 30_000;
 const BLOCKERS: Array<[string, RegExp]> = [
   ['bare-truthy @if condition', /@(?:if|else if)\s+(?:not\s+)?[(]?(?:\$[\w-]+\s*[{)]|[a-z-]+\()/],
   ['interpolation as a standalone selector compound', /(?:^|[\s,>+~])#\{/m],
-  ['interpolation inside a var() name', /var\(\s*--[^)]*#\{/],
-  ['leading combinator (implicit &)', /^\s*[>+~]\s*\S/m],
   ['interpolated pseudo-element', /::?#\{/],
   ['multiline nested paren list', /\(\s*\n(?:[^()\n]*\n)*?\s*\(/],
   ['line comment inside a paren list', /\(\s*\n\s*\/\//]
@@ -92,10 +90,13 @@ type Outcome = 'pass' | 'fail';
 interface LaneResult {
   file: string;
   outcome: Outcome;
+
   /** `line:col` of the point where the parser gave up. */
   at?: string;
+
   /** Source line at that point, trimmed. */
   source?: string;
+
   /** Every known blocking construct present in the file. */
   blockers?: string[];
   detail?: string;
@@ -133,8 +134,11 @@ const runParse = (file: string): LaneResult => {
   if (result.errors.length === 0 && result.document) {
     return { file, outcome: 'pass' };
   }
-  // The plugin diagnostic flattens the parser's position, so re-run the raw
-  // parser purely to recover the offset for the report.
+
+  /*
+   * The plugin diagnostic flattens the parser's position, so re-run the raw
+   * parser purely to recover the offset for the report.
+   */
   let at: string | undefined;
   let sourceLine: string | undefined;
   try {
@@ -159,8 +163,11 @@ const runParse = (file: string): LaneResult => {
 
 const runEval = async (file: string): Promise<LaneResult> => {
   const full = path.join(scssRoot, file);
-  // collapseNesting mirrors dart-sass `expanded` output, which is the shape the
-  // cross-engine benchmark comparison reads.
+
+  /*
+   * collapseNesting mirrors dart-sass `expanded` output, which is the shape the
+   * cross-engine benchmark comparison reads.
+   */
   const compiler = new Compiler({
     output: { collapseNesting: true },
     compile: { plugins: [scssPlugin()] }
@@ -221,50 +228,98 @@ describe(`Bootstrap ${bootstrapVersion} SCSS corpus`, () => {
  * removing a name, which is visible in review.
  */
 const PARSE_PASS_BASELINE: readonly string[] = [
+  '_accordion.scss',
+  '_alert.scss',
+  '_badge.scss',
+  '_breadcrumb.scss',
   '_button-group.scss',
+  '_buttons.scss',
+  '_card.scss',
+  '_carousel.scss',
+  '_close.scss',
+  '_containers.scss',
+  '_dropdown.scss',
   '_forms.scss',
+  '_functions.scss',
+  '_grid.scss',
   '_helpers.scss',
   '_images.scss',
+  '_list-group.scss',
+  '_maps.scss',
   '_mixins.scss',
+  '_modal.scss',
+  '_nav.scss',
+  '_navbar.scss',
+  '_offcanvas.scss',
+  '_pagination.scss',
   '_placeholders.scss',
+  '_popover.scss',
+  '_progress.scss',
+  '_reboot.scss',
+  '_root.scss',
+  '_spinners.scss',
+  '_tables.scss',
+  '_toasts.scss',
+  '_tooltip.scss',
   '_transitions.scss',
   '_type.scss',
+  '_utilities.scss',
   '_variables-dark.scss',
+  '_variables.scss',
   'bootstrap-grid.scss',
   'bootstrap-reboot.scss',
   'bootstrap-utilities.scss',
   'bootstrap.scss',
+  'forms/_floating-labels.scss',
+  'forms/_form-check.scss',
   'forms/_form-control.scss',
   'forms/_form-range.scss',
+  'forms/_form-select.scss',
   'forms/_form-text.scss',
   'forms/_input-group.scss',
   'forms/_labels.scss',
   'forms/_validation.scss',
   'helpers/_clearfix.scss',
+  'helpers/_color-bg.scss',
+  'helpers/_colored-links.scss',
+  'helpers/_focus-ring.scss',
+  'helpers/_icon-link.scss',
   'helpers/_position.scss',
+  'helpers/_ratio.scss',
   'helpers/_stacks.scss',
+  'helpers/_stretched-link.scss',
   'helpers/_text-truncation.scss',
   'helpers/_visually-hidden.scss',
   'helpers/_vr.scss',
+  'mixins/_alert.scss',
   'mixins/_backdrop.scss',
   'mixins/_banner.scss',
   'mixins/_border-radius.scss',
-  'mixins/_breakpoints.scss',
   'mixins/_box-shadow.scss',
+  'mixins/_breakpoints.scss',
+  'mixins/_buttons.scss',
   'mixins/_caret.scss',
   'mixins/_clearfix.scss',
   'mixins/_color-mode.scss',
   'mixins/_color-scheme.scss',
+  'mixins/_container.scss',
   'mixins/_deprecate.scss',
+  'mixins/_forms.scss',
+  'mixins/_gradients.scss',
+  'mixins/_grid.scss',
   'mixins/_image.scss',
   'mixins/_list-group.scss',
   'mixins/_lists.scss',
+  'mixins/_pagination.scss',
   'mixins/_reset-text.scss',
   'mixins/_resize.scss',
+  'mixins/_table-variants.scss',
   'mixins/_text-truncate.scss',
   'mixins/_transition.scss',
+  'mixins/_utilities.scss',
   'mixins/_visually-hidden.scss',
-  'utilities/_api.scss'
+  'utilities/_api.scss',
+  'vendor/_rfs.scss'
 ];
 
 /** Entry points known to evaluate end-to-end. Add each one as it graduates. */

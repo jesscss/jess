@@ -1,7 +1,13 @@
 # Sandboxed compiles run whole in Deno
 
-**Status:** design, decided (§8; ledger row A19), not yet implemented. Tracks
-jesscss/jess#497. It replaces
+**Status:** decided (§8; ledger row A19) and implemented. A render that
+reaches a sandboxed script moves whole into the Deno engine (`routeRender`,
+`packages/compiler/src/sandbox-route.ts`). The move is triggered by the script
+plugin's `import` and `importLessPlugin`, or earlier, for a placed `@plugin`, by
+`rerouteForPlacedPlugins` (`packages/core/src/plugin-reroute.ts`). The engine
+runs under native `--allow-read`/`--allow-net` flags
+(`packages/jess-plugin-js/src/engine.ts`). §1 describes the per-call worker
+this replaced. Tracks jesscss/jess#497. It replaces
 the per-call worker and the permission broker described in
 [`architecture/js-execution-deno-spec.md`](../architecture/js-execution-deno-spec.md)
 (its "Permission broker" section and its non-goal "running the entire Jess

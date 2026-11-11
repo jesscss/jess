@@ -9,27 +9,54 @@ serialize — the full `Compiler.render` path), not parse time alone. Parse spee
 is a someday-concern; do not lead with the parse ratio. North-star: jess's total
 render on `benchmark.less` at or near Less 4.x's total render.
 
-Reference point (2026-10-30, `8b62ab0c8`, parseman 0.55.2, node 24.11.1, lessc
-4.9.1, M-series at load ~7, so indicative). Marginal per-compile time after
-warm-up, jess and lessc interleaved in one process in alternating AB/BA rounds,
-jess configured as `measure:less:hotpath` configures it. Parse is jess
-`Compiler.compile` (parse plus static imports) against `less.parse` (parse plus
-imports); eval+render is total minus parse. ¹ The file `bootstrap4.less` imports,
-`bootstrap-less-port@0.3.0/less/bootstrap.less` from `packages/less-corpus-fixture-deps`,
-rendered with the fixture's `math: 0`.
+Reference point (2026-11-11, `pnpm run measure:less:vs-lessc`, §2): a quiet
+Ryzen 9 7940HS (16 threads) under WSL2 Ubuntu, load average 0.7–1.5, Windows
+host CPU 2–7% idle and 10–13% during the run; jess `3cf36b5da` (`dev`) with
+this harness, node 24.11.1, lessc 4.9.1. Marginal ms per compile, n 5 → 20,
+median of 7 rounds (range); the ratio is the median of the per-round ratios, and
+the A/A column times jess against itself in the same rounds. A second run
+reproduced every ratio within 0.02.
+
+| Fixture | Metric | jess | lessc | jess / lessc | A/A |
+|---|---|---|---|---|---|
+| `benchmark.less` | parse | 30.5 (27.2–32.6) | 12.1 (11.4–13.1) | 2.50× (2.21–2.69) | 1.01× (0.92–1.12) |
+| | eval+render | 32.0 (29.2–34.6) | 48.8 (46.8–51.1) | 0.66× (0.57–0.71) | 1.00× (0.81–1.17) |
+| | total | 61.7 (59.9–65.9) | 61.1 (59.1–63.4) | 1.01× (0.95–1.06) | 0.96× (0.91–1.06) |
+| `bootstrap4.less` | parse | 67.3 (65.7–70.0) | 20.4 (19.5–20.6) | 3.36× (3.22–3.56) | 1.00× (0.96–1.05) |
+| | eval+render¹ | 138.1 (134.5–139.2) | 119.0 (115.6–121.4) | 1.16× (1.13–1.19) | 1.01× (0.96–1.04) |
+| | total | 204.5 (201.9–207.7) | 139.0 (136.0–142.0) | 1.48× (1.46–1.50) | 1.00× (0.99–1.03) |
+
+¹ A `bootstrap4.less` render reaches `@plugin`, so jess runs it whole in the Deno
+sandbox (`docs/design/DENO-SANDBOX-COMPILE.md`): Node's event loop is idle for
+98.9% of it, against 0.9% for `benchmark.less`. Its total is the render as a
+caller sees it; its eval+render subtracts a parse timed in Node from a render
+timed in Deno.
+
+Cold start on the same machine (`measure:cli:cold-start`, §7, median of 21
+fresh processes, ms):
+
+| Fixture | Arm | CLI | Load | First compile | Second compile |
+|---|---|---|---|---|---|
+| `benchmark.less` | jess | 420.2 | 100.9 | 317.2 | 153.6 |
+| | lessc 4.9.1 | 260.6 | 44.6 | 189.6 | 112.1 |
+| `bootstrap4.less` | jess | 854.0 | 105.3 | 754.1 | 289.5 |
+| | lessc 4.9.1 | 423.1 | 44.5 | 331.7 | 224.4 |
+
+Earlier reference point (2026-10-30, `8b62ab0c8`, parseman 0.55.2, node 24.11.1,
+lessc 4.9.1, M-series at load ~7, so indicative), timed the same way by a driver
+that was not committed:
 
 | Fixture | Parse jess / lessc | Eval+render jess / lessc | Total jess / lessc |
 |---|---|---|---|
 | `benchmark.less` | 28.3 / 7.1 ms (4.0×) | 23.7 / 28.3 ms (0.78×) | 52.0 / 35.4 ms (1.42×) |
-| `bootstrap4.less`¹ | 60.8 / 9.7 ms (6.3×) | 250.5 / 71.5 ms (3.5×) | 311 / 81 ms (3.8×) |
+| `bootstrap4.less` | 60.8 / 9.7 ms (6.3×) | 250.5 / 71.5 ms (3.5×) | 311 / 81 ms (3.8×) |
 
 Marginal instructions retired per compile point the same way: `benchmark.less`
-1.03G / 0.76G (1.36×), `bootstrap4.less` 3.43G / 2.07G (1.66×). About half of
-jess's `bootstrap4.less` wall time is idle, waiting on the worker that runs the
-fixture's `@plugin` JavaScript. The driver that produced this table is not
-committed: there is still no committed total-render-vs-lessc harness (TL;DR).
+1.03G / 0.76G (1.36×), `bootstrap4.less` 3.43G / 2.07G (1.66×). Then about half
+of jess's `bootstrap4.less` wall time was idle, waiting on the worker that ran
+the fixture's `@plugin` JavaScript one call at a time.
 
-Earlier reference point (2026-08-28, parseman 0.50.0, contended machine so indicative):
+Reference point before that (2026-08-28, parseman 0.50.0, contended machine so indicative):
 jess total render of `benchmark.less` ≈ **42ms** vs lessc 4.6.3 ≈ **38ms** —
 ~10%, essentially parity within noise. (lessc renders `benchmark.less` FINE — it
 is ordinary Less; there is no "v5-only" blocker. The perf-gate can't pair-time it
@@ -43,7 +70,7 @@ which is a harness limitation, not a syntax one.)
 | Want | Command | Measures |
 |---|---|---|
 | **jess total render** (parse+eval+serialize) | `pnpm run measure:less:hotpath --fixture packages/jess/benchmark/benchmark.less` (or default tests-unit fixtures; `:record` to save) | jess full `Compiler.render` median per fixture. **THE priority metric.** |
-| **jess total render vs Less 4.x** | measure jess as above; time lessc separately (`less.render` on the same file) and compare medians — there is no committed interleaved render-vs-lessc harness yet (gap; the perf-gate is parse-only). | end-to-end jess vs lessc 4.x. |
+| **jess vs Less 4.x: parse, eval+render, total** | `pnpm run measure:less:vs-lessc` | jess and lessc interleaved in one process, marginal ms per compile with an A/A arm, on `benchmark.less` and the corpus `bootstrap4.less`. See §2. |
 | jess vs Less 4.x / PostCSS / dart-sass (**PARSE only**) | `pnpm run perf:gate:report` | jess PARSE time as a ratio vs each reference parser. Parse only — not the priority metric right now; postcss/sass comparators must be installed to resolve. |
 | jess vs an OLD jess commit (parse) | `pnpm run perf:ab:prepare <commit>` then `pnpm run perf:ab:compare --case benchmark.less` | current worktree vs `~/git/worktrees/jess/bench-b` parked on `<commit>`; bias-controlled ratios. |
 | jess parser parse-bench | `pnpm run bench:jess:parse` (`:record` to save) | raw jess-parser parse throughput. |
@@ -53,9 +80,8 @@ which is a harness limitation, not a syntax one.)
 | **CLI cold start** vs lessc 4.x | `pnpm run measure:cli:cold-start [--fixture bootstrap4] [--base <jess checkout>]` | spawn-to-exit CLI time, module load, first and second compile in a fresh process; every sample a new process, arms interleaved. See §7. |
 | **byte identity of a refactor** (not timing) | `pnpm run compare:less:builds -- --corpus --record .scratch/corpus-baseline.json` before the change, `... --corpus --baseline .scratch/corpus-baseline.json` after rebuilding | every corpus fixture × 6 output modes, compared by name. See §5. |
 
-`measure:less:hotpath` is the canonical jess total-render harness. `perf:gate`
-is PARSE-only. There is no committed total-render-vs-lessc harness — that is a
-known gap to fill when total-eval-vs-4.x becomes a focus.
+`measure:less:hotpath` is the canonical jess total-render harness, and with
+`--vs-lessc` the total-render-vs-lessc harness. `perf:gate` is PARSE-only.
 
 ---
 
@@ -75,6 +101,12 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 - Script: `scripts/measure-less-hotpath.mjs`. Fixtures (default): `tests-unit/{functions,import/import-reference,mixins-guards,extend-chaining,media}` from the `@less/test-data` corpus. Override with `--fixture <rel>`; select the writer explicitly with `--collapse-nesting true|false` (default `true`); set `JESS_LESS_TEST_DATA_ROOT` when a workspace's `link:` dependency does not resolve from the repository root; other flags: `--iterations N`, `--save`, `--history <file>`, `--compare-latest`.
 - History file: `docs/perf/node-copy-reduction/less-hotpath-history.jsonl` (append-only via `--save`). Each new run records the real corpus root and package version, plus the corpus Git commit when it has a Git top-level distinct from the Jess checkout. Comparisons reject a conflicting recorded corpus identity while retaining compatibility with legacy records that predate those fields.
 - Reports a stability `signal` (usable/unstable) per fixture — quote it; a contended machine reads "unstable".
+- **`--vs-lessc`** (`pnpm run measure:less:vs-lessc`) times jess against lessc 4.x in one process, per fixture:
+  - parse is jess `Compiler.compile` (parse plus static imports) against `less.parse` (parse plus imports); total is `Compiler.render` against `less.render`; eval+render is total minus parse, per round.
+  - Each value is the marginal ms per compile after warm-up, `(T(n2) − T(n1)) / (n2 − n1)`. Every round times each metric on three arms, jess, lessc and jess again (A/A), in an order that reverses each round. Defaults: n 5 → 20 (`--n1`, `--n2`), 7 rounds (`--repeat`), 10 warm-up compiles (`--warmup`).
+  - Default fixtures are `packages/jess/benchmark/benchmark.less` and `bootstrap4`, the less.js corpus `bootstrap4.less` set up as `measure:cli:cold-start` sets it up (`math: 0` from its `styles.config.cjs`; lessc gets `math: 'always'` and `bootstrap-less-port` from `packages/less-corpus-fixture-deps` as an include path). `--fixture` adds others with lessc's default options.
+  - It also prints the share of each render the event loop was idle (`performance.eventLoopUtilization`), which is where a render waits on another process, and each engine's output size. `--json` prints every round.
+  - It records the commit, node, lessc version, CPU and load averages. On a shared host, record the host's load beside it. The result is the reference table at the top of this file. About 3 minutes for both fixtures on the machine above.
 
 ## 3. perf:ab — jess vs an older jess commit (cross-worktree)
 
