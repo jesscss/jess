@@ -19,8 +19,6 @@ import {
   type ErrorsConfigInput,
   serialize,
   prepareStaticImports,
-  buildAstSourceMap,
-  removeSourceMapBasepath,
   type PreparedImports,
   type PluginInterface,
   type Position,
@@ -187,18 +185,20 @@ export interface RenderedStylesheet {
  * is stripped from the annotation URL as from every source. The corpus
  * `sourcemaps*` fixtures (goldens and expected maps) pin these. The external
  * `.map` string is returned for callers that write it to disk — this compiler
- * has no file-writing CLI.
+ * has no file-writing CLI. Source-map generation is its own core entry, loaded
+ * the first time a render asks for a map.
  */
-function assembleSourceMap(
+async function assembleSourceMap(
   css: string,
   positions: Position[],
   option: SourceMapConfig,
   inputFilePath: string | undefined,
   outputFilePath: string | undefined
-): RenderedStylesheet {
+): Promise<RenderedStylesheet> {
   if (css.length === 0) {
     return { css };
   }
+  const { buildAstSourceMap, removeSourceMapBasepath } = await import('@jesscss/core/sourcemap');
   const outputFilename = option.sourceMapOutputFilename
     ?? (outputFilePath === undefined
       ? (inputFilePath === undefined ? 'output.css' : `${path.basename(inputFilePath, path.extname(inputFilePath))}.css`)
@@ -1295,7 +1295,7 @@ export class Compiler {
      * also built pre-postprocess). Regenerate through postprocessors if needed.
      */
     const option: SourceMapConfig = typeof sourceMapOption === 'object' ? sourceMapOption : {};
-    return { ...assembleSourceMap(css, result.positions, option, files?.filePath, files?.resolvedOutputFilePath), ...runtime };
+    return { ...await assembleSourceMap(css, result.positions, option, files?.filePath, files?.resolvedOutputFilePath), ...runtime };
   }
 
   /** @internal AST document preparation; no legacy evaluator tree is exposed. */

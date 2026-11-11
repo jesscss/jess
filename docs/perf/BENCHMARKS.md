@@ -35,7 +35,7 @@ timed in Deno.
 Cold start on the same machine (`measure:cli:cold-start`, §7, median of 21
 fresh processes, ms):
 
-| Fixture | Arm | CLI | Load | First compile | Second compile |
+| Fixture | Arm | CLI | Load (uncached) | First compile | Second compile |
 |---|---|---|---|---|---|
 | `benchmark.less` | jess | 420.2 | 100.9 | 317.2 | 153.6 |
 | | lessc 4.9.1 | 260.6 | 44.6 | 189.6 | 112.1 |
@@ -153,12 +153,12 @@ which is a harness limitation, not a syntax one.)
 ## 7. measure:cli:cold-start — a one-file CLI run, jess against lessc 4.x
 
 - Script: `scripts/measure-cli-cold-start.mjs`. Build first (`pnpm run build:release`).
-- Every sample is a fresh `node` process. Per round it times `jess <fixture> <out>` and `lessc <fixture> <out>` spawn to exit (`cli`), then, in another fresh process, the imports the CLI needs to compile (`load`), the first compile and the second compile. It prints the median of `--runs` rounds (default 21), and the arm order alternates each round.
+- Every sample is a fresh `node` process. Per round it times `jess <fixture> <out>` and `lessc <fixture> <out>` spawn to exit (`cli`), then, in another fresh process, the imports the CLI needs to compile (`load uncached`), the first compile and the second compile. That probe runs without Node's module compile cache; the jess CLI turns the cache on, so the load inside its `cli` time is shorter than `load uncached` after the first run. It prints the median of `--runs` rounds (default 21), and the arm order alternates each round.
 - `--fixture benchmark` (default) is `packages/jess/benchmark/benchmark.less`. `--fixture bootstrap4` is the less.js corpus `bootstrap4.less` with its `styles.config.cjs` (`math: 0`), resolving `bootstrap-less-port` from `packages/less-corpus-fixture-deps`; lessc gets `--math=always` and that package as an include path, so both compile the same sources.
 - `--base <checkout>` adds another built jess checkout as an arm, for a before/after in one interleaved run.
 - Reference point (2026-10-31, parseman 0.57.0, node 24.11.1, lessc 4.9.1, M4 Pro at load averages 4–8, so indicative), median of 21, ms:
 
-| Fixture | Arm | CLI | Load | First compile | Second compile |
+| Fixture | Arm | CLI | Load (uncached) | First compile | Second compile |
 |---|---|---|---|---|---|
 | `benchmark.less` | jess `98e132094` | 346.1 | 143.1 | 133.6 | 62.3 |
 | | jess, dialect plugins loaded on demand | 236.7 | 62.6 | 141.9 | 64.7 |

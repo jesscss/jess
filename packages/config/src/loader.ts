@@ -1,6 +1,7 @@
-import { cosmiconfig, cosmiconfigSync, defaultLoadersSync, type CosmiconfigResult, type OptionsSync } from 'cosmiconfig';
 import fs from 'fs';
+import { createRequire } from 'module';
 import path from 'path';
+import type { CosmiconfigResult, OptionsSync, PublicExplorer, PublicExplorerSync } from 'cosmiconfig';
 import { mergeConfigs } from './options.js';
 import type { StylesConfig } from './types.js';
 
@@ -19,36 +20,68 @@ export interface LoadedConfigMeta {
 export const isPackageRoot = (dir: string): boolean =>
   ['package.json', 'package.yaml'].some(name => fs.existsSync(path.join(dir, name)));
 
+const SEARCH_PLACES = [
+  'styles.config.ts',
+  'styles.config.js',
+  'styles.config.mts',
+  'styles.config.mjs',
+  'styles.config.cjs',
+  'styles.config.cts'
+];
+
 /**
+ * Whether a search from `searchFrom` can find a config: a `styles.config.*` in
+ * that folder or one above it, up to and including the package root (or the
+ * file-system root, when there is none). The search itself is cosmiconfig's;
+ * this only decides whether to load it.
+ */
+const mayFindConfig = (searchFrom: string = process.cwd()): boolean => {
+  let dir = path.resolve(searchFrom);
+  for (;;) {
+    const folder = dir;
+    if (SEARCH_PLACES.some(name => fs.existsSync(path.join(folder, name)))) {
+      return true;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir || isPackageRoot(dir)) {
+      return false;
+    }
+    dir = parent;
+  }
+};
+
+let explorers: { search: PublicExplorer; searchSync: PublicExplorerSync } | undefined;
+
+/**
+ * The config explorers, created on first use. cosmiconfig and the parsers it
+ * loads are about a fifth of the modules a compile imports, and most compiles
+ * have no config file, so it loads only when there is one to read.
+ *
  * A search finds the nearest `styles.config.*`: in the start folder, else the
  * nearest folder above it, stopping at the first folder with a `package.json`
  * (the package root), which is searched too (DESIGN-DECISIONS O19).
  */
-const explorerOptions: Partial<OptionsSync> = {
-  searchStrategy: 'project',
-  searchPlaces: [
-    'styles.config.ts',
-    'styles.config.js',
-    'styles.config.mts',
-    'styles.config.mjs',
-    'styles.config.cjs',
-    'styles.config.cts'
-  ],
-  loaders: {
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.mts': defaultLoadersSync['.ts'],
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.cts': defaultLoadersSync['.ts'],
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.mjs': defaultLoadersSync['.js'],
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.cjs': defaultLoadersSync['.cjs']
+const configExplorers = (): { search: PublicExplorer; searchSync: PublicExplorerSync } => {
+  if (explorers === undefined) {
+    const { cosmiconfig, cosmiconfigSync, defaultLoadersSync }: typeof import('cosmiconfig') = createRequire(import.meta.url)('cosmiconfig');
+    const explorerOptions: Partial<OptionsSync> = {
+      searchStrategy: 'project',
+      searchPlaces: SEARCH_PLACES,
+      loaders: {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        '.mts': defaultLoadersSync['.ts'],
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        '.cts': defaultLoadersSync['.ts'],
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        '.mjs': defaultLoadersSync['.js'],
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        '.cjs': defaultLoadersSync['.cjs']
+      }
+    };
+    explorers = { search: cosmiconfig('styles', explorerOptions), searchSync: cosmiconfigSync('styles', explorerOptions) };
   }
+  return explorers;
 };
-
-const explorer = cosmiconfig('styles', explorerOptions);
-
-const explorerSync = cosmiconfigSync('styles', explorerOptions);
 
 /**
  * Where to look for the next config above the one at `filepath`: its folder's
@@ -87,6 +120,10 @@ function mergeFound(found: ReadonlyArray<{ config: unknown; filepath: string }>,
  * @returns Configuration object or null if not found
  */
 export async function loadConfig(searchFrom?: string): Promise<StylesConfig | null> {
+  if (!mayFindConfig(searchFrom)) {
+    return null;
+  }
+  const explorer = configExplorers().search;
   const found: Array<NonNullable<CosmiconfigResult>> = [];
   let result = await explorer.search(searchFrom);
   while (result) {
@@ -115,6 +152,10 @@ export function loadConfigSync(searchFrom?: string): StylesConfig {
  * what that file sets by itself.
  */
 export function loadConfigSyncWithMeta(searchFrom?: string, below?: LoadedConfigMeta): LoadedConfigMeta {
+  if (!mayFindConfig(searchFrom)) {
+    return mergeFound([], below);
+  }
+  const explorerSync = configExplorers().searchSync;
   const found: Array<NonNullable<CosmiconfigResult>> = [];
   let result = explorerSync.search(searchFrom);
   while (result) {
@@ -131,7 +172,7 @@ export function loadConfigSyncWithMeta(searchFrom?: string, below?: LoadedConfig
  * @returns Configuration object or null if not found
  */
 export async function loadConfigFromPath(filePath: string): Promise<StylesConfig | null> {
-  const result = await explorer.load(filePath);
+  const result = await configExplorers().search.load(filePath);
   return result?.config ? normalizeConfig(result.config) : null;
 }
 
@@ -141,7 +182,7 @@ export async function loadConfigFromPath(filePath: string): Promise<StylesConfig
  * @returns Configuration object or empty object if not found
  */
 export function loadConfigFromPathSync(filePath: string): StylesConfig {
-  const result = explorerSync.load(filePath);
+  const result = configExplorers().searchSync.load(filePath);
   return result?.config ? normalizeConfig(result.config) : {};
 }
 
