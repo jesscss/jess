@@ -7,7 +7,6 @@
  * script at a time instead of a stylesheet (see `sandboxed.ts`).
  */
 import { JsPlugin } from '../../src/index.ts';
-import { encodeBridgeValue } from './bridge.ts';
 import { invokeExport } from '../../src/plugin-runtime.ts';
 import { ERR } from '@jesscss/core';
 
@@ -39,16 +38,16 @@ export class Probe {
          * The runtime call itself, as a render's call through `JsPlugin` is; a
          * refused tree node is reported as `JsPlugin` reports it.
          */
-        return encodeBridgeValue(await invokeExport(spec.modulePath, spec.exportName, args).catch((err) => {
+        return invokeExport(spec.modulePath, spec.exportName, args).catch((err) => {
           throw err?.name === 'UnsupportedLessPluginApiError'
             ? ERR.pluginUnsupported({ meta: { plugin: spec.modulePath.split('/').pop(), feature: err.message } })
             : err;
-        }));
+        });
       case 'lessPlugin':
         return Object.keys((await plugin.importLessPlugin(spec.modulePath, spec.options ?? null)).functions);
       case 'lessCall': {
         const { functions } = await plugin.importLessPlugin(spec.modulePath, spec.options ?? null);
-        return encodeBridgeValue(await functions[spec.functionName](args));
+        return functions[spec.functionName](args);
       }
       default:
         throw new Error(`Unknown probe "${spec.kind}".`);

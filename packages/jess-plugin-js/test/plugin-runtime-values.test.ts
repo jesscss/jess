@@ -35,6 +35,20 @@ functions.addMultiple({
     return new tree.Keyword('a');
   },
   'plain': () => new tree.Keyword('a'),
+  'replace-important-scope': function () {
+    this.importantScope = [{ important: ' !important' }];
+    return new tree.Keyword('a');
+  },
+  'freeze-this': function () {
+    Object.freeze(this);
+    Object.freeze(this.context);
+    return new tree.Keyword('a');
+  },
+  'remember': function () {
+    const seen = this.seen === true;
+    this.seen = true;
+    return new tree.Keyword(String(seen));
+  },
   'first-map-value': map => map.ruleset.rules[0].value,
   'map-in-list': map => new tree.Value([new tree.Dimension(1), map]),
   'raw': () => new tree.Anonymous('a: b'),
@@ -84,6 +98,17 @@ describe('plugin runtime call boundary', () => {
     it('does not carry an !important mark into the next call', async () => {
       expect((await call('mark-important')).important).toBe(true);
       expect((await call('plain')).important).toBe(false);
+    });
+
+    it('reads the importantScope the call ends with, also one the body replaced', async () => {
+      expect((await call('replace-important-scope')).important).toBe(true);
+    });
+
+    it('gives each call a this of its own', async () => {
+      expect((await call('freeze-this')).value).toEqual(sniffLiteral('a'));
+      expect((await call('freeze-this')).value).toEqual(sniffLiteral('a'));
+      expect((await call('remember')).value).toEqual(sniffLiteral('false'));
+      expect((await call('remember')).value).toEqual(sniffLiteral('false'));
     });
 
     it('keeps calls that overlap apart', async () => {
