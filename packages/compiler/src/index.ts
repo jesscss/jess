@@ -991,6 +991,7 @@ export class Compiler {
       mathMode: explicit.mathMode,
       unitMode: explicit.unitMode,
       functionMode: explicit.functionMode,
+      unresolvedBuiltins: explicit.unresolvedBuiltins,
       allowLeakyScope: explicit.allowLeakyScope,
       leakyScope: explicit.leakyScope,
       allowCallerScope: explicit.allowCallerScope,

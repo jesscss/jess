@@ -5,7 +5,7 @@ import type { ImportTargets } from './import-targets.js';
 import type { TriviaMap } from './types/index.js';
 import type { ApplySelectorKind, ExtendSelectorKind, OutputOptions } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
-import { FunctionMode, MathMode, UnitMode } from './types/modes.js';
+import { FunctionMode, MathMode, UnitMode, UnresolvedBuiltinsMode } from './types/modes.js';
 import { attachDocumentFacts, DocumentContext, documentTriviaOf } from './document-context.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -117,6 +117,7 @@ export interface ContextOptions {
   mathMode?: MathMode;
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
+  unresolvedBuiltins?: UnresolvedBuiltinsMode;
 
   /** See LessOptions.allowOverloadedImport. Enforcement pending its definition. */
   allowOverloadedImport?: boolean;
@@ -267,6 +268,7 @@ export interface ResolvedOptions {
   mathMode: MathMode;
   unitMode: UnitMode;
   functionMode: FunctionMode;
+  unresolvedBuiltins: UnresolvedBuiltinsMode;
   allowLeakyScope: boolean;
   allowCallerScope: boolean;
   bubbleRootAtRules: boolean;
@@ -281,6 +283,7 @@ const OPTION_DEFAULTS: ResolvedOptions = {
   mathMode: 'parens-division',
   unitMode: 'preserve',
   functionMode: 'preserve',
+  unresolvedBuiltins: 'off',
   allowLeakyScope: false,
   allowCallerScope: false,
   bubbleRootAtRules: false,
@@ -334,6 +337,7 @@ export function resolveOptions(
     mathMode: settings?.mathMode ?? dialect?.mathMode ?? OPTION_DEFAULTS.mathMode,
     unitMode: settings?.unitMode ?? dialect?.unitMode ?? OPTION_DEFAULTS.unitMode,
     functionMode: settings?.functionMode ?? dialect?.functionMode ?? OPTION_DEFAULTS.functionMode,
+    unresolvedBuiltins: settings?.unresolvedBuiltins ?? dialect?.unresolvedBuiltins ?? OPTION_DEFAULTS.unresolvedBuiltins,
 
     /* `leakyScope` is the deprecated alias of `allowLeakyScope`: the new name wins
      * within a tier, else the alias, before the next precedence tier. */
@@ -416,6 +420,19 @@ export const generateId = (length = 8) => {
  */
 export class Context {
   readonly plugins: PluginInterface[];
+
+  /** Where a namespaced built-in was reported for not computing ({@link unresolvedWatch}), so a call reports once. */
+  unresolvedBuiltinSites: Set<string> | undefined = undefined;
+
+  /** Whether some document reports such a call, so a value a reference reaches says whose it is. */
+  tracksReachedOwner = false;
+
+  /** The document that wrote the value a reference has reached ({@link reachingOwner}). */
+  reachedOwner: DocumentContext | undefined = undefined;
+
+  /** Whether a read looks up the document that wrote a root variable's value: for its policy, or for {@link reachedOwner}. */
+  readsValueOwners = false;
+
   readonly opts: Omit<ContextOptions, keyof ResolvedOptions>
     & Readonly<Pick<ContextOptions, keyof ResolvedOptions>>;
 
@@ -989,6 +1006,8 @@ export class Context {
     if (first.options !== policy || first.plugin?.valueEvaluator !== plugin.valueEvaluator) {
       this.mixedPolicies = true;
     }
+    this.tracksReachedOwner ||= policy.unresolvedBuiltins !== 'off';
+    this.readsValueOwners = this.mixedPolicies || this.tracksReachedOwner;
   }
 
   /**

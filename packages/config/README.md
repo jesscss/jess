@@ -48,6 +48,7 @@ interface StylesConfig {
     mathMode?: 'always' | 'parens-division' | 'parens' | 'strict';
     unitMode?: 'loose' | 'preserve' | 'strict';
     functionMode?: 'preserve' | 'error';
+    unresolvedBuiltins?: 'off' | 'warn' | 'error';
   };
   input?: InputOptions | InputOptions[];
   output?: OutputOptions | OutputOptions[];

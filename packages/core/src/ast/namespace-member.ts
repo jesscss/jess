@@ -12,8 +12,8 @@ import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import { declarationReference, lookupStep, reference, referenceCall } from './nodes.js';
-import type { CallValue, FunctionCall, Reference } from './nodes.js';
+import { declarationReference, funcCall, lookupStep, reference, referenceCall } from './nodes.js';
+import type { CallArg, CallValue, FunctionCall, Reference, ValueSlot } from './nodes.js';
 import { NO_SPAN, sourceEndOf, sourceStartOf, withSourceSpan } from './provenance.js';
 import type { Frame } from './serialize.js';
 
@@ -114,6 +114,19 @@ export function memberNotFound<L extends NamespaceLane>(read: MemberRead<L>, ste
 export function isNamespaceCall(name: string): boolean {
   const dot = name.indexOf('.');
   return dot > 0 && name.charCodeAt(dot - 1) !== 92;
+}
+
+/**
+ * The call a module member reference makes. It carries the reference's span (its
+ * head's, where only the head has one), so a failure is named where the call was
+ * written.
+ */
+export function moduleReferenceCallNode(node: Reference, name: string, args: CallArg<ValueSlot>[]): FunctionCall {
+  const call = funcCall(name, args);
+  const written = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(node.base) ? node.base : node;
+  call._s = sourceStartOf(written);
+  call._e = sourceEndOf(written);
+  return call;
 }
 
 /**

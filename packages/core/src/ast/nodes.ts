@@ -2012,6 +2012,9 @@ export const operation = (
  * single hidden class — a caller that "omits" a name passes `undefined`, it does
  * not omit the property.
  */
+/** Whether a call argument is written by name (`$lightness: -10%`). */
+export const isNamedArg = (arg: CallArg): boolean => arg.name !== undefined;
+
 export const callArg = <V extends CallValue>(value: V, name?: string, spread = false, sigil?: string): CallArg<V> =>
   new CallArgValue(value, name, spread, sigil);
 
