@@ -234,12 +234,14 @@ export function operated(op: string, left: Value, right: Value, modes: EvalModes
 }
 
 /**
- * An operation written in a math function, as the one expression it is: `a / 1%`
- * folded where `a` holds an exposed percentage's ratio read ({@link overPercent}),
- * else the arithmetic, carrying a unit clash `written` kept from its operands.
+ * An operation written in a math function, as the one expression it is, carrying
+ * a unit clash `written` kept from its operands. In a built-in's CSS form (`form`),
+ * `a / 1%` is folded where `a` holds an exposed percentage's ratio read
+ * ({@link overPercent}); a `calc()` an author wrote is CSS and keeps its division,
+ * as it does over the known value.
  */
-export function writtenMath(node: Operation, left: EvalValue, right: EvalValue, bytes: string, written: readonly EvalValue[]): Value {
-  const folded = node.operator === '/' && typeof left === 'object' && typeof right === 'object' && !isValueGroupArray(left) && !isValueGroupArray(right) ? overPercent(left, right) : undefined;
+export function writtenMath(node: Operation, [left, right]: readonly [EvalValue, EvalValue], bytes: string, written: readonly EvalValue[], form: boolean): Value {
+  const folded = form && node.operator === '/' && typeof left === 'object' && typeof right === 'object' && !isValueGroupArray(left) && !isValueGroupArray(right) ? overPercent(left, right) : undefined;
   return folded ?? carryKeptClash(makeWrittenMath(node, left, right, bytes), written[0]!, written[1]!);
 }
 

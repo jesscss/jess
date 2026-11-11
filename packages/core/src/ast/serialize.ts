@@ -6261,7 +6261,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * `calc($val / 2)` came back as `8px / 2` with the wrapper dropped.
            * It is arithmetic, what the `calc()` around it holds.
            */
-          return node.inMathFunction ? writtenPercent(node.operator, values, e.modes, ev) ?? writtenMath(node, exposedWritten(e, values[0]!), exposedWritten(e, values[1]!), bytes, values) : literal(bytes);
+          return node.inMathFunction ? writtenPercent(node.operator, values, e.modes, ev) ?? writtenMath(node, [exposedWritten(e, values[0]!), exposedWritten(e, values[1]!)], bytes, values, ev.cssMath !== undefined) : literal(bytes);
         });
       }
 

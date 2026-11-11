@@ -56,6 +56,9 @@ export interface ExportRuntime {
 
   /** Each export by its custom property, `--a` for `a`: what a `var()` read names. */
   readonly properties: Map<string, string>;
+
+  /** By export of no known unit, the function whose slot fixed the unit it takes ({@link formUnits}). */
+  readonly slots: Map<string, string>;
 }
 
 /**
@@ -316,7 +319,7 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), named: new Map(), properties: new Map() };
+  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), named: new Map(), properties: new Map(), slots: new Map() };
 }
 
 /**
@@ -663,7 +666,7 @@ export function exportCall<F>(
           if (slots !== undefined && !fitsWritten(fn, vals, slots)) {
             exportNotWritten(node, `@${written}`, written, e, IN_LARGER_ARGUMENT);
           }
-          return mapMaybe(recovering(() => dispatchReading(x, inputs, dispatch, vals), namingExport(e, node, written)), form => recordUnits(x.runtime, [], form));
+          return mapMaybe(recovering(() => dispatchReading(x, inputs, dispatch, vals), namingExport(e, node, written)), form => recordUnits(x.runtime, [], form, node, e));
         });
   if (inputs.length === 0 && !typed.some(isThenable)) {
     return computedOver(typed);
@@ -698,7 +701,7 @@ export function exportCall<F>(
           markArgument(argument);
           return mapMaybe(
             recovering(() => dispatch(asWritten(e, checks, args).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value)))), onNoForm(recorded)),
-            form => isUnwrittenBuiltin(form) ? recorded() : recordUnits(x.runtime, readsOf(inputs), form)
+            form => isUnwrittenBuiltin(form) ? recorded() : recordUnits(x.runtime, readsOf(inputs), form, node, e)
           );
         }
         return recorded();
@@ -724,7 +727,7 @@ const readsOf = (inputs: ReadonlyArray<ExportInput>): ReadonlyArray<{ name: stri
  * ({@link noteRatio}) (docs/architecture/core/spec/R8-browser-runtime.md).
  * Returns `form`.
  */
-function recordUnits(runtime: ExportRuntime, reads: ReadonlyArray<{ name: string; value: ValueGroup }>, form: EvalValue): EvalValue {
+function recordUnits<F>(runtime: ExportRuntime, reads: ReadonlyArray<{ name: string; value: ValueGroup }>, form: EvalValue, node: FunctionCall, e: ExportLane<F>): EvalValue {
   for (const read of reads) {
     if (ratioOfHeld(read.value) !== undefined) {
       noteRatio(runtime, read.name);
@@ -732,31 +735,55 @@ function recordUnits(runtime: ExportRuntime, reads: ReadonlyArray<{ name: string
       runtime.units.set(read.name, read.value.unit);
     }
   }
-  formUnits(runtime, form, undefined);
+  formUnits(runtime, form, undefined, false, (name, unit) => {
+    const had = runtime.units.get(name);
+    if (had === undefined) {
+      runtime.units.set(name, unit);
+      runtime.slots.set(name, node.name);
+    } else if (had !== unit) {
+      exportNotWritten(node, `@${name}`, name, e, `as ${unitWord(unit)} by ${node.name}(), where ${runtime.slots.get(name) ?? 'another function'}() reads it as ${unitWord(had)}, and no value set at run time is both`);
+    }
+  });
   return form;
 }
 
-/** {@link recordUnits} of each export `var()` in `v`, `over` the unit of the divisor it is under. */
-function formUnits(runtime: ExportRuntime, v: EvalValue, over: string | undefined): void {
+const unitWord = (unit: string): string => unit === '' ? 'a number' : unit === '%' ? 'a percentage' : `a length in ${unit}`;
+
+/**
+ * {@link recordUnits} of each export `var()` in `v`, `over` the unit of the divisor
+ * it is under, an `operand` of math or not. One of no known unit (`@a: var(--y)`)
+ * takes the unit its slot reads, `reads` it: the divisor's, or a number's as an
+ * operand (`calc(h + var(--a, var(--y)))`); anywhere else the browser reads any value.
+ */
+function formUnits(runtime: ExportRuntime, v: EvalValue, over: string | undefined, operand: boolean, reads: (name: string, unit: string) => void): void {
   if (typeof v === 'string') {
     return;
   }
   if (isValueGroupArray(v) || v.type === 'List') {
     for (const item of isValueGroupArray(v) ? v : v.value) {
-      formUnits(runtime, item, over);
+      formUnits(runtime, item, over, operand, reads);
     }
   } else if (v.type === 'Arithmetic') {
     const divisor = v.op === '/' && typeof v.right !== 'string' && isDimension(v.right) && v.right.unit !== '' ? v.right.unit : over;
-    formUnits(runtime, v.left, divisor);
-    formUnits(runtime, v.right, over);
+    formUnits(runtime, v.left, divisor, true, reads);
+    formUnits(runtime, v.right, over, true, reads);
   } else if (v.type === 'FunctionCall' && v.name !== 'var') {
-    formUnits(runtime, v.args, over);
+    formUnits(runtime, v.args, over, operand, reads);
   } else if (v.type === 'FunctionCall') {
     const [name, held] = groupItems(v.args);
     const key = name !== undefined && !isValueGroupArray(name) && name.type === 'Keyword' ? runtime.properties.get(name.text) : undefined;
-    const unit = isDimension(held) ? held.unit : over;
-    if (key !== undefined && unit !== undefined && !runtime.units.has(key)) {
-      runtime.units.set(key, unit);
+    if (key === undefined || runtime.ratios.has(key)) {
+      return;
+    }
+    if (isDimension(held)) {
+      if (!runtime.units.has(key)) {
+        runtime.units.set(key, held.unit);
+      }
+      return;
+    }
+    const unit = over ?? (operand ? '' : undefined);
+    if (unit !== undefined) {
+      reads(key, unit);
     }
   }
 }
@@ -960,11 +987,29 @@ function fitsWritten(fn: Fn | undefined, vals: ReadonlyArray<MaybePromise<ValueG
   return slots.every((value, index) => {
     const fits = fn === undefined ? undefined : slotParam(fn, index)?.fits;
     const read = vals[index];
-    if (fits === undefined || read === undefined || isThenable(read) || !isDimension(value) || isDimension(lone(read))) {
+    if (fits === undefined || read === undefined || isThenable(read)) {
       return true;
     }
-    return fits(value, slots) && (value.unit === '' || knownUnit(lone(read)) !== undefined);
+    if (mixedSum(lone(read))) {
+      return false;
+    }
+    return !isDimension(value) || isDimension(lone(read)) || (fits(value, slots) && (value.unit === '' || knownUnit(lone(read)) !== undefined));
   });
+}
+
+/**
+ * Whether `v` adds terms of two known units (`(@a + 1px)` of `@a: 50%`), which the
+ * known value does not compute either: no form reads it as one quantity.
+ */
+function mixedSum(v: EvalValue): boolean {
+  if (typeof v === 'string' || isValueGroupArray(v)) {
+    return false;
+  }
+  if (v.type === 'FunctionCall') {
+    return v.name === 'calc' && mixedSum(v.args);
+  }
+  return v.type === 'Arithmetic' && (mixedSum(v.left) || mixedSum(v.right)
+    || ((v.op === '+' || v.op === '-') && knownUnit(v.left) !== undefined && knownUnit(v.right) !== undefined && knownUnit(v) === undefined));
 }
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */

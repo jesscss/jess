@@ -231,10 +231,15 @@ or needs JS) to decide what ships in the bundle.
   expects (`@a: 5px` read by `@less.unit(@a, em)` refuses `2em`; `@a: .5` read by
   `@less.fade` refuses `50%`). That holds inside a larger argument too: `@a: 5px`
   in `@less.unit((@a * 2), em)` refuses `2em`. An export whose default has no
-  known unit (`@a: var(--y)`) takes the unit the form divides it by:
-  `@less.fade(#c00, @a)` is `calc(var(--a, var(--y)) / 100%)`, so `vars()` takes
-  only a percentage for it, written as it is, `50%` as `--a: 50%` (owner, on a
-  bare `var()` in a fade amount: *"Keep short form"*). The compile records the
+  known unit (`@a: var(--y)`) takes the unit the form's slot reads it in, written
+  as it is: the unit the form divides it by, `@less.fade(#c00, @a)` being
+  `calc(var(--a, var(--y)) / 100%)`, so `vars()` takes only a percentage, `50%` as
+  `--a: 50%` (owner, on a bare `var()` in a fade amount: *"Keep short form"*); a
+  number where the form does math on it undivided, `@less.spin(#c00, @a)` being
+  `calc(h + var(--a, var(--y)))`, so `10%` is refused. Two slots that read one such
+  export in two units (a `fade` amount and a `spin` angle) have no value that
+  satisfies both, and the compile fails with `eval/expose-not-a-value` naming the
+  export and both functions. The compile records the
   unit in `units`; an export read only as written, or only by recipes, has none
   and takes any CSS literal. A `%` export takes only a percentage, however it is
   read or not read: a bare `50` could mean `50%` or `5000%`.
@@ -249,11 +254,16 @@ or needs JS) to decide what ships in the bundle.
   `hsl(from #c00 h s clamp(0, l - var(--a, 0.5) * 100, 100))`. The compile folds
   `(var(--a, 0.5) * 100%) / 1%` to `var(--a, 0.5) * 100` through any product of plain
   numbers around the read, and through a sum whose every term is a percentage or
-  such a read (`(@a + 1%)` over `1%` is `var(--a, 0.5) * 100 + 1`), in a form, an
-  operation and a math function alike (`overPercent`,
+  such a read (`(@a + 1%)` over `1%` is `var(--a, 0.5) * 100 + 1`), in a form, in a
+  form's own math and in an operation (`overPercent`,
   `packages/core/src/ast/value-operate.ts`), so no form divides a percentage; a
   form over a sum with a term that does not fold has none, and an export read
-  inside a larger argument is then an error. Whether an export is a ratio is
+  inside a larger argument is then an error. So is a sum of two units
+  (`@less.unit((@a + 1px), px)`), which the known value does not compute either. A
+  `calc()` an author wrote is CSS, not a Less calculation, and is not folded: the
+  output means the same whether Jess or the browser computes it, and the known
+  value keeps `calc(50% / 1%)`, so `calc(@a / 1%)` is
+  `calc(var(--a, 0.5) * 100% / 1%)` (both `auto` on `z-index`, Chrome 156). Whether an export is a ratio is
   decided by its compile-time value alone, never by what reads it (`ratioOfHeld`,
   `packages/core/src/ast/export-reads.ts`): every exposed export whose value is a
   percentage is one, read by a form, as written, only by a recipe or not at all,

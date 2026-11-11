@@ -266,6 +266,43 @@ describe('the export runtime', () => {
     expect(() => runtime.vars({ a: '.5' })).toThrow('a is read by a CSS form in %');
   });
 
+  it.each([
+    ['@a: 50%;', '@less.unit((@a + 1px), px)'],
+    ['@a: 50%;', '@less.percentage((@a + 1px))'],
+    ['@a: 50%;', '@less.ceil((@a + 1px))'],
+    ['@a: 5px;', '@less.unit((@a + 1%), px)']
+  ])('has no form for a sum of two units over an export, as the known value has none: %s %s', async (declared, expression) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n${declared}\n.x { v: ${expression}; }`);
+    expect(exported.errors?.[0]?.code).toBe('eval/expose-not-a-value');
+  });
+
+  it('keeps the form over a sum of two units only the browser knows', async () => {
+    expect((await compile('@use "#less";\n.x { v: @less.unit((var(--x) + 1px), px); }')).css).toContain('v: calc((var(--x) + 1px) / 1px * 1px);');
+  });
+
+  it.each([
+    ['@less.spin(#c00, @a)', 'hsl(from #c00 calc(h + var(--a, var(--y))) s l)'],
+    ['@less.unit(@a, px)', 'calc(var(--a, var(--y)) * 1px)']
+  ])('takes a number for an export of no known unit a number slot reads: %s', async (expression, printed) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: var(--y);\n.x { v: ${expression}; }`);
+    expect(exported.css).toContain(`v: ${printed};`);
+    expect(exported.runtime!.units).toEqual({ a: '' });
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived: {} });
+    expect(() => runtime.vars({ a: '10%' })).toThrow('a is read by a CSS form in a number');
+    expect(runtime.vars({ a: '10' })).toEqual({ '--a': '10' });
+  });
+
+  it('has no runtime value for an export of no known unit two slots read in two units', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: var(--y);\n.x { color: @less.fade(#c00, @a); background: @less.spin(#c00, @a); }');
+    expect(exported.errors?.[0]).toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('as a number by less.spin(), where less.fade() reads it as a percentage') });
+  });
+
+  /* Chrome 156.0.8078.75: both are `auto` on z-index, and `0px` on height times 1px, with --a: 0.5 and with the fallback alone. */
+  it('keeps the division in a calc() an author wrote, as over the known value', async () => {
+    expect((await compile('@use "#less";\n@expose a;\n@a: 50%;\n.x { v: calc(@a / 1%); }')).css).toContain('v: calc(var(--a, 0.5) * 100% / 1%);');
+    expect((await compile('@use "#less";\n@a: 50%;\n.x { v: calc(@a / 1%); }')).css).toContain('v: calc(50% / 1%);');
+  });
+
   it('has no form for a sum over a percentage a term of which does not fold', async () => {
     const exported = await compile('@use "#less";\n@expose a, n;\n@a: 50%;\n@n: 2;\n.x { v: @less.unit((@a + 1% * @n), px); }');
     expect(exported.errors?.[0]).toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('divides a percentage') });
