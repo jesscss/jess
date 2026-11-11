@@ -66,10 +66,11 @@ const NESTED_GLUED_SELECTOR_FUNCTION_DEFECT =
   + 'fails INSIDE the parenthesised argument (a committed failure in '
   + 'parseman), not at the `{`, so the nested-rule arm never runs. Whether a '
   + 'nested rule fails therefore depends on whether its pseudo-function '
-  + 'argument also reads as a value in the dialect. SCSS and .jess reject '
+  + 'argument also reads as a value in the dialect. .jess rejects '
   + '`li:not(:last-child)`, `b:is(.c)`, `b:has(> img)`, `b:where(.c)`, '
-  + '`input:not([type=text])`, `li:nth-child(2n+1 of .x)` and the spaced '
-  + '`li :not(.c)`; .jess also rejects `li:nth-child(2n+1)` and '
+  + '`input:not([type=text])` and the spaced `li :not(.c)`, which SCSS reads '
+  + 'because its call arguments admit a selector opener; both reject '
+  + '`li:nth-child(2n+1 of .x)` and `li:not(.a .b)`; .jess also rejects `li:nth-child(2n+1)` and '
   + '`li:nth-of-type(2n+1)`, because `2n+1` is not a .jess value. '
   + '`li:hover`, `li:nth-child(odd)`, `li:nth-child(2)`, `li:lang(en)` and '
   + '`li:dir(rtl)` parse in both: their value reading fails only at the `{`. '
@@ -484,7 +485,7 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     id: 'a type selector with a selector pseudo-function in a nested rule',
     group: 'selector',
     source: 'ul { li:not(:last-child) { color: red } }',
-    brokenIn: ['scss', 'jess'],
+    brokenIn: ['jess'],
     defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
   },
   {
@@ -496,7 +497,7 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     id: 'a descendant selector pseudo-function in a nested rule',
     group: 'selector',
     source: 'ul { li :not(.c) { color: red } }',
-    brokenIn: ['scss', 'jess'],
+    brokenIn: ['jess'],
     defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
   },
   {

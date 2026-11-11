@@ -312,8 +312,8 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     });
   });
 
-  it('PINNED DEFECT — rejects a Sass call argument form (spread argument)', () => {
-    expect(() => parse('a { b: f($x...) }')).toThrow();
+  it('admits a Sass call argument form (spread argument)', () => {
+    expect(() => parse('a { b: f($x...) }')).not.toThrow();
   });
 
   it('admits a bare variable as an @if condition', () => {
@@ -329,12 +329,11 @@ describe('SCSS constructs discovered outside the parser suites', () => {
   });
 
   it.each([
-    ['@at-root prelude', '@at-root /**/ {}'],
     ['@for bound', '@for $i from /**/ 1 through 10 {}'],
     ['@forward configuration', '@forward "o" with ($a: /**/ b)']
   ])('PINNED DEFECT — does not admit a comment as trivia (%s)', (_label, source) => {
     /*
-     * A comment is trivia everywhere or it is trivia nowhere. These three
+     * A comment is trivia everywhere or it is trivia nowhere. These two
      * at-rule preludes each have a position where the trivia rule is not
      * applied, so an authored comment turns a valid stylesheet into a parse
      * error.
@@ -567,8 +566,7 @@ describe('SCSS constructs discovered outside the parser suites', () => {
       /*
        * `Unexpected SCSS syntax.` is the signature of falling off the end of
        * the statement choice with no arm having claimed the at-keyword. A name
-       * that reaches a real production fails differently (`@at-root .y {`
-       * reports `Expected: "(", "{"`), so this message — not merely "it
+       * that reaches a real production fails differently, so this message — not merely "it
        * throws" — is what distinguishes an unrouted name from a diagnosed one.
        */
       expect(() => parse(source)).toThrow(/Unexpected SCSS syntax/);

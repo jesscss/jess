@@ -23,6 +23,9 @@ export type JessErrorCode =
   | 'parse/unsupported-mixin-name'
   | 'parse/unparenthesized-mixin-guard'
   | 'parse/leading-separator-value'
+  | 'parse/at-root-placement'
+  | 'parse/invalid-rule-prelude'
+  | 'parse/return-placement'
   | 'parse/uncalled-mixin-reference'
   | 'parse/important-on-mixin-reference'
   | 'parse/import-postlude-on-compile-time-import'
@@ -215,6 +218,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   ],
   ['parse/leading-separator-value', leadingSeparatorValueText('/')],
   [
+    'parse/invalid-rule-prelude',
+    {
+      summary: 'This rule\'s prelude is not a selector',
+      reason: 'A block makes this a rule, and no selector reads what comes before it, so a browser drops the rule.',
+      fix: 'Write a selector. If a declaration comes first, end it with `;`.'
+    }
+  ],
+  [
     'parse/arithmetic-outside-expression',
     {
       summary: '`*` multiplies only inside $( … ).',
@@ -300,6 +311,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '@expose takes a comma-separated list of variable names',
       reason: '@expose is followed by one or more variable names without their @, separated by commas, and ends at a semicolon.',
       fix: 'Write the names it exposes, for example: @expose brand, gap;'
+    }
+  ],
+  [
+    'parse/return-placement',
+    {
+      summary: '`@return` is outside a place a function can read it',
+      reason: 'A function yields a `@return` written directly in its body or in an `@if`/`@else` branch of it. Anywhere else, there is no value to yield and nothing for the compiler to write.',
+      fix: 'Write the `@return` directly in the function body or an `@if`/`@else` branch: assign in the loop, and return after it.'
     }
   ],
   [
@@ -657,6 +676,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '`${what}` is not valid in any CSS value',
       reason: 'CSS reads `${what}` as a delim token, and no CSS value accepts it, so a browser drops the declaration.',
       fix: '${fix}'
+    }
+  ],
+  [
+    'parse/at-root-placement',
+    {
+      summary: '`@at-root` is not supported',
+      reason: '`@at-root` moves a rule out of its parent in the output, and the compiler has no way to write that yet. Writing the at-rule as it stands would give CSS that means something else.',
+      fix: 'Write the rule at the top level, outside its parent.'
     }
   ],
   [

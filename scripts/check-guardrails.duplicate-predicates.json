@@ -3,7 +3,6 @@
     "quote-scan: if (c === '\"' || c === '\\'') {"
   ],
   "packages/core/src/ast/emit-jess.ts": [
-    "custom-property-bytes: const custom = typeof node.name === 'string' && node.name.startsWith('--');",
     "custom-property-bytes: return IDENT.test(name) || name.startsWith('--')"
   ],
   "packages/core/src/ast/extend/compose.ts": [
