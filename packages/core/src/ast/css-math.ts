@@ -111,7 +111,7 @@ export const formMath = (op: '*' | '/' | '-', left: ValueGroup, right: ValueGrou
  *
  * TODO(compress-form-math): the call's bytes, and the spelling {@link mathOnDeferred} gives the math around it, are written
  * here with no modes, so under `compress` a form's math is not compressed (`pow(var(--a,4px) / 1px, 0.5)` beside
- * `pow(var(--x),.5)`). Spelling them from structure at output fixes both; tracker issue to be filed.
+ * `pow(var(--x),.5)`). Spelling them from structure at output fixes both; see jesscss/jess#650.
  */
 export function aroundUnit(name: string, args: readonly ValueGroup[], unit: string): ValueGroup {
   const bytes = args.map(arg => (isValueGroupArray(arg) ? null : writtenCalcInner(arg)) ?? emitValue(arg)).join(', ');
