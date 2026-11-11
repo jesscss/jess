@@ -1,13 +1,7 @@
 import { asNumber, defineForm, formMath, formNumber, knownUnit, type FormCall } from '@jesscss/core/form';
 import { foldUnit, makeDimension, type Fn, type ValueGroup } from '@jesscss/core/value';
-import { isDimension, NUMBER_ARG, plain, turnsInto } from './css-math-args.js';
+import { isDimension, NUMBER_ARG, plain } from './css-math-args.js';
 import { mod as form } from './css-forms.generated.js';
-
-/** A divisor a form can write in the dividend's unit. */
-const fitsDivisor = (value: ValueGroup, vals: readonly ValueGroup[]): boolean => {
-  const first = vals[0];
-  return turnsInto(value, isDimension(first) ? first.unit.toLowerCase() : '');
-};
 
 /** A divisor in the dividend's unit, which `rem()` needs: its number in that unit, as the known path reads it. */
 function divisorBeside(a: ValueGroup, b: ValueGroup): ValueGroup {
@@ -21,6 +15,6 @@ function divisorBeside(a: ValueGroup, b: ValueGroup): ValueGroup {
 
 /** `mod(a, b)`: `rem(a, b)`, the dividend's sign and, known, its unit. */
 export const mod: Fn = /* @__PURE__ */ defineForm('mod', {
-  params: [NUMBER_ARG, { type: ['Dimension', 'FunctionCall'], fits: fitsDivisor }],
+  params: [NUMBER_ARG, NUMBER_ARG],
   form: (a: ValueGroup, b: ValueGroup): FormCall => [form, plain(a), divisorBeside(a, b)]
 });

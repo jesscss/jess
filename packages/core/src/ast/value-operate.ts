@@ -879,8 +879,61 @@ function rejectList(op: string, left: Value, right: Value): void {
  */
 export function mathOnDeferred(op: string, left: Value, right: Value): Value {
   rejectList(op, left, right);
+  const ratio = op === '/' ? overPercent(left, right) : undefined;
+  if (ratio !== undefined) {
+    return ratio;
+  }
   const spelling = `${mathSpelling(left, op, false)} ${op} ${mathSpelling(right, op, true)}`;
   return carriedClash(makeCalc(makeArithmetic(op, left, right, true, spelling), calcBytes(spelling, op), true), left, right);
+}
+
+/**
+ * `calc(var(--a, 0.5) * 100%) / 1%`, a `%` export's read over a percentage, is
+ * its ratio times the quotient, `var(--a, 0.5) * 100`, through any product of
+ * plain numbers around it (`(@a * 2)`, `-@a`): no percentage is left for the
+ * property to resolve before the division reads it
+ * (docs/architecture/core/spec/R8-browser-runtime.md, *Percentages*).
+ */
+function overPercent(left: Value, right: Value): Value | undefined {
+  return right.type === 'Dimension' && right.unit === '%' && right.number !== 0 ? cancelPercent(left, right.number) : undefined;
+}
+
+/** An export's ratio read (its `var()`, typed by its compile-time number), times or over plain numbers (`-1 * var(--a, 0.5)`), in a `calc()` or a group or not. */
+function isRatioProduct(v: EvalValue): v is Value {
+  if (typeof v === 'string' || isValueGroupArray(v)) {
+    return false;
+  }
+  if (v.type === 'FunctionCall') {
+    return v.name === 'var' ? v.result === 'numeric' : v.name === 'calc' && isRatioProduct(v.args);
+  }
+  return v.type === 'Arithmetic' && (v.op === ''
+    ? isRatioProduct(v.left)
+    : (v.op === '*' || v.op === '/') && ((isPlainNumber(v.left) && isRatioProduct(v.right)) || (isPlainNumber(v.right) && isRatioProduct(v.left))));
+}
+
+const isPlainNumber = (v: EvalValue): v is Dimension =>
+  typeof v !== 'string' && !isValueGroupArray(v) && v.type === 'Dimension' && v.unit === '';
+
+function cancelPercent(v: EvalValue, by: number): Value | undefined {
+  if (typeof v === 'string' || isValueGroupArray(v)) {
+    return undefined;
+  }
+  if ((v.type === 'FunctionCall' && v.name === 'calc') || (v.type === 'Arithmetic' && v.op === '')) {
+    return cancelPercent(v.type === 'Arithmetic' ? v.left : v.args, by);
+  }
+  if (v.type !== 'Arithmetic' || (v.op !== '*' && v.op !== '/') || typeof v.right === 'string' || isValueGroupArray(v.right)) {
+    return undefined;
+  }
+  if (v.op === '*' && v.right.type === 'Dimension' && v.right.unit === '%' && isRatioProduct(v.left)) {
+    const factor = Number((v.right.number / by).toPrecision(15));
+    return factor === 1 ? v.left : mathOnDeferred('*', v.left, makeDimension(factor));
+  }
+  if (isPlainNumber(v.left) && v.op === '*') {
+    const inner = cancelPercent(v.right, by);
+    return inner === undefined ? undefined : mathOnDeferred('*', v.left, inner);
+  }
+  const inner = isPlainNumber(v.right) ? cancelPercent(v.left, by) : undefined;
+  return inner === undefined ? undefined : mathOnDeferred(v.op, inner, v.right);
 }
 
 const isAdditive = (op: string | undefined): boolean => op === '+' || op === '-';

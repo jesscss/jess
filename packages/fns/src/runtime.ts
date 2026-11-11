@@ -28,7 +28,9 @@ export interface RuntimeSpec {
   /**
    * The unit of each export a CSS form reads, `''` for a number: the only one it
    * takes, since CSS would convert another unit where Less does not
-   * (`unit(7em, px)` is 7px in Less, 112px over `var(--a) / 1px * 1px`).
+   * (`unit(7em, px)` is 7px in Less, 112px over `var(--a) / 1px * 1px`). A `%`
+   * export read at all is `%`, and is held as its ratio, `50%` as `--a: 0.5`, which
+   * every read multiplies back.
    */
   readonly units: Readonly<Record<string, string>>;
 
@@ -73,7 +75,7 @@ export function createRuntime(spec: RuntimeSpec): Runtime {
     }
     const out: Record<string, string> = {};
     for (const name of Object.keys(values)) {
-      out[`--${name}`] = values[name]!;
+      out[`--${name}`] = Object.hasOwn(spec.units, name) && spec.units[name] === '%' ? ratioOf(values[name]!) : values[name]!;
     }
     for (const property of Object.keys(spec.derived)) {
       const recipe = spec.derived[property]!;
@@ -104,6 +106,12 @@ function checkedUnit(key: string, value: string, unit: string | undefined): stri
     throw new TypeError(`${key} is read by a CSS form in ${unit === '' ? 'a number' : unit}, as its compile-time value is; ${value} would mean something else there.`);
   }
   return value;
+}
+
+/** A percentage as the ratio its custom property holds: `50%` is `0.5`. */
+function ratioOf(value: string): string {
+  const read = parseValue(value);
+  return isValueGroupArray(read) || read.type !== 'Dimension' ? value : String(Number((read.number / 100).toPrecision(15)));
 }
 
 function reads(recipe: RuntimeRecipe, values: ExportValues): boolean {

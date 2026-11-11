@@ -13,9 +13,10 @@ import { calcOperand } from './math-operand.js';
 import { isBrowserColor } from './value-dispatch.js';
 import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
+import { groupItems } from './value-list.js';
 import type { ValueCheckLane } from './invalid-value-syntax.js';
-import { makeKeyword, makeList, withFields } from './value-factory.js';
-import { exposedOperand, insideParens, keepAsWritten } from './value-operate.js';
+import { makeDimension, makeKeyword, makeList, withFields } from './value-factory.js';
+import { exposedOperand, insideParens, keepAsWritten, mathOnDeferred } from './value-operate.js';
 
 /**
  * Ledger A4: a variable an `@expose` names (A20) publishes a custom property, so a
@@ -38,7 +39,7 @@ export interface ExportRuntime {
   /** The compile-time CSS of each export a derived value reads. */
   readonly defaults: Map<string, string>;
 
-  /** The unit of each export a CSS form reads, which is the only one the runtime takes for it ({@link recordUnits}). */
+  /** The unit of each export a CSS form reads, and `%` for each percentage read at all, which is the only one the runtime takes for it ({@link recordUnits}, {@link percentRead}). */
   readonly units: Map<string, string>;
 
   /** Each generated custom property, by its name, with how the runtime computes it. */
@@ -456,7 +457,7 @@ export function exportInput<F, H extends { value: CallValue; frame: F }>(hit: H 
 export function exportInputRead<F>(e: ExportLane<F>, hit: { value: CallValue; frame: F }, value: MaybePromise<ValueGroup>): MaybePromise<ValueGroup> {
   const x = exporting(e.s.exports);
   if (x?.behind.has(hit.value) === true) {
-    return mapMaybe(value, exposedOperand);
+    return mapMaybe(value, read => percentRead(exposedOperand(read), e.modes, x.runtime.units));
   }
   const inputs = x?.inputs;
   const name = inputs === undefined || x === undefined ? undefined : refOf(x, hit)?.name;
@@ -468,13 +469,40 @@ export function exportInputRead<F>(e: ExportLane<F>, hit: { value: CallValue; fr
       });
 }
 
+/**
+ * A `%` export's read. The browser holds its ratio (`@a: 50%` is `--a: 0.5`) and
+ * every read multiplies it back, `calc(var(--a, 0.5) * 100%)`, so a form that
+ * reads it as a number or a length never divides a percentage the property
+ * resolves first ({@link mathOnDeferred}; docs/architecture/core/spec/R8-browser-runtime.md,
+ * *Percentages*).
+ */
+function percentRead(read: ValueGroup, modes: EvalModes, units: Map<string, string>): ValueGroup {
+  if (isValueGroupArray(read) || read.type !== 'FunctionCall' || read.name !== 'var') {
+    return read;
+  }
+  const [name, held] = groupItems(read.args);
+  if (name === undefined || !isDimension(held) || held.unit !== '%') {
+    return read;
+  }
+  units.set(emitValue(name).slice(2), '%');
+  const ratio = makeDimension(Number((held.number / 100).toPrecision(15)));
+  return mathOnDeferred('*', keepAsWritten(withFields(writeCall('var', makeList([name, ratio], ','), modes), { result: 'numeric' as const })), makeDimension(100, '%'));
+}
+
 /** An operand of math written in a math function (`calc(@a * 2)`): an export's `var()` is of its value's type there too ({@link exposedOperand}). */
 export function exposedWritten<F>(e: ExportLane<F>, operand: EvalValue): EvalValue {
   if (typeof operand === 'string' || isValueGroupArray(operand) || operand.type !== 'FunctionCall' || operand.name !== 'var') {
     return operand;
   }
   const name = varName(operand);
-  return name !== undefined && exporting(e.s.exports)?.runtime.exports.has(name.slice(2)) === true ? exposedOperand(operand) : operand;
+  const x = exporting(e.s.exports);
+  return name !== undefined && x?.runtime.exports.has(name.slice(2)) === true ? percentRead(exposedOperand(operand), e.modes, x.runtime.units) : operand;
+}
+
+/** A read of an export's `var()` stand-in where nothing reads it as an operand: a `%` export is its ratio ({@link percentRead}). */
+export function exposedRead<F>(e: ExportLane<F>, hit: { value: CallValue }, value: EvalValue): EvalValue {
+  const units = e.s.exports.runtime?.units;
+  return typeof value !== 'string' && units !== undefined && e.s.exports.behind.has(hit.value) ? percentRead(value, e.modes, units) : value;
 }
 
 /** Note that the mixin argument being bound reads an export. */

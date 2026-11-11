@@ -106,12 +106,12 @@ describe('the export runtime', () => {
     ['@less.mix(@brand, red)', '#c00', 'color-mix(in srgb, var(--brand, #c00), red)'],
     ['@less.mix(@brand, red, 25%)', '#c00', 'color-mix(in srgb, var(--brand, #c00) 25%, red)'],
     ['@less.mix(red, @brand, 25%)', '#c00', 'color-mix(in srgb, red 25%, var(--brand, #c00))'],
-    ['@less.mix(red, blue, @brand)', '25%', 'rgb(from red clamp(0, (r * alpha * var(--brand, 25%) / 100% + 0 * (1 - var(--brand, 25%) / 100%)) / (alpha * var(--brand, 25%) / 100% + 1 * (1 - var(--brand, 25%) / 100%)), 255) clamp(0, (g * alpha * var(--brand, 25%) / 100% + 0 * (1 - var(--brand, 25%) / 100%)) / (alpha * var(--brand, 25%) / 100% + 1 * (1 - var(--brand, 25%) / 100%)), 255) clamp(0, (b * alpha * var(--brand, 25%) / 100% + 255 * (1 - var(--brand, 25%) / 100%)) / (alpha * var(--brand, 25%) / 100% + 1 * (1 - var(--brand, 25%) / 100%)), 255) / calc(alpha * var(--brand, 25%) / 100% + 1 * (1 - var(--brand, 25%) / 100%)))'],
+    ['@less.mix(red, blue, @brand)', '25%', 'rgb(from red clamp(0, (r * alpha * var(--brand, 0.25) + 0 * (1 - var(--brand, 0.25))) / (alpha * var(--brand, 0.25) + 1 * (1 - var(--brand, 0.25))), 255) clamp(0, (g * alpha * var(--brand, 0.25) + 0 * (1 - var(--brand, 0.25))) / (alpha * var(--brand, 0.25) + 1 * (1 - var(--brand, 0.25))), 255) clamp(0, (b * alpha * var(--brand, 0.25) + 255 * (1 - var(--brand, 0.25))) / (alpha * var(--brand, 0.25) + 1 * (1 - var(--brand, 0.25))), 255) / calc(alpha * var(--brand, 0.25) + 1 * (1 - var(--brand, 0.25))))'],
     ['@less.average(@brand, red)', '#c00', 'color-mix(in srgb, var(--brand, #c00), red)'],
     ['@less.contrast(@brand)', '#c00', 'contrast-color(var(--brand, #c00))'],
     ['@less.contrast(@brand, #111, #eee)', '#c00', 'rgb(from contrast-color(var(--brand, #c00)) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) / calc(1 + 0 * r / 255))'],
     ['@less.tint(@brand, 13%)', '#c00', 'color-mix(in srgb, white 13%, var(--brand, #c00))'],
-    ['@less.tint(red, @brand)', '13%', 'rgb(from red clamp(0, (r * alpha * (1 - var(--brand, 13%) / 100%) + 255 * var(--brand, 13%) / 100%) / (alpha * (1 - var(--brand, 13%) / 100%) + 1 * var(--brand, 13%) / 100%), 255) clamp(0, (g * alpha * (1 - var(--brand, 13%) / 100%) + 255 * var(--brand, 13%) / 100%) / (alpha * (1 - var(--brand, 13%) / 100%) + 1 * var(--brand, 13%) / 100%), 255) clamp(0, (b * alpha * (1 - var(--brand, 13%) / 100%) + 255 * var(--brand, 13%) / 100%) / (alpha * (1 - var(--brand, 13%) / 100%) + 1 * var(--brand, 13%) / 100%), 255) / calc(alpha * (1 - var(--brand, 13%) / 100%) + 1 * var(--brand, 13%) / 100%))'],
+    ['@less.tint(red, @brand)', '13%', 'rgb(from red clamp(0, (r * alpha * (1 - var(--brand, 0.13)) + 255 * var(--brand, 0.13)) / (alpha * (1 - var(--brand, 0.13)) + 1 * var(--brand, 0.13)), 255) clamp(0, (g * alpha * (1 - var(--brand, 0.13)) + 255 * var(--brand, 0.13)) / (alpha * (1 - var(--brand, 0.13)) + 1 * var(--brand, 0.13)), 255) clamp(0, (b * alpha * (1 - var(--brand, 0.13)) + 255 * var(--brand, 0.13)) / (alpha * (1 - var(--brand, 0.13)) + 1 * var(--brand, 0.13)), 255) / calc(alpha * (1 - var(--brand, 0.13)) + 1 * var(--brand, 0.13)))'],
     ['@less.shade(@brand)', '#c00', 'color-mix(in srgb, black 50%, var(--brand, #c00))'],
     ['@less.tint(@brand, -13%)', '#c00', 'rgb(from var(--brand, #c00) clamp(0, (r * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (g * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (b * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) / calc(alpha * 1.13 + -0.13))'],
     ['@less.darken(color-mix(in srgb, @brand, red), 10%)', '#c00', 'hsl(from color-mix(in srgb, var(--brand, #c00), red) h s clamp(0, l - 10, 100))']
@@ -198,16 +198,48 @@ describe('the export runtime', () => {
     expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived }).vars({ a: '#333' })).toThrow('The runtime computes from CSS literals');
   });
 
-  it('sets a percentage the form holds, which the browser reads as a compile of it would', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.fade(#333, @a); }');
-    expect(exported.css).toContain('v: rgb(from #333 r g b / var(--a, 25%));');
+  it('holds a percentage as its ratio, which every read multiplies back', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.fade(#333, @a); w: @a; }');
+    expect(exported.css).toContain('v: rgb(from #333 r g b / calc(var(--a, 0.25) * 100%));');
+    expect(exported.css).toContain('w: calc(var(--a, 0.25) * 100%);');
     expect(exported.runtime!.derived).toEqual({});
-    expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived: {} }).vars({ a: '50%' })).toEqual({ '--a': '50%' });
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, derived: {} });
+    expect(runtime.vars({ a: '50%' })).toEqual({ '--a': '0.5' });
+    expect(runtime.vars({ a: '33.3%' })).toEqual({ '--a': '0.333' });
+    expect(() => runtime.vars({ a: '.5' })).toThrow('a is read by a CSS form in %');
+  });
+
+  /*
+   * Each printed form is what was measured in Chrome 156.0.8078.75 (getComputedStyle),
+   * with `--a` set to the ratio and with the fallback alone; both gave the value in
+   * the last column, which is what a compile of the percentage writes.
+   */
+  it.each([
+    ['50%', '@a', 'calc(var(--a, 0.5) * 100%)', 'height 100px in a 200px box and width 200px in a 400px box, as 50%; 0px in a box of no height, as 50%'],
+    ['50%', '@less.hsl(120, @a, 50%)', 'hsl(120, calc(var(--a, 0.5) * 100%), 50%)', 'rgb(64, 191, 64), as hsl(120, 50%, 50%)'],
+    ['50%', '@less.unit(@a, px)', 'calc(var(--a, 0.5) * 100 * 1px)', '50px on height in a box of no height'],
+    ['50%', '@less.unit(@a)', 'calc(var(--a, 0.5) * 100 * 1)', '50 on z-index'],
+    ['5%', '@less.unit((@a * 2), px)', 'calc(var(--a, 0.05) * 100 * 2 * 1px)', '10px on height in a box of no height'],
+    ['50%', '@less.sqrt(@a)', 'calc(sqrt(var(--a, 0.5) * 100) * 1%)', '28.2812px on width in a 400px box, as 7.0710678%'],
+    ['25%', '@less.fade(#333, @a)', 'rgb(from #333 r g b / calc(var(--a, 0.25) * 100%))', 'alpha 0.25'],
+    ['10%', '@less.darken(#c00, @a)', 'hsl(from #c00 h s clamp(0, l - var(--a, 0.1) * 100, 100))', 'rgb(153, 0, 0), as hsl(0, 100%, 30%)'],
+    ['50%', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 0.5) * 100% / 100%) * 75%) 25%)', 'rgb(96, 191, 96), as hwb(120 37.5% 25%)']
+  ])('prints @a: %s in %s as the CSS measured in Chrome', async (value, expression, printed, _measured) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
+    expect(exported.css).toContain(`v: ${printed};`);
+    expect(exported.runtime!.units).toEqual({ a: '%' });
+  });
+
+  it('holds a percentage read only as written as its ratio too, whatever reads it first', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: 50%;\n.x { w: @a; }\n.y { v: @less.unit(@a, px); }');
+    expect(exported.css).toContain('w: calc(var(--a, 0.5) * 100%);');
+    expect(exported.css).toContain('v: calc(var(--a, 0.5) * 100 * 1px);');
+    expect(exported.runtime!.units).toEqual({ a: '%' });
   });
 
   it('needs no recipe where the form holds the export', async () => {
     const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.darken(var(--x), @a); }');
-    expect(exported.css).toContain('hsl(from var(--x) h s clamp(0, l - var(--a, 25%) / 1%, 100))');
+    expect(exported.css).toContain('hsl(from var(--x) h s clamp(0, l - var(--a, 0.25) * 100, 100))');
     expect(exported.runtime!.derived).toEqual({});
   });
 
@@ -258,9 +290,7 @@ describe('the export runtime', () => {
   });
 
   it.each([
-    ['16px', '@less.sin((@a * 2))'],
-    ['50%', '@less.unit((@a * 2), px)'],
-    ['50%', '@less.mod(5px, (@a * 2))']
+    ['16px', '@less.sin((@a * 2))']
   ])('has no value for @a: %s in %s', async (value, expression) => {
     const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
     expect(exported.errors?.[0]?.code).toBe('eval/expose-not-a-value');
@@ -278,12 +308,7 @@ describe('the export runtime', () => {
   it.each([
     ['@less.hsl(@a)', '#c00', 'var(--a-hsl, hsl(0, 100%, 40%))'],
     ['@less.hsl(@a, 50%)', '#c00', 'var(--a-hsl, hsla(0, 100%, 40%, 0.5))'],
-    ['@less.hsl(#333, @a)', '5%', 'var(--a-hsl, hsla(0, 0%, 20%, 0.05))'],
-    ['@less.unit(@a, px)', '50%', 'var(--a-unit, 50px)'],
-    ['@less.mod(5px, @a)', '2%', 'var(--a-mod, 1px)'],
-    ['@less.unit(@a)', '50%', 'var(--a-unit, 50)'],
-    ['@less.pow(2, @a)', '50%', 'var(--a-pow, 1125899906842624)'],
-    ['@less.mod(3, @a)', '50%', 'var(--a-mod, 3)']
+    ['@less.hsl(#333, @a)', '5%', 'var(--a-hsl, hsla(0, 0%, 20%, 0.05))']
   ])('keeps the recipe of %s when the export is %s, which no form reads there', async (expression, value, printed) => {
     const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
@@ -291,12 +316,21 @@ describe('the export runtime', () => {
   });
 
   it.each([
-    ['@less.sqrt(@a)', 'calc(sqrt(var(--a, 50%) / 1%) * 1%)'],
-    ['@less.pow(@a, 2)', 'calc(pow(var(--a, 50%) / 1%, 2) * 1%)'],
-    ['@less.percentage(@a)', 'calc(var(--a, 50%) / 1% * 100%)']
-  ])('keeps the form of %s over a percentage it keeps a percentage', async (expression, printed) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: 50%;\n.x { v: ${expression}; }`);
+    ['50%', '@less.sqrt(@a)', 'calc(sqrt(var(--a, 0.5) * 100) * 1%)'],
+    ['50%', '@less.pow(@a, 2)', 'calc(pow(var(--a, 0.5) * 100, 2) * 1%)'],
+    ['50%', '@less.percentage(@a)', 'calc(var(--a, 0.5) * 100 * 100%)'],
+    ['50%', '@less.unit(@a, px)', 'calc(var(--a, 0.5) * 100 * 1px)'],
+    ['50%', '@less.unit(@a)', 'calc(var(--a, 0.5) * 100 * 1)'],
+    ['50%', '@less.unit((@a * 2), px)', 'calc(var(--a, 0.5) * 100 * 2 * 1px)'],
+    ['50%', '@less.unit(-@a, px)', 'calc(-1 * var(--a, 0.5) * 100 * 1px)'],
+    ['2%', '@less.mod(5px, @a)', 'rem(5px, var(--a, 0.02) * 100 * 1px)'],
+    ['50%', '@less.mod(5px, (@a * 2))', 'rem(5px, var(--a, 0.5) * 100 * 2 * 1px)'],
+    ['50%', '@less.pow(2, @a)', 'pow(2, var(--a, 0.5) * 100)'],
+    ['50%', '@less.mod(3, @a)', 'rem(3, var(--a, 0.5) * 100)']
+  ])('keeps the form over a percentage held as its ratio: @a: %s in %s', async (value, expression, printed) => {
+    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
+    expect(exported.runtime!.derived).toEqual({});
     expect(exported.runtime!.units).toEqual({ a: '%' });
   });
 
@@ -319,12 +353,12 @@ describe('the export runtime', () => {
     ['10', '@less.darken(#c00, @a)', 'hsl(from #c00 h s clamp(0, l - var(--a, 10), 100))'],
     ['10px', '@less.darken(#c00, @a)', 'hsl(from #c00 h s clamp(0, l - var(--a, 10px) / 1px, 100))'],
     ['5', '@less.darken(#c00, @a * 2)', 'hsl(from #c00 h s clamp(0, l - var(--a, 5) * 2, 100))'],
-    ['25%', '@less.spin(var(--x), @a)', 'hsl(from var(--x) calc(h + var(--a, 25%) / 1%) s l)'],
+    ['25%', '@less.spin(var(--x), @a)', 'hsl(from var(--x) calc(h + var(--a, 0.25) * 100) s l)'],
     ['2px', '@less.rgb((@a), 0, 0)', 'rgb(calc(var(--a, 2px) / 1px), 0, 0)'],
     ['.5', '@less.hsl(120, @a, 50%)', 'hsl(120, calc(var(--a, 0.5) * 100%), 50%)'],
     ['.5', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 0.5) * 100% / 100%) * 75%) 25%)'],
     ['.25', '@less.hsv(var(--h), 50%, @a)', 'hwb(var(--h) calc(0.5 * var(--a, 0.25) * 100%) calc(100% - var(--a, 0.25) * 100%))'],
-    ['50%', '@less.hsv(@a, 50%, 50%)', 'hwb(calc(var(--a, 50%) / 1% * 3.6) 25% 50%)'],
+    ['50%', '@less.hsv(@a, 50%, 50%)', 'hwb(calc(var(--a, 0.5) * 100 * 3.6) 25% 50%)'],
     ['16px', '@less.sqrt(@a)', 'calc(sqrt(var(--a, 16px) / 1px) * 1px)'],
     ['16px', '@less.sqrt(-@a)', 'calc(sqrt(-1 * var(--a, 16px) / 1px) * 1px)'],
     ['16px', '@less.sqrt((@a * 2))', 'calc(sqrt((var(--a, 16px) * 2) / 1px) * 1px)'],
@@ -344,15 +378,15 @@ describe('the export runtime', () => {
     ['@a: var(--x);', '@less.rgb(@a, 0, 0)', 'rgb(var(--a, var(--x)), 0, 0)'],
     ['@a: 120;', '@less.hsl(@a, 50%, 50%)', 'hsl(var(--a, 120), 50%, 50%)'],
     ['@a: 120deg;', '@less.hsl(@a, 50%, 50%)', 'hsl(var(--a, 120deg), 50%, 50%)'],
-    ['@a: 50%;', '@less.hsl(120, @a, 50%)', 'hsl(120, var(--a, 50%), 50%)'],
+    ['@a: 50%;', '@less.hsl(120, @a, 50%)', 'hsl(120, calc(var(--a, 0.5) * 100%), 50%)'],
     ['@a: .5;', '@less.hsla(var(--h), 50%, 50%, @a)', 'hsla(var(--h), 50%, 50%, var(--a, 0.5))'],
-    ['@a: 25%;', '@less.fade(#333, @a)', 'rgb(from #333 r g b / var(--a, 25%))'],
-    ['@a: 25%;', '@less.fade(var(--x), @a)', 'rgb(from var(--x) r g b / var(--a, 25%))'],
+    ['@a: 25%;', '@less.fade(#333, @a)', 'rgb(from #333 r g b / calc(var(--a, 0.25) * 100%))'],
+    ['@a: 25%;', '@less.fade(var(--x), @a)', 'rgb(from var(--x) r g b / calc(var(--a, 0.25) * 100%))'],
     ['@a: .5;', '@less.rgba(currentcolor, @a)', 'rgb(from currentcolor r g b / var(--a, 0.5))'],
-    ['@a: 10%;', '@less.fadein(#333, @a)', 'rgb(from #333 r g b / calc(alpha + var(--a, 10%) / 100%))'],
-    ['@a: 10%;', '@less.fadeout(var(--x), @a)', 'rgb(from var(--x) r g b / calc(alpha - var(--a, 10%) / 100%))'],
-    ['@a: 50%;', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 50%) / 100%) * 75%) 25%)'],
-    ['@a: 25%;', '@less.hsv(var(--h), 50%, @a)', 'hwb(var(--h) calc(0.5 * var(--a, 25%)) calc(100% - var(--a, 25%)))'],
+    ['@a: 10%;', '@less.fadein(#333, @a)', 'rgb(from #333 r g b / calc(alpha + var(--a, 0.1)))'],
+    ['@a: 10%;', '@less.fadeout(var(--x), @a)', 'rgb(from var(--x) r g b / calc(alpha - var(--a, 0.1)))'],
+    ['@a: 50%;', '@less.hsv(120, @a, 75%)', 'hwb(120 calc((1 - var(--a, 0.5) * 100% / 100%) * 75%) 25%)'],
+    ['@a: 25%;', '@less.hsv(var(--h), 50%, @a)', 'hwb(var(--h) calc(0.5 * var(--a, 0.25) * 100%) calc(100% - var(--a, 0.25) * 100%))'],
     ['@a: .5;', '@less.hsva(120, 50%, 75%, @a)', 'hwb(120 37.5% 25% / var(--a, 0.5))']
   ])('prints %s %s as the CSS it is', async (declaration, expression, printed) => {
     const exported = await compile(`@use "#less";\n@expose a;\n${declaration}\n.x { v: ${expression}; }`);

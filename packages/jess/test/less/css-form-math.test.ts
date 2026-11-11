@@ -479,8 +479,6 @@ describe('an export inside a larger argument, by what the slot holds at compile 
   const exposed = (held: string, source: string): string => `@use "#less"; @expose a; @a: ${held}; .x { v: ${source}; }`;
 
   it.each([
-    ['5%', '@less.unit((@a * 2), px)'],
-    ['5%', '@less.mod(5px, (@a * 2))'],
     ['5px', '@less.sin((@a * 2))']
   ])('@a: %s; %s has no form that holds it and no recipe', async (held, source) => {
     await expect(css(exposed(held, source))).rejects.toMatchObject({ code: 'eval/expose-not-a-value' });
@@ -489,7 +487,9 @@ describe('an export inside a larger argument, by what the slot holds at compile 
   it.each([
     ['5px', '@less.mod((@a * 2), 3px)', 'rem((var(--a, 5px) * 2), 3px)'],
     ['5', '@less.ceil((@a * 2))', 'round(up, (var(--a, 5) * 2), 1)'],
-    ['5%', '@less.darken(#c00, (@a * 2))', 'hsl(from #c00 h s clamp(0, l - (var(--a, 5%) * 2) / 1%, 100))'],
+    ['5%', '@less.darken(#c00, (@a * 2))', 'hsl(from #c00 h s clamp(0, l - var(--a, 0.05) * 100 * 2, 100))'],
+    ['5%', '@less.unit((@a * 2), px)', 'calc(var(--a, 0.05) * 100 * 2 * 1px)'],
+    ['5%', '@less.mod(5px, (@a * 2))', 'rem(5px, var(--a, 0.05) * 100 * 2 * 1px)'],
     ['5px', '@less.ceil((@a * 2))', 'round(up, (var(--a, 5px) * 2), 1px)'],
     ['5px', '@less.ceil(calc(@a * 2))', 'round(up, var(--a, 5px) * 2, 1px)'],
     ['5px', '@less.percentage((@a * 2))', 'calc((var(--a, 5px) * 2) / 1px * 100%)'],
@@ -524,16 +524,15 @@ describe('an export inside a larger argument, by what the slot holds at compile 
     expect(Object.values(result.runtime?.derived ?? {})).toEqual([{ fn: { module: '@jesscss/fns/less', name: 'contrast' }, args: ['var(--x)', { export: 'b' }] }]);
   });
 
-  it.each(['@less.unit((@p * 2), px)', '@less.mod(5px, (@p * 2))'])('a mixin parameter holding the export is read for its value: %s', async (body) => {
-    await expect(css(`@use "#less"; @expose a; @a: 5%; .m(@p) { v: ${body}; } .x { .m(@a); }`)).rejects.toMatchObject({ code: 'eval/expose-not-a-value' });
-  });
 
   it.each([
     ['5', '@less.ceil((@p * 2))', 'round(up, (var(--a, 5) * 2), 1)'],
     ['5px', '@less.mod((@p * 2), 3px)', 'rem((var(--a, 5px) * 2), 3px)'],
-    ['5%', '@less.darken(#c00, (@p * 2))', 'hsl(from #c00 h s clamp(0, l - (var(--a, 5%) * 2) / 1%, 100))'],
+    ['5%', '@less.darken(#c00, (@p * 2))', 'hsl(from #c00 h s clamp(0, l - var(--a, 0.05) * 100 * 2, 100))'],
+    ['5%', '@less.unit((@p * 2), px)', 'calc(var(--a, 0.05) * 100 * 2 * 1px)'],
+    ['5%', '@less.mod(5px, (@p * 2))', 'rem(5px, var(--a, 0.05) * 100 * 2 * 1px)'],
     ['5px', '@less.floor((@p * 2))', 'round(down, (var(--a, 5px) * 2), 1px)'],
-    ['5%', '@less.mix(#c00, #fff, (@p * 2))', 'rgb(from #c00 clamp(0, (r * alpha * (var(--a, 5%) * 2) / 100% + 255 * (1 - (var(--a, 5%) * 2) / 100%)) / (alpha * (var(--a, 5%) * 2) / 100% + 1 * (1 - (var(--a, 5%) * 2) / 100%)), 255) clamp(0, (g * alpha * (var(--a, 5%) * 2) / 100% + 255 * (1 - (var(--a, 5%) * 2) / 100%)) / (alpha * (var(--a, 5%) * 2) / 100% + 1 * (1 - (var(--a, 5%) * 2) / 100%)), 255) clamp(0, (b * alpha * (var(--a, 5%) * 2) / 100% + 255 * (1 - (var(--a, 5%) * 2) / 100%)) / (alpha * (var(--a, 5%) * 2) / 100% + 1 * (1 - (var(--a, 5%) * 2) / 100%)), 255) / calc(alpha * (var(--a, 5%) * 2) / 100% + 1 * (1 - (var(--a, 5%) * 2) / 100%)))']
+    ['5%', '@less.mix(#c00, #fff, (@p * 2))', 'rgb(from #c00 clamp(0, (r * alpha * var(--a, 0.05) * 2 + 255 * (1 - var(--a, 0.05) * 2)) / (alpha * var(--a, 0.05) * 2 + 1 * (1 - var(--a, 0.05) * 2)), 255) clamp(0, (g * alpha * var(--a, 0.05) * 2 + 255 * (1 - var(--a, 0.05) * 2)) / (alpha * var(--a, 0.05) * 2 + 1 * (1 - var(--a, 0.05) * 2)), 255) clamp(0, (b * alpha * var(--a, 0.05) * 2 + 255 * (1 - var(--a, 0.05) * 2)) / (alpha * var(--a, 0.05) * 2 + 1 * (1 - var(--a, 0.05) * 2)), 255) / calc(alpha * var(--a, 0.05) * 2 + 1 * (1 - var(--a, 0.05) * 2)))']
   ])('a mixin parameter holding `@a: %s` that fits: %s', async (held, body, form) => {
     await expect(css(`@use "#less"; @expose a; @a: ${held}; .m(@p) { v: ${body}; } .x { .m(@a); }`)).resolves.toContain(`v: ${form};`);
   });

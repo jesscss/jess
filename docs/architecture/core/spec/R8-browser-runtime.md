@@ -159,8 +159,8 @@ or needs JS) to decide what ships in the bundle.
   (`@less.mix(@a, @b, 150%)`) takes rung 4. The form or the recipe is chosen by the
   default: `@less.mix(red, blue, @w)` with `@w: 25%` prints the form. The runtime
   then takes only the default's unit for that export (slice 3, *Units*):
-  `@a: 50%; @less.fade(#333, @a)` then `vars({ a: '.5' })` throws, where the form would
-  read alpha 0.5 and a compile with `@a: .5` reads 0.005. A value in the default's unit
+  `@a: 50%; @less.fade(#333, @a)` then `vars({ a: '.5' })` throws, where a compile
+  with `@a: .5` reads 0.005. A value in the default's unit
   but outside the range the compile takes (`vars({ w: '150%' })`) is not checked.
   An exposed variable in parens is read as one without them.
   `rgb`, `rgba`, `hsl` and `hsla` with an exposed channel are valid CSS as written, and
@@ -184,7 +184,7 @@ or needs JS) to decide what ships in the bundle.
   beside an export takes the form, as `fade` converts its amount:
   `@less.fade(var(--x), @a)` with `@a: .25` is
   `rgb(from var(--x) r g b / calc(var(--a, 0.25) / 100))`, and with `@a: 25%`
-  `rgb(from var(--x) r g b / var(--a, 25%))`.
+  `rgb(from var(--x) r g b / calc(var(--a, 0.25) * 100%))` (slice 3, *Percentages*).
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent
@@ -221,7 +221,7 @@ or needs JS) to decide what ships in the bundle.
   CSS parser. `<input type="color">` gives hex.
 - **What `--name` holds.** The exposed value as written, with its unit:
   `@gap: 12px` is `var(--gap, 12px)`, and `vars({ gap: '1em' })` writes
-  `--gap: 1em`. A form that needs the bare number divides by the default's unit
+  `--gap: 1em`; a percentage is the one exception (*Percentages*). A form that needs the bare number divides by the default's unit
   in CSS (`calc(var(--a, 5px) / 1px * 1em)` for `@less.unit(@a, em)`). Owner,
   2026-11-11, on whether to keep the unit: *"what about values where you can pass in
   different units??"*, then *"ok then do it"*.
@@ -231,20 +231,37 @@ or needs JS) to decide what ships in the bundle.
   expects (`@a: 5px` read by `@less.unit(@a, em)` refuses `2em`; `@a: .5` read by
   `@less.fade` refuses `50%`). The compile records the unit in `units`; an export
   read only as written, or only by recipes, has none and takes any CSS literal.
+  A `%` export takes only a percentage, wherever it is read: a bare `50` could
+  mean `50%` or `5000%`.
   The rule is by unit, not by dimension: an angle export `tan` reads as a form
   takes only its default's angle unit, though CSS would read `1rad` and `.25turn`
   alike. Measured in Chrome 156: over `/ 1px`, `--a: 50px` is right on `height`,
   `top`, `blur()`, `z-index` and `opacity`, and `--a: 2em` gives 32, `10vw` 102.
-- **The `%` exception.** A percentage resolves against the property before a
-  division reads it, so a `%` default turned into a length or a plain number
-  outside a colour takes its recipe (`var(--a-unit, 50px)` for
-  `@less.unit(@a, px)` with `@a: 50%`), and stays a form where it stays a
-  percentage (`calc(sqrt(var(--a, 50%) / 1%) * 1%)`) or is a colour's channel or
-  alpha (`turnsInto`, `packages/fns/src/less/css-math-args.ts`). Measured in Chrome
-  156: `(var(--a) / 1%) * 1px` with `--a: 50%` is `0px` on `height` in a box of no
-  height, and `var(--a) / 1%` is `auto` on `z-index`; `%`→`%` forms equal the
-  compiled value on `width`, `height`, `top`, `margin-left`, `font-size`,
-  `line-height`, `z-index` and `opacity`.
+- **Percentages.** A `%` export is held as its ratio: `@a: 50%` is `--a: 0.5`,
+  its fallback `0.5` too, and every read multiplies it back. A plain read is
+  `calc(var(--a, 0.5) * 100%)`; a form reads the number, `@less.unit(@a, px)` being
+  `calc(var(--a, 0.5) * 100 * 1px)` and `@less.darken(#c00, @a)`
+  `hsl(from #c00 h s clamp(0, l - var(--a, 0.5) * 100, 100))`. The compile folds
+  `(var(--a, 0.5) * 100%) / 1%` to `var(--a, 0.5) * 100` through any product of plain
+  numbers around the read (`mathOnDeferred`, `packages/core/src/ast/value-operate.ts`),
+  so no form divides a percentage. The read is decided where the export's `var()`
+  is read (`percentRead`, `packages/core/src/ast/export-reads.ts`), not by what
+  reads it, so every read agrees whatever the order. `vars({ a: '50%' })` writes
+  `--a: 0.5`; CSS that sets a `%` export itself writes the ratio (`--a: .3`), as
+  `--a: 30%` would read as `3000%`. An export of any other unit is held as written.
+  Owner, 2026-11-11, on a percentage a form turns into a length or a number: *"right,
+  it can be represented by a float"*, then *"but even then, if we're parsing units at
+  runtime, we could easily parse/convert % as supported for those as well"*. Why a
+  ratio, measured in Chrome 156: a percentage resolves against the property before a
+  division reads it, so `(var(--a) / 1%) * 1px` with `--a: 50%` is `0px` on `height`
+  in a box of no height, and `var(--a) / 1%` is `auto` on `z-index`. The ratio,
+  with `--a: .5` and with the fallback alone, measured in Chrome 156.0.8078.75:
+  `calc(var(--a, .5) * 100%)` is `100px` on `height` in a 200px box and `200px` on
+  `width` in a 400px box, as `50%`, and `0px` in a box of no height, as `50%`; in an
+  `hsl()` channel, legacy or modern, it is `rgb(64, 191, 64)`, as `50%`;
+  `calc(var(--a, .5) * 100 * 1px)` is `50px` on `height` in a box of no height, and
+  `calc(var(--a, .5) * 100)` `50` on `z-index`
+  (`packages/jess/test/export-runtime.test.ts` pins each printed form).
 - **The runtime writes what a compile writes**: for a value `v`, a derived
   property equals the bytes a compile with `@brand: v` writes
   (`packages/jess/test/export-runtime.test.ts`).
