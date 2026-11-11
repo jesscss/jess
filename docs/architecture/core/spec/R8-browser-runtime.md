@@ -229,10 +229,15 @@ or needs JS) to decide what ships in the bundle.
   unit (a number for a number): the form divides by that unit, so another one
   means something else there. `vars()` throws a `TypeError` naming the unit it
   expects (`@a: 5px` read by `@less.unit(@a, em)` refuses `2em`; `@a: .5` read by
-  `@less.fade` refuses `50%`). The compile records the unit in `units`; an export
-  read only as written, or only by recipes, has none and takes any CSS literal.
-  A `%` export takes only a percentage, wherever it is read: a bare `50` could
-  mean `50%` or `5000%`.
+  `@less.fade` refuses `50%`). That holds inside a larger argument too: `@a: 5px`
+  in `@less.unit((@a * 2), em)` refuses `2em`. An export whose default has no
+  known unit (`@a: var(--y)`) takes the unit the form divides it by:
+  `@less.fade(#c00, @a)` is `calc(var(--a, var(--y)) / 100%)`, so `vars()` takes
+  only a percentage for it, written as it is, `50%` as `--a: 50%` (owner, on a
+  bare `var()` in a fade amount: *"Keep short form"*). The compile records the
+  unit in `units`; an export read only as written, or only by recipes, has none
+  and takes any CSS literal. A `%` export takes only a percentage, however it is
+  read or not read: a bare `50` could mean `50%` or `5000%`.
   The rule is by unit, not by dimension: an angle export `tan` reads as a form
   takes only its default's angle unit, though CSS would read `1rad` and `.25turn`
   alike. Measured in Chrome 156: over `/ 1px`, `--a: 50px` is right on `height`,
@@ -243,10 +248,18 @@ or needs JS) to decide what ships in the bundle.
   `calc(var(--a, 0.5) * 100 * 1px)` and `@less.darken(#c00, @a)`
   `hsl(from #c00 h s clamp(0, l - var(--a, 0.5) * 100, 100))`. The compile folds
   `(var(--a, 0.5) * 100%) / 1%` to `var(--a, 0.5) * 100` through any product of plain
-  numbers around the read (`mathOnDeferred`, `packages/core/src/ast/value-operate.ts`),
-  so no form divides a percentage. The read is decided where the export's `var()`
-  is read (`percentRead`, `packages/core/src/ast/export-reads.ts`), not by what
-  reads it, so every read agrees whatever the order. `vars({ a: '50%' })` writes
+  numbers around the read, and through a sum whose every term is a percentage or
+  such a read (`(@a + 1%)` over `1%` is `var(--a, 0.5) * 100 + 1`), in a form, an
+  operation and a math function alike (`overPercent`,
+  `packages/core/src/ast/value-operate.ts`), so no form divides a percentage; a
+  form over a sum with a term that does not fold has none, and an export read
+  inside a larger argument is then an error. Whether an export is a ratio is
+  decided by its compile-time value alone, never by what reads it (`ratioOfHeld`,
+  `packages/core/src/ast/export-reads.ts`): every exposed export whose value is a
+  percentage is one, read by a form, as written, only by a recipe or not at all,
+  and `ratios` in the runtime data lists it. An export that is another one's read
+  is the same type: `@b: @a` of a `%` `@a` is a ratio too, its fallback that one's
+  ratio, `calc(var(--b, var(--a, 0.25)) * 100%)`. `vars({ a: '50%' })` writes
   `--a: 0.5`; CSS that sets a `%` export itself writes the ratio (`--a: .3`), as
   `--a: 30%` would read as `3000%`. An export of any other unit is held as written.
   Owner, 2026-11-11, on a percentage a form turns into a length or a number: *"right,
