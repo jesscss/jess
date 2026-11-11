@@ -3,7 +3,7 @@ import { colorRgbRounded, makeDimension, defineFunction } from '@jesscss/core/va
 import { requireColor } from './color-helper.js';
 
 /** `luminance(color)` — perceptual luminance × alpha as a percentage. Byte-faithful to `less/luminance`. */
-export const luminance: Fn = defineFunction('luminance', {
+export const luminance: Fn = /* @__PURE__ */ defineFunction('luminance', {
   params: [{ type: 'Color' }],
   body: (c) => {
     const color = requireColor(c);

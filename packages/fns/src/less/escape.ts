@@ -9,7 +9,7 @@ import type { Fn } from '@jesscss/core/value';
  * Validated against Less 4.x (the adapter mishandles the reconstructed Quoted
  * and encodes its quotes).
  */
-export const escape: Fn = defineFunction('escape', {
+export const escape: Fn = /* @__PURE__ */ defineFunction('escape', {
   params: [{ type: 'any' }],
   variadic: true,
   body: (list, ctx) => {

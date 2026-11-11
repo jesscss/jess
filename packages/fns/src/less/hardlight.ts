@@ -7,7 +7,7 @@ import { overlayBase } from './overlay.js';
 export const hardlightBase = (cb: number, cs: number): number => overlayBase(cs, cb);
 
 /** `hardlight(color1, color2)` — Photoshop hard-light blend. Byte-faithful to `less/hardlight`. */
-export const hardlight: Fn = defineFunction('hardlight', {
+export const hardlight: Fn = /* @__PURE__ */ defineFunction('hardlight', {
   params: [{ type: 'Color' }, { type: 'Color' }],
   body: (c1, c2) => colorBlend(hardlightBase, requireColor(c1), requireColor(c2))
 });

@@ -4,7 +4,7 @@ import { applyMath, requireDimension } from '../shared/math/math-helper.js';
 import { isDimension, NUMBER_ARG, numberOf } from './css-math-args.js';
 
 /** `pow(x, y)` — `x^y`, keeping `x`'s unit. No angle normalization. CSS's `pow()` reads numbers, so a known unit goes around it: `calc(pow(x / 1px, y) * 1px)`. */
-export const pow: Fn = defineFunction('pow', {
+export const pow: Fn = /* @__PURE__ */ defineFunction('pow', {
   params: [NUMBER_ARG, NUMBER_ARG],
   body: (x: ValueGroup, y: ValueGroup) => {
     const unit = knownUnit(x);

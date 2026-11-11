@@ -13,39 +13,39 @@ function isColorLike(value: ValueGroup): boolean {
 }
 
 /** Less `iscolor()` — true for a colour value or a named-color keyword. */
-const iscolor: Fn = defineFunction('iscolor', {
+const iscolor: Fn = /* @__PURE__ */ defineFunction('iscolor', {
   params: [{ type: 'any' }],
   body: value => makeBool(isColorLike(value))
 });
 
 /** Less `isnumber()` — true for an already-materialized dimension or a built-in's numeric form (Q10). */
-const isnumber: Fn = defineFunction('isnumber', {
+const isnumber: Fn = /* @__PURE__ */ defineFunction('isnumber', {
   params: [{ type: 'any' }],
   body: value => makeBool(!isValueGroupArray(value) && (value.type === 'Dimension' || (value.type === 'FunctionCall' && value.computed && value.result === 'numeric')))
 });
 
 /** Less `isstring()` — true for a quoted value. */
-const isstring: Fn = defineFunction('isstring', {
+const isstring: Fn = /* @__PURE__ */ defineFunction('isstring', {
   params: [{ type: 'any' }],
   body: value => makeBool(!isValueGroupArray(value) && value.type === 'Quoted')
 });
 
 /** Less `iskeyword()` — true for a bare keyword or a call written out: a named-color keyword
  * and a built-in's form answer `iscolor` or `isnumber` (Q10). */
-const iskeyword: Fn = defineFunction('iskeyword', {
+const iskeyword: Fn = /* @__PURE__ */ defineFunction('iskeyword', {
   params: [{ type: 'any' }],
   body: value => makeBool(!isValueGroupArray(value) && (value.type === 'FunctionCall' || value.type === 'Keyword') && !isColorLike(value)
     && !(value.type === 'FunctionCall' && value.computed && value.result === 'numeric'))
 });
 
 /** Less `isurl()` — true only for a parser-owned `url(...)` value. */
-const isurl: Fn = defineFunction('isurl', {
+const isurl: Fn = /* @__PURE__ */ defineFunction('isurl', {
   params: [{ type: 'any' }],
   body: value => makeBool(!isValueGroupArray(value) && value.type === 'Url')
 });
 
 /** Less `isunit()` — true for a dimension with a case-insensitive matching unit. */
-const isunit: Fn = defineFunction('isunit', {
+const isunit: Fn = /* @__PURE__ */ defineFunction('isunit', {
   params: [{ type: 'any' }, { type: 'any' }],
   body: (value, unit) => makeBool(!isValueGroupArray(value)
     && value.type === 'Dimension'
@@ -53,19 +53,19 @@ const isunit: Fn = defineFunction('isunit', {
 });
 
 /** Less `ispixel()` — `isunit(value, px)`. */
-const ispixel: Fn = defineFunction('ispixel', {
+const ispixel: Fn = /* @__PURE__ */ defineFunction('ispixel', {
   params: [{ type: 'any' }],
   body: value => makeBool(isDimUnit(value, 'px'))
 });
 
 /** Less `ispercentage()` — `isunit(value, %)`. */
-const ispercentage: Fn = defineFunction('ispercentage', {
+const ispercentage: Fn = /* @__PURE__ */ defineFunction('ispercentage', {
   params: [{ type: 'any' }],
   body: value => makeBool(isDimUnit(value, '%'))
 });
 
 /** Less `isem()` — `isunit(value, em)`. */
-const isem: Fn = defineFunction('isem', {
+const isem: Fn = /* @__PURE__ */ defineFunction('isem', {
   params: [{ type: 'any' }],
   body: value => makeBool(isDimUnit(value, 'em'))
 });

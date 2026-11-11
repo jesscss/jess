@@ -9,7 +9,7 @@ import { lookupMime } from '../util/mime.js';
  * base64-encoded. If the injected IO capability cannot read the file, it returns
  * the authored `url()` call as a value-domain keyword.
  */
-const dataUri: Fn = defineFunction('data-uri', {
+const dataUri: Fn = /* @__PURE__ */ defineFunction('data-uri', {
   params: [{ type: 'any' }, { type: 'any', optional: true }],
   variadic: true,
   body: (value, ctx): MaybePromise<Value> => {

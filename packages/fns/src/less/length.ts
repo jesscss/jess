@@ -5,7 +5,7 @@ import { defineFunction, groupItems, groupSeparator, makeDimension } from '@jess
  * @param value a list or single value
  * @returns the item count as a unitless `Dimension`
  */
-const length = defineFunction('length', {
+const length = /* @__PURE__ */ defineFunction('length', {
   params: [{ type: 'any' }],
   variadic: true,
   body: (list) => {

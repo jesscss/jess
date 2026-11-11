@@ -64,7 +64,7 @@ export const HSL_PARAMS = [
   { type: 'any', optional: true, fits: ALPHA_ARG.fits }
 ] as const;
 
-export const hsl: Fn = defineFunction('hsl', {
+export const hsl: Fn = /* @__PURE__ */ defineFunction('hsl', {
   params: HSL_PARAMS,
   variadic: true,
   body: list => makeHsl(list)
