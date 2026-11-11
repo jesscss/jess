@@ -138,6 +138,9 @@ export interface ExportState<F> {
    */
   inputs: Array<ExportInput> | undefined;
 
+  /** The exports the call being dispatched read as its arguments ({@link onlyExportsUnknown}). */
+  callReads: ReadonlyArray<ExportInput> | undefined;
+
   /** Exports read as their compile-time values, for what fills a slot ({@link knownArguments}). */
   knownReads: boolean;
 
@@ -227,7 +230,7 @@ export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
 export function exportState<F>(): ExportState<F> {
-  return { refs: new Map(), behind: new Map(), inputs: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map() };
+  return { refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map() };
 }
 
 /**
@@ -559,13 +562,13 @@ export function exportCall<F>(
 
   const computedOver = (vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> =>
     written === undefined
-      ? dispatch(vals)
+      ? dispatchReading(x, inputs, dispatch, vals)
       : mapMaybe(slotsKnown(x, fn, args, e.ev), (slots) => {
           knownSlots = slots;
           if (slots !== undefined && !fitsWritten(fn, vals, slots)) {
             exportNotWritten(node, `@${written}`, written, e, IN_LARGER_ARGUMENT);
           }
-          return recovering(() => dispatch(vals), namingExport(e, node, written));
+          return recovering(() => dispatchReading(x, inputs, dispatch, vals), namingExport(e, node, written));
         });
   if (inputs.length === 0 && !typed.some(isThenable)) {
     return computedOver(typed);
@@ -605,6 +608,12 @@ export function exportCall<F>(
         }
         return recorded();
       }));
+}
+
+/** A call's dispatch over the exports it read, for {@link onlyExportsUnknown}. */
+function dispatchReading<F>(x: ExportState<F>, inputs: ReadonlyArray<ExportInput>, dispatch: (args: Array<MaybePromise<ValueGroup>>) => MaybePromise<EvalValue>, vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> {
+  x.callReads = inputs;
+  return dispatch(vals);
 }
 
 /** The compile-time value of each export a recipe reads, the first read standing. */
@@ -652,6 +661,56 @@ function recovering(run: () => MaybePromise<EvalValue>, recover: (error: unknown
   } catch (error) {
     return recover(error);
   }
+}
+
+/** The custom property a `var()` names. */
+function varName(call: { readonly args: ValueGroup }): string | undefined {
+  const first = isValueGroupArray(call.args) ? call.args[0] : call.args.type === 'List' ? call.args.value[0] : call.args;
+  return first !== undefined && !isValueGroupArray(first) && first.type === 'Keyword' ? first.text : undefined;
+}
+
+/**
+ * Whether a call read an export and everything else it was given is known, so
+ * all it waits on is the export, which is deferred on purpose. A `var()` or a
+ * `currentColor` beside the export is not, however deep in its math.
+ */
+export function onlyExportsUnknown<F>(state: ExportState<F>, vals: readonly ValueGroup[]): boolean {
+  const x = exporting(state);
+  if (x === undefined) {
+    return false;
+  }
+  const read = new Set<EvalValue>((x.callReads ?? []).map(input => input.value));
+  let exported = read.size > 0;
+  const browserOnly = (value: EvalValue): boolean => {
+    if (read.has(value)) {
+      return false;
+    }
+    if (typeof value === 'string') {
+      return true;
+    }
+    if (isValueGroupArray(value)) {
+      return value.some(browserOnly);
+    }
+    switch (value.type) {
+      case 'Keyword':
+        return isBrowserColor(value.text);
+      case 'List':
+        return value.value.some(browserOnly);
+      case 'Arithmetic':
+        return browserOnly(value.left) || browserOnly(value.right);
+      case 'FunctionCall': {
+        const name = value.name === 'var' ? varName(value) : undefined;
+        if (name !== undefined && (x.runtime.exports.has(name.slice(2)) || x.runtime.derived.has(name))) {
+          exported = true;
+          return false;
+        }
+        return value.result === null || browserOnly(value.args);
+      }
+      default:
+        return false;
+    }
+  };
+  return !vals.some(browserOnly) && exported;
 }
 
 /** A built-in's own call written out because it failed, which is no CSS, unlike a call its callable declined. */
