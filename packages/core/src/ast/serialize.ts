@@ -5977,7 +5977,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
             ? reachedEvaluated(e, hit.evaluated)
             : isMixinReference(hit.value)
               ? readMixinReference(e, node, hit.value)
-              : mapMaybe(withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e), node), value => exposedRead(e, hit, value));
+              : exposedRead(e, hit, withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e), node));
         });
       }
 

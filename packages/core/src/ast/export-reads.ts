@@ -42,6 +42,9 @@ export interface ExportRuntime {
   /** The unit of each export a CSS form reads, and `%` for each percentage read at all, which is the only one the runtime takes for it ({@link recordUnits}, {@link percentRead}). */
   readonly units: Map<string, string>;
 
+  /** The read of each `%` export, built once ({@link percentRead}). */
+  readonly percent: Map<string, ValueGroup>;
+
   /** Each generated custom property, by its name, with how the runtime computes it. */
   readonly derived: Map<string, ExportRecipe>;
 
@@ -306,7 +309,7 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), derived: new Map(), named: new Map() };
+  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), percent: new Map(), derived: new Map(), named: new Map() };
 }
 
 /**
@@ -457,7 +460,7 @@ export function exportInput<F, H extends { value: CallValue; frame: F }>(hit: H 
 export function exportInputRead<F>(e: ExportLane<F>, hit: { value: CallValue; frame: F }, value: MaybePromise<ValueGroup>): MaybePromise<ValueGroup> {
   const x = exporting(e.s.exports);
   if (x?.behind.has(hit.value) === true) {
-    return mapMaybe(value, read => percentRead(exposedOperand(read), e.modes, x.runtime.units));
+    return mapMaybe(value, read => percentRead(exposedOperand(read), e.modes, x.runtime));
   }
   const inputs = x?.inputs;
   const name = inputs === undefined || x === undefined ? undefined : refOf(x, hit)?.name;
@@ -476,17 +479,23 @@ export function exportInputRead<F>(e: ExportLane<F>, hit: { value: CallValue; fr
  * resolves first ({@link mathOnDeferred}; docs/architecture/core/spec/R8-browser-runtime.md,
  * *Percentages*).
  */
-function percentRead(read: ValueGroup, modes: EvalModes, units: Map<string, string>): ValueGroup {
+function percentRead(read: ValueGroup, modes: EvalModes, runtime: ExportRuntime): ValueGroup {
   if (isValueGroupArray(read) || read.type !== 'FunctionCall' || read.name !== 'var') {
     return read;
   }
   const [name, held] = groupItems(read.args);
-  if (name === undefined || !isDimension(held) || held.unit !== '%') {
+  if (name === undefined || isValueGroupArray(name) || name.type !== 'Keyword' || !isDimension(held) || held.unit !== '%') {
     return read;
   }
-  units.set(emitValue(name).slice(2), '%');
-  const ratio = makeDimension(Number((held.number / 100).toPrecision(15)));
-  return mathOnDeferred('*', keepAsWritten(withFields(writeCall('var', makeList([name, ratio], ','), modes), { result: 'numeric' as const })), makeDimension(100, '%'));
+  const key = name.text.slice(2);
+  let built = runtime.percent.get(key);
+  if (built === undefined) {
+    runtime.units.set(key, '%');
+    const ratio = makeDimension(Number((held.number / 100).toPrecision(15)));
+    built = mathOnDeferred('*', keepAsWritten(withFields(writeCall('var', makeList([name, ratio], ','), modes), { result: 'numeric' as const })), makeDimension(100, '%'));
+    runtime.percent.set(key, built);
+  }
+  return built;
 }
 
 /** An operand of math written in a math function (`calc(@a * 2)`): an export's `var()` is of its value's type there too ({@link exposedOperand}). */
@@ -496,13 +505,15 @@ export function exposedWritten<F>(e: ExportLane<F>, operand: EvalValue): EvalVal
   }
   const name = varName(operand);
   const x = exporting(e.s.exports);
-  return name !== undefined && x?.runtime.exports.has(name.slice(2)) === true ? percentRead(exposedOperand(operand), e.modes, x.runtime.units) : operand;
+  return name !== undefined && x?.runtime.exports.has(name.slice(2)) === true ? percentRead(exposedOperand(operand), e.modes, x.runtime) : operand;
 }
 
-/** A read of an export's `var()` stand-in where nothing reads it as an operand: a `%` export is its ratio ({@link percentRead}). */
-export function exposedRead<F>(e: ExportLane<F>, hit: { value: CallValue }, value: EvalValue): EvalValue {
-  const units = e.s.exports.runtime?.units;
-  return typeof value !== 'string' && units !== undefined && e.s.exports.behind.has(hit.value) ? percentRead(value, e.modes, units) : value;
+/** A read of an export's `var()` stand-in where nothing reads it as an operand: a `%` export is its ratio ({@link percentRead}). With nothing exposed, `value` as it is. */
+export function exposedRead<F>(e: ExportLane<F>, hit: { value: CallValue }, value: MaybePromise<EvalValue>): MaybePromise<EvalValue> {
+  const runtime = e.s.exports.runtime;
+  return runtime === undefined
+    ? value
+    : mapMaybe(value, read => typeof read !== 'string' && e.s.exports.behind.has(hit.value) ? percentRead(read, e.modes, runtime) : read);
 }
 
 /** Note that the mixin argument being bound reads an export. */
