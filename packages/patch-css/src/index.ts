@@ -6,7 +6,7 @@
  * values that changed. `@jesscss/fns/runtime` adds what is computed from them.
  */
 
-/** What a compiled stylesheet's module hands {@link exposeVars}. */
+/** What a compiled stylesheet's module hands {@link exposedVars}. */
 export interface ExposedSpec {
   /** Each exposed variable's name by its JavaScript key: `brandColor` is `brand-color`. */
   readonly keys: Readonly<Record<string, string>>;
@@ -26,7 +26,7 @@ export type ExportValues = Readonly<Record<string, string>>;
 
 /** An element whose inline style takes custom properties. */
 export interface StyleTarget {
-  readonly style: { setProperty(name: string, value: string): void };
+  readonly style: { getPropertyValue(name: string): string; setProperty(name: string, value: string): void };
 }
 
 /** The page's document, in a browser; read only when no target is given. */
@@ -68,42 +68,18 @@ export function exposedVars(spec: ExposedSpec, given: ExportValues, names?: Reco
   return out;
 }
 
-/** What each target was last given, so a value already set is not set again. */
-const written = new WeakMap<StyleTarget, Map<string, string>>();
-
 /**
  * Write `vars` on `target`'s inline style, the document root by default: one
- * declaration per `--name`, and only the values that changed. The browser
- * recomputes style once for the whole call (docs/perf/BENCHMARKS.md,
- * "patch-css write strategy").
+ * declaration per `--name`, and only a value the style does not already hold,
+ * read from the style itself so a value set elsewhere is never assumed
+ * (docs/perf/BENCHMARKS.md §10).
  */
 export function writeVars(vars: Readonly<Record<string, string>>, target: StyleTarget = document.documentElement): void {
-  let last = written.get(target);
-  if (last === undefined) {
-    last = new Map();
-    written.set(target, last);
-  }
+  const { style } = target;
   for (const property of Object.keys(vars)) {
     const value = vars[property]!;
-    if (last.get(property) !== value) {
-      last.set(property, value);
-      target.style.setProperty(property, value);
+    if (style.getPropertyValue(property) !== value) {
+      style.setProperty(property, value);
     }
   }
-}
-
-export interface ExposedRuntime {
-  /** The custom properties `values` set. Pure; usable as a React or Vue `style` object. */
-  vars(values: ExportValues): Record<string, string>;
-
-  /** Write {@link ExposedRuntime.vars} on `target`'s inline style, the document root by default. */
-  set(values: ExportValues, target?: StyleTarget): void;
-}
-
-/** The runtime of a stylesheet that computes nothing from its exports. */
-export function exposeVars(spec: ExposedSpec): ExposedRuntime {
-  return {
-    vars: values => exposedVars(spec, values),
-    set: (values, target) => writeVars(exposedVars(spec, values), target)
-  };
 }

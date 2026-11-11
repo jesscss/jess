@@ -235,39 +235,53 @@ How to use it:
 `@jesscss/patch-css` writes a stylesheet's exposed variables (`set()` from a
 `.less`/`.jess` module). The harness is
 `packages/patch-css/bench/write-strategy.html`, a static page: open it in a
-browser and read the table it prints, or `window.results`. The page has 3,000
-cards, 12,000 elements, and every card reads ten custom properties, two of which
-size its layout. Each sample writes one update and then forces style and layout,
-so it times the write and the recalc that the write causes. The table shows the
-median of 150 samples, with the median of three rounds taken per cell. Each
-strategy changes the same variables in the same order.
+browser and read the table it prints, or `window.results`.
 
-Measured 2026-11-11 in Chrome 156 (the Claude desktop browser pane), in ms per update:
+**Method:**
+- The page has 3,000 cards, 12,000 elements, and every card reads ten custom
+  properties, two of which size its layout.
+- Each sample writes one update and then forces style and layout, so it times
+  the write and the recalc that the write causes. No `requestAnimationFrame` is
+  involved, so a background tab times the same.
+- A cell is the median, with the interquartile range in brackets, of 600
+  samples: four rounds of 150.
+- Each round starts the strategy order one place later, so no strategy always
+  runs after another.
+- `inlineAll (A/A)` repeats `inlineAll`; the gap between the two is the noise
+  floor.
+- `performance.now()` is coarsened to 0.1 ms on this page.
 
-| Scenario | inline `setProperty`, every value | inline, changed values only | adopted sheet, `replaceSync` | adopted sheet, one rule's `style` |
-|---|---|---|---|---|
-| one variable changes | 6.0 | **5.9** | 7.0 | 7.0 |
-| all ten change | **16.8** | 16.9 | 18.1 | 18.0 |
-| nothing changes | 0 | 0 | 0.8 | 0 |
-| five calls before a frame, written at once | 14.1 | 14.2 | 15.0 | 14.8 |
-| five calls before a frame, merged into one write | 14.0 | 13.9 | 14.9 | 14.8 |
+Measured 2026-11-11 in Chrome 156 (the Claude desktop browser pane, hidden), in ms per update:
+
+| Scenario | inline, every value | inline, every value (A/A) | inline, a value the style lacks | adopted sheet, `replaceSync` | adopted sheet, one rule's `style` |
+|---|---|---|---|---|---|
+| one variable changes | 6.5 (0–7.8) | 6.5 (0–7.7) | 6.5 (0–7.7) | 7.5 (1–8.6) | 7.5 (0–8.7) |
+| all ten change | 21.7 (20.5–23.9) | 21.8 (20.6–23.9) | 21.7 (20.6–23.9) | 22.7 (21.7–25.3) | 22.8 (21.6–25.4) |
+| nothing changes | 0 | 0 | 0 | 0.9 (0.9–1) | 0 |
+| five calls, written at once | 12.7 (6.8–20.4) | 12.7 (6.8–20.2) | 11.7 (6.8–20) | 13 (7.8–20.9) | 12.8 (7.7–20.8) |
+| five calls merged into one write | 13.5 (6.7–19.9) | 12.8 (6.8–19.8) | 12.1 (6.8–19.9) | 12.9 (7.7–20.9) | 14 (7.8–20.8) |
+| five calls, layout read between each | 66.3 (58–75.1) | 68 (58.3–74.9) | 66.4 (58.5–74.8) | 71.5 (63.6–79.9) | 74.1 (63.9–80.2) |
 
 What it decided:
 
-- **Write on the root's inline style.** It is the fastest strategy or tied for
-  fastest in every row. An adopted sheet costs about 1 ms more per update, and
-  `replaceSync` re-parses even when nothing changed. Each `--name` is declared
-  once, on the root.
-- **Write only the values that changed.** In Chrome this ties with writing every
-  value, because Chrome already skips an inline value it already has. It is kept
-  because it costs one map lookup and it does not depend on the engine skipping
-  repeats.
-- **Do not batch into an animation frame.** The browser already recomputes
-  style once per frame, so merging five calls saves nothing (14.1 against 14.0)
-  and it would make `set()` asynchronous.
+- **Write on the root's inline style.** An adopted sheet costs 1 ms more per
+  update, against an A/A gap of 0–0.1 ms on those rows. `replaceSync` also
+  re-parses when nothing changed. Each `--name` is declared once, on the root.
+- **Skip a value the style already holds, by reading the style.** In Chrome
+  this ties with writing every value, because Chrome skips a repeated inline
+  value itself. `writeVars` compares against `style.getPropertyValue` rather
+  than a record of its own writes, so a value removed or changed by other code
+  is written again.
+- **`set()` stays synchronous.** Merging five calls into one write is within
+  noise of writing each at once (12.7 to 13.5 against an A/A spread of 0.7),
+  because the browser recomputes style once per frame anyway. Batching pays
+  only when the page reads layout between calls: five calls with a read
+  between each cost 66 ms, against about 13 merged. A deferred `set()` would
+  hide that cost, but `getComputedStyle` right after `set()` would then read
+  the old value. A page that measures between updates should pass all its
+  values to one `set()`.
 
-A first run of the harness gave the same ordering. Rerun the page after any
-change to how `writeVars` writes.
+Rerun the page after any change to how `writeVars` writes.
 
 ## Fixtures (the standard inputs)
 

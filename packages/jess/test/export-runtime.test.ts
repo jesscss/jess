@@ -443,6 +443,7 @@ describe('the export runtime', () => {
     createRuntime({ keys: { brand: 'brand' }, defaults: { brand: '#c00' }, units: {}, derived: { '--brand-lightness': [less.lightness, [{ export: 'brand' }]] } })
       .set({ brand: '#000' }, {
         style: {
+          getPropertyValue: name => set[name] ?? '',
           setProperty: (name, value) => {
             set[name] = value;
           }

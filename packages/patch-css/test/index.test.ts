@@ -1,14 +1,24 @@
 /* eslint-disable @typescript-eslint/naming-convention -- custom property and variable names */
 import { describe, expect, it } from 'vitest';
-import { exposeVars, exposedVars, writeVars, type StyleTarget } from '../src/index.js';
+import { exposedVars, writeVars, type StyleTarget } from '../src/index.js';
 
 const spec = { keys: { brand: 'brand', gap: 'gap', mix: 'mix-weight', ratio: 'ratio' }, units: { gap: 'px', ratio: '', 'mix-weight': '%' } };
 
-function target(): StyleTarget & { readonly writes: Array<[string, string]> } {
+/** An inline style that records each write and reads back what it holds, as a browser's does. */
+function target(): StyleTarget & { readonly writes: Array<[string, string]>; readonly held: Map<string, string> } {
   const writes: Array<[string, string]> = [];
-  return { writes, style: { setProperty: (name, value) => {
-    writes.push([name, value]);
-  } } };
+  const held = new Map<string, string>();
+  return {
+    writes,
+    held,
+    style: {
+      getPropertyValue: name => held.get(name) ?? '',
+      setProperty: (name, value) => {
+        writes.push([name, value]);
+        held.set(name, value);
+      }
+    }
+  };
 }
 
 describe('exposedVars', () => {
@@ -33,6 +43,11 @@ describe('exposedVars', () => {
     expect(() => exposedVars(spec, { gap: 'calc(1px)' })).toThrow();
     expect(() => exposedVars(spec, { gap: '5.px' })).toThrow();
     expect(() => exposedVars(spec, { gap: '1px 2px' })).toThrow();
+    expect(() => exposedVars(spec, { gap: '2px,' })).toThrow();
+  });
+
+  it('takes any unit CSS reads as one, beyond ASCII', () => {
+    expect(exposedVars({ keys: { a: 'a' }, units: { a: 'µm' } }, { a: '2µm' })).toEqual({ '--a': '2µm' });
   });
 
   it('rejects a key the stylesheet does not expose', () => {
@@ -48,25 +63,19 @@ describe('writeVars', () => {
     expect(el.writes).toEqual([['--brand', '#c00'], ['--gap', '4px'], ['--gap', '8px']]);
   });
 
-  it('keeps what each target was given apart', () => {
-    const a = target();
-    const b = target();
-    writeVars({ '--brand': '#c00' }, a);
-    writeVars({ '--brand': '#c00' }, b);
-    expect(b.writes).toEqual([['--brand', '#c00']]);
-  });
-});
-
-describe('exposeVars', () => {
-  it('sets one call\'s values as one batch, checked before anything is written', () => {
+  it('writes again a value the style no longer holds', () => {
     const el = target();
-    const { set, vars } = exposeVars(spec);
+    writeVars({ '--brand': '#c00' }, el);
+    el.held.delete('--brand');
+    writeVars({ '--brand': '#c00' }, el);
+    expect(el.writes).toEqual([['--brand', '#c00'], ['--brand', '#c00']]);
+  });
+
+  it('checks one call\'s values before anything is written', () => {
+    const el = target();
     expect(() => {
-      set({ brand: '#00c', gap: '1em' }, el);
+      writeVars(exposedVars(spec, { brand: '#00c', gap: '1em' }), el);
     }).toThrow();
     expect(el.writes).toEqual([]);
-    set({ brand: '#00c', mix: '10%' }, el);
-    expect(el.writes).toEqual([['--brand', '#00c'], ['--mix-weight', '0.1']]);
-    expect(vars({ gap: '2px' })).toEqual({ '--gap': '2px' });
   });
 });

@@ -1,5 +1,5 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { exposedVars, writeVars, type ExportValues, type ExposedRuntime, type ExposedSpec, type StyleTarget } from '@jesscss/patch-css';
+import { exposedVars, writeVars, type ExportValues, type ExposedSpec, type StyleTarget } from '@jesscss/patch-css';
 import type { Fn, ValueGroup } from '@jesscss/core/value';
 import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, sniffLiteral } from '@jesscss/core/value';
 
@@ -29,13 +29,16 @@ export interface RuntimeSpec extends ExposedSpec {
 
 export type { ExportValues, StyleTarget };
 
-export interface Runtime extends ExposedRuntime {
+export interface Runtime {
   /**
    * The custom properties `values` set: each export given, and each derived
    * value that reads one, computed from `values` and the compile-time value of
    * every export not given. Pure; usable as a React or Vue `style` object.
    */
   vars(values: ExportValues): Record<string, string>;
+
+  /** Write {@link Runtime.vars} on `target`'s inline style, the document root by default. */
+  set(values: ExportValues, target?: StyleTarget): void;
 }
 
 const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value) };

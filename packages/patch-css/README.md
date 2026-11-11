@@ -15,13 +15,12 @@ import { set } from './theme.less';
 set({ brand: '#08f' }); // document.documentElement.style: --brand: #08f
 ```
 
-- `exposeVars({ keys, units })` returns `{ vars, set }` for a compiled stylesheet.
 - `exposedVars(spec, values)` maps each JavaScript key to its `--name` and
   checks every value a CSS form reads, which must be in the form's unit. A `%`
   value is held as its ratio, so `50%` becomes `0.5`. It throws for an unknown
   key or a value in the wrong unit.
 - `writeVars(vars, target?)` writes on the target's inline style, the document
-  root by default. It writes only the values that changed since the last write.
+  root by default. It writes only a value the style does not already hold.
   The measurements behind this choice are in `docs/perf/BENCHMARKS.md` §10.
 
 ## Status

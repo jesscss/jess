@@ -64,7 +64,7 @@ const ANCHOR = fileURLToPath(import.meta.url);
  * compiler. The module's default export is the CSS; the CSS is also emitted as
  * an asset (Rollup) or imported (Vite). A stylesheet that exposes variables
  * (`@expose brand;`) also exports `vars(values)` and `set(values,
- * target?)`: from `@jesscss/patch-css` when nothing is computed from an export,
+ * target?)`: over `@jesscss/patch-css` when nothing is computed from an export,
  * else from `@jesscss/fns/runtime`, which recomputes what depends on them
  * (docs/architecture/core/spec/R8-browser-runtime.md).
  */
@@ -206,7 +206,13 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
     const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
     if (derived.length === 0) {
-      lines.push(`import { exposeVars } from '@jesscss/patch-css';`, `export const { vars, set } = exposeVars({ keys: ${JSON.stringify(runtime.keys)}, units: ${JSON.stringify(runtime.units)} });`);
+      /* Two exports, so a page that imports only `vars` drops the writer. */
+      lines.push(
+        `import { exposedVars, writeVars } from '@jesscss/patch-css';`,
+        `const spec = { keys: ${JSON.stringify(runtime.keys)}, units: ${JSON.stringify(runtime.units)} };`,
+        `export const vars = (values) => exposedVars(spec, values);`,
+        `export const set = (values, target) => writeVars(exposedVars(spec, values), target);`
+      );
     } else {
       lines.push(`import { createRuntime } from '@jesscss/fns/runtime';`);
       for (const [module, names] of imports) {
