@@ -504,7 +504,7 @@ describe('Less AST grammar facts', () => {
   });
 
   it('retains the authored delimiter gap when a line comment follows a function argument comma', () => {
-    /* A grammar fact: the run has no state, so no source for the trivia helpers to slice. */
+    /* Stateless on purpose: parse() serializes this input differently (jess#671). */
     const result = run(lessGrammar.Document, '.a { b: max(1px,\n  // c\n  2px); }', { trivia: lessGrammar.whitespace });
 
     expect(result.ok).toBe(true);
@@ -5942,7 +5942,7 @@ describe('Less AST grammar facts', () => {
   });
 
   it('treats media-query prelude comments as trivia', () => {
-    /* A grammar fact: the run has no state, so no source for the trivia helpers to slice. */
+    /* Stateless on purpose: parse() serializes this input differently (jess#671). */
     const result = run(
       lessGrammar.Document,
       '@media screen /* comment */, print /* another */ { body { font-size: 12pt; } }',
