@@ -29,9 +29,9 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, isSelectorList, isSimpleToken, branchSegments, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue, withMixinPath, guardNot, mixinPathSegment } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, keyframeSelectorList, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, isSelectorList, isSimpleToken, branchSegments, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue, withMixinPath, guardNot, mixinPathSegment } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose } from '@jesscss/core/ast';
-import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
+import { closeAmbientFunctions, functionScopeOf, reportRecovered, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessExposeDeclarationError, LessMalformedExposeError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
@@ -76,7 +76,6 @@ import {
   isReferenceTailFact,
   isSelectorBranchFact,
   isSequence,
-  isSimpleSelector,
   isStatement,
   isLessKeyword,
   isLessTerminalText,
@@ -92,7 +91,7 @@ import {
   lessMathRun,
   lessParenFrom,
   parenLogicalFrom,
-  requireMathSum,
+  requireMathOperand,
   lowerLogicalCallStatement,
   mixinArgumentsFromChildren,
   mixinCallArgsFromInterior,
@@ -2552,7 +2551,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const MathValue = node(
     'MathValue',
     g.MathSum,
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => lessMathInValue(requireMathSum(children), state)
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => lessMathInValue(requireMathOperand(children[0]), state)
   );
   /**
    * A delim Less gives no meaning, as the component css builds for it: the
@@ -2743,7 +2742,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       withCtx((state: LessParseState | undefined) => ({ ...state, valueStop: 'condition' as const }), many(valueContinuation))
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => runOperand(valuePieceReducerWithTrivia(
-      [lessMathInValue(requireMathSum(children), state), ...children.slice(1)],
+      [lessMathInValue(requireMathOperand(children[0]), state), ...children.slice(1)],
       triviaLog,
       state
     )),
@@ -3574,7 +3573,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       mixinGuardDefaultOperand,
       g.OperandRun
     ),
-    children => requireMathSum(children)
+    children => requireMathOperand(children[0])
   );
   /*
    * A `(` opens a group that is read ONCE, as a guard. What follows its `)`
@@ -4511,13 +4510,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}')
     ),
     (children, _fields, span, rawChildren) => {
-      const selectors = children.filter(isSimpleSelector)
-        .map(selector => selector);
-      if (selectors.length === 0) {
-        throw new TypeError('Less keyframe block requires a selector.');
-      }
       return withSourceSpan(
-        withBlockBody(rule(selist(...selectors), children.filter(isStatement)), rawChildren),
+        withBlockBody(rule(keyframeSelectorList(children), children.filter(isStatement)), rawChildren),
         span
       );
     }

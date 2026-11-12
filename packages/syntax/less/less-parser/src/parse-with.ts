@@ -9,7 +9,7 @@
 import { buildLineIndex, offsetToLineCol, run } from 'parseman/run';
 import type { Span } from 'parseman';
 import type { ISafeParseResult, MathMode, ModuleMode, TriviaMap } from '@jesscss/core';
-import { DEFAULT_LESS_MATH_MODE, rejectBareVariable, type LessParseState } from './parse-state.js';
+import { rejectBareVariable, requireMathMode, type LessParseState } from './parse-state.js';
 /*
  * `parserDiagnostic` comes from the narrow `./diagnostics` entry, not the root:
  * the root entry pulls the evaluator, functions, and legacy tree runtime onto
@@ -226,7 +226,7 @@ function parseRecovering(
   const forgivenSelectorItems: ForgivenSelectorItem[] = [];
   const state: LessParseState = {
     source: input,
-    mathMode: options.mathMode ?? DEFAULT_LESS_MATH_MODE,
+    mathMode: requireMathMode(options.mathMode),
     document: { functions, diagnostics, forgivenSelectorItems },
     rejectBareVariable
   };

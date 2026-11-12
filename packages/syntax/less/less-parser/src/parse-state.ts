@@ -39,16 +39,15 @@ export interface LessParseState extends Partial<BareVariableRejection> {
    * when it is absent and the trivia helpers fall back to structural layout — so
    * a caller that only wants grammar facts (the AST-grammar tests drive `run()`
    * directly) may omit it. A `<general-enclosed>` query group is the exception:
-   * it records its source bytes (ledger N14), so an input holding one needs it. `mathMode` remains required on
-   * this resolved internal shape; raw callers are normalized by
-   * `requireLessParseState` below.
+   * it records its source bytes (ledger N14), so an input holding one needs it.
    */
   readonly source?: string;
 
   /**
    * Less's `math:` policy, a PARSE-TIME input (ledger P1). The grammar resolves
    * it per operation and writes the answer onto `Operation.mathOutsideParens`;
-   * the evaluator never sees the mode.
+   * the evaluator never sees the mode. A raw `run()` caller may omit it;
+   * `mathModeOf` below reads the default then.
    */
   readonly mathMode: MathMode;
 
@@ -114,44 +113,33 @@ export function rejectBareVariable(start: number, end: number, name: string): ne
 /** The public Less default, shared by wrapper and raw-grammar entry points. */
 export const DEFAULT_LESS_MATH_MODE: MathMode = 'parens-division';
 
-/** Immutable raw-entry state reused by every operation in a state-free parse. */
-const DEFAULT_LESS_PARSE_STATE: LessParseState = Object.freeze({
-  mathMode: DEFAULT_LESS_MATH_MODE
-});
-
-const MATH_MODES = ['always', 'parens-division', 'parens', 'strict'] as const;
-
-const isMathMode = (value: string): value is MathMode =>
-  (MATH_MODES as readonly string[]).includes(value);
-
 /**
- * Recover the typed state parseman hands reducers as `unknown`.
- *
- * Missing state uses the same public default as `parseWith`, so the exported
- * AST/CST grammars remain directly runnable. An explicitly supplied invalid
- * mode still throws instead of hiding a broken threading path.
+ * The `math:` policy a parse runs under. `parseWith` checks the caller's mode
+ * once, before the run; a raw `run()` with no state gets the public default.
  */
-export function requireLessParseState(state: unknown): LessParseState {
+export function requireMathMode(mode: unknown): MathMode {
+  switch (mode) {
+    case undefined:
+      return DEFAULT_LESS_MATH_MODE;
+    case 'always':
+    case 'parens-division':
+    case 'parens':
+    case 'strict':
+      return mode;
+    default:
+      throw new TypeError('Less grammar received an invalid `mathMode` in its parse state.');
+  }
+}
+
+/** The `math:` policy of the parse a reducer runs in ({@link LessParseState.mathMode}). */
+export function mathModeOf(state: unknown): MathMode {
   if (state === undefined) {
-    return DEFAULT_LESS_PARSE_STATE;
+    return DEFAULT_LESS_MATH_MODE;
   }
   if (typeof state !== 'object' || state === null) {
     throw new TypeError('Less grammar parse state must be an object when supplied.');
   }
-  const supplied = state as { readonly source?: unknown; readonly mathMode?: unknown };
-  const suppliedMathMode = supplied.mathMode;
-  if (suppliedMathMode !== undefined && (
-    typeof suppliedMathMode !== 'string' || !isMathMode(suppliedMathMode)
-  )) {
-    throw new TypeError(
-      'Less grammar received an invalid `mathMode` in its parse state.'
-    );
-  }
-  const mathMode = suppliedMathMode ?? DEFAULT_LESS_MATH_MODE;
-  const source = typeof supplied.source === 'string' ? supplied.source : undefined;
-  return source === undefined
-    ? { mathMode }
-    : { source, mathMode };
+  return requireMathMode('mathMode' in state ? state.mathMode : undefined);
 }
 
 /** What the reducers of this parse share ({@link LessParseState.document}), or `undefined` for a raw `run()`. */

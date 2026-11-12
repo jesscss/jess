@@ -2,23 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { run } from 'parseman';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { lessGrammar } from '../src/grammar.js';
+import { parse } from '../src/index.js';
 import {
   DEFAULT_LESS_MATH_MODE,
-  requireLessParseState
+  mathModeOf,
+  requireMathMode
 } from '../src/parse-state.js';
 
 describe('Less parse state', () => {
   it('uses the public math default when raw grammar callers omit state', () => {
-    const defaultState = requireLessParseState(undefined);
-    expect(defaultState).toEqual({
-      mathMode: DEFAULT_LESS_MATH_MODE
-    });
-    expect(Object.isFrozen(defaultState)).toBe(true);
-    expect(requireLessParseState(undefined)).toBe(defaultState);
-    expect(requireLessParseState({ source: '.a {}' })).toEqual({
-      source: '.a {}',
-      mathMode: DEFAULT_LESS_MATH_MODE
-    });
+    expect(mathModeOf(undefined)).toBe(DEFAULT_LESS_MATH_MODE);
+    expect(mathModeOf({ source: '.a {}' })).toBe(DEFAULT_LESS_MATH_MODE);
 
     const source = '.a { k: 1 + 2; }';
     const result = run(lessGrammar.Document, source, {
@@ -38,12 +32,15 @@ describe('Less parse state', () => {
   });
 
   it('honors an explicit mode and rejects an invalid one', () => {
-    expect(requireLessParseState({ mathMode: 'strict' })).toEqual({
-      mathMode: 'strict'
-    });
-    expect(() => requireLessParseState({ mathMode: 'sometimes' })).toThrow(
-      'invalid `mathMode`'
-    );
+    expect(mathModeOf({ mathMode: 'strict' })).toBe('strict');
+    expect(() => mathModeOf({ mathMode: 'sometimes' })).toThrow('invalid `mathMode`');
+    expect(() => mathModeOf(1)).toThrow('must be an object');
+    expect(requireMathMode(undefined)).toBe(DEFAULT_LESS_MATH_MODE);
+  });
+
+  it('checks the parse entry\'s mode once, before the run, with or without math in the input', () => {
+    const options: { mathMode?: unknown } = { mathMode: 'sometimes' };
+    expect(() => Reflect.apply(parse, undefined, ['.a { b: c; }', options])).toThrow('invalid `mathMode`');
   });
 });
 

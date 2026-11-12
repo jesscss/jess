@@ -20,6 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
+import type { MathMode } from '@jesscss/core';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
@@ -27,7 +28,7 @@ import { NO_SPAN, any, block, rule, withBlockBody, callArg, generalEnclosedGroup
 import type { AnonymousMixin, Any, Block, Ruleset, CallArg, Combinator as SelectorCombinator, ComplexSegment, Declaration, Expression, ExtendInstruction, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, MixinPathSegment, Operation, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, type ValuePieceKind, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex, valueRunSeparators } from './trivia-layout.js';
-import { diagnosticsOf, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
+import { diagnosticsOf, functionScopeOf, mathModeOf, reportRecovered } from './parse-state.js';
 import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
@@ -756,8 +757,13 @@ function separatorsFromFields(fields: FieldMap | undefined): string[] {
     : requireFields(fields, 'separator').map(separator => staticText(separator.value));
 }
 
+/** {@link computesBare} under the parse's own `math:` policy. */
+function lessMathOutsideParens(state: unknown, operator: string): boolean {
+  return computesBare(mathModeOf(state), operator);
+}
+
 /**
- * Does Less's configured `math:` policy compute THIS operator with no enclosing
+ * Does Less's `math:` policy compute THIS operator with no enclosing
  * math context (§12.6b)?
  *
  * - `always` — every operator computes bare.
@@ -769,8 +775,7 @@ function separatorsFromFields(fields: FieldMap | undefined): string[] {
  * reads the node. It is deliberately NOT handed to eval as a mode: a dialect
  * difference is carried by what the lowered node says.
  */
-function lessMathOutsideParens(state: unknown, operator: string): boolean {
-  const { mathMode } = requireLessParseState(state);
+function computesBare(mathMode: MathMode, operator: string): boolean {
   if (mathMode === 'always') {
     return true;
   }
@@ -1401,7 +1406,7 @@ function mixinPrefixFromSelectorBranch(branch: SelectorBranch): readonly MixinPr
       ? segment.term.value
       : [segment.term];
     for (const token of tokens) {
-      if (!isSimpleSelector(token) || token.text === null || (!token.text.startsWith('.') && !token.text.startsWith('#'))) {
+      if (token.type !== 'SimpleSelector' || token.text === null || (!token.text.startsWith('.') && !token.text.startsWith('#'))) {
         return null;
       }
       prefix.push(mixinPathSegment(prefix.length === 0 ? ' ' : segment.combinator ?? ' ', token.text));
@@ -1448,15 +1453,6 @@ function requiredTokenStart(rawChildren: readonly unknown[], value: string): num
 function hasRulesetTerminator(rawChildren: readonly unknown[]): boolean {
   const tail = rawChildren[rawChildren.length - 1];
   return isSpannedToken(tail) && tail.value === ';';
-}
-
-function isSimpleSelector(value: unknown): value is SimpleSelector {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'SimpleSelector'
-    && 'text' in value
-    && 'interp' in value;
 }
 
 // Selector-function pseudos whose static argument is retained as a structured
@@ -2097,12 +2093,12 @@ function mixinGuardTermFrom(
   return negated ? guardNot(requireGuardTerm(term, state), requireTerminalText(children[0]), NO_SPAN, 0) : term;
 }
 
-/** One `MathSum` reduction: an operand, or an unfolded run. */
+/** One `MathSum` reduction, at the child the production puts it: an operand, or an unfolded run. */
 function requireMathOperand(value: unknown): ValueNode | LessMathRun {
   if (isValueNode(value) || isLessMathRun(value)) {
     return value;
   }
-  throw new TypeError('Less guard lost its operand.');
+  throw new TypeError('Less math production lost its operand.');
 }
 
 /**
@@ -2653,16 +2649,6 @@ function mathRunFrom(
   return { kind: 'less-math-run', operands, operators, spans };
 }
 
-/** The `MathSum` child of a production that wraps one math run. */
-function requireMathSum(children: readonly unknown[]): ValueNode | LessMathRun {
-  for (const child of children) {
-    if (isValueNode(child) || isLessMathRun(child)) {
-      return child;
-    }
-  }
-  throw new TypeError('Less math production lost its operand.');
-}
-
 const LESS_PRODUCT_OPERATORS: ReadonlySet<string> = new Set(['*', '/', '%']);
 const LESS_SUM_OPERATORS: ReadonlySet<string> = new Set(['+', '-']);
 
@@ -2670,42 +2656,57 @@ const LESS_SUM_OPERATORS: ReadonlySet<string> = new Set(['+', '-']);
  * Fold `operands[from..to]` left-associatively, product before sum. Each folded
  * pair records whether Less's configured `math:` policy computes it with no
  * enclosing math context, so the evaluator never reads that policy from ambient
- * config (§12.6b). With `kept`, no pair computes: the run is kept as written.
+ * config (§12.6b). With no `mode`, no pair computes: the run is kept as written.
  */
-function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown, kept: boolean): ValueNode {
-  if (from === to) {
-    return run.operands[from]!;
-  }
-  let operands: ValueNode[] = run.operands.slice(from, to + 1);
-  let spans: Array<SourceSpan | undefined> = run.spans.slice(from, to + 1);
-  let operators: string[] = run.operators.slice(from, to);
-  for (const tier of [LESS_PRODUCT_OPERATORS, LESS_SUM_OPERATORS]) {
-    const nextOperands: ValueNode[] = [operands[0]!];
-    const nextSpans: Array<SourceSpan | undefined> = [spans[0]];
-    const nextOperators: string[] = [];
-    for (let index = 0; index < operators.length; index += 1) {
-      const operator = operators[index]!;
-      if (!tier.has(operator)) {
-        nextOperators.push(operator);
-        nextOperands.push(operands[index + 1]!);
-        nextSpans.push(spans[index + 1]);
-        continue;
+function foldLessMath(run: LessMathRun, from: number, to: number, mode: MathMode | undefined): ValueNode {
+  const { operands, operators, spans } = run;
+  // The product term being built, and the sum of the terms before it.
+  let term = operands[from]!;
+  let termSpan = spans[from];
+  let sum: ValueNode | undefined;
+  let sumSpan: SourceSpan | undefined;
+  let sumOperator = '';
+  for (let index = from; index < to; index += 1) {
+    const operator = operators[index]!;
+    const right = operands[index + 1]!;
+    const rightSpan = spans[index + 1];
+    if (LESS_PRODUCT_OPERATORS.has(operator)) {
+      termSpan = joinedSpan(termSpan, rightSpan);
+      term = foldPair(operator, term, right, termSpan, mode);
+    } else {
+      if (sum === undefined) {
+        sum = term;
+        sumSpan = termSpan;
+      } else {
+        sumSpan = joinedSpan(sumSpan, termSpan);
+        sum = foldPair(sumOperator, sum, term, sumSpan, mode);
       }
-      const left = nextOperands.pop()!;
-      const leftSpan = nextSpans.pop();
-      const rightSpan = spans[index + 1];
-      const folded = operation(operator, left, operands[index + 1]!, false, !kept && lessMathOutsideParens(state, operator));
-      const span = leftSpan === undefined || rightSpan === undefined
-        ? undefined
-        : { start: leftSpan.start, end: rightSpan.end };
-      nextOperands.push(span === undefined ? folded : withSourceSpan(folded, span));
-      nextSpans.push(span);
+      sumOperator = operator;
+      term = right;
+      termSpan = rightSpan;
     }
-    operands = nextOperands;
-    spans = nextSpans;
-    operators = nextOperators;
   }
-  return operands[0]!;
+  return sum === undefined ? term : foldPair(sumOperator, sum, term, joinedSpan(sumSpan, termSpan), mode);
+}
+
+/**
+ * One folded pair of {@link foldLessMath}, with the span of both its operands
+ * when both have one. With no `mode` the run is kept as written: nothing computes.
+ */
+function foldPair(
+  operator: string,
+  left: ValueNode,
+  right: ValueNode,
+  span: SourceSpan | undefined,
+  mode: MathMode | undefined
+): ValueNode {
+  const folded = operation(operator, left, right, false, mode !== undefined && computesBare(mode, operator));
+  return span === undefined ? folded : withSourceSpan(folded, span);
+}
+
+/** The span from `left`'s start to `right`'s end, when both are known. */
+function joinedSpan(left: SourceSpan | undefined, right: SourceSpan | undefined): SourceSpan | undefined {
+  return left === undefined || right === undefined ? undefined : { start: left.start, end: right.end };
 }
 
 /**
@@ -2714,7 +2715,7 @@ function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown
  * product-before-sum precedence.
  */
 function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueNode {
-  return isLessMathRun(value) ? foldLessMath(value, 0, value.operands.length - 1, state, false) : value;
+  return 'type' in value ? value : foldLessMath(value, 0, value.operands.length - 1, mathModeOf(state));
 }
 
 /**
@@ -2734,12 +2735,13 @@ function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueN
  *   for the owner, not decided here.
  */
 function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueNode {
-  if (!isLessMathRun(value)) {
+  if ('type' in value) {
     return lessComputation(value);
   }
   const last = value.operands.length - 1;
-  if (lessMathOutsideParens(state, '/')) {
-    return lessComputation(foldLessMath(value, 0, last, state, false));
+  const mode = mathModeOf(state);
+  if (computesBare(mode, '/')) {
+    return lessComputation(foldLessMath(value, 0, last, mode));
   }
 
   /*
@@ -2753,11 +2755,11 @@ function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueN
   let from = 0;
   for (let index = 0; index < value.operators.length; index += 1) {
     if (value.operators[index] === '/') {
-      (sides ??= []).push(lessComputation(foldLessMath(value, from, index, state, true)));
+      (sides ??= []).push(lessComputation(foldLessMath(value, from, index, undefined)));
       from = index + 1;
     }
   }
-  const tail = lessComputation(foldLessMath(value, from, last, state, sides !== undefined));
+  const tail = lessComputation(foldLessMath(value, from, last, sides === undefined ? mode : undefined));
   if (sides === undefined) {
     return tail;
   }
@@ -2853,7 +2855,7 @@ export {
   lessParenFrom,
   parenLogicalFrom,
   lessMathRun,
-  requireMathSum,
+  requireMathOperand,
   functionCallFromChildren,
   functionNameFromOpener,
   functionSeparatorsFromFields,
@@ -2887,7 +2889,6 @@ export {
   isSelectorBranchFact,
   isSelectorListWithExtendsFact,
   isSequence,
-  isSimpleSelector,
   isStatement,
   isLessKeyword,
   isLessTerminalText,
