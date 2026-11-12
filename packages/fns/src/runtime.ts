@@ -25,6 +25,9 @@ export interface RuntimeSpec extends ExposedSpec {
 
   /** Each generated custom property, by name, with how it is computed. */
   readonly derived: Readonly<Record<string, RuntimeRecipe>>;
+
+  /** By export, the key of each one a computed value reads as a colour, when the page takes no colour names for them (R8 spec, colour names). */
+  readonly hex?: Readonly<Record<string, string>>;
 }
 
 export type { ExportValues, StyleTarget };
@@ -52,7 +55,12 @@ export function createVars(spec: RuntimeSpec): Runtime['vars'] {
     const read = (name: string): ValueGroup => {
       let value = parsed.get(name);
       if (value === undefined) {
-        value = parseValue(values[name] ?? spec.defaults[name] ?? '');
+        const given = values[name];
+        const key = spec.hex?.[name];
+        if (key !== undefined && given !== undefined && /^\s*[a-z]/i.test(given)) {
+          throw new TypeError(`\`${key}\` received \`${given.trim()}\`, which is not a hex colour; set \`colorNames: true\` in the Jess plugin options to accept colour names.`);
+        }
+        value = parseValue(given ?? spec.defaults[name] ?? '');
         parsed.set(name, value);
       }
       return value;

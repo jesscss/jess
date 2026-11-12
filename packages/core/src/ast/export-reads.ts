@@ -10,7 +10,7 @@ import type { FnOrigin } from './module-values.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { calcOperand } from './math-operand.js';
-import { isBrowserColor } from './value-dispatch.js';
+import { isBrowserColor, takesColor } from './value-dispatch.js';
 import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
 import { groupItems } from './value-list.js';
@@ -51,6 +51,9 @@ export interface ExportRuntime {
   /** Each generated custom property, by its name, with how the runtime computes it. */
   readonly derived: Map<string, ExportRecipe>;
 
+  /** Each export a recipe passes to a parameter checked as a colour: the ones a colour name given at runtime reaches (R8 §colour names). */
+  readonly colors: Set<string>;
+
   /** Each generated custom property's name, by its recipe as JSON: one name per recipe, however the call is spelled. */
   readonly named: Map<string, string>;
 
@@ -76,6 +79,9 @@ export interface ExportRuntimeData {
   readonly units: Readonly<Record<string, string>>;
   readonly ratios: readonly string[];
   readonly derived: Readonly<Record<string, ExportRecipe>>;
+
+  /** Each export a recipe passes to a parameter checked as a colour. */
+  readonly colors: readonly string[];
 }
 
 /** A render's `runtime` result field: none when nothing is exported. */
@@ -84,7 +90,7 @@ export function runtimeData(x: ExportState<unknown>): { runtime?: ExportRuntimeD
   const runtime = x.runtime;
   return runtime === undefined
     ? {}
-    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), units: Object.fromEntries(runtime.units), ratios: [...runtime.ratios], derived: Object.fromEntries(runtime.derived) } };
+    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), units: Object.fromEntries(runtime.units), ratios: [...runtime.ratios], derived: Object.fromEntries(runtime.derived), colors: [...runtime.colors] } };
 }
 
 /** A mixin argument as written, in the caller's frame. */
@@ -319,7 +325,7 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), named: new Map(), properties: new Map(), slots: new Map() };
+  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), named: new Map(), properties: new Map(), slots: new Map() };
 }
 
 /**
@@ -1024,7 +1030,13 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
     exportNotWritten(node, `@${recipeExport(stray.recipe)}`, recipeExport(stray.recipe), e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
   }
   const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
-  return { fn: origin, args: vals.map(v => recipes.get(lone(v)) ?? emitValue(v)) };
+  const args = vals.map(v => recipes.get(lone(v)) ?? emitValue(v));
+  args.forEach((arg, index) => {
+    if (typeof arg !== 'string' && 'export' in arg && takesColor(fn?.params[index] ?? fn?.params.find(param => param.rest === true))) {
+      e.s.exports.runtime?.colors.add(arg.export);
+    }
+  });
+  return { fn: origin, args };
 }
 
 /** The first export a recipe reads. */

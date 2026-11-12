@@ -252,7 +252,8 @@ describe('Less @expose variables (A4)', () => {
           fn: { module: '@jesscss/fns/less', name: 'lightness' },
           args: [{ fn: { module: '@jesscss/fns/less', name: 'multiply' }, args: [{ export: 'brand' }, '#888'] }]
         }
-      }
+      },
+      colors: ['brand']
     });
   });
 

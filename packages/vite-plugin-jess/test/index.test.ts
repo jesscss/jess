@@ -62,12 +62,12 @@ describe('vite-plugin-jess', () => {
   }
 
   /** The CSS and JS of a build of `main.js` in `root`. */
-  async function built(root: string): Promise<{ css: string; js: string }> {
+  async function built(root: string, options: Parameters<typeof jess>[0] = {}): Promise<{ css: string; js: string }> {
     const result = await build({
       root,
       configFile: false,
       logLevel: 'silent',
-      plugins: [jess()],
+      plugins: [jess(options)],
       build: { write: false, lib: { entry: path.join(root, 'main.js'), formats: ['es'], fileName: 'main' } }
     });
     const first = [result].flat()[0];
@@ -96,7 +96,7 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { js } = await built(root);
 
-      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 30,613 B measured (10,904 B gzip), 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 30,965 B measured (11,042 B gzip), of which 352 B is the colour-name check (R8-13); 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
       expect(js.length).toBeLessThan(32_150);
     });
   });
@@ -114,6 +114,30 @@ describe('vite-plugin-jess', () => {
 
       /* Only `@jesscss/patch-css`'s key map, as nothing is computed and no CSS form reads the export (Vite's built module, unminified): 381 B measured for each (300 B minified, 234 B gzip), 2,195 B when it carried the unit check and the number formatter. */
       expect(js.length).toBeLessThan(400);
+    });
+  });
+
+  /* Owner ruling 2026-11-12 ("Yes, gate it"): a colour name reaches a computed value only when the stylesheet's own value is a name or the page opts in (R8 spec, colour names). */
+  it.each([
+    ['#c00', {}, false],
+    ['#c00', { colorNames: true }, true],
+    ['red', {}, true]
+  ] as const)('takes a colour name for @brand: %s with %o only when names are on', async (own, options, names) => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose brand;\n@brand: ${own};\n.a { opacity: @less.lightness(@brand); }\n`]
+    ], async (root) => {
+      const { js } = await built(root, options);
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(isRuntime(module) && module.vars({ brand: '#08f' })['--brand-lightness']).toBe('50%');
+      const named = (): unknown => isRuntime(module) && module.vars({ brand: 'blue' })['--brand-lightness'];
+      if (names) {
+        expect(named()).toBe('50%');
+      } else {
+        expect(named).toThrow(new TypeError('`brand` received `blue`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names.'));
+      }
     });
   });
 

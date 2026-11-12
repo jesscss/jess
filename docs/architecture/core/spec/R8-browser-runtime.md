@@ -38,6 +38,21 @@
 | R8-11 | The runtime keys an exposed variable by its name with dash-case turned to camelCase, letter case otherwise kept; two names with one key, or two bindings exposed under one name, are an error naming both sites. | *"exports, like our CSS module’s implementation, should turn dash-case into lowerCamelCase… so that should flag conflicts"*, then *"we don't force lowerCamelCase --- i was just talking about dash-case conversion"*; owner picked the option “Error naming both” (2026-11-02) |
 | R8-12 | Two `@compose`d libraries that expose one name, and two files that each declare and expose one name (two `@import`ed files, or an importer and a file it imports), are an error naming both sites. | asked of each case, 2026-11-02: *"error"* |
 
+## Owner ruling, 2026-11-12 (colour names)
+
+| # | Ruling | Verbatim |
+| --- | --- | --- |
+| R8-13 | A colour name given to `vars()` reaches a computed value only when names are on. The name table ships only when the stylesheet's own value for an export that a computed value reads as a colour is a name, or when the plugin option `colorNames: true` is set. Otherwise `vars()` takes a hex colour for such an export, and a name throws a `TypeError` naming the export and the option. | *"Yes, gate it"*, to the proposal in the stage-4 value-walker design (§2.5, option ii) |
+
+As built: the compile lists each export a recipe passes to a parameter checked
+as a colour (`ExportRuntimeData.colors`). The generated module passes that list
+to `createVars` as `hex` unless names are on, and `vars()` throws on a given
+value there that starts with a letter, which needs no name table:
+`` `brand` received `blue`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names. ``
+Pinned in `packages/vite-plugin-jess/test/index.test.ts`. The table still
+reaches the bundle through the value reader and the colour parameter check;
+it leaves when those stop importing it (stage 4, steps 1b and 3).
+
 Split off on 2026-11-01 as its own task: built-in functions that have a CSS
 counterpart are represented internally as that counterpart (`darken()` as
 relative color syntax), resolved when inputs are known and written as CSS when

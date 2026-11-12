@@ -90,6 +90,12 @@ function paramType(param: ParamSpec): NormalizedParamType {
 
 const isRest = (param: ParamSpec): boolean => param.rest === true;
 
+/** Whether a parameter is checked as a colour, so a colour name passed to it is read as one. */
+export function takesColor(param: ParamSpec | undefined): boolean {
+  const type = param === undefined ? null : normalizeParamType(param.type ?? param.kinds);
+  return type !== null && type !== 'any' && type.includes('Color');
+}
+
 /**
  * A parameter typed as a number (it accepts a `Dimension` and not a `List`)
  * expects a number, so a slash list passed to it is its quotient
