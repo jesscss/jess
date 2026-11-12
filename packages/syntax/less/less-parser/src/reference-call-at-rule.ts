@@ -5,7 +5,7 @@
 import type { Span } from 'parseman';
 import type { Any, AtRuleBlock, AtRuleStatement, ExtendInstruction, Interpolation, SourceSpan, Statement, UnknownAtRuleBlock } from '@jesscss/core/ast';
 import { any, atRuleBlock, atRuleStatement, bodySpanFromRaw, holdsInterpolationOpener, interpolation, isInterpolation, isSpannedToken, semanticGapText, sourceEndOf, sourceStartOf, unknownAtRuleBlock, withBodySpan, withoutLineComments, withSourceSpan } from '@jesscss/core/ast';
-import { bodyExtensionsOf, isAny, isLessTerminalText, isReferenceTailFact, isStatement, isVarRef, staticText, variableNameText } from './grammar-helpers.js';
+import { isAny, readBody, isLessTerminalText, isReferenceTailFact, isVarRef, staticText, variableNameText } from './grammar-helpers.js';
 import { LessUnresolvedPreludeInterpolationError } from './parse-error.js';
 import { rejectBareVariable, reportRecovered } from './parse-state.js';
 
@@ -17,7 +17,9 @@ type BlockTail = {
 type OpaqueTail = { readonly rawBody: string };
 
 export function atRuleBlockTailFrom(children: readonly unknown[], rawChildren: readonly unknown[]): BlockTail {
-  return { rules: children.filter(isStatement), extensions: bodyExtensionsOf(children), bodySpan: bodySpanFromRaw(rawChildren) };
+  const rules: Statement[] = [];
+  const extensions = readBody(children, 0, rules);
+  return { rules, extensions, bodySpan: bodySpanFromRaw(rawChildren) };
 }
 
 /* The body capture emits no child when the block is empty, as in `UnknownAtRuleBlock`. */
