@@ -9,7 +9,7 @@
 import { buildLineIndex, offsetToLineCol, run } from 'parseman/run';
 import type { Span } from 'parseman';
 import type { ISafeParseResult, MathMode, ModuleMode, TriviaMap } from '@jesscss/core';
-import { DEFAULT_LESS_MATH_MODE, rejectBareVariable, type LessDocumentFacts, type LessParseState } from './parse-state.js';
+import { DEFAULT_LESS_MATH_MODE, diagnosticsOf, rejectBareVariable, type LessDocumentFacts, type LessParseState } from './parse-state.js';
 /*
  * `parserDiagnostic` comes from the narrow `./diagnostics` entry, not the root:
  * the root entry pulls the evaluator, functions, and legacy tree runtime onto
@@ -65,14 +65,35 @@ export interface LessParseOptions {
   readonly moduleMode?: ModuleMode;
 }
 
+declare const lessRunState: unique symbol;
+
 /**
- * The state a Less run reads: the one `parse()` and `safeParse()` build, with
- * every field the grammar and the parse read back set.
+ * The run state {@link createLessParseState} builds, to pass as a raw `run()`'s
+ * `state`. It is opaque: its fields belong to the grammar, not to the API.
  */
-export interface LessRunState extends LessParseState {
+export interface LessRunState {
+  readonly [lessRunState]: true;
+}
+
+/** The fields behind {@link LessRunState}: what the grammar and the parse read back. */
+interface CheckedRunState extends LessParseState {
   readonly source: string;
   readonly mathMode: MathMode;
   readonly document: LessDocumentFacts & { readonly forgivenSelectorItems: ForgivenSelectorItem[] };
+}
+
+/*
+ * A plain object, not a class instance: every withCtx spreads it, and a class
+ * instance root measured slower on the Bootstrap parse.
+ */
+function checkedRunState(input: string, options: LessParseOptions): CheckedRunState {
+  const moduleMode = requireMode('moduleMode', options.moduleMode, MODULE_MODES, 'auto');
+  return {
+    source: input,
+    mathMode: requireMode('mathMode', options.mathMode, MATH_MODES, DEFAULT_LESS_MATH_MODE),
+    document: { functions: { ambient: moduleMode === 'auto' }, diagnostics: [], forgivenSelectorItems: [] },
+    rejectBareVariable
+  };
 }
 
 /**
@@ -84,17 +105,21 @@ export interface LessRunState extends LessParseState {
  * trusts the state after that, so a hand-built state is unchecked and an
  * invalid mode in it is undefined behaviour.
  *
- * The run records each problem the grammar recovered from in
- * `document.diagnostics`, where `parse()` reads them back.
+ * The run records each problem the grammar recovered from on the state, where
+ * {@link recoveredProblemsOf} reads them back.
  */
-export function createLessParseState(input: string, options: LessParseOptions = {}): LessRunState {
-  const moduleMode = requireMode('moduleMode', options.moduleMode, MODULE_MODES, 'auto');
-  return {
-    source: input,
-    mathMode: requireMode('mathMode', options.mathMode, MATH_MODES, DEFAULT_LESS_MATH_MODE),
-    document: { functions: { ambient: moduleMode === 'auto' }, diagnostics: [], forgivenSelectorItems: [] },
-    rejectBareVariable
-  };
+export function createLessParseState(input: string, options?: LessParseOptions): LessRunState;
+/* The one place the checked state becomes the opaque type: the signature above is the public one. */
+export function createLessParseState(input: string, options: LessParseOptions = {}): CheckedRunState | LessRunState {
+  return checkedRunState(input, options);
+}
+
+/**
+ * The problems a run with this state recovered from, in source order: the ones
+ * `parse()` throws the first of and `safeParse()` reports.
+ */
+export function recoveredProblemsOf(state: LessRunState): readonly LessRecoveredError[] {
+  return diagnosticsOf(state) ?? [];
 }
 
 function requireMode<const M extends string>(
@@ -254,7 +279,7 @@ export function parseWith(
   input: string,
   options: LessParseOptions = {}
 ): Stylesheet {
-  const { document, recovered } = parseRecovering(grammar, input, createLessParseState(input, options));
+  const { document, recovered } = parseRecovering(grammar, input, checkedRunState(input, options));
   if (recovered[0] !== undefined) {
     throw recovered[0];
   }
@@ -264,7 +289,7 @@ export function parseWith(
 function parseRecovering(
   grammar: LessAstGrammar,
   input: string,
-  state: LessRunState
+  state: CheckedRunState
 ): LessParsed {
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
@@ -371,7 +396,7 @@ export function safeParseWith(
   input: string,
   options: LessParseOptions = {}
 ): ISafeParseResult {
-  const state = createLessParseState(input, options);
+  const state = checkedRunState(input, options);
   try {
     const { document, recovered } = parseRecovering(grammar, input, state);
     return {
