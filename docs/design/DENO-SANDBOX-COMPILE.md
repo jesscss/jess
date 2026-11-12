@@ -99,7 +99,11 @@ links, 44 ms with a cold file cache). Deno spawns on the read set its code
 closure can only add to (the read roots and the compiler's and plugin-js's own
 packages) while the closure, about a hundred package manifests, is walked with
 asynchronous reads that the let-go aborts; when the closure adds a folder, the
-process is switched before any render reaches it.
+process is switched before any render reaches it. An entry outside the
+compiler's install (a global or npx CLI, whose packages are in no read root) is
+the exception: there the closure always adds folders, so it is walked first,
+with synchronous reads (15–22 ms on the main thread), and Deno starts once on
+the full read set instead of being started, killed and started again.
 
 **Compilers that can run there.** A compiler class runs in the engine when it
 declares its own `static moduleIdentity` (module and export), as jess's
@@ -450,6 +454,40 @@ interleaved runs, ms:
 - Either way the first render inside Deno takes ~550–600 ms (a warm compile
   is ~145 ms on the M4 Pro above). That first render, not the spawn, is the
   cold-start cost.
+
+**Where a cold CLI run goes** (after the relay stopped loading the compiler
+and the early read roots became synchronous; M4 Pro, load averages 9–13, so
+indicative). Cold CLI, spawn to exit, median of 15 interleaved runs, ms. The
+"no engine" arm runs plugins in Node through a measurement-only switch; it is
+not a shipping path and only separates the sandbox from the compiler:
+
+| fixture | jess | jess, no engine | lessc 4.9.1 |
+|---|---|---|---|
+| a one-rule file, no script | 117.6 | 110.6 | 62.9 |
+| a one-rule file with one `@plugin` | 222.7 | 110.9 | 67.8 |
+| the same, outside the compiler's install | 253.4 | — | — |
+| `bootstrap4.less` | 506.9 | 437.4 | 270.7 |
+
+- The plain path, on the one-rule file: Node starts in 22 ms; the jess import
+  is ~34 ms with the compile cache; the render is ~27 ms, of which the first
+  parse is 22–23 ms. That first parse is parseman assembling its tables when a
+  process first runs a grammar.
+- The sandboxed path, on `bootstrap4.less` (timeline inside the process,
+  median of 5): the engine is started 7 ms into the render; Deno is ready 42 ms
+  after the spawn; its warm-up, which imports the compiler and loads the
+  dialect, takes ~57 ms more; the render in Deno takes ~255 ms (in Node,
+  266 ms). Of the 42 ms to ready, Deno and its two threads take 15 ms and the
+  runtime's import of `@jesscss/core` the other ~28 ms. Inside Deno,
+  `@jesscss/core` imports in 20–23 ms and the rest of the compiler in
+  28–30 ms; Deno's V8 code cache is already in use (`--no-code-cache` raises
+  them to 38 and 41 ms).
+- The gap to lessc on `bootstrap4.less` is mostly the compiler's own render
+  (~255–266 ms against lessc's ~150 ms first compile); the sandbox adds ~70 ms,
+  which is the compiler loading a second time, in Deno.
+- Outside the compiler's install the engine used to be started, killed when
+  the closure added folders, and started again ~40 ms later (+31 to +44 ms on
+  the CLI). It now starts once, after a synchronous closure walk (245.5 →
+  219.1 ms on the one-rule `@plugin` file).
 
 ## 8. Decisions
 

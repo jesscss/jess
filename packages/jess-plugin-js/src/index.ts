@@ -17,6 +17,7 @@ import {
   engineCode,
   engineFailure,
   engineOwnCode,
+  insideReadRoots,
   hostFacts,
   denoRunArgs,
   encodeHostConfigs,
@@ -1062,8 +1063,17 @@ export class JsPlugin extends AbstractPlugin {
        * read roots, the compiler's and this plugin's own packages): the closure,
        * computed next, is what held a cold start back. When the closure adds a
        * folder, `useReadSet` switches the process before any render reaches it.
+       *
+       * An entry outside the compiler's install (a global or npx CLI) is the
+       * exception: the closure always adds folders there, and the switch would
+       * kill this process and start another. The closure is walked first, with
+       * synchronous reads, and Deno starts once, on the full read set.
        */
-      const early = readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, engineOwnCode(request.compiler.module, import.meta.url));
+      const entryDir = request.entryDir;
+      const jsReadRoot = this.opts.jsReadRoot ?? request.jsReadRoot;
+      const own = engineOwnCode(request.compiler.module, import.meta.url);
+      const startCode = insideReadRoots(entryDir, jsReadRoot, own) ? own : await engineCode(request.compiler.module, import.meta.url, prewarm.signal, 'sync');
+      const early = readSetFor(entryDir, jsReadRoot, startCode);
       if (!prewarm.signal.aborted && this.readSetTurn === undefined && this.runtimeState.status === 'idle') {
         this.nextReadSet = early;
         this.ensureRuntime().catch(() => undefined);
