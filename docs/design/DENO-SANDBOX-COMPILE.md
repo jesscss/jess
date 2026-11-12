@@ -422,9 +422,30 @@ process; 3 interleaved rounds):
 The cold sandboxed CLI is ~180 ms slower than the cold unsandboxed one: Deno
 loads the compiler a second time and starts cold. The prototype forced every
 render into Deno; the routing of §2 adds the Node time to the first boundary on
-a cold first render. Starting the Deno process in the background when
-plugin-js is installed, while Node begins the compile, would overlap the two;
-that is an optimization to measure after the routing lands.
+a cold first render.
+
+**Starting Deno at CLI entry** (measured after the routing landed; not
+shipped). An experiment spawned the engine process before the CLI imported the
+compiler, with the same read set and flags, and handed it to plugin-js when the
+command and arguments matched exactly (killed otherwise; no process outlived the
+CLI). Cold CLI on a 16-core mini PC (WSL, Node v24.11.1), median of 21
+interleaved runs, ms:
+
+| fixture | dev | prestart | prestart off | lessc 4.x |
+|---|---|---|---|---|
+| `bootstrap4.less` | 936 | 958 | 953 | 461 |
+| `benchmark.less` | 476 | 528 | 485 | 299 |
+| a two-rule file | 154 | 212 | 164 | 74 |
+
+- Deno started earlier (spawn at ~88 ms instead of ~154 ms), but its warm-up
+  request waited for the read-set scan, which finished at ~218 ms, the moment
+  the compile sent its own warm-up and render. The early start bought nothing,
+  and a file with no script paid ~45–50 ms for a process it then killed.
+- Sending the warm-up as soon as Deno was ready made `bootstrap4.less` 890 ms
+  (−52 ms) and cost 3–17 ms on files with no script. Parked.
+- Either way the first render inside Deno takes ~550–600 ms (a warm compile
+  is ~145 ms on the M4 Pro above). That first render, not the spawn, is the
+  cold-start cost.
 
 ## 8. Decisions
 

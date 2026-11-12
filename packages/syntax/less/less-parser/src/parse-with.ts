@@ -6,7 +6,7 @@
  * both compiled tables executes both at load time. Each entry imports exactly
  * the one table it parses with, and this module imports none.
  */
-import { buildLineIndex, offsetToLineCol, run } from 'parseman';
+import { buildLineIndex, offsetToLineCol, run } from 'parseman/run';
 import type { Span } from 'parseman';
 import type { ISafeParseResult, MathMode, ModuleMode, TriviaMap } from '@jesscss/core';
 import { DEFAULT_LESS_MATH_MODE, rejectBareVariable, type LessParseState } from './parse-state.js';
