@@ -14,7 +14,7 @@ export const EXCESS = { name: 'excess', type: 'any', optional: true } as const;
 
 /** `name(color, amount)` on a channel's 0–100 scale, an amount only the browser knows taken to hold a percentage (Q2). */
 /* @__NO_SIDE_EFFECTS__ */
-export function defineAdjuster(name: string, form: FormCall[0], deferred: FormCall[0]): Fn {
+export function defineAdjuster(name: string, form: FormCall[0]): Fn {
   return defineForm(name, {
     params: [COLOR, AMOUNT, EXCESS],
     form: (color: ValueGroup, amount: Dimension | FunctionCall, excess?: ValueGroup): FormCall => {
@@ -23,8 +23,7 @@ export function defineAdjuster(name: string, form: FormCall[0], deferred: FormCa
         percentAmount(amount);
         return [form, color, channelAmount(amount)];
       }
-      const unit = knownUnit(amount);
-      return unit === undefined || unit === '%' ? [deferred, color, amount] : [form, color, asNumber(amount, unit)];
+      return [form, color, asNumber(amount, knownUnit(amount) ?? '%')];
     }
   });
 }

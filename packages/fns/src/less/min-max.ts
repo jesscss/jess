@@ -1,13 +1,23 @@
 import type { Dimension, ValueGroup, Value } from '@jesscss/core/value';
-import { declineOverUnknown, groupItems, isValueGroupArray, makeDimension, unify } from '@jesscss/core/value';
+import { formMath, knownUnit } from '@jesscss/core/form';
+import { declineOverUnknown, groupItems, isUnknownNumber, isValueGroupArray, makeDimension, unify } from '@jesscss/core/value';
 import { compatibleUnits, isUnitlessDimension } from '../shared/math/units.js';
 
 const isDimension = (value: ValueGroup): value is Dimension =>
   !isValueGroupArray(value) && value.type === 'Dimension';
 
-/** A number CSS's `min()` and `max()` take beside the others: one of their type, as a unitless one is not beside a length. */
+/** A number CSS's `min()` and `max()` take beside the others: one the known path compares with them. */
 export const fitsBeside = (value: ValueGroup, slots: readonly ValueGroup[]): boolean =>
-  !isDimension(value) || slots.every(other => !isDimension(other) || (compatibleUnits(value, other) && isUnitlessDimension(value) === isUnitlessDimension(other)));
+  !isDimension(value) || slots.every(other => !isDimension(other) || isUnitlessDimension(value) || isUnitlessDimension(other) || compatibleUnits(value, other));
+
+/** What `min()` and `max()` take over what only the browser knows, once each's unit is known: a number in the reference unit it is read in. */
+function inReferenceUnit(args: readonly ValueGroup[]): readonly ValueGroup[] {
+  const units = args.map(arg => knownUnit(arg));
+  const reference = units.find(unit => unit !== undefined && unit !== '');
+  return reference === undefined || !units.includes('')
+    ? args
+    : args.map((arg, index) => units[index] !== '' ? arg : isDimension(arg) ? makeDimension(arg.number, reference) : formMath('*', arg, makeDimension(1, reference)));
+}
 
 const isSlashList = (value: ValueGroup): boolean =>
   !isValueGroupArray(value) && value.type === 'List' && value.sep === '/';
@@ -65,7 +75,10 @@ export function minMax(isMin: boolean, list: ValueGroup): Value {
     throw new TypeError(`${name}() requires at least one argument`);
   }
 
-  declineOverUnknown(args);
+  if (args.some(isUnknownNumber)) {
+    const bound = inReferenceUnit(args);
+    declineOverUnknown(args, bound, bound !== args);
+  }
   const numbers: Dimension[] = [];
   for (const arg of args) {
     if (!isDimension(arg)) {

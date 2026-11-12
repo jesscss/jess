@@ -9,7 +9,7 @@ import { requireDimension } from '../shared/math/math-helper.js';
  * `end` bound's unit (byte-faithful to legacy `less/range`, which returns a
  * `Sequence`; here a raw default-spaced value group).
  */
-export const range: Fn = defineFunction('range', {
+export const range: Fn = /* @__PURE__ */ defineFunction('range', {
   params: [{ type: 'Dimension' }, { type: 'Dimension', optional: true }, { type: 'Dimension', optional: true }],
   body: (start, end, step) => {
     const stepValue = step !== undefined ? requireDimension(step).number : 1;

@@ -11,7 +11,7 @@ import { sameStringKind } from './string-result.js';
  * @param flags optional regex flags (e.g. `g`, `i`)
  * @returns the transformed string
  */
-export const replace: Fn = defineFunction('replace', {
+export const replace: Fn = /* @__PURE__ */ defineFunction('replace', {
   params: [
     { type: 'any' },
     { type: 'any' },

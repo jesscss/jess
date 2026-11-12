@@ -909,6 +909,13 @@ export const ERR = {
       ...args
     });
   },
+  exposeUnitConflict(args: Common & { meta: { name: string; fn: string; unit: string; other: string; otherUnit: string } }) {
+    return makeJessError({
+      code: 'eval/expose-unit-conflict',
+      phase: 'eval',
+      ...args
+    });
+  },
   invalidFunction(args: Common & { meta: { name: string; reason: string } }) {
     return makeJessError({
       code: 'eval/invalid-function',

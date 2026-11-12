@@ -9,7 +9,10 @@ import { unit as form } from './css-forms.generated.js';
  * define, has no CSS form.
  */
 export const unit: Fn = /* @__PURE__ */ defineForm('unit', {
-  params: [NUMBER_ARG, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
+  params: [
+    NUMBER_ARG,
+    { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }
+  ],
   form: (value: ValueGroup, to?: Keyword | Quoted | FunctionCall): FormCall => {
     if (to?.type === 'FunctionCall') {
       throw new TypeError('unit: a unit only the browser knows cannot pick a form');

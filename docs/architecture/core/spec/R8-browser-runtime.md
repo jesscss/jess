@@ -157,12 +157,11 @@ or needs JS) to decide what ships in the bundle.
   and alpha of `hsv` `hsva`; the one seam is `exportCall`. A weight is a form's while its value is one
   `color-mix()` holds, and a call with no form over what only the browser knows
   (`@less.mix(@a, @b, 150%)`) takes rung 4. The form or the recipe is chosen by the
-  default: `@less.mix(red, blue, @w)` with `@w: 25%` prints the form, and
-  `vars({ w: '150%' })` then gives a value the browser finds invalid. The same class:
-  `@a: 50%; @less.fade(#333, @a)` then `vars({ a: '.5' })` reads alpha 0.5, where a compile
-  with `@a: .5` reads 0.005; and `@less.hsv(120, @a, 75%)`, `@less.hsl(120, @a, 50%)` and
-  `@less.fadein(#333, @a)` with a `%` default, then a number at runtime, are invalid at
-  computed-value time (measured in Chrome 152). OPEN for the owner.
+  default: `@less.mix(red, blue, @w)` with `@w: 25%` prints the form. The runtime
+  then takes only the default's unit for that export (slice 3, *Units*):
+  `@a: 50%; @less.fade(#333, @a)` then `vars({ a: '.5' })` throws, where a compile
+  with `@a: .5` reads 0.005. A value in the default's unit
+  but outside the range the compile takes (`vars({ w: '150%' })`) is not checked.
   An exposed variable in parens is read as one without them.
   `rgb`, `rgba`, `hsl` and `hsla` with an exposed channel are valid CSS as written, and
   print so: `@less.rgb(@r, 0, 0)` is `rgb(var(--r, 10), 0, 0)`, and
@@ -176,19 +175,16 @@ or needs JS) to decide what ships in the bundle.
   that task's slice 5). An input of a function on rung 4 stays computed, as the
   runtime reads it: `@less.lightness(@less.darken(@brand, 10%))` is one recipe
   that runs both.
-  An exposed unit the form does not take keeps its recipe (`@r: 2px` in
-  `@less.rgb(@r, 0, 0)`). A call CSS reads as written over something only the browser
+  An exposed unit the form converts prints the conversion: `@r: 2px` in
+  `@less.rgb(@r, 0, 0)` is `rgb(calc(var(--r, 2px) / 1px), 0, 0)`. A call CSS reads as written over something only the browser
   knows prints so (`@less.rgb(@r, var(--x), 0)`, `@less.rgb(@c, 0, 0)` with
   `@c: var(--x)`).
   The runtime reads a recipe's fixed arguments and other exports' defaults as CSS
-  literals, and a quoted string may hold parens. One holding a call
-  beside an export the form does not hold (`@less.fade(var(--x), @a)` and
-  `@less.fade(hsl(120, 50%, 50%), @a)` with `@a: .25`, a number on the scale `fade` reads
-  as 0.0025) compiles, so the stylesheet's CSS stands, and `vars()` throws saying so
-  when that value is set. With `@a: 25%` the form holds it, with no recipe:
-  `rgb(from hsl(120, 50%, 50%) r g b / var(--a, 25%))`. Hex
-  cannot stand in: it loses a grey's hue and rounds an alpha. OPEN for the owner:
-  whether this should be reported at the compile.
+  literals, and a quoted string may hold parens. A colour the runtime cannot read
+  beside an export takes the form, as `fade` converts its amount:
+  `@less.fade(var(--x), @a)` with `@a: .25` is
+  `rgb(from var(--x) r g b / calc(var(--a, 0.25) / 100))`, and with `@a: 25%`
+  `rgb(from var(--x) r g b / calc(var(--a, 0.25) * 100%))` (slice 3, *Percentages*).
 - **Math outside a calculation** on an exposed variable stays `eval/invalid-operand`
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent
@@ -196,7 +192,8 @@ or needs JS) to decide what ships in the bundle.
   name by its JavaScript key, R8-11; the generated module reads it rather than
   re-deriving the key), `defaults` (the
   compile-time value of each exposed variable a recipe reads, as the runtime reads it:
-  `emitValue`, not the output modes, so compressed CSS may spell it shorter) and
+  `emitValue`, not the output modes, so compressed CSS may spell it shorter), `units`
+  (the unit of each export a CSS form reads, `''` for a number; slice 3, *Units*) and
   `derived` (each generated property's recipe). JSON, so it crosses the sandbox
   route.
 - **Cost.** A document with no exposed variable pays one check per variable read and per
@@ -205,7 +202,7 @@ or needs JS) to decide what ships in the bundle.
 
 ## Slice 3 contract (as built)
 
-- **`createRuntime({ keys, defaults, derived })`** (`packages/fns/src/runtime.ts`)
+- **`createRuntime({ keys, defaults, units, derived })`** (`packages/fns/src/runtime.ts`)
   returns `vars(values)` and `set(values, target?)`. Values are given by
   JavaScript key (`brandColor` for `@brand-color`); a key the stylesheet does
   not expose raises. A derived recipe is an
@@ -222,6 +219,76 @@ or needs JS) to decide what ships in the bundle.
 - **Values are CSS literals** (`#c00`, `8px`, `red`, lists of them); a value
   written as a function (`hsl(…)`, `calc(…)`) raises, since the runtime has no
   CSS parser. `<input type="color">` gives hex.
+- **What `--name` holds.** The exposed value as written, with its unit:
+  `@gap: 12px` is `var(--gap, 12px)`, and `vars({ gap: '1em' })` writes
+  `--gap: 1em`; a percentage is the one exception (*Percentages*). A form that needs the bare number divides by the default's unit
+  in CSS (`calc(var(--a, 5px) / 1px * 1em)` for `@less.unit(@a, em)`). Owner,
+  2026-11-11, on whether to keep the unit: *"what about values where you can pass in
+  different units??"*, then *"ok then do it"*.
+- **Units.** An export a CSS form reads takes, from JavaScript, only its default's
+  unit (a number for a number): the form divides by that unit, so another one
+  means something else there. `vars()` throws a `TypeError` naming the unit it
+  expects (`@a: 5px` read by `@less.unit(@a, em)` refuses `2em`; `@a: .5` read by
+  `@less.fade` refuses `50%`). That holds inside a larger argument too: `@a: 5px`
+  in `@less.unit((@a * 2), em)` refuses `2em`. An export whose default has no
+  known unit (`@a: var(--y)`) takes the unit the form's slot reads it in, written
+  as it is: the unit the form divides it by, `@less.fade(#c00, @a)` being
+  `calc(var(--a, var(--y)) / 100%)`, so `vars()` takes only a percentage, `50%` as
+  `--a: 50%` (owner, on a bare `var()` in a fade amount: *"Keep short form"*); a
+  number where the form does math on it undivided, `@less.spin(#c00, @a)` being
+  `calc(h + var(--a, var(--y)))`, so `10%` is refused; a number in a CSS math
+  function that reads numbers (`@less.sqrt(@a)` is `sqrt(var(--a, var(--y)))`, and
+  `pow`, `exp`, `log`, `asin`, `acos`, `atan` the same); and in one whose arguments
+  share a type, the unit of the argument that knows one (`@less.min(@a, 5px)` and
+  `@less.mod(@a, 3px)`, `rem(var(--a, var(--y)), 3px)`, take only `px`). Two slots
+  that read one such export in two units (a `fade` amount and a `spin` angle, or
+  a `sqrt`) have no value that satisfies both, and the compile fails with
+  `eval/expose-unit-conflict` naming the export, both functions and both units. The compile records the
+  unit in `units`; an export read only as written, or only by recipes, has none
+  and takes any CSS literal. A `%` export takes only a percentage, however it is
+  read or not read: a bare `50` could mean `50%` or `5000%`.
+  The rule is by unit, not by dimension: an angle export `tan` reads as a form
+  takes only its default's angle unit, though CSS would read `1rad` and `.25turn`
+  alike. Measured in Chrome 156: over `/ 1px`, `--a: 50px` is right on `height`,
+  `top`, `blur()`, `z-index` and `opacity`, and `--a: 2em` gives 32, `10vw` 102.
+- **Percentages.** A `%` export is held as its ratio: `@a: 50%` is `--a: 0.5`,
+  its fallback `0.5` too, and every read multiplies it back. A plain read is
+  `calc(var(--a, 0.5) * 100%)`; a form reads the number, `@less.unit(@a, px)` being
+  `calc(var(--a, 0.5) * 100 * 1px)` and `@less.darken(#c00, @a)`
+  `hsl(from #c00 h s clamp(0, l - var(--a, 0.5) * 100, 100))`. The compile folds
+  `(var(--a, 0.5) * 100%) / 1%` to `var(--a, 0.5) * 100` through any product of plain
+  numbers around the read, and through a sum whose every term is a percentage or
+  such a read (`(@a + 1%)` over `1%` is `var(--a, 0.5) * 100 + 1`), in a form, in a
+  form's own math and in an operation (`overPercent`,
+  `packages/core/src/ast/value-operate.ts`), so no form divides a percentage; a
+  form over a sum with a term that does not fold has none, and an export read
+  inside a larger argument is then an error. So is a sum of two units
+  (`@less.unit((@a + 1px), px)`), which the known value does not compute either. A
+  `calc()` an author wrote is CSS, not a Less calculation, and is not folded: the
+  output means the same whether Jess or the browser computes it, and the known
+  value keeps `calc(50% / 1%)`, so `calc(@a / 1%)` is
+  `calc(var(--a, 0.5) * 100% / 1%)` (both `auto` on `z-index`, Chrome 156). Whether an export is a ratio is
+  decided by its compile-time value alone, never by what reads it (`ratioOfHeld`,
+  `packages/core/src/ast/export-reads.ts`): every exposed export whose value is a
+  percentage is one, read by a form, as written, only by a recipe or not at all,
+  and `ratios` in the runtime data lists it. An export that is another one's read
+  is the same type: `@b: @a` of a `%` `@a` is a ratio too, its fallback that one's
+  ratio, `calc(var(--b, var(--a, 0.25)) * 100%)`. `vars({ a: '50%' })` writes
+  `--a: 0.5`; CSS that sets a `%` export itself writes the ratio (`--a: .3`), as
+  `--a: 30%` would read as `3000%`. An export of any other unit is held as written.
+  Owner, 2026-11-11, on a percentage a form turns into a length or a number: *"right,
+  it can be represented by a float"*, then *"but even then, if we're parsing units at
+  runtime, we could easily parse/convert % as supported for those as well"*. Why a
+  ratio, measured in Chrome 156: a percentage resolves against the property before a
+  division reads it, so `(var(--a) / 1%) * 1px` with `--a: 50%` is `0px` on `height`
+  in a box of no height, and `var(--a) / 1%` is `auto` on `z-index`. The ratio,
+  with `--a: .5` and with the fallback alone, measured in Chrome 156.0.8078.75:
+  `calc(var(--a, .5) * 100%)` is `100px` on `height` in a 200px box and `200px` on
+  `width` in a 400px box, as `50%`, and `0px` in a box of no height, as `50%`; in an
+  `hsl()` channel, legacy or modern, it is `rgb(64, 191, 64)`, as `50%`;
+  `calc(var(--a, .5) * 100 * 1px)` is `50px` on `height` in a box of no height, and
+  `calc(var(--a, .5) * 100)` `50` on `z-index`
+  (`packages/jess/test/export-runtime.test.ts` pins each printed form).
 - **The runtime writes what a compile writes**: for a value `v`, a derived
   property equals the bytes a compile with `@brand: v` writes
   (`packages/jess/test/export-runtime.test.ts`).
@@ -258,14 +325,14 @@ or needs JS) to decide what ships in the bundle.
   the stylesheet, then from the plugin. Vite resolves bare imports itself; a
   Rollup build needs `@rollup/plugin-node-resolve`.
 - **Module.** `export default` is the CSS. A stylesheet with runtime data also
-  has `export const { vars, set } = createRuntime({ defaults, derived })`, each
+  has `export const { vars, set } = createRuntime({ keys, defaults, units, derived })`, each
   recipe function imported by name from its module (`@jesscss/fns/less`).
   Imports resolve from the stylesheet, then from the plugin, which depends on
   `@jesscss/fns`.
 - **Diagnostics** go through Rollup once: errors as `this.error`, warnings as
   `this.warn`, each with its file, line and column.
 - **Browser-safe functions.** `@jesscss/fns` imports the value barrel
-  (`@jesscss/core/value`, which depends only on `big.js`) instead of the
+  (`@jesscss/core/value`, which has no dependencies) instead of the
   `@jesscss/core` root, whose `node:fs` imports break a browser build, and
   `util/mime.ts` no longer imports `node:path`. Measured 2026-11-01 with
   Vite 6: `darken` + runtime is 60 KB minified, 17.6 KB gzip.

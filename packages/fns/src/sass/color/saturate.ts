@@ -12,6 +12,6 @@ import { defineAdjuster } from './color-form.js';
  * verbatim. A single `Dimension` argument fails the kind check on the colour
  * slot, which re-emits the call as authored under `functionMode: preserve`.
  */
-export const saturate: Fn = /* @__PURE__ */ defineAdjuster('saturate', forms.saturate, forms.saturateDeferred);
+export const saturate: Fn = /* @__PURE__ */ defineAdjuster('saturate', forms.saturate);
 
 export default saturate;

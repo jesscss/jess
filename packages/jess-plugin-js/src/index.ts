@@ -943,7 +943,7 @@ export class JsPlugin extends AbstractPlugin {
     const { code, release } = await this.useReadSet(request);
     let result: RpcResult;
     try {
-      const configs = request.configs && { ...request.configs, above: await this.configsAboveReadRoots(request) };
+      const configs = request.configs && { ...request.configs, above: this.configsAboveReadRoots(request) };
       result = await this.callWorker({
         type: 'render',
         compiler: request.compiler,
@@ -970,13 +970,13 @@ export class JsPlugin extends AbstractPlugin {
    * it, which the sandbox cannot read: every folder inside a root shares that
    * part of its settings, so it is resolved once per render and sent as data.
    */
-  private async configsAboveReadRoots(request: EngineRenderRequest): Promise<Record<string, unknown>> {
+  private configsAboveReadRoots(request: EngineRenderRequest): Record<string, unknown> {
     const search = request.configsAbove;
     if (search === undefined) {
       return {};
     }
     const above: Record<string, unknown> = {};
-    for (const root of await readRootsBelowUnreadableFolders(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot)) {
+    for (const root of readRootsBelowUnreadableFolders(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot)) {
       const chain = search(root);
       if (chain !== undefined) {
         above[path.dirname(root)] = chain;
@@ -991,7 +991,7 @@ export class JsPlugin extends AbstractPlugin {
    * compiler accepts a converted file from the engine only inside them.
    */
   readRoots(request: EngineRequestBase): Promise<string[]> {
-    return readRootsOf(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot);
+    return Promise.resolve(readRootsOf(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot));
   }
 
   /**
@@ -1004,7 +1004,7 @@ export class JsPlugin extends AbstractPlugin {
    */
   private async useReadSet(request: EngineRequestBase, signal?: AbortSignal): Promise<{ code: string[]; release: () => void }> {
     const code = await engineCode(request.compiler.module, import.meta.url, signal);
-    const readSet = await readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, code);
+    const readSet = readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, code);
     const key = readSet.join('\u0000');
     for (let turn = this.readSetTurn; turn !== undefined && (turn.key !== key || turn.waiting > 0); turn = this.readSetTurn) {
       turn.waiting++;
@@ -1063,7 +1063,7 @@ export class JsPlugin extends AbstractPlugin {
        * computed next, is what held a cold start back. When the closure adds a
        * folder, `useReadSet` switches the process before any render reaches it.
        */
-      const early = await readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, engineOwnCode(request.compiler.module, import.meta.url));
+      const early = readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, engineOwnCode(request.compiler.module, import.meta.url));
       if (!prewarm.signal.aborted && this.readSetTurn === undefined && this.runtimeState.status === 'idle') {
         this.nextReadSet = early;
         this.ensureRuntime().catch(() => undefined);

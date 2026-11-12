@@ -79,12 +79,13 @@ export { CollectionOverlay, isCollection, collectionEntries, collectionEntryInde
 export { HEX, RGB, HSL, holdsNone, serializeColor, hslToRgb } from './ast/color.js';
 export { serializeValue } from './ast/serialize-value.js';
 export { decimalStep, round } from './ast/round.js';
+export { addExact, modExact, mulExact, percentToFraction, subExact } from './ast/decimal.js';
 
 // --- shared value COMPARISON primitive (§5.1) ---
 export { compareOrder } from './ast/value-guards.js';
 
 // --- the binary operators (`+ - * /`) every dialect computes with ---
-export { operate } from './ast/value-operate.js';
+export { operate, ratioOf } from './ast/value-operate.js';
 export { operated as operatedOnUnknown } from './ast/math-operand.js';
 
 // --- unit table / conversion ---
@@ -121,5 +122,6 @@ export type {
 export { TOLERANCE } from './ast/format-number.js';
 
 // --- registry seam ---
-export { createFnRegistry, declineOverUnknown, defineFunction, FunctionDeclined, isUnknownNumber, NoCssForm } from './ast/value-dispatch.js';
+export { createFnRegistry, declineOverUnknown, defineFunction, FunctionDeclined, isUnknownNumber } from './ast/value-dispatch.js';
+export { NoCssForm } from './ast/value-eval.js';
 export type { FnRegistry } from './ast/value-dispatch.js';

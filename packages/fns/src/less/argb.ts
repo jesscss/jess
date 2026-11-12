@@ -12,7 +12,7 @@ const hex2 = (v: number): string => {
  * `Math.round(alpha * 255)` then the rounded rgb channels. Carried as a verbatim
  * `node` so the color emits that exact hex.
  */
-export const argb: Fn = defineFunction('argb', {
+export const argb: Fn = /* @__PURE__ */ defineFunction('argb', {
   params: [{ type: 'Color' }],
   body: (c) => {
     const color = requireColor(c);

@@ -9,7 +9,7 @@ import { defineFunction, groupItems, isValueGroupArray, listValueAt } from '@jes
  * @returns the extracted item
  * @throws `RangeError` if `index` is out of range
  */
-const extract = defineFunction('extract', {
+const extract = /* @__PURE__ */ defineFunction('extract', {
   params: [{ type: 'any' }, { type: 'Dimension' }],
   variadic: true,
   body: (list) => {

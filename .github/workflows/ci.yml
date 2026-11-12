@@ -290,6 +290,9 @@ jobs:
       - name: Package exports
         run: pnpm run verify:package-exports
 
+      - name: CommonJS builds load in any order
+        run: pnpm run verify:cjs-smoke
+
       - name: Jess public API surface
         run: pnpm run verify:jess-api
 
