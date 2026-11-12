@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { run } from 'parseman';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { lessGrammar } from '../src/grammar.js';
-import { parse, safeParse } from '../src/index.js';
+import { createLessParseState, parse, safeParse } from '../src/index.js';
 import {
   DEFAULT_LESS_MATH_MODE,
   mathModeOf
@@ -22,7 +22,7 @@ describe('Less parse state', () => {
     expect(operationMathOutsideParens(result.value)).toBe(true);
 
     const strict = run(lessGrammar.Document, source, {
-      state: { mathMode: 'strict' },
+      state: createLessParseState(source, { mathMode: 'strict' }),
       trivia: lessGrammar.whitespace
     });
     expect(strict.ok).toBe(true);
@@ -46,6 +46,14 @@ describe('Less parse options', () => {
 
   it.each(cases)('parse() rejects %o before the run, on input with no math', (options, message) => {
     expect(() => Reflect.apply(parse, undefined, ['.a { b: c; }', options])).toThrow(new TypeError(message));
+  });
+
+  it.each(cases)('the run-state builder rejects %o for a raw run, with the same error', (options, message) => {
+    const source = '.a { b: c; }';
+    expect(() => run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace,
+      state: Reflect.apply(createLessParseState, undefined, [source, options])
+    })).toThrow(new TypeError(message));
   });
 
   it.each(cases)('safeParse() throws %o as a caller error, not a syntax diagnostic', (options, message) => {
