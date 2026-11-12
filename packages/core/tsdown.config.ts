@@ -3,9 +3,10 @@ import { defineConfig } from 'tsdown';
 /*
  * Public entries include the root, the cold-path diagnostic surface
  * (`./diagnostics`), the narrow value substrate (`./value`), the
- * evaluator a CSS-form built-in runs on (`./form`), and the
- * dependency-free AST-v2 construction surface (`./ast`). Code splitting is left
- * ON so shared runtime code is emitted once.
+ * evaluator a CSS-form built-in runs on (`./form`), the dependency-free
+ * AST-v2 construction surface (`./ast`), and source-map generation
+ * (`./sourcemap`), which the root entry leaves out. Code splitting is left ON
+ * so shared runtime code is emitted once.
  */
 export default defineConfig({
   entry: {
@@ -13,7 +14,8 @@ export default defineConfig({
     diagnostics: './src/diagnostics.ts',
     value: './src/value.ts',
     form: './src/form.ts',
-    ast: './src/ast.ts'
+    ast: './src/ast.ts',
+    sourcemap: './src/sourcemap.ts'
   },
   format: ['esm', 'cjs'],
   dts: true,
