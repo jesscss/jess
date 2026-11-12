@@ -1031,8 +1031,9 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
   }
   const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
   const args = vals.map(v => recipes.get(lone(v)) ?? emitValue(v));
+  const rest = fn?.params.find(param => param.rest === true);
   args.forEach((arg, index) => {
-    if (typeof arg !== 'string' && 'export' in arg && takesColor(fn?.params[index] ?? fn?.params.find(param => param.rest === true))) {
+    if (typeof arg !== 'string' && 'export' in arg && takesColor(fn?.params[index] ?? rest)) {
       e.s.exports.runtime?.colors.add(arg.export);
     }
   });
