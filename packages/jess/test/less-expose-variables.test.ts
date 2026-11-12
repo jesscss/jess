@@ -24,9 +24,12 @@ async function runtime(source: string): Promise<unknown> {
 }
 
 describe('Less @expose variables (A4)', () => {
+  /* Chrome 156: a percentage beside number channels is invalid in the comma syntax; `--r: 0.1` is rgb(26, 0, 0). */
   it.each([
     ['@r: 10; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(var(--r, 10), 0, 0);'],
-    ['@r: 10%; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(calc(var(--r, 0.1) * 100%), 0, 0);'],
+    ['@r: 10%; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(calc(var(--r, 0.1) * 100 * 2.55), 0, 0);'],
+    ['@r: 10%; .x { v: @less.rgba(@r, 128, 0, .5); }', 'v: rgba(calc(var(--r, 0.1) * 100 * 2.55), 128, 0, 0.5);'],
+    ['@r: 10%; .x { v: @less.rgb(@r, 0%, 0%); }', 'v: rgb(calc(var(--r, 0.1) * 100%), 0%, 0%);'],
     ['@r: 2px; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(calc(var(--r, 2px) / 1px), 0, 0);'],
     ['@h: 30; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30) 37.5% 25%);'],
     ['@h: 30deg; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30deg) 37.5% 25%);'],
