@@ -96,8 +96,8 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { js } = await built(root);
 
-      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 32,000 B measured (24,473 B minified, 10,374 B gzip), 43,976 B when every node constructor and the color-name object came with it. */
-      expect(js.length).toBeLessThan(33_500);
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 31,736 B measured (24,278 B minified, 10,289 B gzip), 43,976 B when every node constructor and the color-name object came with it. */
+      expect(js.length).toBeLessThan(33_300);
     });
   });
 

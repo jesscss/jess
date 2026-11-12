@@ -334,9 +334,10 @@ or needs JS) to decide what ships in the bundle.
   `exposedVars(spec, values, hold)` and `writeVars` in `@jesscss/patch-css`, which map
   keys, check units and write, and nothing else; a page that imports only
   `vars` drops the writer. `hold` is the least check the exports need: none when
-  no CSS form reads one, `checkUnit` when one does, `holdRatio` when one is a `%`. Otherwise they come from
-  `createRuntime({ keys, defaults, units, derived })`, which builds on the same
-  `exposedVars`/`writeVars` and imports each recipe function by name from its
+  no CSS form reads one, `checkUnit` when one does, `holdRatio` when one is a `%`. Otherwise `vars` comes from
+  `createVars({ keys, defaults, units, derived })` and `set` writes what it
+  returns, again as two exports, so a page that imports only `vars` drops the
+  writer here too. `createVars` builds on the same `exposedVars` and imports each recipe function by name from its
   module (`@jesscss/fns/less`). Imports resolve from the stylesheet, then from
   the plugin, which depends on `@jesscss/fns` and `@jesscss/patch-css`.
 - **Diagnostics** go through Rollup once: errors as `this.error`, warnings as
@@ -367,7 +368,7 @@ or needs JS) to decide what ships in the bundle.
   `@less.contrast(@brand, #111, #eee, 50%)`, is 502 to 504 KB minified, 134.3 KB gzip.
   Measured 2026-11-11 with Vite 6, after each `@jesscss/core` source module became
   its own lib file, the node-copy table came to be built on the first copy, and the
-  named colors became one string: `lightness(@brand)` is 24.5 KB minified, 10.4 KB
+  named colors became one string: `lightness(@brand)` is 24.3 KB minified, 10.3 KB
   gzip (33.7 KB and 12.5 KB before), 8.6 KB of it `big.js`, which it never calls.
   A page with no derived value is 300 B minified, 234 B gzip (1.7 KB before), as
   the module passes `exposedVars` only the check its exports need. A recipe that

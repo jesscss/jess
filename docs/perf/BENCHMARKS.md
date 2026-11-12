@@ -292,9 +292,9 @@ gzip sizes beside it. Every PR reports each goal as goal → measured.
 
 | Goal | Target | Measured 2026-11-11 |
 |---|---|---|
-| G1. setter only, no derived value | ≤ 1,500 B, ≤ 700 B gzip | **met**: 381 B, 234 B gzip (no CSS form reads the export); 906 B, 470 B gzip with the unit check (`rgb(@r, 0, 0)`). Was 2,195 B. |
-| G2. one-function recipe, `lightness(@brand)` | ≤ 15,000 B once its module code tree-shakes; ≤ 3,000 B once the compiler and the runtime share one value walker | 32,000 B, 10,374 B gzip, of which big.js is 8.6 KB; 23,417 B (7,870 B gzip) with big.js gone. Was 43,976 B. |
-| G3. ratchet | each size test's ceiling is its measured size plus about 5%, and no PR raises one | ceilings 400, 950 and 33,500 B |
+| G1. setter only, no derived value | ≤ 450 B without the unit check, ≤ 1,000 B with it (was ≤ 1,500 B, ≤ 700 B gzip, met 2026-11-11) | **met**: 381 B, 234 B gzip (no CSS form reads the export); 906 B, 470 B gzip with the unit check (`rgb(@r, 0, 0)`). Was 2,195 B. |
+| G2. one-function recipe, `lightness(@brand)` | ≤ 15,000 B once its module code tree-shakes; ≤ 3,000 B once the compiler and the runtime share one value walker | 31,736 B, 10,289 B gzip, of which big.js is 8.6 KB; 23,153 B (7,776 B gzip) with big.js gone. Was 43,976 B. |
+| G3. ratchet | each size test's ceiling is its measured size plus about 5%, and no PR raises one | ceilings 400, 950 and 33,300 B |
 | G4. setter speed | one `setProperty` per changed variable; one variable on 12,000 elements stays at 6.5 ms (table above) | `writeVars` unchanged since that run |
 
 What each step bought, for `lightness(@brand)`:
@@ -304,7 +304,8 @@ What each step bought, for `lightness(@brand)`:
 | before | 43,976 B |
 | each `@jesscss/core` source module its own lib file; each node constructor sets its own prototype; the node-copy table built on the first copy, so a page that copies no node drops every constructor | 33,233 B |
 | the 148 named colors as one `name rrggbb` string, read into a map on first lookup | 31,971 B |
-| (measured with big.js stubbed out: it is not called) | 23,417 B |
+| `set` its own export beside `vars` (`createVars`), so a page that calls only `vars` drops the writer | 31,736 B |
+| (measured with big.js stubbed out: it is not called) | 23,153 B |
 
 What is left in it, largest first: `defineFunction`'s argument binding
 (`value-dispatch`), `@jesscss/patch-css` with the number formatter, the recipe

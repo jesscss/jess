@@ -43,8 +43,9 @@ export interface Runtime {
 
 const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value) };
 
-export function createRuntime(spec: RuntimeSpec): Runtime {
-  const vars = (given: ExportValues): Record<string, string> => {
+/** {@link Runtime.vars} alone, so a page that never calls `set` bundles no writer. */
+export function createVars(spec: RuntimeSpec): Runtime['vars'] {
+  return (given: ExportValues): Record<string, string> => {
     const values: Record<string, string> = {};
     const out = exposedVars(spec, given, holdRatio, values);
     const parsed = new Map<string, ValueGroup>();
@@ -64,6 +65,10 @@ export function createRuntime(spec: RuntimeSpec): Runtime {
     }
     return out;
   };
+}
+
+export function createRuntime(spec: RuntimeSpec): Runtime {
+  const vars = createVars(spec);
   return { vars, set: (values, target) => writeVars(vars(values), target) };
 }
 
