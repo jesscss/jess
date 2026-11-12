@@ -40,7 +40,15 @@ export default defineConfig({
     if (format === 'cjs') {
       return {
         ...options,
-        exports: 'named'
+        exports: 'named',
+
+        /*
+         * Rolldown's interop runtime gets its own chunk. Left to the default it
+         * lands in `index`, so `serialize`/`form`/`sourcemap` require `index.cjs`
+         * back: a cycle that leaves root exports undefined when a subpath entry
+         * loads first. `verify:cjs-smoke` pins the load order.
+         */
+        codeSplitting: { groups: [{ name: 'runtime', test: /rolldown\/runtime/ }] }
       };
     }
     return options;

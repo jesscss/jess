@@ -332,7 +332,7 @@ or needs JS) to decide what ships in the bundle.
 - **Diagnostics** go through Rollup once: errors as `this.error`, warnings as
   `this.warn`, each with its file, line and column.
 - **Browser-safe functions.** `@jesscss/fns` imports the value barrel
-  (`@jesscss/core/value`, which depends only on `big.js`) instead of the
+  (`@jesscss/core/value`, which has no dependencies) instead of the
   `@jesscss/core` root, whose `node:fs` imports break a browser build, and
   `util/mime.ts` no longer imports `node:path`. Measured 2026-11-01 with
   Vite 6: `darken` + runtime is 60 KB minified, 17.6 KB gzip.
