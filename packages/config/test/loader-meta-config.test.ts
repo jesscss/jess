@@ -34,7 +34,9 @@ const loadIn = (cwd: string, call: string): { status: number | null; config: unk
     console.log(JSON.stringify(await ${call}));
   `;
   const run = spawnSync(process.execPath, ['--input-type=module', '-'], { input: script, encoding: 'utf8', cwd, timeout: 10_000 });
-  return { status: run.status, config: run.status === 0 ? JSON.parse(run.stdout.trim()) : undefined };
+  expect(run.signal, 'config search hung (timed out)').toBeNull();
+  expect(run.status, run.stderr).toBe(0);
+  return { status: run.status, config: JSON.parse(run.stdout.trim()) };
 };
 
 describe('a styles key in the meta-config', () => {
