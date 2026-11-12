@@ -89,13 +89,17 @@ through a value the compiler checks, not through a load error.
 compiler's engine at once: Deno spawns, imports the compiler and loads the
 entry's dialect while the render runs in Node, so a render that reaches a
 script finds it warm. A render that loads no script lets it go (the process
-is killed and the read-set work still in flight is aborted), and no later
+is killed and the code-closure walk still in flight is aborted), and no later
 render in that process starts one ahead of time. Its output never depends on
-Deno; its cold start pays the plugin import and the spawn call on the main
-thread, about 3 ms. Deno spawns on the read set its code closure can only add
-to (the read roots and the compiler's and plugin-js's own packages) while the
-closure, about a hundred package manifests, is walked; when the closure adds a
-folder, the process is switched before any render reaches it.
+Deno. Its cold start pays, on the main thread, the plugin import, the spawn
+call and the early read-root discovery: the read roots (§8.2) are found with
+synchronous file reads, which cannot be aborted, and cost one `realpath` per
+link in the governing `node_modules` (about 2 ms warm for this workspace's 76
+links, 44 ms with a cold file cache). Deno spawns on the read set its code
+closure can only add to (the read roots and the compiler's and plugin-js's own
+packages) while the closure, about a hundred package manifests, is walked with
+asynchronous reads that the let-go aborts; when the closure adds a folder, the
+process is switched before any render reaches it.
 
 **Compilers that can run there.** A compiler class runs in the engine when it
 declares its own `static moduleIdentity` (module and export), as jess's
