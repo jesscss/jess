@@ -11,11 +11,11 @@ describe('math', () => {
   });
 
   test('abs', () => {
-    expect(abs(makeDimension(-2.4, 'px'))).toMatchObject({ number: 2.4, unit: 'px' });
+    expect(call(abs, makeDimension(-2.4, 'px'))).toMatchObject({ number: 2.4, unit: 'px' });
   });
 
   test('acos', () => {
-    expect(acos(makeDimension(0.5, 'px'))).toMatchObject({ number: 1.0471975511965979, unit: 'rad' });
+    expect(call(acos, makeDimension(0.5, 'px'))).toMatchObject({ number: 1.0471975511965979, unit: 'rad' });
   });
 
   test('asin', () => {

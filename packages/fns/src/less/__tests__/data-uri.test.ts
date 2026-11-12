@@ -15,10 +15,7 @@ const contextForDataDir = (): FnCtx => ({
 });
 
 const callDataUri = async (...args: string[]): Promise<Value> => {
-  const result = await dataUri(
-    makeList(args.map(value => makeQuoted(value, '\'', false)), ','),
-    contextForDataDir()
-  );
+  const result = await dataUri(args.map(value => makeQuoted(value, '\'', false)), contextForDataDir());
   if (isValueGroupArray(result)) {
     throw new TypeError('Expected data-uri() to return one value.');
   }
@@ -53,15 +50,12 @@ describe('data-uri()', () => {
   });
 
   it('surfaces rejected file reads instead of treating them as missing files', async () => {
-    const result = dataUri(
-      makeList([makeQuoted('asset.png', '\'', false)], ','),
-      {
-        ...ctx,
-        io: {
-          readFile: () => Promise.reject(new Error('file loader timed out'))
-        }
+    const result = dataUri([makeQuoted('asset.png', '\'', false)], {
+      ...ctx,
+      io: {
+        readFile: () => Promise.reject(new Error('file loader timed out'))
       }
-    );
+    });
 
     await expect(Promise.resolve(result)).rejects.toThrow('file loader timed out');
   });

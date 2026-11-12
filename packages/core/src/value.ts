@@ -109,8 +109,6 @@ export type {
   FnIo,
   SelectorParse,
   FnRecord,
-  PartialFnRecord,
-  FunctionArgs,
   FunctionBodyArgs,
   Kind,
   LazyValue,

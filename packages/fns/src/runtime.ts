@@ -93,7 +93,7 @@ function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup): ValueGr
     return read(recipe.export);
   }
   const [fn, args] = recipe;
-  const result = fn(makeList(args.map(arg => run(arg, read)), ','), CTX);
+  const result = fn(args.map(arg => run(arg, read)), CTX);
   if (isThenable(result)) {
     throw new TypeError(`${fn.name}() computes asynchronously, which the runtime cannot do.`);
   }

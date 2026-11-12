@@ -7,7 +7,7 @@ import {
 
 import { makeColorRgb, makeDimension, makeKeyword, RGB, type Color } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
-import { invoke } from './harness.js';
+import { invoke, call, named } from './harness.js';
 
 let testColor: Color;
 
@@ -16,12 +16,12 @@ describe('color components', () => {
 
   describe('red', () => {
     it('extracts red component from color', () => {
-      const result = red(testColor);
+      const result = call(red, testColor);
       expect(result).toMatchObject({ type: 'Dimension', number: 255, unit: '' });
     });
 
     it('works with object parameters', () => {
-      const result = red({ color: testColor });
+      const result = named(red, { color: testColor });
       expect(result).toMatchObject({ type: 'Dimension', number: 255, unit: '' });
     });
 
@@ -36,12 +36,12 @@ describe('color components', () => {
 
   describe('blue', () => {
     it('extracts blue component from color', () => {
-      const result = blue(testColor);
+      const result = call(blue, testColor);
       expect(result).toMatchObject({ type: 'Dimension', number: 0, unit: '' });
     });
 
     it('works with object parameters', () => {
-      const result = blue({ color: testColor });
+      const result = named(blue, { color: testColor });
       expect(result).toMatchObject({ type: 'Dimension', number: 0, unit: '' });
     });
 
@@ -56,12 +56,12 @@ describe('color components', () => {
 
   describe('green', () => {
     it('extracts green component from color', () => {
-      const result = green(testColor);
+      const result = call(green, testColor);
       expect(result).toMatchObject({ type: 'Dimension', number: 0, unit: '' });
     });
 
     it('works with object parameters', () => {
-      const result = green({ color: testColor });
+      const result = named(green, { color: testColor });
       expect(result).toMatchObject({ type: 'Dimension', number: 0, unit: '' });
     });
 
@@ -76,12 +76,12 @@ describe('color components', () => {
 
   describe('alpha', () => {
     it('extracts alpha component from color', () => {
-      const result = alpha(testColor);
+      const result = call(alpha, testColor);
       expect(result).toMatchObject({ type: 'Dimension', number: 1, unit: '' });
     });
 
     it('works with object parameters', () => {
-      const result = alpha({ color: testColor });
+      const result = named(alpha, { color: testColor });
       expect(result).toMatchObject({ type: 'Dimension', number: 1, unit: '' });
     });
 

@@ -86,6 +86,9 @@ export type ParamSpec = ParamTypeSpec | LegacyParamKindSpec;
  */
 export interface FnCtx {
   readonly modes: EvalModes;
+
+  /** The call wrote CSS modern colour syntax (`rgb(0 128 255 / 50%)`), space and slash separated. */
+  readonly modern?: boolean;
   readonly stringify: (v: ValueGroup) => string;
   readonly io?: FnIo;
   readonly parseSelector?: SelectorParse;
@@ -134,16 +137,14 @@ export interface PositionalSpec extends BaseSpec {
 }
 
 /**
- * A VARIADIC fn (owner complexity guardrail: a flag, not a rebuilt coercion
- * layer). The dispatcher SKIPS positional bind and hands the body the whole arg
- * structural value group — the shape a list / rest fn (`length`/`extract`/
- * `min`/`max`) or an overloaded / context-sensitive Tier-B fn (`rgb`/`hsl`/
- * `replace`/`%`) needs to see the real elements, the call's separator (the
- * modern-syntax signal), and the {@link FnCtx}. `params` is documentation-only.
+ * A VARIADIC fn: the dispatcher skips the positional bind and hands the body the
+ * call's arguments and the {@link FnCtx}, for a list or rest fn
+ * (`length`/`extract`/`min`/`max`) or an overloaded or context-sensitive one
+ * (`rgb`/`hsl`/`replace`/`%`). `params` is documentation-only.
  */
 export interface VariadicSpec extends BaseSpec {
   readonly variadic: true;
-  readonly body: (value: ValueGroup, ctx: FnCtx) => MaybePromise<ValueGroup>;
+  readonly body: (args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<ValueGroup>;
 }
 
 export type FnSpec = PositionalSpec | VariadicSpec;
@@ -180,58 +181,35 @@ export type FunctionBodyArgs<P extends readonly ParamSpec[]> =
     ? [BodyParam<Head>, ...FunctionBodyArgs<Tail>]
     : [];
 
-/** Tuple accepted by direct positional invocation. */
-export type FunctionArgs<P extends readonly ParamSpec[]> =
-  P extends readonly [infer Head extends ParamSpec, ...infer Tail extends readonly ParamSpec[]]
-    ? Head['rest'] extends true
-      ? [...ParamInput<Head>[]]
-      : IsOptional<Head> extends true
-        ? [ParamInput<Head>?, ...FunctionArgs<Tail>]
-        : [ParamInput<Head>, ...FunctionArgs<Tail>]
-    : [];
-
-/** A named record may leave out an optional or defaulted slot, and a rest slot (it binds zero items). */
+/** A named record (`callNamed`) may leave out an optional or defaulted slot, and a rest slot (it binds zero items). */
 type IsRecordOptional<P extends ParamSpec> = P['rest'] extends true ? true : IsOptional<P>;
 type RequiredRecord<P extends readonly ParamSpec[]> = {
-  [Item in P[number] as IsRecordOptional<Item> extends true ? never : Item['name'] & string]: ParamInput<Item>;
+  [Item in P[number] as IsRecordOptional<Item> extends true ? never : Item['name'] & string]: ParamValue<Item>;
 };
 type OptionalRecord<P extends readonly ParamSpec[]> = {
   [Item in P[number] as IsRecordOptional<Item> extends true ? Item['name'] & string : never]?: Item['rest'] extends true
-    ? readonly ParamInput<Item>[]
-    : ParamInput<Item>;
+    ? readonly ParamValue<Item>[]
+    : ParamValue<Item>;
 };
+
+/** Named arguments for `callNamed`: each an evaluated value, which the function hands a `lazy` parameter as a thunk. */
 export type FnRecord<P extends readonly ParamSpec[] = readonly ParamSpec[]> = Readonly<
   RequiredRecord<P> & OptionalRecord<P>
 >;
 
-/** Named fields that may supplement positional arguments in a mixed direct call. */
-export type PartialFnRecord<P extends readonly ParamSpec[] = readonly ParamSpec[]> = Readonly<
-  Partial<FnRecord<P>>
->;
-
-/**
- * Canonical direct value function. It is a plain callable with its authoritative
- * metadata (`name`, `params`) attached—no legacy record/body/options aliases.
- *
- * The record and mixed overloads are a Sass/Jess embedding capability. Parser
- * evaluators always use the `(List, FnCtx)` overload; in particular, a Less
- * evaluator remains positional-only until its syntax explicitly gains records.
- */
-export type DefinedFunction<P extends readonly ParamSpec[]> = {
-  (...args: FunctionArgs<P>): MaybePromise<ValueGroup>;
-  (record: FnRecord<P>): MaybePromise<ValueGroup>;
-  (...args: [...FunctionArgs<P>, PartialFnRecord<P>]): MaybePromise<ValueGroup>;
-  (value: ValueGroup, ctx: FnCtx): MaybePromise<ValueGroup>;
-  readonly name: string;
+/** A function {@link defineFunction} built, its parameters typed. */
+export type DefinedFunction<P extends readonly ParamSpec[]> = Fn & {
   readonly params: P;
   readonly variadic?: false;
 };
 
 /**
- * The only runtime function contract. A function is its implementation; the
- * registry always calls it with the evaluator's typed argument list and context.
+ * The one calling convention: the call's arguments, evaluated, in the order the
+ * call wrote them (keyword arguments already at their parameters' positions), and
+ * the {@link FnCtx}. A JS caller holding named arguments uses `callNamed`
+ * (`@jesscss/core/call-named`).
  */
-export type Fn = ((value: ValueGroup, ctx: FnCtx) => MaybePromise<ValueGroup>) & {
+export type Fn = ((args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<ValueGroup>) & {
   /** The name is also a CSS filter function (`filter-position.ts`). */
   readonly filter?: boolean;
   readonly name: string;

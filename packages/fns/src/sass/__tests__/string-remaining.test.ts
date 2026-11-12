@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { node } from '../../__tests__/harness.js';
+import { node, call } from '../../__tests__/harness.js';
 import {
   makeDimension,
   makeKeyword,
@@ -18,18 +18,18 @@ const unquoted = (text: string): Keyword => makeKeyword(text);
 describe('Sass remaining string functions', () => {
   describe('unique-id()', () => {
     it('returns a unique unquoted string', () => {
-      const result = node(uniqueId(), 'Keyword');
+      const result = node(call(uniqueId), 'Keyword');
       expect(result.text).toMatch(/^u[0-9a-z]{6}$/);
     });
 
     it('returns different IDs on subsequent calls', () => {
-      const id1 = uniqueId();
-      const id2 = uniqueId();
+      const id1 = call(uniqueId);
+      const id2 = call(uniqueId);
       expect(node(id1, 'Keyword').text).not.toBe(node(id2, 'Keyword').text);
     });
 
     it('starts with "u"', () => {
-      const result = uniqueId();
+      const result = call(uniqueId);
       expect(node(result, 'Keyword').text).toMatch(/^u/);
     });
   });
@@ -39,7 +39,7 @@ describe('Sass remaining string functions', () => {
       const str = unquoted('Hello');
       const insert = unquoted('X');
       const index = makeDimension(3);
-      const result = strInsert(str, insert, index);
+      const result = call(strInsert, str, insert, index);
       expect(result).toMatchObject({ type: 'Keyword', text: 'HeXllo' });
     });
 
@@ -47,7 +47,7 @@ describe('Sass remaining string functions', () => {
       const str = unquoted('Hello');
       const insert = unquoted('X');
       const index = makeDimension(1);
-      const result = strInsert(str, insert, index);
+      const result = call(strInsert, str, insert, index);
       expect(result).toMatchObject({ type: 'Keyword', text: 'XHello' });
     });
 
@@ -55,7 +55,7 @@ describe('Sass remaining string functions', () => {
       const str = unquoted('Hello');
       const insert = unquoted('X');
       const index = makeDimension(6);
-      const result = strInsert(str, insert, index);
+      const result = call(strInsert, str, insert, index);
       expect(result).toMatchObject({ type: 'Keyword', text: 'HelloX' });
     });
 
@@ -64,7 +64,7 @@ describe('Sass remaining string functions', () => {
       const insert = unquoted('X');
 
       const index = makeDimension(-3);
-      const result = strInsert(str, insert, index);
+      const result = call(strInsert, str, insert, index);
 
       expect(result).toMatchObject({ type: 'Keyword', text: 'HelXlo' });
     });
@@ -73,7 +73,7 @@ describe('Sass remaining string functions', () => {
       const str = quoted('Hello');
       const insert = unquoted('X');
       const index = makeDimension(3);
-      const result = strInsert(str, insert, index);
+      const result = call(strInsert, str, insert, index);
       expect(result).toMatchObject({ type: 'Quoted', value: 'HeXllo', quote: '"' });
     });
   });
@@ -82,28 +82,28 @@ describe('Sass remaining string functions', () => {
     it('returns 1-based index when substring is found', () => {
       const str = unquoted('Hello');
       const substring = unquoted('ll');
-      const result = strIndex(str, substring);
+      const result = call(strIndex, str, substring);
       expect(node(result, 'Dimension').number).toBe(3);
     });
 
     it('returns 1 for first character', () => {
       const str = unquoted('Hello');
       const substring = unquoted('H');
-      const result = strIndex(str, substring);
+      const result = call(strIndex, str, substring);
       expect(node(result, 'Dimension').number).toBe(1);
     });
 
     it('returns Null when substring is not found', () => {
       const str = unquoted('Hello');
       const substring = unquoted('x');
-      const result = strIndex(str, substring);
+      const result = call(strIndex, str, substring);
       expect(result).toMatchObject({ type: 'Null' });
     });
 
     it('returns first occurrence index', () => {
       const str = unquoted('Hello Hello');
       const substring = unquoted('ll');
-      const result = strIndex(str, substring);
+      const result = call(strIndex, str, substring);
       expect(node(result, 'Dimension').number).toBe(3);
     });
   });
@@ -113,21 +113,21 @@ describe('Sass remaining string functions', () => {
       const str = unquoted('Hello');
       const start = makeDimension(2);
       const end = makeDimension(4);
-      const result = strSlice(str, start, end);
+      const result = call(strSlice, str, start, end);
       expect(result).toMatchObject({ type: 'Keyword', text: 'ell' });
     });
 
     it('extracts from start to end when end not provided', () => {
       const str = unquoted('Hello');
       const start = makeDimension(2);
-      const result = strSlice(str, start);
+      const result = call(strSlice, str, start);
       expect(result).toMatchObject({ type: 'Keyword', text: 'ello' });
     });
 
     it('handles negative start index', () => {
       const str = unquoted('Hello');
       const start = makeDimension(-3);
-      const result = strSlice(str, start);
+      const result = call(strSlice, str, start);
 
       expect(result).toMatchObject({ type: 'Keyword', text: 'llo' });
     });
@@ -136,7 +136,7 @@ describe('Sass remaining string functions', () => {
       const str = unquoted('Hello');
       const start = makeDimension(2);
       const end = makeDimension(-1);
-      const result = strSlice(str, start, end);
+      const result = call(strSlice, str, start, end);
 
       expect(result).toMatchObject({ type: 'Keyword', text: 'ello' });
     });
@@ -145,7 +145,7 @@ describe('Sass remaining string functions', () => {
       const str = quoted('Hello');
       const start = makeDimension(1);
       const end = makeDimension(3);
-      const result = strSlice(str, start, end);
+      const result = call(strSlice, str, start, end);
       expect(result).toMatchObject({ type: 'Quoted', value: 'Hel', quote: '"' });
     });
   });

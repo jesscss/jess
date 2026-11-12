@@ -12,8 +12,7 @@ import { defineFunction, groupItems, isValueGroupArray, listValueAt } from '@jes
 const extract = /* @__PURE__ */ defineFunction('extract', {
   params: [{ type: 'any' }, { type: 'Dimension' }],
   variadic: true,
-  body: (list) => {
-    const args = groupItems(list);
+  body: (args) => {
     if (args.length !== 2) {
       throw new TypeError('extract() requires exactly two arguments');
     }

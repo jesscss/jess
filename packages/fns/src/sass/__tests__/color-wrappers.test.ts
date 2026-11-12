@@ -37,7 +37,7 @@ const ctx: FnCtx = {
 };
 
 function call(fn: Fn, ...args: Value[]): Value {
-  const result = fn(makeList(args as readonly ValueGroup[], ','), ctx);
+  const result = fn(args, ctx);
   if (result instanceof Promise || isValueGroupArray(result)) {
     throw new TypeError('Expected a single value result.');
   }
