@@ -243,10 +243,14 @@ or needs JS) to decide what ships in the bundle.
   `calc(var(--a, var(--y)) / 100%)`, so `vars()` takes only a percentage, `50%` as
   `--a: 50%` (owner, on a bare `var()` in a fade amount: *"Keep short form"*); a
   number where the form does math on it undivided, `@less.spin(#c00, @a)` being
-  `calc(h + var(--a, var(--y)))`, so `10%` is refused. Two slots that read one such
-  export in two units (a `fade` amount and a `spin` angle) have no value that
-  satisfies both, and the compile fails with `eval/expose-not-a-value` naming the
-  export and both functions. The compile records the
+  `calc(h + var(--a, var(--y)))`, so `10%` is refused; a number in a CSS math
+  function that reads numbers (`@less.sqrt(@a)` is `sqrt(var(--a, var(--y)))`, and
+  `pow`, `exp`, `log`, `asin`, `acos`, `atan` the same); and in one whose arguments
+  share a type, the unit of the argument that knows one (`@less.min(@a, 5px)` and
+  `@less.mod(@a, 3px)`, `rem(var(--a, var(--y)), 3px)`, take only `px`). Two slots
+  that read one such export in two units (a `fade` amount and a `spin` angle, or
+  a `sqrt`) have no value that satisfies both, and the compile fails with
+  `eval/expose-unit-conflict` naming the export, both functions and both units. The compile records the
   unit in `units`; an export read only as written, or only by recipes, has none
   and takes any CSS literal. A `%` export takes only a percentage, however it is
   read or not read: a bare `50` could mean `50%` or `5000%`.

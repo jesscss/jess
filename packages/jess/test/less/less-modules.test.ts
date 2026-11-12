@@ -97,8 +97,8 @@ describe('Less @use script and data modules', () => {
   });
 
   /*
-   * NaN has no CSS spelling, and the script runtime's JSON transport turns it
-   * into `null`, which silently dropped the declaration.
+   * NaN has no CSS spelling. Unchecked, it reached the compiler as `null`,
+   * which silently dropped the declaration.
    */
   it.each(['NaN', 'Infinity'])('reports a function that returns %s', async (result) => {
     const files: SourceFile[] = [['fns.js', `export const bad = () => ${result};\n`]];

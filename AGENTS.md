@@ -163,9 +163,12 @@ its reason attached, because a prohibition without one gets optimised away.
 - **Build in dependency order, `parser-shared` FIRST**, before trusting any test
   number. All four parsers depend on it; build them first and they link against a
   stale recognition library and **the suite goes green** while masking real
-  failures. Order: `parser-shared` → parsers → `awaitable-pipe` → `core` →
-  `fns` → `styles-config` → `style-resolver` → plugins → `jess`.
-  `pnpm run build:release` does the whole thing.
+  failures. `pnpm run build:release` builds every package in dependency order
+  (`parser-shared` and `core` before `css-parser`, `css-parser` before the
+  Less, SCSS and .jess parsers). To build one package with what it depends on,
+  use `pnpm --filter <package>... build`: a package's own `build` script builds
+  only that package. A bare `pnpm --filter <parser> build` no longer rebuilds
+  `parser-shared`; it links against whatever `parser-shared/lib` is on disk.
 - **The config package is named `styles-config`, not `@jesscss/config`.** A
   `pnpm --filter` on the wrong name matches nothing — **and a filter that matches
   nothing exits 0.** Check what a filter actually selected before trusting a

@@ -11,7 +11,6 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { decodeBridgeResult, decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
 import { trustedFnsRealPath } from './trust.js';
 import {
   encodeEngineValue,
@@ -31,12 +30,12 @@ import {
 /** The script runtime (`plugin-runtime.ts`), loaded only inside the compile engine. */
 type InProcessRuntime = {
   loadModule(modulePath: string): Promise<Array<{ name: string; kind: 'function' | 'value'; value?: unknown }>>;
-  invokeExport(modulePath: string, exportName: string, args: unknown[]): Promise<unknown>;
+  invokeExport(modulePath: string, exportName: string, args: readonly unknown[]): Promise<unknown>;
   loadLessPlugin(modulePath: string, options: string | null): Promise<string[]>;
   invokeLessPluginFunction(
     modulePath: string,
     functionName: string,
-    args: unknown[],
+    args: readonly unknown[],
     options: string | null,
     facts: {
       variable(name: string): { value: unknown; important?: boolean } | null;
@@ -831,16 +830,14 @@ export class JsPlugin extends AbstractPlugin {
     if (!hit) {
       return null;
     }
-    return { value: encodeBridgeValue(hit.value), important: hit.important === true };
+    return { value: hit.value, important: hit.important === true };
   }
 
   private resolveCallFact(
     need: { name: string; args: unknown[] },
     capabilities: PluginCallCapabilities
   ): unknown {
-    const decoded = need.args.map(decodeBridgeValue);
-    const answer = capabilities.callFunction?.(need.name, decoded);
-    return answer === undefined ? null : encodeBridgeValue(answer);
+    return capabilities.callFunction?.(need.name, need.args) ?? null;
   }
 
   /** Context-facing executable-plugin capability used by the direct AST path. */
@@ -872,7 +869,7 @@ export class JsPlugin extends AbstractPlugin {
       moduleObject[item.name] = item.kind === 'function'
         ? async (...args: unknown[]) => {
           try {
-            return decodeBridgeValue(await runtime.invokeExport(modulePath, item.name, encodeBridgeArgs(args)));
+            return await runtime.invokeExport(modulePath, item.name, args);
           } catch (err) {
             const fields = thrownFields(err);
             throw lessPluginApiRefusal(path.basename(modulePath), fields) ?? new Error(fields.error);
@@ -904,7 +901,7 @@ export class JsPlugin extends AbstractPlugin {
           outcome = await runtime.invokeLessPluginFunction(
             modulePath,
             functionName,
-            encodeBridgeArgs([...normalizePluginCallArgs(args)]),
+            normalizePluginCallArgs(args),
             options,
             {
               variable: name => this.resolveVariableFact(name, capabilities),
@@ -923,7 +920,7 @@ export class JsPlugin extends AbstractPlugin {
         if (outcome.important) {
           capabilities.markImportant?.();
         }
-        return decodeBridgeResult(outcome.value);
+        return outcome.value;
       };
     }
     return { functions };
@@ -946,7 +943,7 @@ export class JsPlugin extends AbstractPlugin {
     const { code, release } = await this.useReadSet(request);
     let result: RpcResult;
     try {
-      const configs = request.configs && { ...request.configs, above: await this.configsAboveReadRoots(request) };
+      const configs = request.configs && { ...request.configs, above: this.configsAboveReadRoots(request) };
       result = await this.callWorker({
         type: 'render',
         compiler: request.compiler,
@@ -973,13 +970,13 @@ export class JsPlugin extends AbstractPlugin {
    * it, which the sandbox cannot read: every folder inside a root shares that
    * part of its settings, so it is resolved once per render and sent as data.
    */
-  private async configsAboveReadRoots(request: EngineRenderRequest): Promise<Record<string, unknown>> {
+  private configsAboveReadRoots(request: EngineRenderRequest): Record<string, unknown> {
     const search = request.configsAbove;
     if (search === undefined) {
       return {};
     }
     const above: Record<string, unknown> = {};
-    for (const root of await readRootsBelowUnreadableFolders(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot)) {
+    for (const root of readRootsBelowUnreadableFolders(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot)) {
       const chain = search(root);
       if (chain !== undefined) {
         above[path.dirname(root)] = chain;
@@ -994,7 +991,7 @@ export class JsPlugin extends AbstractPlugin {
    * compiler accepts a converted file from the engine only inside them.
    */
   readRoots(request: EngineRequestBase): Promise<string[]> {
-    return readRootsOf(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot);
+    return Promise.resolve(readRootsOf(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot));
   }
 
   /**
@@ -1007,7 +1004,7 @@ export class JsPlugin extends AbstractPlugin {
    */
   private async useReadSet(request: EngineRequestBase, signal?: AbortSignal): Promise<{ code: string[]; release: () => void }> {
     const code = await engineCode(request.compiler.module, import.meta.url, signal);
-    const readSet = await readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, code);
+    const readSet = readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, code);
     const key = readSet.join('\u0000');
     for (let turn = this.readSetTurn; turn !== undefined && (turn.key !== key || turn.waiting > 0); turn = this.readSetTurn) {
       turn.waiting++;
@@ -1066,7 +1063,7 @@ export class JsPlugin extends AbstractPlugin {
        * computed next, is what held a cold start back. When the closure adds a
        * folder, `useReadSet` switches the process before any render reaches it.
        */
-      const early = await readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, engineOwnCode(request.compiler.module, import.meta.url));
+      const early = readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, engineOwnCode(request.compiler.module, import.meta.url));
       if (!prewarm.signal.aborted && this.readSetTurn === undefined && this.runtimeState.status === 'idle') {
         this.nextReadSet = early;
         this.ensureRuntime().catch(() => undefined);

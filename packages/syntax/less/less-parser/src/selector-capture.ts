@@ -5,9 +5,9 @@
  * recovered-error channel (P45).
  */
 import type { Span } from 'parseman';
-import { adoptForgivenSelectorItems, any, authoredSource, selectorCaptureOf, simpleSelector } from '@jesscss/core/ast';
+import { adoptForgivenSelectorItems, any, authoredSource, isSelectorList, selectorCaptureOf, simpleSelector } from '@jesscss/core/ast';
 import type { Any, SelectorCapture, SelectorCaptureProblem, SimpleToken } from '@jesscss/core/ast';
-import { isLessSelectorList, requireToken, staticSelectorPseudoFrom } from './grammar-helpers.js';
+import { requireToken, staticSelectorPseudoFrom } from './grammar-helpers.js';
 import { LessSelectorCaptureArgumentError } from './parse-error.js';
 import { reportRecovered, selectorCaptureOfState } from './parse-state.js';
 
@@ -57,7 +57,7 @@ function recovered(written: string, at: SelectorCaptureProblem, state: unknown):
 export function capturedPseudoFrom(children: readonly unknown[], span: Span, state: unknown): SimpleToken {
   const found = selectorCaptureOf(children, span);
   if ('type' in found) {
-    return staticSelectorPseudoFrom(requireToken(children[0]).value.slice(0, -1), children.find(isLessSelectorList));
+    return staticSelectorPseudoFrom(requireToken(children[0]).value.slice(0, -1), children.find(isSelectorList));
   }
   const capture = selectorCaptureOfState(state);
   if (capture !== undefined && problemBefore(capture.problem, found) === undefined) {

@@ -61,46 +61,46 @@
     },
     "less": {
       "source": "packages/syntax/less/less-parser/src/grammar.ts",
-      "sourceBytes": 279059,
+      "sourceBytes": 276604,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 601035,
-          "ratio": 2.15,
-          "assemblyFunctions": 70
+          "bytes": 590484,
+          "ratio": 2.13,
+          "assemblyFunctions": 71
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 468737,
-          "ratio": 1.68,
+          "bytes": 460561,
+          "ratio": 1.67,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 471418,
-          "ratio": 1.69,
+          "bytes": 463073,
+          "ratio": 1.67,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 469067,
-          "ratio": 1.68,
+          "bytes": 460891,
+          "ratio": 1.67,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 284961,
-          "ratio": 1.02,
+          "bytes": 276801,
+          "ratio": 1,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 285047,
-          "ratio": 1.02,
+          "bytes": 276887,
+          "ratio": 1,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 285047,
-          "ratio": 1.02,
+          "bytes": 276887,
+          "ratio": 1,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 285053,
-          "ratio": 1.02,
+          "bytes": 276893,
+          "ratio": 1,
           "assemblyFunctions": null
         }
       }
@@ -153,7 +153,7 @@
     },
     "jess": {
       "source": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "sourceBytes": 227833,
+      "sourceBytes": 227835,
       "tablesOnly": "Built with assemblyBudget 0 (packages/syntax/jess/jess-parser/tsdown.config.ts): under selective assembly every budget measured parses at the same speed and each step up costs import time. https://github.com/jesscss/jess/issues/508",
       "artifacts": {
         "lib/grammar/ast.js": {

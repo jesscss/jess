@@ -196,10 +196,7 @@ function installStage(stageRoot) {
 }
 
 function buildStage(stageRoot) {
-  runPnpm(stageRoot, ['--filter', '@jesscss/awaitable-pipe', 'build']);
-  runPnpm(stageRoot, ['--filter', '@jesscss/core', 'build']);
-  runPnpm(stageRoot, ['--filter', '@jesscss/css-parser', 'build']);
-  runPnpm(stageRoot, ['--filter', '@jesscss/less-parser', 'build']);
+  runPnpm(stageRoot, ['--filter', '@jesscss/less-parser...', 'build']);
 }
 
 function buildArtifact(stageRoot, commit, input) {
