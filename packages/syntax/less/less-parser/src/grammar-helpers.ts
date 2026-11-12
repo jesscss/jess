@@ -913,6 +913,7 @@ function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
   return { fact: 'complexTail', combinator: children.length === 1 ? ' ' : requireCombinator(children[0]), term };
 }
 
+/** The selector term the production puts at this child. */
 function requireSelectorTerm(value: unknown): SelectorTerm {
   if (!isSelectorTerm(value)) {
     throw new TypeError('Less grammar produced a non-selector child.');
@@ -920,6 +921,7 @@ function requireSelectorTerm(value: unknown): SelectorTerm {
   return value;
 }
 
+/** The selector branch the production puts at this child. */
 function requireSelectorBranch(value: unknown): SelectorBranch {
   if (!isSelectorBranch(value)) {
     throw new TypeError('Less grammar produced a non-selector-branch child.');
@@ -928,12 +930,8 @@ function requireSelectorBranch(value: unknown): SelectorBranch {
 }
 
 /**
- * A complex selector's children from `children[from]`, as one branch: compound
- * terms, the combinator written between two of them (descendant when none is),
- * and the `{ combinator, term }` tails of an inline-extend subject. The
- * combinator token is folded inline as the CSS base does, with no `ComplexTail`
- * wrapper node. A lone term is the branch itself, so a one-compound selector
- * builds nothing more.
+ * One branch from `children[from]`: terms, the combinator between two (descendant
+ * when unwritten) and inline-extend tails. A lone term is the branch itself.
  */
 function selectorBranchFrom(children: readonly unknown[], from: number): SelectorBranch {
   const head = requireSelectorTerm(children[from]);
@@ -1471,10 +1469,7 @@ const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 const simpleFrom = (child: unknown): SimpleToken =>
   isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
 
-/**
- * Every compound selector's reducer: its simples (each typed, or a token that
- * spells one). A lone simple is the term itself; two or more are one compound.
- */
+/** Every compound selector's reducer: a lone simple is the term itself. */
 function compoundFromChildren(children: readonly unknown[]): SelectorTerm {
   const first = simpleFrom(children[0]);
   const second = children[1];
@@ -1535,6 +1530,7 @@ function isExtendTargetsFact(value: unknown): value is ExtendTargetsFact {
   return typeof value === 'object' && value !== null && 'fact' in value && value.fact === 'extendTargets';
 }
 
+/** The `:extend(…)` targets the production puts at this child. */
 function requireExtendTargetsFact(value: unknown): ExtendTargetsFact {
   if (!isExtendTargetsFact(value)) {
     throw new TypeError('Less extend reduction lost its targets.');
@@ -1552,14 +1548,9 @@ const NO_EXTENSIONS: readonly ExtendInstruction[] = [];
 const NO_EXTEND_TARGETS: readonly ExtendTargetFact[] = [];
 
 /**
- * A `{ … }` body, in one pass from `children[from]`: its statements are pushed on
- * to `rules`, and its body-form `&:extend()`s are returned (the shared empty list
- * when it has none). The ruleset, mixin and at-rule factories copy `rules`;
- * `anonymousMixin` and `forNode` still keep it (V8 invariant 12 debt).
- *
- * Any other child is skipped, except under `strict` (detached-ruleset and
- * `each()` bodies), where a child that is not `;` or `}` throws as it did
- * before these bodies shared this pass.
+ * A `{ … }` body from `children[from]`, in one pass: statements go on `rules`;
+ * body `&:extend()`s are returned. Other children are skipped, but under `strict`
+ * (detached-ruleset and `each()` bodies) any but `;`/`}` throws, as before.
  */
 function readBody(children: readonly unknown[], from: number, rules: Statement[], strict = false): readonly ExtendInstruction[] {
   let extensions: ExtendInstruction[] | undefined;
@@ -1623,6 +1614,7 @@ function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
   return typeof value === 'object' && value !== null && 'fact' in value && value.fact === 'selectorBranch';
 }
 
+/** The selector branch, with its extends, the production puts at this child. */
 function requireSelectorBranchFact(value: unknown): SelectorBranchFact {
   if (!isSelectorBranchFact(value)) {
     throw new TypeError('Less selector list lost its selector branch.');

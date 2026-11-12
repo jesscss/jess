@@ -5699,7 +5699,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'ComplexSelector',
     sequence(
       InlineExtendSubjectCompound,
-      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), InlineExtendSubjectComplexTail))
+      many(sequence(not(extendAllFlagAhead), InlineExtendSubjectComplexTail))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchFrom(children, 0), span)
   );
