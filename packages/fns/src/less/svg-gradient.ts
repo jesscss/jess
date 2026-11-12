@@ -6,7 +6,7 @@ import type { Color, Fn, ValueGroup, Value } from '@jesscss/core/value';
  * structural value groups (`Color [Dimension]`), never recovered from rendered
  * bytes. A malformed call throws so the shared call boundary owns preservation.
  */
-const svgGradient: Fn = defineFunction('svg-gradient', {
+const svgGradient: Fn = /* @__PURE__ */ defineFunction('svg-gradient', {
   params: [{ type: 'any' }],
   variadic: true,
   body: (value, ctx): Value => {

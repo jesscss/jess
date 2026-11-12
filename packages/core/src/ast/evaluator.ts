@@ -119,7 +119,7 @@ function recoverCallFailure(
     return fallbackCall(name, args, modes, call);
   }
   const bound = error.bound;
-  const respelled = bound !== undefined && (call.written !== undefined || bound.length !== groupItems(args).length);
+  const respelled = bound !== undefined && (error.respelled || call.written !== undefined || bound.length !== groupItems(args).length);
   const written = fallbackCall(name.slice(name.lastIndexOf('.') + 1), respelled ? makeList(bound, ',') : args, modes, respelled ? { rejectEmpty: call.rejectEmpty } : call);
 
   /* Of no known type, it is still CSS, which a call written out because it failed is not (`isUnwrittenBuiltin`). */

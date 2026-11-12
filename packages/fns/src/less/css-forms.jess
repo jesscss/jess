@@ -8,14 +8,6 @@ $desaturate: @($color, $amount) > { result: hsl(from $color h clamp(0, s - $amou
 $desaturate-relative: @($color, $amount) > { result: hsl(from $color h clamp(0, s - s * $amount / 100, 100) l); }
 $spin: @($color, $amount) > { result: hsl(from $color calc(h + $amount) s l); }
 $greyscale: @($color) > { result: hsl(from $color h 0 l); }
-$darken-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l - $amount / 1%, 100)); }
-$darken-relative-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l - l * $amount / 1% / 100, 100)); }
-$lighten-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l + $amount / 1%, 100)); }
-$lighten-relative-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l + l * $amount / 1% / 100, 100)); }
-$saturate-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s + $amount / 1%, 100) l); }
-$saturate-relative-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s + s * $amount / 1% / 100, 100) l); }
-$desaturate-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s - $amount / 1%, 100) l); }
-$desaturate-relative-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s - s * $amount / 1% / 100, 100) l); }
 $percentage: @($value) > { result: calc($value * 100%); }
 $unit: @($value, $one) > { result: calc($value * $one); }
 $convert: @($value) > { result: calc($value); }
@@ -30,10 +22,6 @@ $fadein: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha + $am
 $fadein-relative: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha + alpha * $amount)); }
 $fadeout: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - $amount)); }
 $fadeout-relative: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - alpha * $amount)); }
-$fadein-deferred: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha + $amount / 100%)); }
-$fadein-relative-deferred: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha + alpha * $amount / 100%)); }
-$fadeout-deferred: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - $amount / 100%)); }
-$fadeout-relative-deferred: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - alpha * $amount / 100%)); }
 $hsv: @($h, $w, $b) > { result: hwb($h $w $b); }
 $hsva: @($h, $w, $b, $a) > { result: hwb($h $w $b / $a); }
 $hsv-white: @($s, $v) > { result: calc((1 - $s / 100%) * $v); }

@@ -7,5 +7,5 @@ import { hsva as form } from './css-forms.generated.js';
 export const hsva: Fn = /* @__PURE__ */ defineForm('hsva', {
   params: [HUE_ARG, PERCENT_ARG, PERCENT_ARG, ALPHA_ARG],
   format: RGB,
-  form: (h: ValueGroup, s: Dimension | FunctionCall, v: Dimension | FunctionCall, a: Dimension | FunctionCall): FormCall => [form, hueOf(h), ...whiteBlack('hsva', s, v), alphaOf('hsva', a)]
+  form: (h: ValueGroup, s: Dimension | FunctionCall, v: Dimension | FunctionCall, a: Dimension | FunctionCall): FormCall => [form, hueOf(h), ...whiteBlack(s, v), alphaOf(a)]
 });

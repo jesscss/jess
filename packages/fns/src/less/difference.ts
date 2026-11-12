@@ -6,7 +6,7 @@ import { colorBlend, requireColor } from './color-helper.js';
 export const differenceBase = (cb: number, cs: number): number => Math.abs(cb - cs);
 
 /** `difference(color1, color2)` — Photoshop difference blend. Byte-faithful to `less/difference`. */
-export const difference: Fn = defineFunction('difference', {
+export const difference: Fn = /* @__PURE__ */ defineFunction('difference', {
   params: [{ type: 'Color' }, { type: 'Color' }],
   body: (c1, c2) => colorBlend(differenceBase, requireColor(c1), requireColor(c2))
 });

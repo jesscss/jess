@@ -46,14 +46,14 @@ function formatKernel(list: ValueGroup, ctx: FnCtx): Value {
  * @returns the formatted string
  */
 /** The registered whole-word spelling used by the AST-v2 evaluator. */
-export const format: Fn = defineFunction('string-format', {
+export const format: Fn = /* @__PURE__ */ defineFunction('string-format', {
   params: FORMAT_PARAMS,
   variadic: true,
   body: formatKernel
 });
 
 /** The `%()` spelling retained by the public Less callable export. */
-export const formatPercent: Fn = defineFunction('%', {
+export const formatPercent: Fn = /* @__PURE__ */ defineFunction('%', {
   params: FORMAT_PARAMS,
   variadic: true,
   body: formatKernel

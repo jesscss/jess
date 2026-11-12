@@ -43,21 +43,9 @@ import type {
  */
 export class FunctionDeclined extends Error {
   /** `bound`: the arguments as the callable bound them, when they are what the CSS function of its name takes. */
-  constructor(readonly bound?: readonly ValueGroup[]) {
+  constructor(readonly bound?: readonly ValueGroup[], readonly respelled = false) {
     super('The function declined the call.');
     this.name = 'FunctionDeclined';
-  }
-}
-
-/**
- * No CSS form holds this call over what only the browser knows. It fails as any
- * call does, except that one reading an exposed variable runs on the runtime
- * instead (docs/design/CSS-NATIVE-BUILTINS.md §3.4a, rung 4).
- */
-export class NoCssForm extends TypeError {
-  constructor(message: string) {
-    super(message);
-    this.name = 'NoCssForm';
   }
 }
 
@@ -282,9 +270,9 @@ const isNumberOrAbsent = (value: unknown): boolean =>
  * the name after any namespace (`math.sqrt(var(--x))` is `sqrt(var(--x))`). An
  * argument that is no number fails as it does beside a known one.
  */
-export function declineOverUnknown(args: readonly unknown[], bound?: readonly ValueGroup[]): void {
+export function declineOverUnknown(args: readonly unknown[], bound?: readonly ValueGroup[], respelled = false): void {
   if (args.some(isUnknownNumber) && args.every(isNumberOrAbsent)) {
-    throw new FunctionDeclined(bound);
+    throw new FunctionDeclined(bound, respelled);
   }
 }
 
