@@ -105,7 +105,7 @@
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
-    "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
+    "build": "pnpm compile",
     "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "test": "vitest --run --passWithNoTests",
