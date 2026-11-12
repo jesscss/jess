@@ -103,3 +103,71 @@ describe('Less selector positions', () => {
     expect(first(parse(source), type).body).toEqual(FIRST);
   });
 });
+
+/** The first at-rule block, depth first. */
+function atRule(node: unknown): { prelude: unknown; rules: unknown[] } {
+  const seen: unknown[] = [node];
+  for (let i = 0; i < seen.length; i++) {
+    const value = seen[i];
+    if (typeof value !== 'object' || value === null) {
+      continue;
+    }
+    if ('type' in value && value.type === 'AtRuleBlock' && 'prelude' in value && 'rules' in value && Array.isArray(value.rules)) {
+      return { prelude: value.prelude, rules: value.rules };
+    }
+    for (const child of Object.values(value)) {
+      seen.push(child);
+    }
+  }
+  throw new Error('no AtRuleBlock');
+}
+
+/** Every typed node reachable from `roots`, failing on one reached twice. */
+function expectEachNodeOnce(roots: unknown[]): void {
+  const nodes = new Set<object>();
+  const visit = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) {
+      return;
+    }
+    if ('type' in value) {
+      expect(nodes.has(value), `${String(value.type)} appears twice`).toBe(false);
+      nodes.add(value);
+    }
+    for (const child of Object.values(value)) {
+      visit(child);
+    }
+  };
+  roots.forEach(visit);
+}
+
+describe('Less at-rule preludes', () => {
+  /*
+   * A call is both a statement and a prelude component, so a prelude-less
+   * at-rule's first body call must stay in its body, and not also be read as the
+   * prelude.
+   */
+  it.each([
+    ['an anonymous @layer', '@rules: { a: b }; @layer { @rules(); }', ['Reference']],
+    ['@page', '@page { @rules(); }', ['Reference']],
+    ['@font-face', '@font-face { font-family: x; @rules(); }', ['font-family', 'Reference']],
+    ['@scope', '@scope { @r(); }', ['Reference']],
+    ['@starting-style', '@starting-style { @r(); }', ['Reference']],
+    ['a function call body', '@font-face { foo(); }', ['FunctionCall']],
+    ['an unknown at-rule', '@unknown { a: b; foo(); }', ['a', 'FunctionCall']]
+  ])('reads no prelude for %s and keeps its body', (_label, source, body) => {
+    const block = atRule(parse(source));
+    expect(block.prelude).toBeNull();
+    expect(block.rules.map(describeRule)).toEqual(body);
+    expectEachNodeOnce([block.prelude, block.rules]);
+  });
+
+  it.each([
+    ['@page', '@page :first { @rules(); }'],
+    ['@layer', '@layer base { @r(); }']
+  ])('keeps a written prelude for %s apart from its body', (_label, source) => {
+    const block = atRule(parse(source));
+    expect(block.prelude).not.toBeNull();
+    expect(block.rules.map(describeRule)).toEqual(['Reference']);
+    expectEachNodeOnce([block.prelude, block.rules]);
+  });
+});

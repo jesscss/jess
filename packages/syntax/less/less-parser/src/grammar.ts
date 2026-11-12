@@ -4788,11 +4788,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       )
     ),
     (children, _fields, span, rawChildren) => {
-      const prelude = children.find(isValueNode) ?? null;
-      // A FunctionCall is a legal statement *and* a legal generic prelude
-      // component; the prelude comes before `{`, so the body read starts after it.
+      // The name, the prelude when written, `{`, then the body. A call is also a
+      // legal prelude, so only the child before `{` can be one.
+      const brace = isLessTerminalText(children[1], '{') ? 1 : 2;
+      const head = children[1];
+      const prelude = brace === 2 && isValueNode(head) ? head : null;
       const rules: Statement[] = [];
-      const extensions = readBody(children, children.findIndex(child => isLessTerminalText(child, '{')) + 1, rules);
+      const extensions = readBody(children, brace + 1, rules);
       return withSourceSpan(
         withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, rules, extensions), rawChildren),
         span
