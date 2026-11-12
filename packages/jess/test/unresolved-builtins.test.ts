@@ -17,7 +17,7 @@ const scss = (source: string, mode?: Mode) => compile(source, '.scss', mode);
 
 describe('unresolvedBuiltins: a namespaced built-in that did not compute', () => {
   it.each([
-    ['.x { v: @less.fade(#333, var(--a)); }', 'rgb(from #333 r g b / var(--a))', 2, 9],
+    ['.x { v: @less.fade(#333, var(--a)); }', 'rgb(from #333 r g b / calc(var(--a) / 100%))', 2, 9],
     ['.x { v: @less.rgb(var(--r), 0, 0); }', 'rgb(var(--r), 0, 0)', 2, 9]
   ])('warns at %s, naming what it printed', async (source, printed, line, column) => {
     const { result, reports } = await less(source, 'warn');
@@ -77,11 +77,11 @@ describe('unresolvedBuiltins: a namespaced built-in that did not compute', () =>
     });
 
     it.each([
-      ['a form', '25%', 'rgb(from #333 r g b / var(--a, 25%))'],
-      ['a recipe', '.5', 'var(--a-fade, rgba(51, 51, 51, 0.005))'],
-      ['a value only the browser knows', 'var(--y)', 'rgb(from #333 r g b / var(--a, var(--y)))']
-    ])('an exposed variable, keeping %s', async (_name, value, printed) => {
-      const { result, reports } = await less(`.x { v: @less.fade(#333, @a); }\n@expose a;\n@a: ${value};`, 'error');
+      ['a form', '@less.fade(#333, @a)', '25%', 'rgb(from #333 r g b / calc(var(--a, 0.25) * 100%))'],
+      ['a recipe', '@less.unit(5px, @a)', 'em', 'var(--a-unit, 5em)'],
+      ['a value only the browser knows', '@less.fade(#333, @a)', 'var(--y)', 'rgb(from #333 r g b / calc(var(--a, var(--y)) / 100%))']
+    ])('an exposed variable, keeping %s', async (_name, call, value, printed) => {
+      const { result, reports } = await less(`.x { v: ${call}; }\n@expose a;\n@a: ${value};`, 'error');
       expect(reports).toEqual([]);
       expect(result.css).toContain(`v: ${printed};`);
     });
@@ -97,7 +97,7 @@ describe('unresolvedBuiltins: a namespaced built-in that did not compute', () =>
     const result = await new Compiler({ compile: { unresolvedBuiltins: 'error' } })
       .renderToResult({ source: '@-use "#less" as *;\n.x { v: $fade(#333, var(--a)); }', filePath: 'entry.jess', extension: '.jess', language: 'jess' });
     expect(result.errors).toEqual([]);
-    expect(result.css).toContain('v: rgb(from #333 r g b / var(--a));');
+    expect(result.css).toContain('v: rgb(from #333 r g b / calc(var(--a) / 100%));');
   });
 
   it.each([
@@ -190,7 +190,7 @@ describe('unresolvedBuiltins: a namespaced built-in that did not compute', () =>
   it('counts a real unknown beside an exposed variable, naming the output', async () => {
     const { reports } = await less('.x { v: @less.fade(var(--x), @a); }\n@expose a;\n@a: 25%;', 'warn');
     expect(reports).toHaveLength(1);
-    expect(reports[0]!.reason).toContain('It printed rgb(from var(--x) r g b / var(--a, 25%)),');
+    expect(reports[0]!.reason).toContain('It printed rgb(from var(--x) r g b / calc(var(--a, 0.25) * 100%)),');
   });
 
   describe('reports once per written call', () => {

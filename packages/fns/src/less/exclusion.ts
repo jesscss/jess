@@ -6,7 +6,7 @@ import { colorBlend, requireColor } from './color-helper.js';
 export const exclusionBase = (cb: number, cs: number): number => cb + cs - 2 * cb * cs;
 
 /** `exclusion(color1, color2)` — Photoshop exclusion blend. Byte-faithful to `less/exclusion`. */
-export const exclusion: Fn = defineFunction('exclusion', {
+export const exclusion: Fn = /* @__PURE__ */ defineFunction('exclusion', {
   params: [{ type: 'Color' }, { type: 'Color' }],
   body: (c1, c2) => colorBlend(exclusionBase, requireColor(c1), requireColor(c2))
 });

@@ -13,7 +13,7 @@
  */
 import { addExact, modExact, mulExact, subExact } from './decimal.js';
 import { DimensionValueNode } from './node-ctors.js';
-import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Arithmetic, type Color, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, NoCssForm, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Arithmetic, type Color, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
 import { groupItems } from './value-list.js';
 import { compressDimensionBytes } from './compress.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
@@ -800,8 +800,13 @@ export function exposedOperand(value: ValueGroup): ValueGroup {
     return value;
   }
   const result = isValueGroupArray(held) || held.type === 'List' || invalidOperand(held, false, false) !== null ? 'other' : null;
-  const colour = !isValueGroupArray(held) && (isColourOperand(held) || (held.type === 'FunctionCall' && held.result === 'color'));
-  return colour || result !== null ? keepAsWritten(withFields(value, { result: colour ? 'color' : result })) : value;
+  if (!isValueGroupArray(held) && (isColourOperand(held) || (held.type === 'FunctionCall' && held.result === 'color'))) {
+    return keepAsWritten(withFields(value, { result: 'color' }));
+  }
+  if (result !== null) {
+    return keepAsWritten(withFields(value, { result }));
+  }
+  return !isValueGroupArray(held) && held.type === 'Dimension' ? keepAsWritten(withFields(value, { result: 'numeric' })) : value;
 }
 
 /** Math on what only the browser knows is defined over one value, and a list is not one (V36). */
@@ -818,11 +823,92 @@ function rejectList(op: string, left: Value, right: Value): void {
  */
 export function mathOnDeferred(op: string, left: Value, right: Value): Value {
   rejectList(op, left, right);
+  const ratio = op === '/' ? overPercent(left, right) : undefined;
+  if (ratio !== undefined) {
+    return ratio;
+  }
+  if (op === '/' && right.type === 'Dimension' && right.unit === '%' && readsRatio(left)) {
+    throw new NoCssForm(`\`${emitValue(left)} / ${emitValue(right)}\` divides a percentage the property resolves first`);
+  }
   const spelling = `${mathSpelling(left, op, false)} ${op} ${mathSpelling(right, op, true)}`;
   return carriedClash(makeCalc(makeArithmetic(op, left, right, true, spelling), calcBytes(spelling, op), true), left, right);
 }
 
+/**
+ * `calc(var(--a, 0.5) * 100%) / 1%`, a `%` export's read over a percentage, is
+ * its ratio times the quotient, `var(--a, 0.5) * 100`, through any product of
+ * plain numbers around it (`(@a * 2)`, `-@a`) and any sum of such products and
+ * percentages (`(@a + 1%)` is `var(--a, 0.5) * 100 + 1`): no percentage is left
+ * for the property to resolve before the division reads it. A form over an
+ * export's read that does not fold has none ({@link mathOnDeferred})
+ * (docs/architecture/core/spec/R8-browser-runtime.md, *Percentages*).
+ */
+export function overPercent(left: Value, right: Value): Value | undefined {
+  return right.type === 'Dimension' && right.unit === '%' && right.number !== 0 ? cancelPercent(left, right.number) : undefined;
+}
+
+/** Whether `v` holds an export's ratio read ({@link isRatioProduct}). */
+function readsRatio(v: EvalValue): boolean {
+  if (typeof v === 'string') {
+    return false;
+  }
+  if (isValueGroupArray(v)) {
+    return v.some(readsRatio);
+  }
+  return v.type === 'FunctionCall' ? (v.name === 'var' && v.result === 'numeric') || readsRatio(v.args) : v.type === 'Arithmetic' && (readsRatio(v.left) || readsRatio(v.right));
+}
+
+/** An export's ratio read (its `var()`, typed by its compile-time number), times or over plain numbers (`-1 * var(--a, 0.5)`), in a `calc()` or a group or not. */
+function isRatioProduct(v: EvalValue): v is Value {
+  if (typeof v === 'string' || isValueGroupArray(v)) {
+    return false;
+  }
+  if (v.type === 'FunctionCall') {
+    return v.name === 'var' ? v.result === 'numeric' : v.name === 'calc' && isRatioProduct(v.args);
+  }
+  return v.type === 'Arithmetic' && (v.op === ''
+    ? isRatioProduct(v.left)
+    : (v.op === '*' || v.op === '/') && ((isPlainNumber(v.left) && isRatioProduct(v.right)) || (isPlainNumber(v.right) && isRatioProduct(v.left))));
+}
+
+const isPlainNumber = (v: EvalValue): v is Dimension =>
+  typeof v !== 'string' && !isValueGroupArray(v) && v.type === 'Dimension' && v.unit === '';
+
+export function cancelPercent(v: EvalValue, by: number): Value | undefined {
+  if (typeof v === 'string' || isValueGroupArray(v)) {
+    return undefined;
+  }
+  if ((v.type === 'FunctionCall' && v.name === 'calc') || (v.type === 'Arithmetic' && v.op === '')) {
+    return cancelPercent(v.type === 'Arithmetic' ? v.left : v.args, by);
+  }
+  if (v.type === 'Arithmetic' && isAdditive(v.op)) {
+    const left = percentTerm(v.left, by);
+    const right = left === undefined ? undefined : percentTerm(v.right, by);
+    return right === undefined ? undefined : mathOnDeferred(v.op, left!, right);
+  }
+  if (v.type !== 'Arithmetic' || (v.op !== '*' && v.op !== '/') || typeof v.right === 'string' || isValueGroupArray(v.right)) {
+    return undefined;
+  }
+  if (v.op === '*' && v.right.type === 'Dimension' && v.right.unit === '%' && isRatioProduct(v.left)) {
+    const factor = ratioOf(v.right.number, by);
+    return factor === 1 ? v.left : mathOnDeferred('*', v.left, makeDimension(factor));
+  }
+  if (isPlainNumber(v.left) && v.op === '*') {
+    const inner = cancelPercent(v.right, by);
+    return inner === undefined ? undefined : mathOnDeferred('*', v.left, inner);
+  }
+  const inner = isPlainNumber(v.right) ? cancelPercent(v.left, by) : undefined;
+  return inner === undefined ? undefined : mathOnDeferred(v.op, inner, v.right);
+}
+
 const isAdditive = (op: string | undefined): boolean => op === '+' || op === '-';
+
+/** A term of a sum over a percentage: a percentage is its quotient, a ratio read is folded ({@link cancelPercent}). */
+const percentTerm = (v: EvalValue, by: number): Value | undefined =>
+  typeof v !== 'string' && !isValueGroupArray(v) && v.type === 'Dimension' && v.unit === '%' ? makeDimension(ratioOf(v.number, by)) : cancelPercent(v, by);
+
+/** `n / by` to fifteen significant digits, so `0.1 / 1` is not `0.1000000000000000055`; the runtime writes an exposed percentage's ratio with it. */
+export const ratioOf = (n: number, by: number): number => Number((n / by).toPrecision(15));
 
 /** A number's kept spelling as an operand: a sum stays one computation, and a product is grouped where it divides. */
 const preservedOperand = (v: Dimension, spelled: string, op: string, isRight: boolean): string =>

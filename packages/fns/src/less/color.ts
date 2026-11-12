@@ -16,7 +16,7 @@ const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
  * validated directly against Less 4.x, not the adapter (differential asserts built-in
  * = Less 4.x for the quoted cases).
  */
-export const color: Fn = defineFunction('color', {
+export const color: Fn = /* @__PURE__ */ defineFunction('color', {
   params: [{ type: ['Color', 'Quoted'] }],
   body: (arg) => {
     if (arg.type === 'Color') {

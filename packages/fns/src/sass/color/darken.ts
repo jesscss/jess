@@ -8,6 +8,6 @@ import { defineAdjuster } from './color-form.js';
  * dart-sass: `darken(#800, 10%)` → `#550000`; `darken(#800, 100%)` → `black`;
  * `darken(#000, 50%)` → `black`. Two arguments only (see `lighten`).
  */
-export const darken: Fn = /* @__PURE__ */ defineAdjuster('darken', forms.darken, forms.darkenDeferred);
+export const darken: Fn = /* @__PURE__ */ defineAdjuster('darken', forms.darken);
 
 export default darken;

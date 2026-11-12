@@ -85,7 +85,7 @@ export { addExact, modExact, mulExact, percentToFraction, subExact } from './ast
 export { compareOrder } from './ast/value-guards.js';
 
 // --- the binary operators (`+ - * /`) every dialect computes with ---
-export { operate } from './ast/value-operate.js';
+export { operate, ratioOf } from './ast/value-operate.js';
 export { operated as operatedOnUnknown } from './ast/math-operand.js';
 
 // --- unit table / conversion ---
@@ -122,5 +122,6 @@ export type {
 export { TOLERANCE } from './ast/format-number.js';
 
 // --- registry seam ---
-export { createFnRegistry, declineOverUnknown, defineFunction, FunctionDeclined, isUnknownNumber, NoCssForm } from './ast/value-dispatch.js';
+export { createFnRegistry, declineOverUnknown, defineFunction, FunctionDeclined, isUnknownNumber } from './ast/value-dispatch.js';
+export { NoCssForm } from './ast/value-eval.js';
 export type { FnRegistry } from './ast/value-dispatch.js';

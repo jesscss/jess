@@ -9,6 +9,6 @@ import { defineAdjuster } from './color-form.js';
  * `hsl(0, 0%, 100%)`; `lighten(#fff, 50%)` → `white`. Two arguments only — Less's
  * third `relative` argument is `Only 2 arguments allowed, but 3 were passed`.
  */
-export const lighten: Fn = /* @__PURE__ */ defineAdjuster('lighten', forms.lighten, forms.lightenDeferred);
+export const lighten: Fn = /* @__PURE__ */ defineAdjuster('lighten', forms.lighten);
 
 export default lighten;

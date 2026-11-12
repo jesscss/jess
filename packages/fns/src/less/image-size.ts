@@ -8,7 +8,7 @@ import { readImageDimensions } from './image-helper.js';
  * Receives the raw typed argument group and injected file-read capability from
  * the canonical evaluator; it never evaluates or resolves a tree node itself.
  */
-const imageSize: Fn = defineFunction('image-size', {
+const imageSize: Fn = /* @__PURE__ */ defineFunction('image-size', {
   params: [{ type: 'any' }],
   variadic: true,
   body: (value, ctx): MaybePromise<ValueGroup> => {
