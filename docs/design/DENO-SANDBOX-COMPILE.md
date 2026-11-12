@@ -11,20 +11,21 @@ this replaced. Tracks jesscss/jess#497. It replaces
 the per-call worker and the permission broker described in
 [`architecture/js-execution-deno-spec.md`](../architecture/js-execution-deno-spec.md)
 (its "Permission broker" section and its non-goal "running the entire Jess
-compile in Deno"). The rest of that spec (lazy activation, script boundaries,
-the value bridge, error categories) still holds.
+compile in Deno"), and its value bridge: a plugin call converts values once
+each way, with no wire format (§3). The rest of that spec (lazy activation,
+script boundaries, error categories) still holds.
 
 Section 8 records the trust and API decisions this design rests on.
 
-## 1. What happens today
+## 1. What it replaced
 
-`@jesscss/plugin-js` runs stylesheet JavaScript (Less `@plugin`, script `@use`)
-in a Deno subprocess. The compile stays in Node, so every plugin function call
-during evaluation is a round trip: encode, pipe, wait, decode. Every file
-access Deno makes is a second round trip, to a permission broker socket in the
+`@jesscss/plugin-js` ran stylesheet JavaScript (Less `@plugin`, script `@use`)
+in a Deno subprocess. The compile stayed in Node, so every plugin function call
+during evaluation was a round trip: encode, pipe, wait, decode. Every file
+access Deno made was a second round trip, to a permission broker socket in the
 Node host.
 
-Measured on `dev` (`66717170b`, Node 24.11.1, Deno 2.9.6, M4 Pro at load
+Measured then on `dev` (`66717170b`, Node 24.11.1, Deno 2.9.6, M4 Pro at load
 averages 10–20, so indicative), compiling the less.js corpus
 `3rd-party/bootstrap4.less`:
 
@@ -34,6 +35,12 @@ averages 10–20, so indicative), compiling the less.js corpus
 | plugin function calls, one round trip each | 2,437 |
 | main thread idle, waiting on the worker | 115 ms of a 388 ms warm render (medians of 10) |
 | render time when the first `@plugin` is reached | 145 ms into the first render (735 ms total); 51–64 ms into a warm render (325–540 ms) |
+
+Now a plugin call is a function call inside the engine (§3), and a warm
+`bootstrap4.less` render in the engine costs what the same render costs in
+Node with scripts unsandboxed: 109–111 ms against 107–111 ms (5 interleaved
+rounds, medians of 25 warm renders, M4 Pro at load average ~5, so
+indicative).
 
 ## 2. The routing rule
 
@@ -120,9 +127,10 @@ imported into the host process. A global `jess` therefore needs
   as a `JessError`.
 - **What runs inside.** The Deno side imports the same compiler package the
   host uses, from where it is installed, and renders with the script runtime
-  in-process. The script runtime is today's `runtime-worker.ts` facade and
-  value bridge, called directly instead of over a pipe, so plugin values cross
-  the same conversion as today and output stays byte-identical.
+  in-process. A plugin call is a function call: the compiler's values become
+  the Less 4 tree nodes a plugin reads, and its result becomes a compiler
+  value, each converted once (`toPluginValue` / `fromPluginValue` in
+  `plugin-values.ts`), with no wire format in between.
 - **Plugins load once.** A script loads once per Deno process and loads again
   only when its file changes.
 - **One trust domain per compiler.** Scripts share the engine's realm with the

@@ -64,7 +64,7 @@ function findFlat(dir, pattern) {
  */
 const CASES = {
   'benchmark.less': [resolve(repo, 'packages/jess/benchmark/benchmark.less')],
-  'bootstrap-port': find('node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less', '*.less'),
+  'bootstrap-port': find('packages/jess/node_modules/bootstrap-less-port/less', '*.less'),
   'test-data-unit': find('node_modules/@less/test-data/tests-unit', '*.less'),
   'css-corpus': findFlat('packages/syntax/css/css-parser/test/css', '*.css')
 };

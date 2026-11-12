@@ -11,7 +11,6 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { decodeBridgeResult, decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
 import { trustedFnsRealPath } from './trust.js';
 import {
   encodeEngineValue,
@@ -31,12 +30,12 @@ import {
 /** The script runtime (`plugin-runtime.ts`), loaded only inside the compile engine. */
 type InProcessRuntime = {
   loadModule(modulePath: string): Promise<Array<{ name: string; kind: 'function' | 'value'; value?: unknown }>>;
-  invokeExport(modulePath: string, exportName: string, args: unknown[]): Promise<unknown>;
+  invokeExport(modulePath: string, exportName: string, args: readonly unknown[]): Promise<unknown>;
   loadLessPlugin(modulePath: string, options: string | null): Promise<string[]>;
   invokeLessPluginFunction(
     modulePath: string,
     functionName: string,
-    args: unknown[],
+    args: readonly unknown[],
     options: string | null,
     facts: {
       variable(name: string): { value: unknown; important?: boolean } | null;
@@ -831,16 +830,14 @@ export class JsPlugin extends AbstractPlugin {
     if (!hit) {
       return null;
     }
-    return { value: encodeBridgeValue(hit.value), important: hit.important === true };
+    return { value: hit.value, important: hit.important === true };
   }
 
   private resolveCallFact(
     need: { name: string; args: unknown[] },
     capabilities: PluginCallCapabilities
   ): unknown {
-    const decoded = need.args.map(decodeBridgeValue);
-    const answer = capabilities.callFunction?.(need.name, decoded);
-    return answer === undefined ? null : encodeBridgeValue(answer);
+    return capabilities.callFunction?.(need.name, need.args) ?? null;
   }
 
   /** Context-facing executable-plugin capability used by the direct AST path. */
@@ -872,7 +869,7 @@ export class JsPlugin extends AbstractPlugin {
       moduleObject[item.name] = item.kind === 'function'
         ? async (...args: unknown[]) => {
           try {
-            return decodeBridgeValue(await runtime.invokeExport(modulePath, item.name, encodeBridgeArgs(args)));
+            return await runtime.invokeExport(modulePath, item.name, args);
           } catch (err) {
             const fields = thrownFields(err);
             throw lessPluginApiRefusal(path.basename(modulePath), fields) ?? new Error(fields.error);
@@ -904,7 +901,7 @@ export class JsPlugin extends AbstractPlugin {
           outcome = await runtime.invokeLessPluginFunction(
             modulePath,
             functionName,
-            encodeBridgeArgs([...normalizePluginCallArgs(args)]),
+            normalizePluginCallArgs(args),
             options,
             {
               variable: name => this.resolveVariableFact(name, capabilities),
@@ -923,7 +920,7 @@ export class JsPlugin extends AbstractPlugin {
         if (outcome.important) {
           capabilities.markImportant?.();
         }
-        return decodeBridgeResult(outcome.value);
+        return outcome.value;
       };
     }
     return { functions };

@@ -62,11 +62,9 @@ import {
   interpolationFactFromChildren,
   interpolationPartsFrom,
   isAny,
-  isBareMixinCallFact,
   bodyExtensionsOf,
   isBodyExtendFact,
   isComplexTailFact,
-  isLessDeclaration,
   isExtendTargetFact,
   isExtendTargetListFact,
   isFunctionCall,
@@ -74,10 +72,7 @@ import {
   isInterp,
   isInterpolationFact,
   isLessCallArg,
-  isLessEachCallback,
   isMixinCall,
-  isMixinCallFact,
-  isMixinDefinitionFact,
   isMixinGuard,
   isMixinPathTail,
   isMixinReferenceBaseFact,
@@ -85,7 +80,6 @@ import {
   isQuoted,
   isReference,
   isReferenceTailFact,
-  isRulesetTailFact,
   isLessSelectorBranch,
   isSelectorBranchFact,
   isLessSelectorList,
@@ -122,6 +116,14 @@ import {
   referenceWithTails,
   requireCallbackStatements,
   requireCombinator,
+  readBody,
+  requireClassIdTailFact,
+  requireLessEachCallback,
+  requireMixinInteriorFact,
+  requireMixinStatementFact,
+  rulesetFromChildren,
+  NO_EXTEND_TARGETS,
+  requireDeclaration,
   requireField,
   requireFields,
   requireInterpolationFact,
@@ -131,12 +133,8 @@ import {
   referenceBracketTailFact,
   referenceCallTailFact,
   referenceDotTailFact,
-  requireRulesetBody,
   requireSelectorList,
-  requireSelectorListWithExtendsFact,
-  rulesetExtensions,
   selectorListWithExtendsFrom,
-  requireStatementArray,
   requireString,
   requireSupportedVariableName,
   requireTerminalText,
@@ -180,7 +178,11 @@ import type {
   MixinInteriorFact,
   ReferenceTailFact,
   RulesetTailFact,
-  SelectorBranchFact
+  SelectorBranchFact,
+  MixinDefinitionFact,
+  MixinCallFact,
+  MixinStatementFact,
+  BareMixinCallFact
 } from './grammar-helpers.js';
 
 // ---------------------------------------------------------------------------
@@ -3750,13 +3752,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.Declaration,
       declarationEnd
     ),
-    (children) => {
-      const declaration = children.find(isLessDeclaration);
-      if (declaration === undefined) {
-        throw new TypeError('Less declaration-list item lost its declaration fact.');
-      }
-      return declaration;
-    },
+    children => requireDeclaration(children[0]),
     { collapse: true }
   );
   const stylesheetEnd = not(regex(/[\s\S]/));
@@ -3769,13 +3765,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         stylesheetEnd
       )
     ),
-    (children) => {
-      const declaration = children.find(isLessDeclaration);
-      if (declaration === undefined) {
-        throw new TypeError('Less root declaration item lost its declaration fact.');
-      }
-      return declaration;
-    },
+    children => requireDeclaration(children[0]),
     { collapse: true }
   );
   const punctuationMapDeclarationItem = node(
@@ -3784,13 +3774,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       PunctuationMapDeclaration,
       declarationEnd
     ),
-    (children) => {
-      const declaration = children.find(isLessDeclaration);
-      if (declaration === undefined) {
-        throw new TypeError('Less punctuation map item lost its declaration fact.');
-      }
-      return declaration;
-    },
+    children => requireDeclaration(children[0]),
     { collapse: true }
   );
   const nestedGuardedRuleset = sequence(rulesetNotDeclaration, g.NestedRulesetWithExtends);
@@ -3899,6 +3883,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       );
       if (requireToken(children[0]).value === '{') {
         return {
+          fact: 'eachCallback',
           binding: { kind: 'comma', names: ['value', 'key', 'index'] },
           rules: statements(1),
           extensions,
@@ -3912,10 +3897,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
       const body = statements(bodyStart + 1);
       if (names.length === 1) {
-        return { binding: { kind: 'single', name: names[0]! }, rules: body, extensions, bodySpan };
+        return { fact: 'eachCallback', binding: { kind: 'single', name: names[0]! }, rules: body, extensions, bodySpan };
       }
       if (names.length === 2 || names.length === 3) {
         return {
+          fact: 'eachCallback',
           binding: { kind: 'comma', names: [names[0]!, names[1]!, names[2]] },
           rules: body,
           extensions,
@@ -3948,14 +3934,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(literal(';'))
     ),
     (children, _fields, span, rawChildren, _triviaLog, state) => {
-      const callback = children.find(isLessEachCallback);
-      if (callback === undefined) {
-        throw new TypeError('Less each() reduction produced an invalid callback.');
-      }
-      const iterable = children.find(child => isMixinCall(child) || isLessValueSlotValue(child));
-      if (iterable === undefined) {
-        throw new TypeError('Less each() reduction produced an invalid iterable.');
-      }
+      // The sequence fixes the positions: the `each(` opener, the iterable, `,` or `;`, then the callback.
+      const iterable = children[1];
+      const callback = requireLessEachCallback(children[3]);
       /*
        * [P36] The call this lowers, as the ordinary call reducer would build it
        * (the callback body as a detached-ruleset argument), so a modern-mode
@@ -4510,7 +4491,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         atRuleBlock(
           requireToken(children[0]).value,
           requireValueNode(children[1]),
-          requireStatementArray(body.filter(isStatement)),
+          body.filter(isStatement),
           bodyExtensionsOf(body)
         ),
         span
@@ -5796,7 +5777,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ExtendStatement = node(
     'ExtendStatement',
     sequence(literal('&'), ExtendPseudo, optional(literal(';'))),
-    children => ({
+    (children): BodyExtendFact => ({
+      fact: 'bodyExtend',
       bodyExtensions: children
         .flatMap(child => Array.isArray(child) ? child.filter(isExtendTargetFact) : [])
         .map(target => ({ target: target.target, partial: target.partial }))
@@ -5888,22 +5870,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     ),
-    (children, _fields, span, rawChildren) => {
-      const selectorFact = requireSelectorListWithExtendsFact(children[0]);
-      const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
-      const node = withBlockBody(
-        rule(
-          selectorFact.selector,
-          // The fixed sequence places only direct declaration/comment facts between
-          // the braces. This validates that fact list; it never reparses body text.
-          requireRulesetBody(children.filter(isStatement)),
-          extensions,
-          children.find(isMixinGuard)
-        ),
-        rawChildren
-      );
-      return hasRulesetTerminator(rawChildren) ? withSourceSpan(node, span) : node;
-    }
+    rulesetFromChildren
   );
   const NestedRulesetWithExtends = node(
     'Ruleset',
@@ -5917,20 +5884,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     ),
-    (children, _fields, span, rawChildren) => {
-      const selectorFact = requireSelectorListWithExtendsFact(children[0]);
-      const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
-      const node = withBlockBody(
-        rule(
-          selectorFact.selector,
-          requireRulesetBody(children.filter(isStatement)),
-          extensions,
-          children.find(isMixinGuard)
-        ),
-        rawChildren
-      );
-      return hasRulesetTerminator(rawChildren) ? withSourceSpan(node, span) : node;
-    }
+    rulesetFromChildren
   );
   /**
    * A parametric mixin definition after its `(` … interior: `)`, an optional guard, and
@@ -5951,15 +5905,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     )),
-    (children, _fields, _span, rawChildren) => {
-      const bodySpan = bodySpanFromRaw(rawChildren);
-      return {
-        params: [],
-        ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
-        rules: children.filter(isStatement),
-        extensions: bodyExtensionsOf(children),
-        ...(bodySpan === undefined ? {} : { bodySpan })
-      };
+    (children, _fields, _span, rawChildren): MixinDefinitionFact => {
+      // The `)`, then the guard when there is one, then `{` (after the guard, any
+      // gap leaf before it); none of those is a statement, so the body read starts there.
+      const guard = isMixinGuard(children[1]) ? children[1] : undefined;
+      const rules: Statement[] = [];
+      const extensions = readBody(children, guard === undefined ? 1 : 2, rules);
+      return { fact: 'mixinDefinition', params: [], guard, rules, extensions, bodySpan: bodySpanFromRaw(rawChildren) };
     }
   );
   const MixinCallContinuation = node(
@@ -5970,7 +5922,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(literal('!important')),
       optional(literal(';'))
     )),
-    children => ({
+    (children): MixinCallFact => ({
+      fact: 'mixinCall',
       args: [],
       important: children.some(child => isLessTerminalText(child, '!important'))
     })
@@ -5978,28 +5931,26 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const MixinStatementTail = node(
     'MixinStatement',
     sequence(g.MixinInterior, choice(attempt(MixinDefinitionContinuation), MixinCallContinuation)),
-    (children) => {
-      const interior = children.find((value): value is MixinInteriorFact =>
-        typeof value === 'object' && value !== null && 'items' in value && 'separators' in value
-      );
-      if (interior === undefined) {
-        throw new TypeError('Less mixin statement lost its parenthesized interior.');
-      }
-      const definition = children.find(isMixinDefinitionFact);
-      if (definition !== undefined) {
-        return { ...definition, params: mixinParamsFromInterior(interior) };
-      }
-      const call = children.find(isMixinCallFact);
-      if (call === undefined) {
-        throw new TypeError('Less mixin statement lost its continuation.');
-      }
-      return { ...call, args: mixinCallArgsFromInterior(interior) };
+    (children): MixinStatementFact => {
+      // The interior, then the continuation the `)` chose.
+      const interior = requireMixinInteriorFact(children[0]);
+      const tail = requireMixinStatementFact(children[1]);
+      return tail.fact === 'mixinDefinition'
+        ? {
+            fact: 'mixinDefinition',
+            params: mixinParamsFromInterior(interior),
+            guard: tail.guard,
+            rules: tail.rules,
+            extensions: tail.extensions,
+            bodySpan: tail.bodySpan
+          }
+        : { fact: 'mixinCall', args: mixinCallArgsFromInterior(interior), important: tail.important };
     }
   );
   const BareMixinCall = node(
     'MixinCall',
     sequence(optional(literal('!important')), literal(';')),
-    children => ({ important: children.some(child => isLessTerminalText(child, '!important')) })
+    (children): BareMixinCallFact => ({ fact: 'bareMixinCall', important: children.some(child => isLessTerminalText(child, '!important')) })
   );
   const RulesetTail = node(
     'Ruleset',
@@ -6013,19 +5964,32 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     ),
-    (children, _fields, _span, rawChildren): RulesetTailFact => ({
-      /* One shape: absent parts are `undefined`. */
-      firstExtensions: children
-        .filter(Array.isArray)
-        .flatMap(values => values.filter(isExtendTargetFact)),
-      branches: children.filter(isSelectorBranchFact),
-      selectorEnd: requiredTokenStart(rawChildren, '{'),
-      guard: children.find(isMixinGuard),
-      rules: children.filter(isStatement),
-      extensions: bodyExtensionsOf(children),
-      bodySpan: bodySpanFromRaw(rawChildren),
-      terminated: hasRulesetTerminator(rawChildren)
-    })
+    (children, _fields, _span, rawChildren): RulesetTailFact => {
+      // In order: the first branch's inline `:extend()` targets when written, the
+      // later branches, the guard when there is one, `{`, then the body.
+      const head = children[0];
+      const firstExtensions = Array.isArray(head) ? head.filter(isExtendTargetFact) : NO_EXTEND_TARGETS;
+      let at = Array.isArray(head) ? 1 : 0;
+      const branches: SelectorBranchFact[] = [];
+      for (let child = children[at]; isSelectorBranchFact(child); child = children[++at]) {
+        branches.push(child);
+      }
+      const maybeGuard = children[at];
+      const guard = isMixinGuard(maybeGuard) ? maybeGuard : undefined;
+      const rules: Statement[] = [];
+      const extensions = readBody(children, guard === undefined ? at + 1 : at + 2, rules);
+      return {
+        fact: 'rulesetTail',
+        firstExtensions,
+        branches,
+        selectorEnd: requiredTokenStart(rawChildren, '{'),
+        guard,
+        rules,
+        extensions,
+        bodySpan: bodySpanFromRaw(rawChildren),
+        terminated: hasRulesetTerminator(rawChildren)
+      };
+    }
   );
   const ClassIdStatement = node(
     'Statement',
@@ -6038,36 +6002,34 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       )
     ),
     (children, _fields, span) => {
-      const prefix = children.find(isSelectorBranchFact);
-      if (prefix === undefined) {
+      // The prefix, then the continuation the choice took.
+      const prefix = children[0];
+      if (!isSelectorBranchFact(prefix)) {
         throw new TypeError('Less class/id statement lost its selector prefix.');
       }
-      const definition = children.find(isMixinDefinitionFact);
-      if (definition !== undefined) {
+      const tail = requireClassIdTailFact(children[1]);
+      if (tail.fact === 'mixinDefinition') {
+        // `mixinDef` keeps the arrays it is given (V8 invariant 12 debt), so these
+        // copies are the ones the definition keeps, as `rule()` makes its own.
         const node = mixinDef(
           mixinDefinitionNameFromSelectorBranch(prefix.selector),
-          [...definition.params],
-          [...definition.rules],
-          definition.guard,
-          definition.extensions
+          [...tail.params],
+          [...tail.rules],
+          tail.guard,
+          tail.extensions
         );
         return withSourceSpan(
-          definition.bodySpan === undefined ? node : withBodySpan(node, definition.bodySpan),
+          tail.bodySpan === undefined ? node : withBodySpan(node, tail.bodySpan),
           span
         );
       }
-      const call = children.find(isMixinCallFact);
-      if (call !== undefined) {
-        return mixinCallFromSelectorBranch(prefix.selector, call.args, call.important, span);
+      if (tail.fact === 'mixinCall') {
+        return mixinCallFromSelectorBranch(prefix.selector, tail.args, tail.important, span);
       }
-      const bare = children.find(isBareMixinCallFact);
-      if (bare !== undefined) {
-        return mixinCallFromSelectorBranch(prefix.selector, [], bare.important, span);
+      if (tail.fact === 'bareMixinCall') {
+        return mixinCallFromSelectorBranch(prefix.selector, [], tail.important, span);
       }
-      const ruleset = children.find(isRulesetTailFact);
-      if (ruleset === undefined) {
-        throw new TypeError('Less class/id statement lost its continuation.');
-      }
+      const ruleset = tail;
       const prefixSpan = sourceSpanOf(prefix.selector);
       const guardSpan = ruleset.guard === undefined ? undefined : sourceSpanOf(ruleset.guard);
       const selector = prefixSpan === undefined
@@ -6087,7 +6049,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ];
       const node = rule(
         selector,
-        [...ruleset.rules],
+        ruleset.rules,
         extensions.length === 0 ? undefined : extensions,
         ruleset.guard
       );

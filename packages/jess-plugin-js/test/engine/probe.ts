@@ -7,7 +7,6 @@
  * script at a time instead of a stylesheet (see `sandboxed.ts`).
  */
 import { JsPlugin } from '../../src/index.ts';
-import { decodeBridgeValue, encodeBridgeArgs } from '../../src/bridge.ts';
 import { invokeExport } from '../../src/plugin-runtime.ts';
 import { ERR } from '@jesscss/core';
 
@@ -26,7 +25,7 @@ export class Probe {
 
   async render(spec) {
     const plugin = this.pluginFor(spec.pluginOptions);
-    const args = (spec.args ?? []).map(decodeBridgeValue);
+    const args = spec.args ?? [];
     switch (spec.kind) {
       case 'exports': {
         const mod = await plugin.import(spec.modulePath);
@@ -36,11 +35,10 @@ export class Probe {
       }
       case 'invoke':
         /*
-         * The runtime call itself, bridged once each way, as a render's call
-         * through `JsPlugin` is; a refused tree node is reported as `JsPlugin`
-         * reports it.
+         * The runtime call itself, as a render's call through `JsPlugin` is; a
+         * refused tree node is reported as `JsPlugin` reports it.
          */
-        return invokeExport(spec.modulePath, spec.exportName, spec.args ?? []).catch((err) => {
+        return invokeExport(spec.modulePath, spec.exportName, args).catch((err) => {
           throw err?.name === 'UnsupportedLessPluginApiError'
             ? ERR.pluginUnsupported({ meta: { plugin: spec.modulePath.split('/').pop(), feature: err.message } })
             : err;
@@ -49,7 +47,7 @@ export class Probe {
         return Object.keys((await plugin.importLessPlugin(spec.modulePath, spec.options ?? null)).functions);
       case 'lessCall': {
         const { functions } = await plugin.importLessPlugin(spec.modulePath, spec.options ?? null);
-        return encodeBridgeArgs([await functions[spec.functionName](args)])[0];
+        return functions[spec.functionName](args);
       }
       default:
         throw new Error(`Unknown probe "${spec.kind}".`);
