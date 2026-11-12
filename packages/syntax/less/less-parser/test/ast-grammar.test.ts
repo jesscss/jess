@@ -8,10 +8,21 @@ import type { LessRecoveredError } from '../src/parse-error.js';
 
 /**
  * A raw run of one grammar rule over `input`, with the state `parse()` builds
- * for the same input: the one supported way to build a run state.
+ * for the same input: the one supported way to build a run state. A problem
+ * the run recovers from fails the test, as `parse()` would throw it, unless the
+ * test says it expects one (`allowRecovered`).
  */
-function runRaw(rule: Parameters<typeof run>[0], input: string): ReturnType<typeof run> {
-  return run(rule, input, { trivia: lessGrammar.whitespace, state: createLessParseState(input) });
+function runRaw(
+  rule: Parameters<typeof run>[0],
+  input: string,
+  { allowRecovered = false }: { readonly allowRecovered?: boolean } = {}
+): ReturnType<typeof run> {
+  const state = createLessParseState(input);
+  const result = run(rule, input, { trivia: lessGrammar.whitespace, state });
+  if (!allowRecovered) {
+    expect(recoveredProblemsOf(state), input).toEqual([]);
+  }
+  return result;
 }
 import {
   LessBareVariableInterpolationError,
@@ -21,7 +32,7 @@ import {
   LessUnsupportedMixinNameError,
   LessUnsupportedVariableNameError
 } from '../src/parse-error.js';
-import { createLessParseState, parse } from '../src/index.js';
+import { createLessParseState, parse, recoveredProblemsOf } from '../src/index.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
@@ -48,7 +59,7 @@ function parsesCompleteStylesheet(source: string): boolean {
     const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state });
     return (
       result.ok && result.unconsumedFrom === null && isStylesheet(result.value)
-      && state.document.diagnostics.length === 0
+      && recoveredProblemsOf(state).length === 0
     );
   } catch {
     return false;
@@ -955,8 +966,8 @@ describe('Less AST grammar facts', () => {
       ['@t: selector(:nth-child(2n of .a:is(1px) 5px));', 'parse/selector-capture-argument', ':nth-child(2n of .a:is(1px) 5px)']
     ] as const) {
       const state = createLessParseState(source);
-      const { diagnostics } = state.document;
       const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state });
+      const diagnostics = recoveredProblemsOf(state);
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
 
       /* A reducer may run more than once; `parse()` keeps one report per item, as here. */
