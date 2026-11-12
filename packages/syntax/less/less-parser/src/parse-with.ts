@@ -9,7 +9,7 @@
 import { buildLineIndex, offsetToLineCol, run } from 'parseman/run';
 import type { Span } from 'parseman';
 import type { ISafeParseResult, MathMode, ModuleMode, TriviaMap } from '@jesscss/core';
-import { rejectBareVariable, requireMathMode, type LessParseState } from './parse-state.js';
+import { DEFAULT_LESS_MATH_MODE, rejectBareVariable, type LessParseState } from './parse-state.js';
 /*
  * `parserDiagnostic` comes from the narrow `./diagnostics` entry, not the root:
  * the root entry pulls the evaluator, functions, and legacy tree runtime onto
@@ -18,6 +18,8 @@ import { rejectBareVariable, requireMathMode, type LessParseState } from './pars
  */
 import { parserDiagnostic } from '@jesscss/core/diagnostics';
 import {
+  MATH_MODES,
+  MODULE_MODES,
   NO_SPAN,
   createTriviaMapFromParseman,
   importSourceEndOf,
@@ -62,6 +64,44 @@ export interface LessParseOptions {
    * answer is one object per document, shared by every call node.
    */
   readonly moduleMode?: ModuleMode;
+}
+
+/** {@link LessParseOptions} once checked: every mode is one the grammar knows. */
+interface CheckedLessParseOptions {
+  readonly mathMode: MathMode;
+  readonly moduleMode: ModuleMode;
+}
+
+/**
+ * Check the caller's options once, before the run. `undefined` or `null` reads
+ * the default; any other value outside the documented modes is a caller error,
+ * thrown as a `TypeError` by `parse()` and `safeParse()` alike, never reported
+ * as a syntax error in the input.
+ */
+function checkedOptions(options: LessParseOptions): CheckedLessParseOptions {
+  return {
+    mathMode: requireMode('mathMode', options.mathMode, MATH_MODES, DEFAULT_LESS_MATH_MODE),
+    moduleMode: requireMode('moduleMode', options.moduleMode, MODULE_MODES, 'auto')
+  };
+}
+
+function requireMode<const M extends string>(
+  option: string,
+  value: unknown,
+  modes: readonly M[],
+  fallback: M
+): M {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  const mode = modes.find(candidate => candidate === value);
+  if (mode === undefined) {
+    const shown = typeof value === 'string' ? `'${value}'` : String(value);
+    throw new TypeError(
+      `invalid ${option} option: ${shown} (expected one of ${modes.map(candidate => `'${candidate}'`).join(', ')})`
+    );
+  }
+  return mode;
 }
 
 const EMPTY_LAYOUT: readonly string[] = Object.freeze([]);
@@ -202,7 +242,7 @@ export function parseWith(
   input: string,
   options: LessParseOptions = {}
 ): Stylesheet {
-  const { document, recovered } = parseRecovering(grammar, input, options);
+  const { document, recovered } = parseRecovering(grammar, input, checkedOptions(options));
   if (recovered[0] !== undefined) {
     throw recovered[0];
   }
@@ -212,7 +252,7 @@ export function parseWith(
 function parseRecovering(
   grammar: LessAstGrammar,
   input: string,
-  options: LessParseOptions
+  options: CheckedLessParseOptions
 ): LessParsed {
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
@@ -221,12 +261,12 @@ function parseRecovering(
       'Less AST grammar is missing its public document entry.'
     );
   }
-  const functions: FunctionScope = { ambient: options.moduleMode !== 'modern' };
+  const functions: FunctionScope = { ambient: options.moduleMode === 'auto' };
   const diagnostics: LessRecoveredError[] = [];
   const forgivenSelectorItems: ForgivenSelectorItem[] = [];
   const state: LessParseState = {
     source: input,
-    mathMode: requireMathMode(options.mathMode),
+    mathMode: options.mathMode,
     document: { functions, diagnostics, forgivenSelectorItems },
     rejectBareVariable
   };
@@ -327,8 +367,9 @@ export function safeParseWith(
   input: string,
   options: LessParseOptions = {}
 ): ISafeParseResult {
+  const checked = checkedOptions(options);
   try {
-    const { document, recovered } = parseRecovering(grammar, input, options);
+    const { document, recovered } = parseRecovering(grammar, input, checked);
     return {
       document,
       errors: recovered.map(error => parserDiagnostic({ dialect: 'Less', error, filePath, source: input })),

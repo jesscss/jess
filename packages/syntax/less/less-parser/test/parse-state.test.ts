@@ -2,11 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { run } from 'parseman';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { lessGrammar } from '../src/grammar.js';
-import { parse } from '../src/index.js';
+import { parse, safeParse } from '../src/index.js';
 import {
   DEFAULT_LESS_MATH_MODE,
-  mathModeOf,
-  requireMathMode
+  mathModeOf
 } from '../src/parse-state.js';
 
 describe('Less parse state', () => {
@@ -31,16 +30,42 @@ describe('Less parse state', () => {
     expect(operationMathOutsideParens(strict.value)).toBe(false);
   });
 
-  it('honors an explicit mode and rejects an invalid one', () => {
+  it('reads the mode a raw state carries, with no re-check', () => {
     expect(mathModeOf({ mathMode: 'strict' })).toBe('strict');
-    expect(() => mathModeOf({ mathMode: 'sometimes' })).toThrow('invalid `mathMode`');
-    expect(() => mathModeOf(1)).toThrow('must be an object');
-    expect(requireMathMode(undefined)).toBe(DEFAULT_LESS_MATH_MODE);
+  });
+});
+
+describe('Less parse options', () => {
+  const MATH = '(expected one of \'always\', \'parens-division\', \'parens\', \'strict\')';
+  const MODULE = '(expected one of \'auto\', \'modern\')';
+  const cases: ReadonlyArray<readonly [Record<string, unknown>, string]> = [
+    [{ mathMode: 'sometimes' }, `invalid mathMode option: 'sometimes' ${MATH}`],
+    [{ mathMode: 1 }, `invalid mathMode option: 1 ${MATH}`],
+    [{ moduleMode: 'modrn' }, `invalid moduleMode option: 'modrn' ${MODULE}`]
+  ];
+
+  it.each(cases)('parse() rejects %o before the run, on input with no math', (options, message) => {
+    expect(() => Reflect.apply(parse, undefined, ['.a { b: c; }', options])).toThrow(new TypeError(message));
   });
 
-  it('checks the parse entry\'s mode once, before the run, with or without math in the input', () => {
-    const options: { mathMode?: unknown } = { mathMode: 'sometimes' };
-    expect(() => Reflect.apply(parse, undefined, ['.a { b: c; }', options])).toThrow('invalid `mathMode`');
+  it.each(cases)('safeParse() throws %o as a caller error, not a syntax diagnostic', (options, message) => {
+    let thrown: unknown;
+    try {
+      Reflect.apply(safeParse, undefined, ['a.less', '.a { b: c; }', options]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(TypeError);
+    expect(thrown).not.toHaveProperty('code');
+    expect(thrown).toHaveProperty('message', message);
+  });
+
+  it('reads `undefined` and `null` as the defaults', () => {
+    const source = '.a { k: 4 / 2 + 1; }';
+    const expected = JSON.stringify(parse(source));
+    for (const options of [{}, { mathMode: undefined, moduleMode: undefined }, { mathMode: null, moduleMode: null }]) {
+      expect(JSON.stringify(Reflect.apply(parse, undefined, [source, options]))).toBe(expected);
+    }
   });
 });
 
