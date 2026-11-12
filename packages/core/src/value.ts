@@ -79,6 +79,7 @@ export { CollectionOverlay, isCollection, collectionEntries, collectionEntryInde
 export { HEX, RGB, HSL, holdsNone, serializeColor, hslToRgb } from './ast/color.js';
 export { serializeValue } from './ast/serialize-value.js';
 export { decimalStep, round } from './ast/round.js';
+export { addExact, modExact, mulExact, percentToFraction, subExact } from './ast/decimal.js';
 
 // --- shared value COMPARISON primitive (§5.1) ---
 export { compareOrder } from './ast/value-guards.js';

@@ -1,7 +1,6 @@
-import { NoCssForm, colorRawRgb, holdsNone, isValueGroupArray, makeDimension, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from '@jesscss/core/value';
+import { NoCssForm, colorRawRgb, holdsNone, isValueGroupArray, makeDimension, mulExact, percentToFraction, subExact, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from '@jesscss/core/value';
 import type { FormCall } from '@jesscss/core/form';
 import * as forms from './css-forms.generated.js';
-import { mulExact, percentToFraction, subExact } from '../util/decimal.js';
 
 /** What `color-mix()` holds as a weight (css-color-5 §3.2). */
 const inRange = (weight: number): boolean => weight >= 0 && weight <= 100;
