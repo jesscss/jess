@@ -172,12 +172,19 @@ function runTypecheckForPackage(packageDir, scripts) {
   console.log(`- skip typecheck for ${packageDir} (no tsconfig or typecheck script)`);
 }
 
-function runBuildForPackage(packageDir, scripts) {
-  if (scripts.build) {
-    run('pnpm', ['--filter', `./${packageDir}`, 'build']);
-    return;
+/**
+ * One build of every changed package, so pnpm builds them in dependency order
+ * (a parser after a changed parser-shared or core). A package's own `build`
+ * builds only that package.
+ */
+function runBuildForPackages(packageDirs) {
+  const built = packageDirs.filter(packageDir => readPackageScripts(packageDir)?.build);
+  for (const packageDir of packageDirs.filter(packageDir => !built.includes(packageDir))) {
+    console.log(`- skip build for ${packageDir} (no build script)`);
   }
-  console.log(`- skip build for ${packageDir} (no build script)`);
+  if (built.length > 0) {
+    run('pnpm', [...built.flatMap(packageDir => ['--filter', `./${packageDir}`]), 'build']);
+  }
 }
 
 function runLintForFiles(packageDir, files) {
@@ -306,6 +313,14 @@ if (changedPackages.length === 0) {
 
 console.log(`Checking ${changedPackages.length} changed package(s) [mode=${MODE}]...`);
 
+if (MODE === 'upstream') {
+  const impacted = changedPackages.filter(packageDir => readPackageScripts(packageDir) && hasCodeImpactingChanges(files, packageDir));
+  if (impacted.length > 0) {
+    console.log('\n==> Building changed packages');
+    runBuildForPackages(impacted);
+  }
+}
+
 for (const packageDir of changedPackages) {
   const scripts = readPackageScripts(packageDir);
   if (!scripts) {
@@ -321,7 +336,6 @@ for (const packageDir of changedPackages) {
     }
     runTestsForPackage(packageDir, scripts, files);
     runTypecheckForPackage(packageDir, scripts);
-    runBuildForPackage(packageDir, scripts);
     runLintForFiles(packageDir, lintableFiles);
   }
 }
