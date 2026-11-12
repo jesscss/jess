@@ -383,3 +383,22 @@ top-level statements of each `@expose`'s file, passed by the render start and
 the import planner), though their imports share one binding. An `@expose` in a
 `(reference)`-imported file does nothing, silently (`declareExpose` returns when
 `referenceImportDepth` is non-zero, and the planner skips hidden imports).
+
+## V6
+
+2026-11-11. The exact base-10 arithmetic is one module on native `BigInt`,
+`packages/core/src/ast/decimal.ts` (`addExact`, `subExact`, `mulExact`,
+`modExact`, `percentToFraction`, exported from `@jesscss/core/value`). It
+replaces `big.js` and the `packages/fns/src/util/decimal.ts` wrapper the row
+still names; `calculate()` in `value-operate.ts` and the fns colour forms both
+read it, and `big.js` is no longer a dependency of any package. A double is
+read as the decimal `String(n)` spells, held as `digits × 10^-places`.
+Measured against `big.js` 7.0.1: identical results over 2,000,000 fuzzed
+operations (`+ - * %` and `n / 100`, decimals, exponents, integers, NaN and
+infinities), and 1.7–2.1× faster per operation. The one difference is a zero
+result's sign, which now follows IEEE float in every operation (`-0 * 0.5` and
+`-5.5 % 0.5` are `-0`), as the browser computes it; big.js lost or flipped it.
+It shows in output only through a sign-reading function, e.g. SCSS
+`math.atan2(0, -0 * 0.5)` is `180deg`, was `0deg`. A zero divisor in `%` gives `NaN` as float does, where `big.js`
+threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
+`packages/fns/src/less/__tests__/alpha-precision.test.ts`.

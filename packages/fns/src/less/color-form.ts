@@ -1,9 +1,8 @@
 import { asNumber, channelForm, defineForm, formMath, formNumber, isDimension, knownUnit, type FormCall, type FormSlot } from '@jesscss/core/form';
-import { mulExact, percentToFraction, subExact } from '../util/decimal.js';
 import { clamp01, fitsAny, inUnits, normalizeHue } from './color-ctor-helper.js';
 import { hsvBlack, hsvWhite, hsvWhiteKnown } from './css-forms.generated.js';
 import { requireDimension } from '../shared/math/math-helper.js';
-import { FunctionDeclined, isValueGroupArray, makeDimension, textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
+import { FunctionDeclined, isValueGroupArray, makeDimension, mulExact, percentToFraction, subExact, textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 
 /** A colour a form's relative colour reads as its origin, or what only the browser knows of one. */
 export const COLOR_ARG = { type: ['Color', 'FunctionCall'], fits: (value: ValueGroup): boolean => inUnits(value, []) } as const;
