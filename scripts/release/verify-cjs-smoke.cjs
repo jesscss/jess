@@ -34,6 +34,9 @@ const walk = (dir) => {
   }
 };
 walk(packagesDir);
+
+/* Program entries, not library entries: requiring one starts it (an LSP server opens its connection). */
+const programEntries = new Set(['editor/language-service ./server']);
 const cycles = [];
 const unbuilt = [];
 for (const dir of packageDirs) {
@@ -47,11 +50,12 @@ for (const dir of packageDirs) {
   for (const [sub, conditions] of Object.entries(exportsField)) {
     const file = sub === '.' ? undefined : conditions?.require;
     if (typeof file !== 'string' || !fs.existsSync(path.join(dir, file))) continue;
+    if (programEntries.has(`${path.relative(packagesDir, dir)} ${sub}`)) continue;
     const undefinedKeys = execFileSync(process.execPath, ['-e',
       `require(${JSON.stringify(path.join(dir, file))});` +
       `const m = require(${JSON.stringify(path.join(dir, root))});` +
       'process.stdout.write(Object.keys(m).filter((k) => m[k] === undefined).join(","));'
-    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000 });
     if (undefinedKeys) cycles.push(`${path.relative(packagesDir, dir)}: ${sub} then . leaves ${undefinedKeys} undefined`);
   }
 }
