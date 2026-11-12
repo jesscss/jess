@@ -223,6 +223,39 @@ describe('the synchronous read-root discovery', () => {
     await expectSameAsReference(path.join(tmp(), 'missing'));
   });
 
+  it('finds the same read set as the asynchronous one through a linked ancestor of the temp folder', async () => {
+    const written = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-read-root-written-'));
+    dirs.push(written);
+    write(path.join(written, 'node_modules/pkg/package.json'), '{}');
+    const styles = path.join(written, 'src/styles');
+    fs.mkdirSync(styles, { recursive: true });
+    await expectSameAsReference(written);
+    await expectSameAsReference(styles, written);
+    const real = fs.realpathSync(written);
+    expect(readSetFor(styles, written, [])).toEqual(real === written ? [written] : [real, written]);
+  });
+
+  /*
+   * The one tree where the two differ: a `node_modules` that can be listed but
+   * not entered. The asynchronous discovery could not take a real path inside it
+   * and fell back to the entry folder; the synchronous one needs no lookup inside
+   * it for an entry that is not a link, so it finds the folder holding it, the
+   * read root of ledger A19 (§8.2 of the sandbox design).
+   */
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('takes the folder holding a node_modules that can be listed but not entered', async () => {
+    const project = tmp();
+    write(path.join(project, 'node_modules/pkg/package.json'), '{}');
+    const styles = path.join(project, 'src/styles');
+    fs.mkdirSync(styles, { recursive: true });
+    fs.chmodSync(path.join(project, 'node_modules'), 0o644);
+    try {
+      expect(readRootsOf(styles, styles)).toEqual([project]);
+      expect(await reference.readSet(styles, styles, [])).toEqual([styles]);
+    } finally {
+      fs.chmodSync(path.join(project, 'node_modules'), 0o755);
+    }
+  });
+
   it('finds the same read set as the asynchronous one in this workspace', async () => {
     const here = path.dirname(fileURLToPath(import.meta.url));
     await expectSameAsReference(here);
