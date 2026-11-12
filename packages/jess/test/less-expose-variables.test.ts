@@ -61,6 +61,16 @@ describe('Less @expose variables (A4)', () => {
     await expect(render('@use "#less";\n@expose a, b;\n@a: 10%;\n@b: @a;\n.x { v: rgb(@b, 0%, 0%); }')).resolves.toContain('v: rgb(calc(var(--b, var(--a, 0.1)) * 100%), 0%, 0%);');
   });
 
+  it.each([
+    ['@less.rgb(var(--r), 10%, 0)', 'rgb(var(--r), 25.5, 0)'],
+    ['@less.rgb(10%, 0, var(--b))', 'rgb(25.5, 0, var(--b))'],
+    ['@less.rgb(var(--r), 10%, 0%)', 'rgb(var(--r), 10%, 0%)'],
+    ['@less.rgb(10%, 0, 0, var(--a))', 'rgb(25.5, 0, 0, var(--a))'],
+    ['@less.rgb(var(--r), 0, 0, 50%)', 'rgb(var(--r), 0, 0, 50%)']
+  ])('a percentage channel beside a number is a number in the comma syntax, the alpha aside: %s', async (call, printed) => {
+    await expect(render(`@use "#less";\n.x { v: ${call}; }`)).resolves.toContain(`v: ${printed};`);
+  });
+
   it('a built-in reading an exposed slash list keeps its recipe', async () => {
     const css = await render('@use "#less";\n@expose a;\n@a: 1/2;\n.x { b: @less.percentage(@a); c: @less.ceil(@a); }');
     expect(css).toContain('b: var(--a-percentage, 50%);');
