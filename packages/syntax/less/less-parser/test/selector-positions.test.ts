@@ -142,9 +142,10 @@ function expectEachNodeOnce(roots: unknown[]): void {
 
 describe('Less at-rule preludes', () => {
   /*
-   * A call is both a statement and a prelude component, so a prelude-less
-   * at-rule's first body call must stay in its body, and not also be read as the
-   * prelude.
+   * An at-rule's prelude is what is written before its `{` block (CSS Syntax 3,
+   * "consume an at-rule"). A call is both a statement and a prelude component, so
+   * a prelude-less at-rule's first body call stays in its body, where Ledger P37
+   * gives it meaning, and is not also read as the prelude.
    */
   it.each([
     ['an anonymous @layer', '@rules: { a: b }; @layer { @rules(); }', ['Reference']],
