@@ -768,7 +768,7 @@
       "const": "inlineJavaScriptFollowingDeclaration",
       "construct": "peek(choice(literal('}'), sequence(choice(variableName, g.PunctuationMapKeyToken, sequence(choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPr…",
       "resolved": "3f0479979ad32792",
-      "changed": "A reducer-only edit moved it (jesscss/jess#645): the fingerprint's closure reads every reducer-local `const node = …` binding in this file, whose name matches parseman's `node`. With those bindings renamed in both versions, every site fingerprints the same (`node scripts/probe/fingerprint-local-node-control.mjs origin/dev`). The site reads the same grammar.",
+      "changed": "The selector and body reducer edits moved it again (jesscss/jess#645): the fingerprint's closure reads every reducer-local `const node = …` binding in this file, whose name matches parseman's `node`, and those reducers changed. With those bindings renamed in both versions, every site fingerprints the same (`node scripts/probe/fingerprint-local-node-control.mjs origin/dev`). The site reads the same grammar.",
       "why": "`variableNameEscape` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -809,7 +809,7 @@
       "const": "BacktickJavaScript",
       "construct": "{ gate: state => state === 'less-at-rule-inline-javascript', combinator: atRuleInlineJavaScriptBody }",
       "resolved": "2451fb91e3ba5a45",
-      "changed": "A reducer-only edit moved it (jesscss/jess#645): the fingerprint's closure reads every reducer-local `const node = …` binding in this file, whose name matches parseman's `node`. With those bindings renamed in both versions, every site fingerprints the same (`node scripts/probe/fingerprint-local-node-control.mjs origin/dev`). The site reads the same grammar.",
+      "changed": "The selector and body reducer edits moved it again (jesscss/jess#645): the fingerprint's closure reads every reducer-local `const node = …` binding in this file, whose name matches parseman's `node`, and those reducers changed. With those bindings renamed in both versions, every site fingerprints the same (`node scripts/probe/fingerprint-local-node-control.mjs origin/dev`). The site reads the same grammar.",
       "why": "this arm starts by reading past one token: `scanTo(literal('`'), { recoverAt: inlineJavaScriptRecoveryBoundary, stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration), skip:…`",
       "issue": "jesscss/jess#576"
     },
