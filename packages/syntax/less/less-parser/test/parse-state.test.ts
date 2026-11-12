@@ -33,6 +33,16 @@ describe('Less parse state', () => {
   it('reads the mode a raw state carries, with no re-check', () => {
     expect(mathModeOf({ mathMode: 'strict' })).toBe('strict');
   });
+
+  it('reads a var() fallback under its own context: a Less variable is a lookup, a typed at-keyword is text', () => {
+    const rule = parse('.a { b: var(--gap, @gap); c: var(--x, @media); }').rules[0];
+    expect(rule).toMatchObject({
+      rules: [
+        { value: { name: 'var', args: [{}, { value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', name: 'gap' } }] } }] } },
+        { value: { name: 'var', args: [{}, { value: { type: 'Any', src: '@media' } }] } }
+      ]
+    });
+  });
 });
 
 describe('Less parse options', () => {

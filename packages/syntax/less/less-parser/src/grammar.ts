@@ -31,7 +31,7 @@ import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, keyframeSelectorList, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, isSelectorList, isSimpleToken, branchSegments, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue, withMixinPath, guardNot, mixinPathSegment } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose } from '@jesscss/core/ast';
-import { closeAmbientFunctions, functionScopeOf, reportRecovered, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
+import { closeAmbientFunctions, contextOf, functionScopeOf, reportRecovered, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessExposeDeclarationError, LessMalformedExposeError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
@@ -2288,7 +2288,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('`'),
       choice(
         {
-          gate: state => state === 'less-at-rule-inline-javascript',
+          gate: state => contextOf(state) === 'at-rule-javascript',
           combinator: atRuleInlineJavaScriptBody
         },
         inlineJavaScriptBody
@@ -2922,13 +2922,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * A bare `@name` in the custom-value token stream. In a custom-property value
    * it is text, written as authored (ledger P2). In an ordinary declaration's
    * `var()` fallback — the one context that reads the same parts under
-   * `less-var-fallback` (`VarFallback`) — a Less variable is read there as in
+   * `var-fallback` context (`VarFallback`) — a Less variable is read there as in
    * any argument, and a typed at-keyword (`@media`) stays text (ledger P2,
    * owner 2026-10-09: "it's a CSS function"). One family, one gated arm.
    */
   const customAtName: Combinator<CustomValuePart> = choice(
     {
-      gate: state => state === 'less-var-fallback',
+      gate: state => contextOf(state) === 'var-fallback',
       combinator: choice(g.CustomAtKeywordText, g.VariableReference)
     },
     g.CustomValueAtName
@@ -2967,7 +2967,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * Overrides the CSS base's `var()` fallback slot, and only that slot. The
    * fallback is the custom-property token stream (`CustomPart`), read under
-   * the `less-var-fallback` context, where a Less variable is read as in any
+   * the `var-fallback` context, where a Less variable is read as in any
    * argument (`customAtName`); its end is trimmed at the `)`.
    *
    * BLOCKED from overriding only the slot: the inherited css `VarCall` gives the
@@ -2979,7 +2979,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const VarFallback = node(
     'VarFallback',
-    parser({ trivia: customValueCommentTrivia }, withCtx('less-var-fallback', many(g.CustomPart))),
+    parser({ trivia: customValueCommentTrivia }, withCtx((state: LessParseState | undefined) => ({ ...state, context: 'var-fallback' as const }), many(g.CustomPart))),
     (children, _fields, span, _rawChildren, triviaLog) => trimCustomValueEnd(withSourceSpan(
       customValueFromParts(customPartsFromChildren(children), triviaLog),
       span
@@ -4631,7 +4631,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(
       g.EscapedQuoted,
       g.LiteralQuoted,
-      withCtx('less-at-rule-inline-javascript', BacktickJavaScript),
+      withCtx(
+        (state: LessParseState | undefined) => ({ ...state, context: 'at-rule-javascript' as const }),
+        BacktickJavaScript
+      ),
       g.Color,
       g.Dimension,
       PageSelector,

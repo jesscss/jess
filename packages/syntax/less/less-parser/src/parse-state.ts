@@ -35,11 +35,11 @@ export interface LessParseState extends Partial<BareVariableRejection> {
   /**
    * The input text, the trivia machinery's back-reference for slicing.
    *
-   * OPTIONAL for most of the grammar — `sourceFromState` returns `undefined`
-   * when it is absent and the trivia helpers fall back to structural layout — so
-   * a caller that only wants grammar facts (the AST-grammar tests drive `run()`
-   * directly) may omit it. A `<general-enclosed>` query group is the exception:
-   * it records its source bytes (ledger N14), so an input holding one needs it.
+   * `createLessParseState` always sets it. Without it — a run with no state —
+   * `sourceFromState` returns `undefined` and the trivia helpers fall back to
+   * structural layout, so the output can differ from `parse()`'s (jess#671). A
+   * `<general-enclosed>` query group records its source bytes (ledger N14), so
+   * an input holding one needs it.
    */
   readonly source?: string;
 
@@ -77,6 +77,23 @@ export interface LessParseState extends Partial<BareVariableRejection> {
    * only on derived states, so the document-level state keeps four members.
    */
   readonly selectorCapture?: SelectorCaptureFacts;
+
+  /**
+   * The grammar context a derived state is read under, for the gates that
+   * read it: `var-fallback` in a `var()` fallback, where a bare `@name` is a
+   * Less variable; `at-rule-javascript` in an at-rule prelude, where a
+   * removed backtick JavaScript body reads to its end. Like
+   * {@link valueStop}, it exists only on derived states.
+   */
+  readonly context?: LessContext;
+}
+
+/** A grammar context ({@link LessParseState.context}). */
+export type LessContext = 'var-fallback' | 'at-rule-javascript';
+
+// The grammar context of the state a gate reads (LessParseState.context).
+export function contextOf(state: unknown): LessContext | undefined {
+  return stateOf(state)?.context;
 }
 
 /** What a selector pseudo inside a capture records for it ({@link LessParseState.selectorCapture}). */
@@ -95,11 +112,7 @@ export type ValueStop = 'condition' | 'comparison';
 
 /** The stop of the value run being read ({@link LessParseState.valueStop}), for the grammar's gates. */
 export function valueStopOf(state: unknown): ValueStop | undefined {
-  if (typeof state !== 'object' || state === null || !('valueStop' in state)) {
-    return undefined;
-  }
-  const stop = state.valueStop;
-  return stop === 'condition' || stop === 'comparison' ? stop : undefined;
+  return stateOf(state)?.valueStop;
 }
 
 /**
