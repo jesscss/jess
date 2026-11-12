@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { governingPackageRoots, readRootsBelowUnreadableFolders, readRootsOf, readSetFor } from '../src/engine.js';
+import { codeClosure, governingPackageRoots, readRootsBelowUnreadableFolders, readRootsOf, readSetFor } from '../src/engine.js';
 
 /*
  * The read root of a sandboxed render (ledger A19): of the folder its packages
@@ -260,5 +260,45 @@ describe('the synchronous read-root discovery', () => {
     const here = path.dirname(fileURLToPath(import.meta.url));
     await expectSameAsReference(here);
     await expectSameAsReference(path.resolve(here, '../../..'), here);
+  });
+});
+
+describe('the code closure', () => {
+  /*
+   * A package and what its manifest reaches: a plain dependency with one of its
+   * own, a scoped one, one linked from outside `node_modules`, one whose
+   * manifest is not JSON, and one that is not installed.
+   */
+  const installed = () => {
+    const root = tmp();
+    write(path.join(root, 'app/package.json'), '{"dependencies":{"plain":"1","@scope/pkg":"1","linked":"1","broken":"1","missing":"1"},"optionalDependencies":{"optional-missing":"1"}}');
+    write(path.join(root, 'app/main.js'));
+    write(path.join(root, 'app/other.js'));
+    write(path.join(root, 'app/node_modules/plain/package.json'), '{"dependencies":{"nested":"1"}}');
+    write(path.join(root, 'app/node_modules/nested/package.json'), '{}');
+    write(path.join(root, 'app/node_modules/@scope/pkg/package.json'), '{"peerDependencies":{"plain":"1"}}');
+    write(path.join(root, 'app/node_modules/broken/package.json'), '{ not json');
+    write(path.join(root, 'checkout/linked/package.json'), '{"dependencies":{"from-link":"1"}}');
+    write(path.join(root, 'checkout/node_modules/from-link/package.json'), '{}');
+    fs.symlinkSync(path.join(root, 'checkout/linked'), path.join(root, 'app/node_modules/linked'));
+    return root;
+  };
+
+  it('is the same walked with synchronous reads as with asynchronous ones', async () => {
+    const root = installed();
+
+    // Two files of the same package: the same closure, each mode walking it from an empty cache.
+    const sync = await codeClosure([path.join(root, 'app/main.js')], undefined, 'sync');
+    const async = await codeClosure([path.join(root, 'app/other.js')], undefined, 'async');
+    expect(sync).toEqual(async);
+    expect([...sync].sort()).toEqual([
+      'app',
+      'app/node_modules/@scope/pkg',
+      'app/node_modules/broken',
+      'app/node_modules/nested',
+      'app/node_modules/plain',
+      'checkout/linked',
+      'checkout/node_modules/from-link'
+    ].map(dir => path.join(root, dir)).sort());
   });
 });

@@ -102,8 +102,10 @@ asynchronous reads that the let-go aborts; when the closure adds a folder, the
 process is switched before any render reaches it. An entry outside the
 compiler's install (a global or npx CLI, whose packages are in no read root) is
 the exception: there the closure always adds folders, so it is walked first,
-with synchronous reads (15–22 ms on the main thread), and Deno starts once on
-the full read set instead of being started, killed and started again.
+with synchronous reads (15–22 ms on the main thread). The walk still awaits each
+step, but every await settles in a microtask, so it ends before any timer or
+I/O callback in the process runs. Deno then starts once on the full read set
+instead of being started, killed and started again.
 
 **Compilers that can run there.** A compiler class runs in the engine when it
 declares its own `static moduleIdentity` (module and export), as jess's
@@ -465,7 +467,7 @@ not a shipping path and only separates the sandbox from the compiler:
 |---|---|---|---|
 | a one-rule file, no script | 117.6 | 110.6 | 62.9 |
 | a one-rule file with one `@plugin` | 222.7 | 110.9 | 67.8 |
-| the same, outside the compiler's install | 253.4 | — | — |
+| the same, outside the compiler's install | 219.1 (245.5 before it started once) | — | — |
 | `bootstrap4.less` | 506.9 | 437.4 | 270.7 |
 
 - The plain path, on the one-rule file: Node starts in 22 ms; the jess import
@@ -486,8 +488,10 @@ not a shipping path and only separates the sandbox from the compiler:
   which is the compiler loading a second time, in Deno.
 - Outside the compiler's install the engine used to be started, killed when
   the closure added folders, and started again ~40 ms later (+31 to +44 ms on
-  the CLI). It now starts once, after a synchronous closure walk (245.5 →
-  219.1 ms on the one-rule `@plugin` file).
+  the CLI). It now starts once, after a synchronous closure walk. The
+  outside-the-install row is its own A/B (15 interleaved runs, load ~14), in
+  which the same file inside the install took 199.8 ms before and 204.8 ms
+  after, the same code path.
 
 ## 8. Decisions
 

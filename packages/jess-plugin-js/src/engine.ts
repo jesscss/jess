@@ -121,12 +121,6 @@ export const readRootsOf = (entryDir: string, jsReadRoot: string): string[] => {
   return roots;
 };
 
-/** Whether every folder in `dirs` lies inside the read roots of `entryDir` and `jsReadRoot`. */
-export const insideReadRoots = (entryDir: string, jsReadRoot: string, dirs: readonly string[]): boolean => {
-  const roots = readRootsOf(entryDir, jsReadRoot);
-  return dirs.every(dir => roots.some(root => isInside(dir, root)));
-};
-
 /**
  * The `--allow-read` list for a render: each read root in its real spelling
  * and in every written spelling the render uses for it (an ancestor of the
@@ -185,12 +179,11 @@ const packageRootOf = (file: string): string | undefined => {
   }
 };
 
-const realpathAsync = (p: string): Promise<string | undefined> =>
-  fs.promises.realpath(p).catch(() => undefined);
-
 /**
  * How the code-closure walk reads files: asynchronously, beside a render, or
- * synchronously, when a Deno start waits on the walk. The walk awaits either.
+ * synchronously, when a Deno start waits on the walk. The walk awaits either;
+ * with synchronous reads every await settles in a microtask, so the walk ends
+ * before any timer or I/O callback in this process runs.
  */
 type FileReads = {
   realpath: (p: string) => string | undefined | Promise<string | undefined>;
@@ -198,7 +191,7 @@ type FileReads = {
 };
 
 const asyncReads: FileReads = {
-  realpath: realpathAsync,
+  realpath: p => fs.promises.realpath(p).catch(() => undefined),
   readText: file => fs.promises.readFile(file, 'utf8').catch(() => undefined)
 };
 
@@ -250,8 +243,8 @@ const closures = new Map<string, Promise<string[]>>();
  * reach, as canonical directories. The engine loads this code as a render
  * needs it, so it is readable wherever it lies. Computed once per process,
  * by default with asynchronous file reads, so it runs beside a render in this
- * process instead of holding it up; with `reads: 'sync'` the walk finishes
- * before anything else in this process runs.
+ * process instead of holding it up; with `reads: 'sync'` it reads synchronously
+ * and settles in microtasks, so it ends before any timer or I/O callback runs.
  */
 export const codeClosure = async (entryFiles: readonly string[], signal?: AbortSignal, reads: 'async' | 'sync' = 'async'): Promise<string[]> => {
   const key = entryFiles.join('\u0000');
