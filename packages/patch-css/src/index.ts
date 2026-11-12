@@ -79,12 +79,11 @@ export function holdRatio(spec: ExposedSpec, key: string, name: string, value: s
  */
 export function exposedVars<S extends Pick<ExposedSpec, 'keys'>>(spec: S, given: ExportValues, hold?: Hold<S>, names?: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const key of Object.keys(given)) {
+  for (const [key, value] of Object.entries(given)) {
     const name = Object.hasOwn(spec.keys, key) ? spec.keys[key] : undefined;
     if (name === undefined) {
       throw new TypeError(`The stylesheet exposes no variable with the key ${key}.`);
     }
-    const value = given[key]!;
     out[`--${name}`] = hold === undefined ? value : hold(spec, key, name, value);
     if (names !== undefined) {
       names[name] = value;
@@ -101,8 +100,7 @@ export function exposedVars<S extends Pick<ExposedSpec, 'keys'>>(spec: S, given:
  */
 export function writeVars(vars: Readonly<Record<string, string>>, target: StyleTarget = document.documentElement): void {
   const { style } = target;
-  for (const property of Object.keys(vars)) {
-    const value = vars[property]!;
+  for (const [property, value] of Object.entries(vars)) {
     if (style.getPropertyValue(property) !== value) {
       style.setProperty(property, value);
     }
