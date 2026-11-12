@@ -48,6 +48,12 @@
       "import": "./lib/ast.js",
       "require": "./lib/ast.cjs"
     },
+    "./sourcemap": {
+      "types": "./lib/sourcemap.d.ts",
+      "source": "./src/sourcemap.ts",
+      "import": "./lib/sourcemap.js",
+      "require": "./lib/sourcemap.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [

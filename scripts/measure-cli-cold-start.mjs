@@ -7,7 +7,10 @@
  * Measures, as the median over `--runs` interleaved rounds (arm order alternates
  * each round):
  *   cli     `jess <fixture> <out>` and `lessc <fixture> <out>`, spawn to exit
- *   load    importing what the CLI imports to compile, inside the process
+ *   load    importing what the CLI imports to compile, inside the process,
+ *           without Node's module compile cache. The jess CLI turns that
+ *           cache on, so its own load (inside `cli`) is shorter after the first
+ *           run; this column is the uncached cost.
  *   first   the first compile in a fresh process (after the load)
  *   second  the second compile in that process
  *
@@ -119,7 +122,7 @@ const median = (values) => {
   return sorted[Math.floor(sorted.length / 2)];
 };
 console.log(`${fixtureName}, ${runs} interleaved runs, node ${process.version}, median ms`);
-console.log(['arm', 'cli', 'load', 'first', 'second'].map(cell => cell.padStart(10)).join(''));
+console.log(['arm', 'cli', 'load uncached', 'first', 'second'].map(cell => cell.padStart(14)).join(''));
 for (const [name, sample] of samples) {
-  console.log([name, ...['cli', 'load', 'first', 'second'].map(key => median(sample[key]).toFixed(1))].map(cell => cell.padStart(10)).join(''));
+  console.log([name, ...['cli', 'load', 'first', 'second'].map(key => median(sample[key]).toFixed(1))].map(cell => cell.padStart(14)).join(''));
 }
