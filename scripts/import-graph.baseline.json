@@ -14,7 +14,6 @@
       "@jridgewell/sourcemap-codec",
       "@jridgewell/trace-mapping",
       "@ungap/set-methods",
-      "big.js",
       "chalk"
     ],
     "bytes": 564015
@@ -43,9 +42,7 @@
       "packages/core/lib/value.js",
       "packages/core/lib/value2.js"
     ],
-    "externals": [
-      "big.js"
-    ],
+    "externals": [],
     "bytes": 68675
   },
   "@jesscss/css-parser": {

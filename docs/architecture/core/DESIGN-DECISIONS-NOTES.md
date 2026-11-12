@@ -387,3 +387,22 @@ the import planner), though their imports share one binding. An `@expose` in a
 ## V38
 
 - 2026-11-11 — implementation note (agent), on fix/css-form-channel-units, for the owner to confirm. Two readings of the row's rule that a form means what the compile computes. (1) `rgb()` in the comma syntax takes three numbers or three percentages (css-color-4 §5.1), so a form there writes a percentage beside a number channel as the number of 255 it is: `@expose r; @r: 10%` in `@less.rgb(@r, 0, 0)` is `rgb(calc(var(--r, 0.1) * 100 * 2.55), 0, 0)`, where it was `rgb(calc(var(--r, 0.1) * 100%), 0, 0)`, which Chrome 156 treats as invalid at computed-value time; with `--r: 0.1` the new form is `rgb(26, 0, 0)`, the compile's 25.5. Three percentages and the alpha keep `%`. (2) The known path of `hsl()` keeps an authored hue unit only when it is an angle: `@less.hsl(50%, 50%, 50%)` is `hsl(180, 50%, 50%)`, where it was `hsl(180%, 50%, 50%)`, which is invalid (CSS has no `%` hue), and `hsl(50px, …)` is `hsl(50, …)`; the hue's number was already the compile's degrees, and the form over `@h: 50%` already printed 180. Pins: `packages/jess/test/less-expose-variables.test.ts`, `packages/fns/src/less/__tests__/color-serialize.test.ts`. Not changed, for the owner: the known path keeps an authored `%` channel beside number channels, `@less.rgb(10%, 0, 0)` printing `rgb(10%, 0, 0)`, which Chrome 156 rejects while the compile reads it as rgb(25.5, 0, 0). A bare CSS `rgb(10%, 0, 0)` is written as it is either way.
+
+## V6
+
+2026-11-11. The exact base-10 arithmetic is one module on native `BigInt`,
+`packages/core/src/ast/decimal.ts` (`addExact`, `subExact`, `mulExact`,
+`modExact`, `percentToFraction`, exported from `@jesscss/core/value`). It
+replaces `big.js` and the `packages/fns/src/util/decimal.ts` wrapper the row
+still names; `calculate()` in `value-operate.ts` and the fns colour forms both
+read it, and `big.js` is no longer a dependency of any package. A double is
+read as the decimal `String(n)` spells, held as `digits × 10^-places`.
+Measured against `big.js` 7.0.1: identical results over 2,000,000 fuzzed
+operations (`+ - * %` and `n / 100`, decimals, exponents, integers, NaN and
+infinities), and 1.7–2.1× faster per operation. The one difference is a zero
+result's sign, which now follows IEEE float in every operation (`-0 * 0.5` and
+`-5.5 % 0.5` are `-0`), as the browser computes it; big.js lost or flipped it.
+It shows in output only through a sign-reading function, e.g. SCSS
+`math.atan2(0, -0 * 0.5)` is `180deg`, was `0deg`. A zero divisor in `%` gives `NaN` as float does, where `big.js`
+threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
+`packages/fns/src/less/__tests__/alpha-precision.test.ts`.
