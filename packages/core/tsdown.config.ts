@@ -4,8 +4,9 @@ import { defineConfig } from 'tsdown';
  * Public entries include the root, the cold-path diagnostic surface
  * (`./diagnostics`), the narrow value substrate (`./value`), the
  * evaluator a CSS-form built-in runs on (`./form`), and the
- * dependency-free AST-v2 construction surface (`./ast`). Code splitting is left
- * ON so shared runtime code is emitted once.
+ * dependency-free AST-v2 construction surface (`./ast`). Each source module is
+ * its own lib file (`unbundle`), so a bundler drops every module a page does
+ * not use, with what it imports (big.js reaches only the arithmetic).
  */
 export default defineConfig({
   entry: {
@@ -22,6 +23,7 @@ export default defineConfig({
   platform: 'node',
   fixedExtension: false,
   hash: false,
+  unbundle: true,
   deps: {
     onlyBundle: false,
 
@@ -35,12 +37,13 @@ export default defineConfig({
     alwaysBundle: ['color-name']
   },
   outputOptions(options, format) {
-    if (format === 'cjs') {
-      return {
-        ...options,
-        exports: 'named'
-      };
-    }
-    return options;
+    const extension = format === 'cjs' ? 'cjs' : 'js';
+    return {
+      ...options,
+      ...(format === 'cjs' ? { exports: 'named' } : {}),
+
+      /* npm never publishes a `node_modules` directory, so the bundled `color-name` goes to `lib/vendor/`. */
+      entryFileNames: chunk => `${chunk.name.replace(/^node_modules\/(?:.*\/)?node_modules\//, 'vendor/')}.${extension}`
+    };
   }
 });

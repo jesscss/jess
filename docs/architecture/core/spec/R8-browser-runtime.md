@@ -341,7 +341,7 @@ or needs JS) to decide what ships in the bundle.
 - **Diagnostics** go through Rollup once: errors as `this.error`, warnings as
   `this.warn`, each with its file, line and column.
 - **Browser-safe functions.** `@jesscss/fns` imports the value barrel
-  (`@jesscss/core/value`, which depends only on `big.js`) instead of the
+  (`@jesscss/core/value`, which depends only on `big.js` and `@jesscss/patch-css`) instead of the
   `@jesscss/core` root, whose `node:fs` imports break a browser build, and
   `util/mime.ts` no longer imports `node:path`. Measured 2026-11-01 with
   Vite 6: `darken` + runtime is 60 KB minified, 17.6 KB gzip.
@@ -364,6 +364,14 @@ or needs JS) to decide what ships in the bundle.
   `@less.mix(@brand, red, 25%)` or `@less.contrast(@brand)` is 34.7 KB minified, 10.7 KB gzip; a
   recipe that runs one, `@less.mix(@a, @b, 150%)`, `lightness(mix(@brand, red))` or
   `@less.contrast(@brand, #111, #eee, 50%)`, is 502 to 504 KB minified, 134.3 KB gzip.
+  Measured 2026-11-11 with Vite 6, after each `@jesscss/core` source module became
+  its own lib file, `big.js` moved to the module that does `+ - * %`, and the
+  node-copy table came to be built on the first copy: `lightness(@brand)` is
+  19.1 KB minified, 7.9 KB gzip (33.7 KB and 12.5 KB before), with no `big.js`.
+  A page with no derived value is unchanged at 1.7 KB minified. A recipe that runs a
+  form is unchanged, `lightness(spin(@brand, 30))` at 386 KB minified, 124.7 KB gzip,
+  as a form runs on the evaluator. CLI cold start and render time on
+  `benchmark.less` did not move.
 - ponytail: imports of a stylesheet are not watched (`loadedUrls` is empty);
   only the stylesheet itself is. Watch the render's loaded files when the
   compiler reports them.
@@ -381,7 +389,9 @@ or needs JS) to decide what ships in the bundle.
   chunk and `@jesscss/core` has no `sideEffects: false`. Making that tree-shake
   per function is a size task of its own. (2026-11-05: `@jesscss/core` now states
   its `sideEffects`, and with esbuild one function with no form, `lightness` or
-  `percentage`, is 18.3 KB gzip; one form, `lighten` or `fade`, is 117 KB gzip.)
+  `percentage`, is 18.3 KB gzip; one form, `lighten` or `fade`, is 117 KB gzip.
+  2026-11-11: with Vite 6, `lightness` takes 0.8 KB of `@jesscss/fns`, so the
+  dialect chunk already keeps only the function called.)
 - **Generated names are the exposed variable's namespace.** `@expose brand` publishes
   `--brand` and reserves `--brand-*` for values derived from it; an exposed variable and a
   generated name never share a name (numbered). Two exposures of one name are one

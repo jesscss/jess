@@ -96,8 +96,8 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { js } = await built(root);
 
-      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. 43,976 B measured. */
-      expect(js.length).toBeLessThan(45_000);
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. 24,558 B measured (19,137 B minified, 7,912 B gzip), 43,976 B when big.js and every node constructor came with it. */
+      expect(js.length).toBeLessThan(26_000);
     });
   });
 
