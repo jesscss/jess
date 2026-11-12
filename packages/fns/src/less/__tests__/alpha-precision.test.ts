@@ -101,7 +101,7 @@ describe('alpha arithmetic is exact in base 10', () => {
   });
 
   it('a non-finite alpha falls back to float instead of throwing', () => {
-    // big.js throws on NaN/Infinity; a numeric oddity must not become a hard error.
+    // A numeric oddity must not become a hard error.
     expect(() => evaluate(fadeoutFn, red(Number.NaN), pct(10))).not.toThrow();
   });
 });

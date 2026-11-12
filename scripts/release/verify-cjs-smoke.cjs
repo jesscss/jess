@@ -35,10 +35,15 @@ const walk = (dir) => {
 };
 walk(packagesDir);
 const cycles = [];
+const unbuilt = [];
 for (const dir of packageDirs) {
   const exportsField = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).exports;
   const root = exportsField?.['.']?.require;
-  if (typeof root !== 'string' || !fs.existsSync(path.join(dir, root))) continue;
+  if (typeof root !== 'string') continue;
+  if (!fs.existsSync(path.join(dir, root))) {
+    unbuilt.push(path.relative(packagesDir, dir));
+    continue;
+  }
   for (const [sub, conditions] of Object.entries(exportsField)) {
     const file = sub === '.' ? undefined : conditions?.require;
     if (typeof file !== 'string' || !fs.existsSync(path.join(dir, file))) continue;
@@ -49,6 +54,9 @@ for (const dir of packageDirs) {
     ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     if (undefinedKeys) cycles.push(`${path.relative(packagesDir, dir)}: ${sub} then . leaves ${undefinedKeys} undefined`);
   }
+}
+if (unbuilt.length > 0) {
+  console.log(`CJS load order not checked, not built: ${unbuilt.join(', ')}`);
 }
 if (cycles.length > 0) {
   console.error(`CJS smoke FAILED: a subpath loaded before the root leaves root exports undefined (a chunk cycle):\n  ${cycles.join('\n  ')}`);

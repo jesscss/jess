@@ -395,7 +395,10 @@ read it, and `big.js` is no longer a dependency of any package. A double is
 read as the decimal `String(n)` spells, held as `digits × 10^-places`.
 Measured against `big.js` 7.0.1: identical results over 2,000,000 fuzzed
 operations (`+ - * %` and `n / 100`, decimals, exponents, integers, NaN and
-infinities), except that a zero result keeps float's sign, and 1.7–2.1× faster
-per operation. A zero divisor in `%` gives `NaN` as float does, where `big.js`
+infinities), and 1.7–2.1× faster per operation. The one difference is a zero
+result's sign, which now follows IEEE float in every operation (`-0 * 0.5` and
+`-5.5 % 0.5` are `-0`), as the browser computes it; big.js lost or flipped it.
+It shows in output only through a sign-reading function, e.g. SCSS
+`math.atan2(0, -0 * 0.5)` is `180deg`, was `0deg`. A zero divisor in `%` gives `NaN` as float does, where `big.js`
 threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
 `packages/fns/src/less/__tests__/alpha-precision.test.ts`.

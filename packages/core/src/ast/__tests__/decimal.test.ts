@@ -21,6 +21,7 @@ describe('exact base-10 arithmetic (ledger V6)', () => {
 
   it('keeps float where float is exact or there is no number', () => {
     expect(Object.is(mulExact(-2.5, 0), -0)).toBe(true);
+    expect(Object.is(modExact(-5.5, 0.5), -0)).toBe(true);
     expect(modExact(1.5, 0)).toBeNaN();
     expect(addExact(Number.NaN, 0.5)).toBeNaN();
     expect(subExact(Number.POSITIVE_INFINITY, 0.5)).toBe(Number.POSITIVE_INFINITY);

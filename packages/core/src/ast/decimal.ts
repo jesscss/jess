@@ -49,8 +49,17 @@ export const addExact = (a: number, b: number): number => decimalPath(a, b) ? al
 /** Exact `a - b`. */
 export const subExact = (a: number, b: number): number => decimalPath(a, b) ? aligned(a, b, (x, y) => x - y) : a - b;
 
-/** Exact `a % b`, the sign of `a` as in JS. A zero divisor gives `NaN`, as float does. */
-export const modExact = (a: number, b: number): number => decimalPath(a, b) && b !== 0 ? aligned(a, b, (x, y) => x % y) : a % b;
+/**
+ * Exact `a % b`, the sign of `a` as in JS, a zero remainder included (`-5.5 % 0.5`
+ * is `-0`). A zero divisor gives `NaN`, as float does.
+ */
+export const modExact = (a: number, b: number): number => {
+  if (!decimalPath(a, b) || b === 0) {
+    return a % b;
+  }
+  const r = aligned(a, b, (x, y) => x % y);
+  return r === 0 && (a < 0 || Object.is(a, -0)) ? -0 : r;
+};
 
 /** Exact `a * b`. */
 export const mulExact = (a: number, b: number): number => {
