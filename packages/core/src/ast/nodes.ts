@@ -1892,13 +1892,14 @@ type SelectorPartInput = { combinator?: Combinator; term: SelectorTerm };
 
 /** `complexSelector([{ term: simpleSelector('.a') }, { combinator: '>', term: simpleSelector('.b') }])` => `.a > .b`. */
 export const complexSelector = (
-  segments: [SelectorPartInput, SelectorPartInput, ...SelectorPartInput[]]
+  segments: readonly [SelectorPartInput, ...SelectorPartInput[]]
 ): ComplexSelector => {
-  const [head, ...tail] = segments;
-  const value: ComplexSelector['value'] = [
-    head.term,
-    ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
-  ];
+  // One pass: each later segment adds its combinator (descendant when none) and its term.
+  const value: ComplexSelector['value'] = [segments[0].term];
+  for (let i = 1; i < segments.length; i++) {
+    const segment = segments[i]!;
+    value.push(segment.combinator ?? ' ', segment.term);
+  }
   return new ComplexSelectorNode([...value], NO_SPAN, NO_SPAN);
 };
 export const relativeSelector = (
@@ -1913,10 +1914,8 @@ export const relativeSelector = (
   ];
   return new RelativeSelectorNode([...value], NO_SPAN, NO_SPAN);
 };
-export const selectorBranchOf = (segments: readonly [SelectorPartInput, ...SelectorPartInput[]]): SelectorBranch => {
-  const [first, second, ...rest] = segments;
-  return second === undefined ? first.term : complexSelector([first, second, ...rest]);
-};
+export const selectorBranchOf = (segments: readonly [SelectorPartInput, ...SelectorPartInput[]]): SelectorBranch =>
+  segments.length === 1 ? segments[0].term : complexSelector(segments);
 export const selist = (...selectors: SelectorBranch[]): SelectorList => (new SelectorListNode(selectors, NO_SPAN, NO_SPAN, undefined));
 
 export const decl = (

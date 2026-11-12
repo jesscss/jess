@@ -23,8 +23,8 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
-import { NO_SPAN, any, block, rule, withBlockBody, callArg, generalEnclosedGroup, quoted, condition, inParens, isDeclaration, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isSpannedToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, withoutLineComments, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout, lookupStep, referenceCall, guardCall, guardCompare, guardDefault, guardLogical, guardNot, withFields, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
-import type { AnonymousMixin, Any, Block, Ruleset, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, MixinPathSegment, Operation, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, rule, withBlockBody, callArg, generalEnclosedGroup, quoted, condition, inParens, isDeclaration, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isSpannedToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorBranchOf, selist, compoundSelectorOf, isSelectorTerm, isSelectorBranch, isSelectorList, isSimpleToken, branchSegments, semanticGapText, withoutLineComments, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout, lookupStep, referenceCall, guardCall, guardCompare, guardDefault, guardLogical, guardNot, withFields, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
+import type { AnonymousMixin, Any, Block, Ruleset, CallArg, Combinator as SelectorCombinator, ComplexSegment, Declaration, Expression, ExtendInstruction, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, MixinPathSegment, Operation, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, type ValuePieceKind, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex, valueRunSeparators } from './trivia-layout.js';
 import { diagnosticsOf, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
@@ -37,7 +37,7 @@ type InterpolationFact = { readonly ref: ValueNode; readonly src: string };
 type InterpolationAccessorFact = { readonly key: ValueNode | number; readonly keyKind: 'var' | 'prop' | 'index'; readonly src: string };
 /** A typed continuation of a left-associated public Reference chain. */
 type ReferenceTailFact = { readonly step: Reference['steps'][number]; readonly src: string };
-type ComplexTailFact = { readonly combinator: ' ' | '>' | '+' | '~' | '|' | '||'; readonly term: SelectorTerm };
+type ComplexTailFact = { readonly fact: 'complexTail'; readonly combinator: ' ' | '>' | '+' | '~' | '|' | '||'; readonly term: SelectorTerm };
 type MixinPathSegmentFact = { readonly combinator: ' ' | '>'; readonly selector: string };
 /*
  * A fact's `fact` tag is written only by the reducer that builds that fact, from typed
@@ -80,9 +80,13 @@ type MixinInteriorFact = {
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
 /** One target as its `:extend(…)` list reads it: `wholeList` when it carries `!all`, which makes the whole list partial. */
-type ExtendTargetListFact = ExtendTargetFact & { readonly wholeList: boolean };
+type ExtendTargetListFact = { readonly fact: 'extendTarget'; readonly target: SelectorList; readonly partial: boolean; readonly wholeList: boolean };
+/** A `:extend(…)`'s targets, each partial when it or the list says `all`. */
+type ExtendTargetsFact = { readonly fact: 'extendTargets'; readonly targets: readonly ExtendTargetFact[] };
+/** A mixin call's parenthesized arguments. */
+type MixinArgumentsFact = { readonly fact: 'mixinArguments'; readonly args: readonly MixinCallArgument[] };
 type BodyExtendFact = { readonly fact: 'bodyExtend'; readonly bodyExtensions: readonly ExtendInstruction[] };
-type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
+type SelectorBranchFact = { readonly fact: 'selectorBranch'; readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
 type SelectorListWithExtendsFact = {
   readonly fact: 'selectorListWithExtends';
   readonly selector: SelectorList;
@@ -900,41 +904,56 @@ function layoutFromTriviaBoundaries(
 }
 
 function isComplexTailFact(value: unknown): value is ComplexTailFact {
-  return typeof value === 'object' && value !== null && 'combinator' in value && 'term' in value;
+  return typeof value === 'object' && value !== null && 'fact' in value && value.fact === 'complexTail';
 }
 
-/** Shared `optional(combinator) term` selector-tail reduction: the term
- * and combinator sub-rules vary by selector family, but the fold to a
- * `{ combinator, term }` fact is identical. */
+/** A selector tail, `optional(combinator) term`: the term is last, after its combinator when one is written. */
 function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
-  const token = children.find(child => !isSelectorTerm(child));
-  const term = children.find(isSelectorTerm)!;
-  return { combinator: token === undefined ? ' ' : requireCombinator(token), term };
+  const term = requireSelectorTerm(children[children.length - 1]);
+  return { fact: 'complexTail', combinator: children.length === 1 ? ' ' : requireCombinator(children[0]), term };
+}
+
+function requireSelectorTerm(value: unknown): SelectorTerm {
+  if (!isSelectorTerm(value)) {
+    throw new TypeError('Less grammar produced a non-selector child.');
+  }
+  return value;
+}
+
+function requireSelectorBranch(value: unknown): SelectorBranch {
+  if (!isSelectorBranch(value)) {
+    throw new TypeError('Less grammar produced a non-selector-branch child.');
+  }
+  return value;
 }
 
 /**
- * Fold an inlined `CompoundSelector (combinator? CompoundSelector)*` child run
- * into the `{ term }, { combinator, term }, …` segment list `selectorBranchOf`
- * consumes. The combinator token is folded inline exactly as the CSS base does
- * — there is no `ComplexTail` wrapper node — so the concrete tree converges to
- * CSS's `ComplexSelector` shape. Recognition-only children (the `not(…)` guard
- * lookaheads) contribute no term and reduce to the descendant default, so they
- * never disturb the fold.
+ * A complex selector's children from `children[from]`, as one branch: compound
+ * terms, the combinator written between two of them (descendant when none is),
+ * and the `{ combinator, term }` tails of an inline-extend subject. The
+ * combinator token is folded inline as the CSS base does, with no `ComplexTail`
+ * wrapper node. A lone term is the branch itself, so a one-compound selector
+ * builds nothing more.
  */
-function complexSegmentsFrom(
-  children: readonly unknown[]
-): [{ combinator?: SelectorCombinator; term: SelectorTerm }, ...Array<{ combinator?: SelectorCombinator; term: SelectorTerm }>] {
-  const segments: Array<{ combinator?: SelectorCombinator; term: SelectorTerm }> = [];
+function selectorBranchFrom(children: readonly unknown[], from: number): SelectorBranch {
+  const head = requireSelectorTerm(children[from]);
+  if (children.length === from + 1) {
+    return head;
+  }
+  const segments: [ComplexSegment, ...ComplexSegment[]] = [{ term: head }];
   let combinator: SelectorCombinator = ' ';
-  for (const child of children) {
+  for (let i = from + 1; i < children.length; i++) {
+    const child = children[i];
     if (isSelectorTerm(child)) {
-      segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
+      segments.push({ combinator, term: child });
       combinator = ' ';
+    } else if (isComplexTailFact(child)) {
+      segments.push({ combinator: child.combinator, term: child.term });
     } else {
       combinator = requireCombinator(child);
     }
   }
-  return [segments[0]!, ...segments.slice(1)];
+  return selectorBranchOf(segments);
 }
 
 /** Space-separated query clause reduction: keyword/value children join into a
@@ -1362,71 +1381,21 @@ function requireDeclaration(value: unknown): Declaration {
   return value;
 }
 
-function isLessSelectorList(value: unknown): value is SelectorList {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'SelectorList'
-    && 'selectors' in value
-    && Array.isArray(value.selectors);
-}
-
 function requireSelectorList(value: unknown): SelectorList {
-  if (!isLessSelectorList(value)) {
+  if (!isSelectorList(value)) {
     throw new TypeError('Less grammar produced a non-selector child.');
   }
   return value;
 }
 
-function isComplex(value: unknown): value is ComplexSelector {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'ComplexSelector'
-    && 'value' in value
-    && Array.isArray(value.value);
-}
-
-function isRelative(value: unknown): value is Extract<SelectorBranch, { readonly type: 'RelativeSelector' }> {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'RelativeSelector'
-    && 'value' in value
-    && Array.isArray(value.value);
-}
-
-function isLessSelectorBranch(value: unknown): value is SelectorBranch {
-  return isSelectorTerm(value) || isComplex(value) || isRelative(value);
-}
-
 const selectorBranchesFrom = (children: readonly unknown[]): SelectorBranch[] =>
-  children.filter(isLessSelectorBranch);
-
-function lessBranchSegments(branch: SelectorBranch): [{ combinator?: SelectorCombinator; term: SelectorTerm }, ...Array<{ combinator?: SelectorCombinator; term: SelectorTerm }>] {
-  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
-    return [{ term: branch }];
-  }
-  const segments: Array<{ combinator?: SelectorCombinator; term: SelectorTerm }> = [];
-  let combinator: SelectorCombinator = ' ';
-  const start = branch.type === 'RelativeSelector' ? 1 : 0;
-  for (let index = start; index < branch.value.length; index++) {
-    const part = branch.value[index]!;
-    if (typeof part === 'string') {
-      combinator = part;
-    } else {
-      segments.push(segments.length === 0 ? { term: part } : { combinator, term: part });
-      combinator = ' ';
-    }
-  }
-  return [segments[0]!, ...segments.slice(1)];
-}
+  children.filter(isSelectorBranch);
 
 type MixinPrefixSegment = MixinPathSegment;
 
 function mixinPrefixFromSelectorBranch(branch: SelectorBranch): readonly MixinPrefixSegment[] | null {
   const prefix: MixinPrefixSegment[] = [];
-  for (const segment of lessBranchSegments(branch)) {
+  for (const segment of branchSegments(branch)) {
     if (segment.combinator !== undefined && segment.combinator !== ' ' && segment.combinator !== '>') {
       return null;
     }
@@ -1483,18 +1452,6 @@ function hasRulesetTerminator(rawChildren: readonly unknown[]): boolean {
   return isSpannedToken(tail) && tail.value === ';';
 }
 
-function isSelectorTerm(value: unknown): value is SelectorTerm {
-  if (isLessSimpleToken(value)) {
-    return true;
-  }
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'CompoundSelector'
-    && 'value' in value
-    && Array.isArray(value.value);
-}
-
 function isSimpleSelector(value: unknown): value is SimpleSelector {
   return typeof value === 'object'
     && value !== null
@@ -1511,15 +1468,25 @@ function isSimpleSelector(value: unknown): value is SimpleSelector {
 // `crossable` (a narrower set) is decided in core.
 const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 
-function isLessSimpleToken(value: unknown): value is SimpleToken {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
-}
+const simpleFrom = (child: unknown): SimpleToken =>
+  isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
 
-const lessSelectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
-  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
+/**
+ * Every compound selector's reducer: its simples (each typed, or a token that
+ * spells one). A lone simple is the term itself; two or more are one compound.
+ */
+function compoundFromChildren(children: readonly unknown[]): SelectorTerm {
+  const first = simpleFrom(children[0]);
+  const second = children[1];
+  if (second === undefined) {
+    return first;
+  }
+  const simples: [SimpleToken, SimpleToken, ...SimpleToken[]] = [first, simpleFrom(second)];
+  for (let i = 2; i < children.length; i++) {
+    simples.push(simpleFrom(children[i]));
+  }
+  return compoundSelectorOf(simples);
+}
 
 function pseudoNameFromHead(head: string): string {
   return head.slice(0, 2) === '::'
@@ -1530,7 +1497,7 @@ function pseudoNameFromHead(head: string): string {
 }
 
 function staticSelectorPseudoFrom(head: string, arg: unknown): SimpleToken {
-  if (isLessSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoNameFromHead(head).toLowerCase())) {
+  if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoNameFromHead(head).toLowerCase())) {
     return pseudoSelector(head, arg);
   }
   return simpleSelector(`${head}(${requireSelectorList(arg).selectors.map(selectorBranchCanonical).join(',')})`);
@@ -1560,20 +1527,19 @@ function isParam(value: unknown): value is Param {
     && ('name' in value || 'pattern' in value || 'rest' in value);
 }
 
-function isExtendInstruction(value: unknown): value is ExtendInstruction {
-  return typeof value === 'object' && value !== null
-    && 'target' in value && isLessSelectorList(value.target)
-    && 'partial' in value && typeof value.partial === 'boolean';
-}
-
-function isExtendTargetFact(value: unknown): value is ExtendTargetFact {
-  return typeof value === 'object' && value !== null
-    && 'target' in value && isLessSelectorList(value.target)
-    && 'partial' in value && typeof value.partial === 'boolean';
-}
-
 function isExtendTargetListFact(value: unknown): value is ExtendTargetListFact {
-  return isExtendTargetFact(value) && 'wholeList' in value && typeof value.wholeList === 'boolean';
+  return typeof value === 'object' && value !== null && 'fact' in value && value.fact === 'extendTarget';
+}
+
+function isExtendTargetsFact(value: unknown): value is ExtendTargetsFact {
+  return typeof value === 'object' && value !== null && 'fact' in value && value.fact === 'extendTargets';
+}
+
+function requireExtendTargetsFact(value: unknown): ExtendTargetsFact {
+  if (!isExtendTargetsFact(value)) {
+    throw new TypeError('Less extend reduction lost its targets.');
+  }
+  return value;
 }
 
 function isBodyExtendFact(value: unknown): value is BodyExtendFact {
@@ -1586,34 +1552,27 @@ const NO_EXTENSIONS: readonly ExtendInstruction[] = [];
 const NO_EXTEND_TARGETS: readonly ExtendTargetFact[] = [];
 
 /**
- * The body-form `&:extend()`s among a ruleset or mixin-definition body's reduced
- * children, in source order; the shared empty list when the body has none, so a body
- * without one allocates nothing.
+ * A `{ … }` body, in one pass from `children[from]`: its statements are pushed on
+ * to `rules`, and its body-form `&:extend()`s are returned (the shared empty list
+ * when it has none). The ruleset, mixin and at-rule factories copy `rules`;
+ * `anonymousMixin` and `forNode` still keep it (V8 invariant 12 debt).
+ *
+ * Any other child is skipped, except under `strict` (detached-ruleset and
+ * `each()` bodies), where a child that is not `;` or `}` throws as it did
+ * before these bodies shared this pass.
  */
-function bodyExtensionsOf(children: readonly unknown[]): readonly ExtendInstruction[] {
-  let out: ExtendInstruction[] | undefined;
-  for (const child of children) {
-    if (isBodyExtendFact(child) && child.bodyExtensions.length !== 0) {
-      (out ??= []).push(...child.bodyExtensions);
-    }
-  }
-  return out ?? NO_EXTENSIONS;
-}
-
-/**
- * A ruleset or mixin body, in one pass from `children[from]`: its statements are
- * pushed on to `rules`, and its body-form `&:extend()`s are returned (the shared
- * empty list when it has none). The caller's factory copies `rules`, so the array
- * this pass fills is never the one a node keeps (V8 invariant 12).
- */
-function readBody(children: readonly unknown[], from: number, rules: Statement[]): readonly ExtendInstruction[] {
+function readBody(children: readonly unknown[], from: number, rules: Statement[], strict = false): readonly ExtendInstruction[] {
   let extensions: ExtendInstruction[] | undefined;
   for (let i = from; i < children.length; i++) {
     const child = children[i];
     if (isStatement(child)) {
       rules.push(child);
-    } else if (isBodyExtendFact(child) && child.bodyExtensions.length !== 0) {
-      (extensions ??= []).push(...child.bodyExtensions);
+    } else if (isBodyExtendFact(child)) {
+      if (child.bodyExtensions.length !== 0) {
+        (extensions ??= []).push(...child.bodyExtensions);
+      }
+    } else if (strict && !isLessTerminalText(child, ';') && !isLessTerminalText(child, '}')) {
+      throw new TypeError('Less grammar produced a non-statement callback-body child.');
     }
   }
   return extensions ?? NO_EXTENSIONS;
@@ -1624,19 +1583,16 @@ function readBody(children: readonly unknown[], from: number, rules: Statement[]
  * which extends from that branch (an inline extend binds to its own branch).
  */
 function selectorBranchFactFrom(children: readonly unknown[]): SelectorBranchFact {
-  const subject = children.find(isLessSelectorBranch)!;
-  let extensions: ExtendInstruction[] | undefined;
-  for (const child of children) {
-    if (!Array.isArray(child)) {
-      continue;
-    }
-    for (const target of child) {
-      if (isExtendTargetFact(target)) {
-        (extensions ??= []).push({ target: target.target, partial: target.partial, subject: selist(subject) });
-      }
-    }
-  }
-  return { selector: subject, extensions: extensions ?? NO_EXTENSIONS };
+  // The branch, then its inline `:extend(…)` when one is written.
+  const subject = requireSelectorBranch(children[0]);
+  const pseudo = children[1];
+  return {
+    fact: 'selectorBranch',
+    selector: subject,
+    extensions: isExtendTargetsFact(pseudo)
+      ? pseudo.targets.map(target => ({ target: target.target, partial: target.partial, subject: selist(subject) }))
+      : NO_EXTENSIONS
+  };
 }
 
 /**
@@ -1664,10 +1620,14 @@ function rulesetExtensions(selector: readonly ExtendInstruction[], body: readonl
 }
 
 function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
-  return typeof value === 'object' && value !== null
-    && 'selector' in value && isLessSelectorBranch(value.selector)
-    && 'extensions' in value && Array.isArray(value.extensions)
-    && value.extensions.every(isExtendInstruction);
+  return typeof value === 'object' && value !== null && 'fact' in value && value.fact === 'selectorBranch';
+}
+
+function requireSelectorBranchFact(value: unknown): SelectorBranchFact {
+  if (!isSelectorBranchFact(value)) {
+    throw new TypeError('Less selector list lost its selector branch.');
+  }
+  return value;
 }
 
 /**
@@ -1738,11 +1698,8 @@ function isMixinPathTail(value: unknown): value is MixinPathSegmentFact {
     && (value.combinator === ' ' || value.combinator === '>') && 'selector' in value && typeof value.selector === 'string';
 }
 
-function isMixinCallArgument(value: unknown): value is MixinCallArgument {
-  /* `name` is ALWAYS present — `undefined` is what positional means — so its
-   * absence is a reduced-shape defect, not a positional argument. */
-  return typeof value === 'object' && value !== null && 'value' in value && (isLessValueSlotValue(value.value) || isMixinCall(value.value))
-    && 'name' in value && (value.name === undefined || typeof value.name === 'string');
+function isMixinArgumentsFact(value: unknown): value is MixinArgumentsFact {
+  return typeof value === 'object' && value !== null && 'fact' in value && value.fact === 'mixinArguments';
 }
 
 function isLessEachCallback(value: unknown): value is LessEachCallback {
@@ -1756,11 +1713,17 @@ function requireLessEachCallback(value: unknown): LessEachCallback {
   return value;
 }
 
-function mixinArgumentsFromChildren(children: readonly unknown[]): MixinCallArgument[] {
-  return children.flatMap(child => Array.isArray(child)
-    ? child.filter(isMixinCallArgument)
-    : isMixinCallArgument(child) ? [child] : []);
+/** A call's arguments: its `MixinArguments` child's, or none when the parentheses are empty. */
+function mixinArgumentsFromChildren(children: readonly unknown[]): readonly MixinCallArgument[] {
+  for (const child of children) {
+    if (isMixinArgumentsFact(child)) {
+      return child.args;
+    }
+  }
+  return NO_MIXIN_ARGUMENTS;
 }
+
+const NO_MIXIN_ARGUMENTS: readonly MixinCallArgument[] = [];
 
 /**
  * Report a mixin-list item the list cannot give meaning to (ledger P46) at the
@@ -2633,36 +2596,6 @@ function enclosedFrom(name: string | undefined, children: readonly unknown[], sp
   );
 }
 
-/** Retain every callback body fact except an authored empty statement. */
-function requireCallbackStatements(children: readonly unknown[]): Statement[] {
-  const statements: Statement[] = [];
-  for (const child of children) {
-    if (isLessTerminalText(child, ';')) {
-      continue;
-    }
-    if (!isStatement(child)) {
-      throw new TypeError('Less grammar produced a non-statement callback-body child.');
-    }
-    statements.push(child);
-  }
-  return statements;
-}
-
-/** Read a grammar-owned `{ … }` body without silently dropping non-body facts. */
-function requireValueBlockBody(children: readonly unknown[]): Statement[] {
-  const bodyStart = children.findIndex(child => isLessTerminalText(child, '{'));
-  const bodyEnd = children.findIndex((child, index) => index > bodyStart && isLessTerminalText(child, '}'));
-  if (bodyStart < 0 || bodyEnd < 0) {
-    throw new TypeError('Less grammar produced a detached ruleset without a delimited body.');
-  }
-  for (const child of children.slice(bodyEnd + 1)) {
-    if (!isLessTerminalText(child, ';')) {
-      throw new TypeError('Less grammar produced an invalid detached-ruleset suffix.');
-    }
-  }
-  return requireCallbackStatements(children.slice(bodyStart + 1, bodyEnd));
-}
-
 /**
  * One Less arithmetic run exactly as `MathSum` recognised it — its operands and
  * the operators between them, not yet folded. `MathSum` is the ONE rule that
@@ -2892,18 +2825,23 @@ function requireMathGroupValue(node: Block): ValueNode {
 }
 
 export {
+  compoundFromChildren,
+  selectorBranchFrom,
+  isExtendTargetsFact,
+  requireExtendTargetsFact,
+  requireSelectorBranchFact,
+  requireSelectorBranch,
+  NO_EXTENSIONS,
   LESS_NODE_TRIVIA_STRIDE,
   STRUCTURED_PSEUDOS,
   appendEnclosedLiteral,
   appendInterpolationLiteral,
   argumentFunctionFromChildren,
-  lessBranchSegments,
   callArgumentSource,
   callWithLayout,
   combinatorTailReducer,
   selectorBranchFactFrom,
   queryListHasImportCondition,
-  complexSegmentsFrom,
   customPartsFromChildren,
   customValueFromParts,
   trimCustomValueEnd,
@@ -2932,12 +2870,8 @@ export {
   interpolationFactFromChildren,
   interpolationPartsFrom,
   isAny,
-  bodyExtensionsOf,
   isBodyExtendFact,
-  isComplex,
   isComplexTailFact,
-  isExtendInstruction,
-  isExtendTargetFact,
   isExtendTargetListFact,
   isFunctionCall,
   isFunctionConditionFact,
@@ -2948,7 +2882,6 @@ export {
   isLessCallArg,
   enclosedFrom,
   isMixinCall,
-  isMixinCallArgument,
   isMixinGuard,
   isMixinInteriorItem,
   isMixinPathTail,
@@ -2959,15 +2892,10 @@ export {
   isReference,
   isReferenceCall,
   isReferenceTailFact,
-  isRelative,
-  isLessSelectorBranch,
   isSelectorBranchFact,
-  isLessSelectorList,
   isSelectorListWithExtendsFact,
-  isSelectorTerm,
   isSequence,
   isSimpleSelector,
-  isLessSimpleToken,
   isStatement,
   isLessKeyword,
   isLessTerminalText,
@@ -3000,7 +2928,6 @@ export {
   rawLeafText,
   referenceWithBracketLookups,
   referenceWithTails,
-  requireCallbackStatements,
   requireCombinator,
   requireDeclaration,
   requireField,
@@ -3027,12 +2954,10 @@ export {
   requireSupportedVariableName,
   requireTerminalText,
   requireToken,
-  requireValueBlockBody,
   requireValueNode,
   requireValueSlot,
   requiredTokenStart,
   selectorBranchesFrom,
-  lessSelectorTermFromTokens,
   separatorRawIndexes,
   separatorWithSurroundingTrivia,
   separatorsFromFields,
@@ -3058,6 +2983,8 @@ export type {
   EnclosedNameFact,
   ExtendTargetFact,
   ExtendTargetListFact,
+  ExtendTargetsFact,
+  MixinArgumentsFact,
   FunctionConditionFact,
   IndirectRef,
   InterpolationAccessorFact,

@@ -61,46 +61,46 @@
     },
     "less": {
       "source": "packages/syntax/less/less-parser/src/grammar.ts",
-      "sourceBytes": 277750,
+      "sourceBytes": 276593,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 594738,
+          "bytes": 590798,
           "ratio": 2.14,
           "assemblyFunctions": 71
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 463990,
+          "bytes": 460858,
           "ratio": 1.67,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 466508,
+          "bytes": 463376,
           "ratio": 1.68,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 464320,
+          "bytes": 461188,
           "ratio": 1.67,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 280235,
-          "ratio": 1.01,
+          "bytes": 277119,
+          "ratio": 1,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 280321,
-          "ratio": 1.01,
+          "bytes": 277205,
+          "ratio": 1,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 280321,
-          "ratio": 1.01,
+          "bytes": 277205,
+          "ratio": 1,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 280327,
-          "ratio": 1.01,
+          "bytes": 277211,
+          "ratio": 1,
           "assemblyFunctions": null
         }
       }
@@ -153,7 +153,7 @@
     },
     "jess": {
       "source": "packages/syntax/jess/jess-parser/src/grammar.ts",
-      "sourceBytes": 227833,
+      "sourceBytes": 227835,
       "tablesOnly": "Built with assemblyBudget 0 (packages/syntax/jess/jess-parser/tsdown.config.ts): under selective assembly every budget measured parses at the same speed and each step up costs import time. https://github.com/jesscss/jess/issues/508",
       "artifacts": {
         "lib/grammar/ast.js": {
