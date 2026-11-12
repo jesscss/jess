@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { probe, sandboxed } from './engine/sandboxed.js';
+import { denoRunArgs } from '../src/engine.js';
 import jsPlugin, { type JsPlugin } from '../src/index.js';
 
 const workerPath = fileURLToPath(new URL('../src/runtime-worker.ts', import.meta.url));
@@ -150,6 +151,27 @@ describe('@jesscss/plugin-js worker lifetime', () => {
 
     plugin.dispose();
     expect(brokerSockets()).toBe(before);
+  });
+
+  it('exits without ready, with the import error, when the worker cannot load the runtime', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-js-no-runtime-'));
+    const script = path.join(root, 'runtime-worker.ts');
+    fs.copyFileSync(workerPath, script);
+    const child = spawn(denoPath, denoRunArgs([root], {}, script), { stdio: ['pipe', 'pipe', 'pipe'] });
+    children.push(child);
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    // stdin stays open: only the failed import can end the process.
+    expect(await exited(child, 5000)).toBe(true);
+    expect(stdout).not.toContain('ready');
+    expect(stderr).toMatch(/Module not found[^\n]*plugin-runtime\.js/);
   });
 
   it('fails startup at once when the worker exits before it is ready', async () => {

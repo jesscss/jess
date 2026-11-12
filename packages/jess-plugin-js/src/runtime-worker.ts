@@ -59,6 +59,8 @@ function serve({ computeResponse }) {
       previous = previous.then(() => handleRequest(computeResponse, req));
     }
   };
+
+  /* `ready` comes after `onmessage` is set: the worker drops any message that arrives before the runtime has loaded. */
   send({ type: 'ready' });
 }
 
