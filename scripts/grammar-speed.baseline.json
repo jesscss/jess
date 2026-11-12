@@ -27,7 +27,7 @@
     },
     "less": {
       "fixture": "benchmark.less",
-      "instructionsPerParse": 1795766463
+      "instructionsPerParse": 1755591483
     },
     "scss": {
       "fixture": "gen-workload",
@@ -35,7 +35,7 @@
     },
     "jess": {
       "fixture": "benchmark.css",
-      "instructionsPerParse": 1842658331
+      "instructionsPerParse": 1811954350
     }
   }
 }

@@ -1,16 +1,16 @@
 {
   "format": 1,
   "harness": "e542b69ede393b0c90021c7c5710e3eab01a86f451fbd7124158f26e3721c0f0",
-  "entries": 889,
+  "entries": 890,
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "f4024eae861a751663a89ff08be0244aafa684c9377cebe7b266bc2769b4407c",
+      "aggregate": "af88b043580f27dbed336743a486a50c5ecfa27f9c4ef7c0b9c25f5657b6ee8f",
       "threw": 104
     },
     {
       "name": "cst",
-      "aggregate": "bffd3f3df80a853f6fec3d2b7db2a1be19fdb04a49664ea0e34f6cccceab5542",
+      "aggregate": "5c12bf0b9f5f35fb2ce0400d886129dcbcd4bab9fb22f635d4ebf61d9e3ec1da",
       "threw": 0
     }
   ],
@@ -3570,6 +3570,10 @@
     "packages/syntax/css/css-parser/test/render-differential/fixtures/query-general-enclosed.css": {
       "ast": "3723f4512753fd7f",
       "cst": "203c75918e8bd313"
+    },
+    "packages/syntax/less/less-parser/test/fixtures/prelude-less-at-rules.less": {
+      "ast": "b99cf5c85984ede9",
+      "cst": "01e34de92cadc2fc"
     }
   }
 }

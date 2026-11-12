@@ -1,0 +1,23 @@
+// At-rules written without a prelude whose body starts with a detached-ruleset
+// call, beside the same at-rules with a prelude. The call belongs to the body.
+@print-page: {
+  margin: 1in;
+  color: black;
+};
+
+@layer {
+  @print-page();
+}
+
+@layer print {
+  @print-page();
+}
+
+@page {
+  @print-page();
+}
+
+@page :first {
+  @print-page();
+  margin-top: 2in;
+}

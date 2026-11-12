@@ -145,6 +145,15 @@ describe('a call standing alone in statement position (P37)', () => {
     await expect(less('e(\'\');\na { b: c; }')).resolves.toBe('a {\n  b: c;\n}\n');
   });
 
+  it('is the first statement of an at-rule written without a prelude, not its prelude', async () => {
+    await expect(less('@r: { a: b; }; @layer { @r(); }')).resolves.toBe('@layer {\n  a: b;\n}\n');
+    await expect(less('@r: { a: b; }; @font-face { font-family: x; @r(); }'))
+      .resolves.toBe('@font-face {\n  font-family: x;\n  a: b;\n}\n');
+    await expect(less('@font-face { e(\'/* k */\'); }')).resolves.toBe('@font-face {\n  /* k */\n}\n');
+    await expect(less('@font-face { foo(); }')).rejects.toThrow(notAStatement);
+    await expect(less('@unknown { a: b; foo(); }')).rejects.toThrow(notAStatement);
+  });
+
   it.each([
     ['a call to no function', 'foo(1);'],
     ['a function that failed and was preserved as written', 'darken(foo);'],
