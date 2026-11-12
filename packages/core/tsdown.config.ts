@@ -25,25 +25,15 @@ export default defineConfig({
   hash: false,
   unbundle: true,
   deps: {
-    onlyBundle: false,
-
-    /*
-     * `color-name` is ESM-only. Left external, the CJS build `require`s it and
-     * the bundler's node-mode interop hands the WHOLE module namespace to the
-     * default import, so `namedColor('red')` answered `undefined` in every CJS
-     * consumer — the trusted `#less`/`#sass/*` modules load through exactly that
-     * build. Inlining the 148-entry table removes the interop step.
-     */
-    alwaysBundle: ['color-name']
+    onlyBundle: false
   },
   outputOptions(options, format) {
-    const extension = format === 'cjs' ? 'cjs' : 'js';
-    return {
-      ...options,
-      ...(format === 'cjs' ? { exports: 'named' } : {}),
-
-      /* npm never publishes a `node_modules` directory, so the bundled `color-name` goes to `lib/vendor/`. */
-      entryFileNames: chunk => `${chunk.name.replace(/^node_modules\/(?:.*\/)?node_modules\//, 'vendor/')}.${extension}`
-    };
+    if (format === 'cjs') {
+      return {
+        ...options,
+        exports: 'named'
+      };
+    }
+    return options;
   }
 });

@@ -1,5 +1,5 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { exposedVars, writeVars, type ExportValues, type ExposedSpec, type StyleTarget } from '@jesscss/patch-css';
+import { exposedVars, holdRatio, writeVars, type ExportValues, type ExposedSpec, type StyleTarget } from '@jesscss/patch-css';
 import type { Fn, ValueGroup } from '@jesscss/core/value';
 import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, sniffLiteral } from '@jesscss/core/value';
 
@@ -46,7 +46,7 @@ const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !i
 export function createRuntime(spec: RuntimeSpec): Runtime {
   const vars = (given: ExportValues): Record<string, string> => {
     const values: Record<string, string> = {};
-    const out = exposedVars(spec, given, values);
+    const out = exposedVars(spec, given, holdRatio, values);
     const parsed = new Map<string, ValueGroup>();
     const read = (name: string): ValueGroup => {
       let value = parsed.get(name);

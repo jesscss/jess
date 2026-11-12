@@ -62,8 +62,7 @@
     "@jridgewell/gen-mapping": "~0.3.12",
     "@ungap/set-methods": "~0.1.1",
     "big.js": "^7.0.1",
-    "chalk": "^4.1.2",
-    "color-name": "~2.0.0"
+    "chalk": "^4.1.2"
   },
   "scripts": {
     "ci": "pnpm build && pnpm test --run",
@@ -87,6 +86,7 @@
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
     "@types/big.js": "^6.2.2",
+    "color-name": "~2.0.0",
     "rollup-plugin-circular-dependencies": "~1.1.2",
     "rollup-plugin-visualizer": "~6.0.3",
     "vite-plugin-circular-dependency": "~0.5.0",

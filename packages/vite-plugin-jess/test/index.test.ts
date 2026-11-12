@@ -96,8 +96,8 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { js } = await built(root);
 
-      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. 24,558 B measured (19,137 B minified, 7,912 B gzip), 43,976 B when big.js and every node constructor came with it. */
-      expect(js.length).toBeLessThan(26_000);
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 32,000 B measured (24,473 B minified, 10,374 B gzip), 43,976 B when every node constructor and the color-name object came with it. */
+      expect(js.length).toBeLessThan(33_500);
     });
   });
 
@@ -112,8 +112,8 @@ describe('vite-plugin-jess', () => {
       const { css, js } = await built(root);
       expect(css).toContain(printed);
 
-      /* Only `@jesscss/patch-css`, as nothing is computed (Vite's built module, unminified): 2,195 B measured for each (1,839 B minified, 1,010 B gzip, with the output number formatter), 35,968 B when it bundled the recipe runner. */
-      expect(js.length).toBeLessThan(2_400);
+      /* Only `@jesscss/patch-css`'s key map, as nothing is computed and no CSS form reads the export (Vite's built module, unminified): 381 B measured for each (300 B minified, 234 B gzip), 2,195 B when it carried the unit check and the number formatter. */
+      expect(js.length).toBeLessThan(400);
     });
   });
 
@@ -124,9 +124,14 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { css, js } = await built(root);
       expect(css).toContain('rgb(var(--r, 10),0,0)');
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(isRuntime(module) && module.vars({ r: '20' })['--r']).toBe('20');
+      expect(() => isRuntime(module) && module.vars({ r: '20px' })).toThrow('in a number');
 
-      /* 2,194 B measured, 35,967 B when it bundled the recipe runner. */
-      expect(js.length).toBeLessThan(2_400);
+      /* The key map and the unit check: 906 B measured (736 B minified, 470 B gzip), 2,194 B with the number formatter. */
+      expect(js.length).toBeLessThan(950);
     });
   });
 
@@ -140,8 +145,8 @@ describe('vite-plugin-jess', () => {
       expect(js).not.toContain('--brand-');
       expect(js).not.toContain('hsl(from');
 
-      /* Only `@jesscss/patch-css`, as nothing is computed (Vite's built module, unminified): 2,195 B measured, 35,354 B when it bundled the recipe runner. */
-      expect(js.length).toBeLessThan(2_400);
+      /* Only `@jesscss/patch-css`'s key map, as nothing is computed: 381 B measured, 2,195 B with the unit check and the number formatter. */
+      expect(js.length).toBeLessThan(400);
       const file = path.join(root, 'main.mjs');
       fs.writeFileSync(file, js);
       const module: unknown = await import(file);

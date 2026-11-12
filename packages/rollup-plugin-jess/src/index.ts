@@ -206,12 +206,18 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
     const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
     if (derived.length === 0) {
-      /* Two exports, so a page that imports only `vars` drops the writer. */
+      /*
+       * Two exports, so a page that imports only `vars` drops the writer, and the
+       * least check the exports need: none when no CSS form reads one.
+       */
+      const hold = runtime.ratios.length > 0 ? 'holdRatio' : Object.keys(runtime.units).length > 0 ? 'checkUnit' : undefined;
+      const spec = hold === undefined ? { keys: runtime.keys } : hold === 'checkUnit' ? { keys: runtime.keys, units: runtime.units } : { keys: runtime.keys, units: runtime.units, ratios: runtime.ratios };
+      const held = hold === undefined ? '' : `, ${hold}`;
       lines.push(
-        `import { exposedVars, writeVars } from '@jesscss/patch-css';`,
-        `const spec = { keys: ${JSON.stringify(runtime.keys)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)} };`,
-        `export const vars = (values) => exposedVars(spec, values);`,
-        `export const set = (values, target) => writeVars(exposedVars(spec, values), target);`
+        `import { exposedVars${held}, writeVars } from '@jesscss/patch-css';`,
+        `const spec = ${JSON.stringify(spec)};`,
+        `export const vars = (values) => exposedVars(spec, values${held});`,
+        `export const set = (values, target) => writeVars(exposedVars(spec, values${held}), target);`
       );
     } else {
       lines.push(`import { createRuntime } from '@jesscss/fns/runtime';`);
