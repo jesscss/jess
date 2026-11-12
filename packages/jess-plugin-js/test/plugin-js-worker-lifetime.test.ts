@@ -34,6 +34,9 @@ const exited = (child: ChildProcessWithoutNullStreams, ms: number): Promise<bool
     });
   });
 
+/* The runtime's own imports (the compiler's values) resolve from the workspace. */
+const workspaceRoot = path.resolve(path.dirname(workerPath), '../../..');
+
 /**
  * The worker as a host runs it, reading request lines from stdin. Closing stdin
  * is what the worker sees when its host dies, however it dies: the pipe's
@@ -42,7 +45,7 @@ const exited = (child: ChildProcessWithoutNullStreams, ms: number): Promise<bool
 const startWorker = async (modulePath: string) => {
   const child = spawn(
     denoPath,
-    ['run', '--no-prompt', `--allow-read=${path.dirname(modulePath)},${path.dirname(workerPath)}`, workerPath, '--runtime-api=module'],
+    ['run', '--no-prompt', `--allow-read=${path.dirname(modulePath)},${workspaceRoot}`, workerPath, '--runtime-api=module'],
     { stdio: ['pipe', 'pipe', 'pipe'] }
   );
   const lines: Array<{ id?: number; type?: string }> = [];
