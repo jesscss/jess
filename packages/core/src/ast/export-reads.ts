@@ -553,12 +553,20 @@ export function exposedWritten<F>(e: ExportLane<F>, operand: EvalValue): EvalVal
   return name !== undefined && x?.runtime.exports.has(name.slice(2)) === true ? percentRead(exposedOperand(operand), e.modes, x.runtime) : operand;
 }
 
-/** A read of an export's `var()` stand-in where nothing reads it as an operand: a `%` export is its ratio ({@link percentRead}). With nothing exposed, `value` as it is. */
-export function exposedRead<F>(e: ExportLane<F>, hit: { value: CallValue }, value: MaybePromise<EvalValue>): MaybePromise<EvalValue> {
+/**
+ * A read of an export's `var()` stand-in where nothing reads it as an operand: a
+ * `%` export is its ratio ({@link percentRead}). The stand-in is the compile's,
+ * not the author's text, so an F5 colour call's written lane reads it in the
+ * lane that evaluates (`writtenFrom`), as every other reader does. With nothing
+ * exposed, `read` in `e` as it is.
+ */
+export function exposedRead<F, L extends ExportLane<F> & { readonly writtenFrom: L | undefined }>(e: L, hit: { value: CallValue }, read: (lane: L) => MaybePromise<EvalValue>): MaybePromise<EvalValue> {
   const runtime = e.s.exports.runtime;
-  return runtime === undefined
-    ? value
-    : mapMaybe(value, read => typeof read !== 'string' && e.s.exports.behind.has(hit.value) ? percentRead(read, e.modes, runtime) : read);
+  if (runtime === undefined || !e.s.exports.behind.has(hit.value)) {
+    return read(e);
+  }
+  const lane = e.writtenFrom ?? e;
+  return mapMaybe(read(lane), value => typeof value === 'string' ? value : percentRead(value, lane.modes, runtime));
 }
 
 /** Note that the mixin argument being bound reads an export. */
