@@ -7,7 +7,7 @@ import { readImageDimensions } from './image-helper.js';
  * Less `image-width()` — the intrinsic width of an image file, in pixels.
  * The evaluator retains the raw typed argument group and injects file IO.
  */
-const imageWidth: Fn = defineFunction('image-width', {
+const imageWidth: Fn = /* @__PURE__ */ defineFunction('image-width', {
   params: [{ type: 'any' }],
   variadic: true,
   body: (value, ctx): MaybePromise<Value> => {

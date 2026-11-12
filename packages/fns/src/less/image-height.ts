@@ -7,7 +7,7 @@ import { readImageDimensions } from './image-helper.js';
  * Less `image-height()` — the intrinsic height of an image file, in pixels.
  * The evaluator retains the raw typed argument group and injects file IO.
  */
-const imageHeight: Fn = defineFunction('image-height', {
+const imageHeight: Fn = /* @__PURE__ */ defineFunction('image-height', {
   params: [{ type: 'any' }],
   variadic: true,
   body: (value, ctx): MaybePromise<Value> => {

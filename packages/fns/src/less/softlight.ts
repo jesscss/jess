@@ -14,7 +14,7 @@ export const softlightBase = (cb: number, cs: number): number => {
 };
 
 /** `softlight(color1, color2)` — Photoshop soft-light blend. Byte-faithful to `less/softlight`. */
-export const softlight: Fn = defineFunction('softlight', {
+export const softlight: Fn = /* @__PURE__ */ defineFunction('softlight', {
   params: [{ type: 'Color' }, { type: 'Color' }],
   body: (c1, c2) => colorBlend(softlightBase, requireColor(c1), requireColor(c2))
 });

@@ -11,7 +11,7 @@ export const overlayBase = (cb: number, cs: number): number => {
 };
 
 /** `overlay(color1, color2)` — Photoshop overlay blend. Byte-faithful to `less/overlay`. */
-export const overlay: Fn = defineFunction('overlay', {
+export const overlay: Fn = /* @__PURE__ */ defineFunction('overlay', {
   params: [{ type: 'Color' }, { type: 'Color' }],
   body: (c1, c2) => colorBlend(overlayBase, requireColor(c1), requireColor(c2))
 });

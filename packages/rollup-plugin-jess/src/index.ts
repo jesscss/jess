@@ -208,7 +208,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
     for (const [module, names] of imports) {
       lines.push(`import { ${names.join(', ')} } from ${JSON.stringify(module)};`);
     }
-    lines.push(`export const { vars, set } = createRuntime({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, derived: { ${derived.join(', ')} } });`);
+    lines.push(`export const { vars, set } = createRuntime({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}, derived: { ${derived.join(', ')} } });`);
   }
   if (!modules) {
     lines.push(`export default ${JSON.stringify(css)};`);

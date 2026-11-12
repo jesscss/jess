@@ -1,7 +1,8 @@
-import { NoCssForm, colorRawRgb, holdsNone, isValueGroupArray, makeDimension, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from '@jesscss/core/value';
-import type { FormCall } from '@jesscss/core/form';
+import { NoCssForm, colorRawRgb, groupItems, holdsNone, isValueGroupArray, makeDimension, mulExact, percentToFraction, subExact, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from '@jesscss/core/value';
+import { asNumber, formMath, isDimension, knownUnit, type FormCall } from '@jesscss/core/form';
+import { fitsAny } from './color-ctor-helper.js';
+import { shareOf } from './color-form.js';
 import * as forms from './css-forms.generated.js';
-import { mulExact, percentToFraction, subExact } from '../util/decimal.js';
 
 /** What `color-mix()` holds as a weight (css-color-5 §3.2). */
 const inRange = (weight: number): boolean => weight >= 0 && weight <= 100;
@@ -10,7 +11,7 @@ const inRange = (weight: number): boolean => weight >= 0 && weight <= 100;
 export const WEIGHT_ARG = {
   type: ['Dimension', 'FunctionCall'],
   optional: true,
-  fits: (value: ValueGroup): boolean => !isValueGroupArray(value) && value.type === 'Dimension' && value.unit === '%' && inRange(value.number)
+  fits: fitsAny
 } as const;
 
 export type Weight = Dimension | WrittenCall;
@@ -35,17 +36,53 @@ export function mixOver(color: ValueGroup, weight: number, known: Color): FormCa
   return [forms.mixOver, color, makeDimension(percentToFraction(weight)), premultiplied(r), premultiplied(g), premultiplied(b), makeDimension(share)];
 }
 
+/** {@link mixOver} over a weight only the browser knows, in a known unit: `share` of `color`, `rest` of `known`. Exact for every weight, which `color-mix()` is not. */
+function mixOverDeferred(color: ValueGroup, share: ValueGroup, rest: ValueGroup, known: Color): FormCall {
+  const opacity = Math.min(Math.max(known.alpha, 0), 1);
+  const [r, g, b] = colorRawRgb(known);
+  const premultiplied = (channel: number): ValueGroup => formMath('*', makeDimension(mulExact(Math.min(Math.max(channel, 0), 255), opacity)), rest);
+  return [forms.mixOver, color, share, premultiplied(r), premultiplied(g), premultiplied(b), formMath('*', makeDimension(opacity), rest)];
+}
+
+const restOf = (share: ValueGroup): ValueGroup => formMath('-', makeDimension(1), share);
+
 /** A mix toward a colour the form names (`white`, `black`), `amount` of it. */
 export function towardKnown(form: FormCall[0], color: ValueGroup, amount: Weight | undefined, other: () => Color): FormCall {
   const weight = amount ?? makeDimension(50, '%');
+  if (weight.type !== 'Dimension' && knownUnit(weight) !== undefined) {
+    const share = shareOf(weight);
+    return mixOverDeferred(color, restOf(share), share, other());
+  }
   return weight.type === 'Dimension' && !inRange(weight.number) && !isKnown(color)
     ? mixOver(color, subExact(100, weight.number), other())
     : [form, color, percentOf(weight)];
 }
 
+/** A weight between two colours only the browser knows, as `color-mix()` holds it: a percentage in its range, or there is no form. */
+function heldWeight(weight: WrittenCall, unit: string): ValueGroup {
+  const held = weight.name === 'var' ? groupItems(weight.args)[1] : undefined;
+  if (isDimension(held) && !inRange(held.number)) {
+    throw new NoCssForm(`mix: no CSS form holds a weight of ${held.number}% between two colours only the browser knows`);
+  }
+  return unit === '%' ? weight : formMath('*', asNumber(weight, unit), makeDimension(1, '%'));
+}
+
 /** `mix(a, b, weight)`'s form: `color-mix()`, or the relative form over the colour not known, or none when neither is. */
 export function mixForm(a: ValueGroup, b: ValueGroup, weight: Weight): FormCall {
-  if (weight.type !== 'Dimension' || inRange(weight.number) || (isKnown(a) && isKnown(b))) {
+  if (weight.type !== 'Dimension') {
+    const unit = knownUnit(weight);
+    if (unit === undefined) {
+      return [forms.mix, a, weight, b];
+    }
+    const share = shareOf(weight);
+    if (isColor(b)) {
+      return mixOverDeferred(a, share, restOf(share), b);
+    }
+    return isColor(a)
+      ? mixOverDeferred(b, restOf(share), share, a)
+      : [forms.mix, a, heldWeight(weight, unit), b];
+  }
+  if (inRange(weight.number) || (isKnown(a) && isKnown(b))) {
     return [forms.mix, a, percentOf(weight), b];
   }
 

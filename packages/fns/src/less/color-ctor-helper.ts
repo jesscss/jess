@@ -52,6 +52,14 @@ export const isModern = (value: ValueGroup): boolean => {
 };
 
 /**
+ * A slot that takes every value the known path does: the compile knows its type,
+ * and the form converts it to what it means there (docs/design/CSS-NATIVE-BUILTINS.md §2).
+ * It cannot judge anything else, a list above all, which keeps the call's recipe.
+ */
+export const fitsAny = (value: ValueGroup): boolean =>
+  !isValueGroupArray(value) && (value.type === 'Dimension' || value.type === 'Color' || value.type === 'Keyword' || value.type === 'FunctionCall' || value.type === 'Arithmetic');
+
+/**
  * Whether a slot's form means what this value computes to: a dimension of one of
  * these units, or a value the browser reads as one. It cannot judge anything else,
  * a list above all, which keeps the call's recipe.

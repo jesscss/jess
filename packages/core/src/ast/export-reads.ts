@@ -4,17 +4,19 @@ import { ERR } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
+import { isDimension, knownUnit } from './css-math.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { calcOperand } from './math-operand.js';
 import { isBrowserColor } from './value-dispatch.js';
-import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type ValueEvaluator, type ValueGroup } from './value-eval.js';
+import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
+import { groupItems } from './value-list.js';
 import type { ValueCheckLane } from './invalid-value-syntax.js';
-import { makeKeyword, makeList, withFields } from './value-factory.js';
-import { exposedOperand, insideParens, keepAsWritten } from './value-operate.js';
+import { makeDimension, makeKeyword, makeList, withFields } from './value-factory.js';
+import { cancelPercent, exposedOperand, insideParens, keepAsWritten, mathOnDeferred, ratioOf } from './value-operate.js';
 
 /**
  * Ledger A4: a variable an `@expose` names (A20) publishes a custom property, so a
@@ -37,11 +39,26 @@ export interface ExportRuntime {
   /** The compile-time CSS of each export a derived value reads. */
   readonly defaults: Map<string, string>;
 
+  /** The unit of each export a CSS form reads, `%` for each percentage export: the only one the runtime takes for it ({@link recordUnits}, {@link noteRatio}). */
+  readonly units: Map<string, string>;
+
+  /** Each export whose custom property holds its ratio, `50%` as `0.5`: one whose compile-time value is a percentage ({@link ratioOfHeld}). */
+  readonly ratios: Set<string>;
+
+  /** The read of each `%` export, built once ({@link percentRead}). */
+  readonly percent: Map<string, ValueGroup>;
+
   /** Each generated custom property, by its name, with how the runtime computes it. */
   readonly derived: Map<string, ExportRecipe>;
 
   /** Each generated custom property's name, by its recipe as JSON: one name per recipe, however the call is spelled. */
   readonly named: Map<string, string>;
+
+  /** Each export by its custom property, `--a` for `a`: what a `var()` read names. */
+  readonly properties: Map<string, string>;
+
+  /** By export of no known unit, the function whose slot fixed the unit it takes ({@link formUnits}). */
+  readonly slots: Map<string, string>;
 }
 
 /**
@@ -56,6 +73,8 @@ export interface ExportRuntimeData {
   /** Each exposed name by its JavaScript key ({@link exportKey}), the one the clash check uses. */
   readonly keys: Readonly<Record<string, string>>;
   readonly defaults: Readonly<Record<string, string>>;
+  readonly units: Readonly<Record<string, string>>;
+  readonly ratios: readonly string[];
   readonly derived: Readonly<Record<string, ExportRecipe>>;
 }
 
@@ -65,7 +84,7 @@ export function runtimeData(x: ExportState<unknown>): { runtime?: ExportRuntimeD
   const runtime = x.runtime;
   return runtime === undefined
     ? {}
-    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), derived: Object.fromEntries(runtime.derived) } };
+    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), units: Object.fromEntries(runtime.units), ratios: [...runtime.ratios], derived: Object.fromEntries(runtime.derived) } };
 }
 
 /** A mixin argument as written, in the caller's frame. */
@@ -300,7 +319,7 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), derived: new Map(), named: new Map() };
+  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), named: new Map(), properties: new Map(), slots: new Map() };
 }
 
 /**
@@ -348,6 +367,10 @@ function settle<F>(x: ExportState<F>): void {
       x.bound.set(name, bound ?? { value: hit.value, frame: hit.frame, site });
       x.keys.set(key, keyed ?? { name, site });
       runtime.exports.add(name);
+      runtime.properties.set(`--${name}`, name);
+      if (!isValueSlotArray(hit.value) && hit.value.type === 'Dimension' && hit.value.unit === '%') {
+        noteRatio(runtime, name);
+      }
       if (isValueSlotArray(hit.value) || hit.value.type !== 'MixinCall') {
         const call = funcCall('var', [keyword(`--${name}`), hit.value]);
         x.refs.set(hit.value, { name, call, frame: hit.frame, source: undefined });
@@ -450,17 +473,100 @@ export function exportInput<F, H extends { value: CallValue; frame: F }>(hit: H 
  */
 export function exportInputRead<F>(e: ExportLane<F>, hit: { value: CallValue; frame: F }, value: MaybePromise<ValueGroup>): MaybePromise<ValueGroup> {
   const x = exporting(e.s.exports);
-  if (x?.behind.has(hit.value) === true) {
-    return mapMaybe(value, exposedOperand);
+  if (x === undefined) {
+    return value;
   }
-  const inputs = x?.inputs;
-  const name = inputs === undefined || x === undefined ? undefined : refOf(x, hit)?.name;
+  if (x.behind.has(hit.value)) {
+    return mapMaybe(value, read => percentRead(exposedOperand(read), e.modes, x.runtime));
+  }
+  const inputs = x.inputs;
+  const name = inputs === undefined ? undefined : refOf(x, hit)?.name;
   return name === undefined || inputs === undefined
     ? value
     : mapMaybe(value, (read) => {
+        if (ratioOfHeld(read) !== undefined) {
+          noteRatio(x.runtime, name);
+        }
         inputs.push({ recipe: { export: name }, value: read });
         return read;
       });
+}
+
+/**
+ * A `%` export's read. The browser holds its ratio (`@a: 50%` is `--a: 0.5`) and
+ * every read multiplies it back, `calc(var(--a, 0.5) * 100%)`, so a form that
+ * reads it as a number or a length never divides a percentage the property
+ * resolves first ({@link mathOnDeferred}; docs/architecture/core/spec/R8-browser-runtime.md,
+ * *Percentages*).
+ */
+function percentRead(read: ValueGroup, modes: EvalModes, runtime: ExportRuntime): ValueGroup {
+  if (isValueGroupArray(read) || read.type !== 'FunctionCall' || read.name !== 'var') {
+    return read;
+  }
+  const [name, held] = groupItems(read.args);
+  if (name === undefined || isValueGroupArray(name) || name.type !== 'Keyword') {
+    return read;
+  }
+  const key = runtime.properties.get(name.text);
+  if (key === undefined) {
+    return read;
+  }
+  let built = runtime.percent.get(key);
+  if (built === undefined) {
+    const ratio = ratioOfHeld(held);
+    if (ratio === undefined) {
+      return read;
+    }
+    noteRatio(runtime, key);
+    built = mathOnDeferred('*', keepAsWritten(withFields(writeCall('var', makeList([name, ratio], ','), modes), { result: 'numeric' as const })), makeDimension(100, '%'));
+    runtime.percent.set(key, built);
+  }
+  return built;
+}
+
+/**
+ * The ratio a `%` export's custom property holds, from its compile-time value:
+ * `50%` is `0.5`, and an export that is another's read, `@b: @a`, holds that
+ * one's, `var(--a, 0.25)`. Undefined for any other value. The one decision
+ * that makes an export a ratio (docs/architecture/core/spec/R8-browser-runtime.md, *Percentages*).
+ */
+function ratioOfHeld(held: ValueGroup | undefined): Value | undefined {
+  if (held === undefined || isValueGroupArray(held)) {
+    return undefined;
+  }
+  return isDimension(held) ? (held.unit === '%' ? makeDimension(ratioOf(held.number, 100)) : undefined) : cancelPercent(held, 100);
+}
+
+/** `name` holds its ratio, and the runtime takes only a percentage for it. */
+function noteRatio(runtime: ExportRuntime, name: string): void {
+  runtime.ratios.add(name);
+  runtime.units.set(name, '%');
+}
+
+/** An operand of math written in a math function (`calc(@a * 2)`): an export's `var()` is of its value's type there too ({@link exposedOperand}). */
+export function exposedWritten<F>(e: ExportLane<F>, operand: EvalValue): EvalValue {
+  if (typeof operand === 'string' || isValueGroupArray(operand) || operand.type !== 'FunctionCall' || operand.name !== 'var') {
+    return operand;
+  }
+  const name = varName(operand);
+  const x = exporting(e.s.exports);
+  return name !== undefined && x?.runtime.exports.has(name.slice(2)) === true ? percentRead(exposedOperand(operand), e.modes, x.runtime) : operand;
+}
+
+/**
+ * A read of an export's `var()` stand-in where nothing reads it as an operand: a
+ * `%` export is its ratio ({@link percentRead}). The stand-in is the compile's,
+ * not the author's text, so an F5 colour call's written lane reads it in the
+ * lane that evaluates (`writtenFrom`), as every other reader does. With nothing
+ * exposed, `read` in `e` as it is.
+ */
+export function exposedRead<F, L extends ExportLane<F> & { readonly writtenFrom: L | undefined }>(e: L, hit: { value: CallValue }, read: (lane: L) => MaybePromise<EvalValue>): MaybePromise<EvalValue> {
+  const runtime = e.s.exports.runtime;
+  if (runtime === undefined || !e.s.exports.behind.has(hit.value)) {
+    return read(e);
+  }
+  const lane = e.writtenFrom ?? e;
+  return mapMaybe(read(lane), value => typeof value === 'string' ? value : percentRead(value, lane.modes, runtime));
 }
 
 /** Note that the mixin argument being bound reads an export. */
@@ -568,7 +674,7 @@ export function exportCall<F>(
           if (slots !== undefined && !fitsWritten(fn, vals, slots)) {
             exportNotWritten(node, `@${written}`, written, e, IN_LARGER_ARGUMENT);
           }
-          return recovering(() => dispatchReading(x, inputs, dispatch, vals), namingExport(e, node, written));
+          return mapMaybe(recovering(() => dispatchReading(x, inputs, dispatch, vals), namingExport(e, node, written)), form => recordUnits(x.runtime, [], form, node, e));
         });
   if (inputs.length === 0 && !typed.some(isThenable)) {
     return computedOver(typed);
@@ -586,7 +692,7 @@ export function exportCall<F>(
           markArgument(argument);
           const result: ValueGroup = typeof computed === 'string' ? makeKeyword(computed) : computed;
           const recipe = callRecipe(node, fn, vals, inputs, e);
-          const reads = inputs.flatMap(input => 'export' in input.recipe ? [{ name: input.recipe.export, value: input.value }] : input.reads ?? []);
+          const reads = readsOf(inputs);
           if (outer !== undefined) {
             outer.push({ recipe, value: result, reads });
             return result;
@@ -603,7 +709,7 @@ export function exportCall<F>(
           markArgument(argument);
           return mapMaybe(
             recovering(() => dispatch(asWritten(e, checks, args).map((read, index) => mapMaybe(read, value => typedRead(vals[index], value)))), onNoForm(recorded)),
-            form => isUnwrittenBuiltin(form) ? recorded() : form
+            form => isUnwrittenBuiltin(form) ? recorded() : recordUnits(x.runtime, readsOf(inputs), form, node, e)
           );
         }
         return recorded();
@@ -614,6 +720,105 @@ export function exportCall<F>(
 function dispatchReading<F>(x: ExportState<F>, inputs: ReadonlyArray<ExportInput>, dispatch: (args: Array<MaybePromise<ValueGroup>>) => MaybePromise<EvalValue>, vals: Array<MaybePromise<ValueGroup>>): MaybePromise<EvalValue> {
   x.callReads = inputs;
   return dispatch(vals);
+}
+
+/** The exports a call's arguments read, with the values they read. */
+const readsOf = (inputs: ReadonlyArray<ExportInput>): ReadonlyArray<{ name: string; value: ValueGroup }> =>
+  inputs.flatMap(input => 'export' in input.recipe ? [{ name: input.recipe.export, value: input.value }] : input.reads ?? []);
+
+/**
+ * The unit of each export a CSS form reads, so the runtime takes no other: CSS
+ * converts `2em` over `/ 1px`, where Less reads it as 2. A read is in its
+ * compile-time value's unit, `reads` as an argument or a `var()` in `form`
+ * inside a larger one (`(@a * 2)`); one of no known unit is in the unit its slot
+ * reads: the unit the form divides it by (`var(--a, var(--y)) / 100%`), a number
+ * as an operand or in `sqrt()`, a sibling's unit in `min()` ({@link slotUnit}),
+ * two such units being `eval/expose-unit-conflict`. A `%` export is its ratio's
+ * ({@link noteRatio}) (docs/architecture/core/spec/R8-browser-runtime.md).
+ * Returns `form`.
+ */
+function recordUnits<F>(runtime: ExportRuntime, reads: ReadonlyArray<{ name: string; value: ValueGroup }>, form: EvalValue, node: FunctionCall, e: ExportLane<F>): EvalValue {
+  for (const read of reads) {
+    if (ratioOfHeld(read.value) !== undefined) {
+      noteRatio(runtime, read.name);
+    } else if (isDimension(read.value)) {
+      runtime.units.set(read.name, read.value.unit);
+    }
+  }
+  formUnits(runtime, form, undefined, false, (name, unit) => {
+    const had = runtime.units.get(name);
+    if (had === undefined) {
+      runtime.units.set(name, unit);
+      runtime.slots.set(name, node.name);
+    } else if (had !== unit) {
+      throw ERR.exposeUnitConflict({ node, ...callSiteLocation(node, e.s), meta: { name, fn: node.name, unit: unitWord(unit), other: runtime.slots.get(name) ?? 'another function', otherUnit: unitWord(had) } });
+    }
+  });
+  return form;
+}
+
+const unitWord = (unit: string): string => unit === '' ? 'a number' : unit === '%' ? 'a percentage' : `a value in ${unit}`;
+
+/**
+ * {@link recordUnits} of each export `var()` in `v`, `over` the unit of the divisor
+ * it is under, an `operand` of math or not. One of no known unit (`@a: var(--y)`)
+ * takes the unit its slot reads, `reads` it: the divisor's, or a number's as an
+ * operand (`calc(h + var(--a, var(--y)))`); anywhere else the browser reads any value.
+ */
+function formUnits(runtime: ExportRuntime, v: EvalValue, over: string | undefined, operand: boolean, reads: (name: string, unit: string) => void): void {
+  if (typeof v === 'string') {
+    return;
+  }
+  if (isValueGroupArray(v) || v.type === 'List') {
+    for (const item of isValueGroupArray(v) ? v : v.value) {
+      formUnits(runtime, item, over, operand, reads);
+    }
+  } else if (v.type === 'Arithmetic') {
+    const by = typeof v.right !== 'string' && isDimension(v.right) && v.right.unit !== '' ? v.right.unit : undefined;
+    formUnits(runtime, v.left, by === undefined ? over : v.op === '/' ? by : v.op === '*' ? '' : over, true, reads);
+    formUnits(runtime, v.right, over, true, reads);
+  } else if (v.type === 'FunctionCall' && v.name !== 'var') {
+    const slot = slotUnit(v.name, v.args);
+    formUnits(runtime, v.args, slot ?? over, operand || slot !== undefined, reads);
+  } else if (v.type === 'FunctionCall') {
+    const [name, held] = groupItems(v.args);
+    const key = name !== undefined && !isValueGroupArray(name) && name.type === 'Keyword' ? runtime.properties.get(name.text) : undefined;
+    if (key === undefined || runtime.ratios.has(key)) {
+      return;
+    }
+    if (isDimension(held)) {
+      if (!runtime.units.has(key)) {
+        runtime.units.set(key, held.unit);
+      }
+      return;
+    }
+    const unit = over ?? (operand ? '' : undefined);
+    if (unit !== undefined) {
+      reads(key, unit);
+    }
+  }
+}
+
+/** CSS math functions that read their arguments as numbers (css-values-4 §10.4–10.5). */
+const NUMBER_SLOTS: ReadonlySet<string> = new Set(['sqrt', 'pow', 'exp', 'log', 'asin', 'acos', 'atan']);
+
+/** CSS math functions whose arguments share one type (css-values-4 §10.2, §10.6–10.7). */
+const SHARED_SLOTS: ReadonlySet<string> = new Set(['min', 'max', 'clamp', 'round', 'rem', 'mod', 'hypot', 'atan2']);
+
+/** The unit a math function's arguments are read in: a number, or the unit of an argument that knows one. */
+function slotUnit(name: string, args: ValueGroup): string | undefined {
+  if (NUMBER_SLOTS.has(name)) {
+    return '';
+  }
+  if (SHARED_SLOTS.has(name)) {
+    for (const argument of groupItems(args)) {
+      const unit = knownUnit(argument, true);
+      if (unit !== undefined) {
+        return unit;
+      }
+    }
+  }
+  return undefined;
 }
 
 /** The compile-time value of each export a recipe reads, the first read standing. */
@@ -807,19 +1012,38 @@ function slotsKnown<F>(x: ExportState<F>, fn: Fn | undefined, args: (asWritten: 
 
 /**
  * Whether each slot holds the number an export read inside it computes to
- * (`(@a * 2)`), as `fits` asks of a bare `@a`. No recipe follows such a read, so a
- * slot that does not is the caller's to report.
+ * (`(@a * 2)`), as `fits` asks of a bare `@a`, in a unit the form can read from what
+ * is written. No recipe follows such a read, so a slot that does not is the
+ * caller's to report.
  */
 function fitsWritten(fn: Fn | undefined, vals: ReadonlyArray<MaybePromise<ValueGroup>>, slots: readonly ValueGroup[]): boolean {
   return slots.every((value, index) => {
     const fits = fn === undefined ? undefined : slotParam(fn, index)?.fits;
     const read = vals[index];
-    const asKnown = read === undefined || isThenable(read) || (!isValueGroupArray(lone(read)) && isDimensionValue(lone(read)));
-    return fits === undefined || asKnown || !isDimensionValue(value) || fits(value, slots);
+    if (fits === undefined || read === undefined || isThenable(read)) {
+      return true;
+    }
+    if (mixedSum(lone(read))) {
+      return false;
+    }
+    return !isDimension(value) || isDimension(lone(read)) || (fits(value, slots) && (value.unit === '' || knownUnit(lone(read)) !== undefined));
   });
 }
 
-const isDimensionValue = (value: ValueGroup): boolean => !isValueGroupArray(value) && value.type === 'Dimension';
+/**
+ * Whether `v` adds terms of two known units (`(@a + 1px)` of `@a: 50%`), which the
+ * known value does not compute either: no form reads it as one quantity.
+ */
+function mixedSum(v: EvalValue): boolean {
+  if (typeof v === 'string' || isValueGroupArray(v)) {
+    return false;
+  }
+  if (v.type === 'FunctionCall') {
+    return v.name === 'calc' && mixedSum(v.args);
+  }
+  return v.type === 'Arithmetic' && (mixedSum(v.left) || mixedSum(v.right)
+    || ((v.op === '+' || v.op === '-') && knownUnit(v.left) !== undefined && knownUnit(v.right) !== undefined && knownUnit(v) === undefined));
+}
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */
 function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>, e: ExportLane<F>): ExportRecipe {

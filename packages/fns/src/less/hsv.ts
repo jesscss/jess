@@ -7,5 +7,5 @@ import { hsv as form } from './css-forms.generated.js';
 export const hsv: Fn = /* @__PURE__ */ defineForm('hsv', {
   params: [HUE_ARG, PERCENT_ARG, PERCENT_ARG],
   format: HEX,
-  form: (h: ValueGroup, s: Dimension | FunctionCall, v: Dimension | FunctionCall): FormCall => [form, hueOf(h), ...whiteBlack('hsv', s, v)]
+  form: (h: ValueGroup, s: Dimension | FunctionCall, v: Dimension | FunctionCall): FormCall => [form, hueOf(h), ...whiteBlack(s, v)]
 });

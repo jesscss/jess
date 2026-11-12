@@ -6,7 +6,7 @@ import { colorBlend, requireColor } from './color-helper.js';
 export const negationBase = (cb: number, cs: number): number => 1 - Math.abs(cb + cs - 1);
 
 /** `negation(color1, color2)` — per-channel negation blend. Byte-faithful to `less/negation`. */
-export const negation: Fn = defineFunction('negation', {
+export const negation: Fn = /* @__PURE__ */ defineFunction('negation', {
   params: [{ type: 'Color' }, { type: 'Color' }],
   body: (c1, c2) => colorBlend(negationBase, requireColor(c1), requireColor(c2))
 });

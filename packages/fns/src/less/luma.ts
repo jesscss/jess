@@ -3,7 +3,7 @@ import { makeDimension, defineFunction } from '@jesscss/core/value';
 import { getLuma, requireColor } from './color-helper.js';
 
 /** `luma(color)` — WCAG luma × alpha as a percentage. Byte-faithful to `less/luma`. */
-export const luma: Fn = defineFunction('luma', {
+export const luma: Fn = /* @__PURE__ */ defineFunction('luma', {
   params: [{ type: 'Color' }],
   body: (c) => {
     const color = requireColor(c);
