@@ -1067,8 +1067,9 @@ export class JsPlugin extends AbstractPlugin {
        * those packages add folders to the read roots, is the exception: the
        * closure always adds more there, and the switch would kill this process
        * and start another. The closure is walked first, with synchronous reads
-       * that settle in microtasks (before any timer or I/O callback runs), and
-       * Deno starts once, on the full read set.
+       * that settle in microtasks (before any timer or I/O callback runs, unless
+       * an asynchronous walk of the same files is already in flight), and Deno
+       * starts once, on the full read set.
        */
       const entryDir = request.entryDir;
       const jsReadRoot = this.opts.jsReadRoot ?? request.jsReadRoot;

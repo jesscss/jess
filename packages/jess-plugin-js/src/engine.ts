@@ -183,7 +183,9 @@ const packageRootOf = (file: string): string | undefined => {
  * How the code-closure walk reads files: asynchronously, beside a render, or
  * synchronously, when a Deno start waits on the walk. The walk awaits either;
  * with synchronous reads every await settles in a microtask, so the walk ends
- * before any timer or I/O callback in this process runs.
+ * before any timer or I/O callback in this process runs, unless an
+ * asynchronous walk of the same files is already in flight (see
+ * {@link codeClosure}).
  */
 type FileReads = {
   realpath: (p: string) => string | undefined | Promise<string | undefined>;
@@ -245,6 +247,8 @@ const closures = new Map<string, Promise<string[]>>();
  * by default with asynchronous file reads, so it runs beside a render in this
  * process instead of holding it up; with `reads: 'sync'` it reads synchronously
  * and settles in microtasks, so it ends before any timer or I/O callback runs.
+ * A walk of the same files already in flight is joined whatever its reads, so
+ * a `'sync'` call that finds an asynchronous walk under way waits on its I/O.
  */
 export const codeClosure = async (entryFiles: readonly string[], signal?: AbortSignal, reads: 'async' | 'sync' = 'async'): Promise<string[]> => {
   const key = entryFiles.join('\u0000');

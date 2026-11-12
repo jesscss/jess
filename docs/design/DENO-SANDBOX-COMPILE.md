@@ -104,8 +104,9 @@ compiler's install (a global or npx CLI, whose packages are in no read root) is
 the exception: there the closure always adds folders, so it is walked first,
 with synchronous reads (15–22 ms on the main thread). The walk still awaits each
 step, but every await settles in a microtask, so it ends before any timer or
-I/O callback in the process runs. Deno then starts once on the full read set
-instead of being started, killed and started again.
+I/O callback in the process runs, unless an asynchronous walk of the same files
+is already in flight (another render's), which it then joins. Deno then starts
+once on the full read set instead of being started, killed and started again.
 
 **Compilers that can run there.** A compiler class runs in the engine when it
 declares its own `static moduleIdentity` (module and export), as jess's
