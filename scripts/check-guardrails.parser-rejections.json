@@ -7,6 +7,7 @@
     "throw new CssParseError(result.span.end, [], {"
   ],
   "packages/syntax/jess/jess-parser/src/parse-with.ts": [
+    "return new JessParseError(0, [message]);",
     "throw selectorPolicyError(`${label} selector is not allowed by allowExtendSelectors.`);",
     "throw selectorPolicyError('$apply target is not allowed by allowApplySelectors.');",
     "throw new JessParseError(result.span.start, result.expected, lineOptions(input, result.span));",
@@ -35,6 +36,10 @@
     "throw new LessBareVariableInterpolationError(start, end, name);"
   ],
   "packages/syntax/less/less-parser/src/parse-with.ts": [
+    "return new LessParseError(",
+    "return new LessParseError(result.span.start, result.expected, lineOptions(input, result.span));",
+    "return new LessParseError(result.unconsumedFrom, [], {",
+    "return new LessParseError(result.unconsumedFrom, [], {",
     "throw new LessParseError(result.span.end, [], {"
   ],
   "packages/syntax/scss/scss-parser/src/grammar-helpers.ts": [
