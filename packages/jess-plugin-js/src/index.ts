@@ -1062,8 +1062,21 @@ export class JsPlugin extends AbstractPlugin {
        * read roots, the compiler's and this plugin's own packages): the closure,
        * computed next, is what held a cold start back. When the closure adds a
        * folder, `useReadSet` switches the process before any render reaches it.
+       *
+       * An entry outside the compiler's install (a global or npx CLI), where
+       * those packages add folders to the read roots, is the exception: the
+       * closure always adds more there, and the switch would kill this process
+       * and start another. The closure is walked first, with synchronous reads
+       * that settle in microtasks (before any timer or I/O callback runs, unless
+       * an asynchronous walk of the same files is already in flight), and Deno
+       * starts once, on the full read set.
        */
-      const early = readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, engineOwnCode(request.compiler.module, import.meta.url));
+      const entryDir = request.entryDir;
+      const jsReadRoot = this.opts.jsReadRoot ?? request.jsReadRoot;
+      let early = readSetFor(entryDir, jsReadRoot, engineOwnCode(request.compiler.module, import.meta.url));
+      if (early.length > readSetFor(entryDir, jsReadRoot, []).length) {
+        early = readSetFor(entryDir, jsReadRoot, await engineCode(request.compiler.module, import.meta.url, prewarm.signal, 'sync'));
+      }
       if (!prewarm.signal.aborted && this.readSetTurn === undefined && this.runtimeState.status === 'idle') {
         this.nextReadSet = early;
         this.ensureRuntime().catch(() => undefined);
