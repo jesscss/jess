@@ -22,6 +22,7 @@ import {
   LessDynamicCharsetError,
   LessImportPostludeError,
   LessInlineJavaScriptError,
+  LessMixinArgumentError,
   LessUnsupportedMixinNameError,
   LessUnsupportedVariableNameError
 } from '../src/parse-error.js';
@@ -10386,5 +10387,29 @@ describe('statement spelling of @keyframes', () => {
      * their own statement productions and must not degrade to a generic one. */
     expect(parsesCompleteStylesheet('@media screen;')).toBe(false);
     expect(parsesCompleteStylesheet('@supports (display: grid);')).toBe(false);
+  });
+});
+
+describe('Less mixin argument reports', () => {
+  /* Each problem kind the mixin list reports: a `;` list item, an anonymous rest, a spread pattern. */
+  it.each([
+    ['.m(@a, @rest...; @c) { x: y }', [['A spread or rest argument cannot be part of a comma list.', '@rest...']]],
+    ['.x { .t(@a: x, @b: y; z, @w...); }', [['A named argument must start its ;-separated argument.', '@b: y'], ['A spread or rest argument cannot be part of a comma list.', '@w...']]],
+    ['.x { .t(...); }', [['A mixin call cannot pass "..." on its own.', '...']]],
+    ['.m(foo...) { x: y }', [['A pattern parameter cannot be spread.', 'foo...']]]
+  ] as const)('%s is thrown by a run with no state and recorded by a run with one', (source, expected) => {
+    /* What a report says and where; anything but a mixin argument report is returned as it is, and fails the match. */
+    const at = (error: unknown): unknown => error instanceof LessMixinArgumentError ? [error.message, source.slice(error.offset, error.endOffset)] : error;
+    let thrown: unknown;
+    try {
+      run(lessGrammar.Stylesheet, source, { trivia: lessGrammar.whitespace });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(at(thrown)).toEqual(expected[0]);
+
+    const state = createLessParseState(source);
+    const result = run(lessGrammar.Stylesheet, source, { trivia: lessGrammar.whitespace, state });
+    expect(recoveredProblemsOf(state, result).map(at)).toEqual(expected);
   });
 });

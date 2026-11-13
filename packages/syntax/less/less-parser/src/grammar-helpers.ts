@@ -28,8 +28,8 @@ import { NO_SPAN, any, block, rule, withBlockBody, callArg, generalEnclosedGroup
 import type { AnonymousMixin, Any, Block, Ruleset, CallArg, Combinator as SelectorCombinator, ComplexSegment, Declaration, Expression, ExtendInstruction, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, MixinPathSegment, Operation, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, type ValuePieceKind, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex, valueRunSeparators } from './trivia-layout.js';
-import { diagnosticsOf, functionScopeOf, mathModeOf, reportRecovered } from './parse-state.js';
-import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
+import { functionScopeOf, mathModeOf, reportRecovered } from './parse-state.js';
+import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
@@ -75,8 +75,8 @@ type MixinInteriorFact = {
   /** Each separator with its authored trivia, kept only when `semicolons`: a comma
    *  folded into a list value keeps the spelling `~( … )` would have recorded. */
   readonly separatorLayout: readonly string[] | undefined;
-  /** Where a problem the list recovers from is reported: the run's sink, or `null` for a raw grammar run (ledger P46, P45). */
-  readonly diagnostics: LessRecoveredError[] | null;
+  /** The run state a problem the list recovers from is reported through ({@link reportRecovered}; ledger P46, P45). */
+  readonly state: unknown;
 };
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
@@ -561,7 +561,7 @@ function mixinInteriorFromFields(
     separators,
     semicolons,
     separatorLayout: semicolons ? mixinListSeparatorLayout(separators, rawChildren, triviaLog, state) : undefined,
-    diagnostics: diagnosticsOf(state)
+    state
   };
 }
 
@@ -1713,24 +1713,15 @@ function mixinArgumentsFromChildren(children: readonly unknown[]): readonly Mixi
 
 const NO_MIXIN_ARGUMENTS: readonly MixinCallArgument[] = [];
 
-/**
- * Report a mixin-list item the list cannot give meaning to (ledger P46) at the
- * item. Well-formed input never stops the pipeline (P45, owner 2026-10-09), so
- * under `parseWith` it is an error diagnostic and the caller recovers; a raw
- * grammar run, which has no sink, raises it.
- */
-function reportMixinArgument(capture: MixinInteriorCapture, problem: LessMixinArgumentProblem, sink: LessRecoveredError[] | null): void {
-  const error = new LessMixinArgumentError(capture.span.start, capture.span.end, problem);
-  if (sink === null) {
-    throw error;
-  }
-  sink.push(error);
+/** Report a mixin-list item the list cannot give meaning to (ledger P46) at the item, and the caller recovers. */
+function reportMixinArgument(capture: MixinInteriorCapture, problem: LessMixinArgumentProblem, state: unknown): void {
+  reportRecovered(new LessMixinArgumentError(capture.span.start, capture.span.end, problem), state);
 }
 
 /** A value where a mixin list needs one: a parameter default, a pattern, a comma-list item. Anything else is reported and dropped. */
-function mixinListValueAt(value: CallValue, capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): ValueSlot | undefined {
+function mixinListValueAt(value: CallValue, capture: MixinInteriorCapture, state: unknown): ValueSlot | undefined {
   if (!isLessValueSlotValue(value)) {
-    reportMixinArgument(capture, 'value', sink);
+    reportMixinArgument(capture, 'value', state);
     return undefined;
   }
   return value;
@@ -1742,18 +1733,18 @@ function mixinListValueAt(value: CallValue, capture: MixinInteriorCapture, sink:
  * `@name:`, in the run; the list keeps what such an item names — the variable,
  * the spread value, the named value — and drops a bare `...`.
  */
-function mixinCommaListItem(capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): ValueSlot | undefined {
+function mixinCommaListItem(capture: MixinInteriorCapture, state: unknown): ValueSlot | undefined {
   const item = capture.value;
   if (item.kind === 'anonymous-rest') {
     return undefined;
   }
   if (item.kind === 'positional') {
-    return mixinListValueAt(item.value, capture, sink);
+    return mixinListValueAt(item.value, capture, state);
   }
   if (item.rest || item.default === undefined) {
     return item.reference;
   }
-  return mixinListValueAt(item.default, capture, sink);
+  return mixinListValueAt(item.default, capture, state);
 }
 
 /** The shape the `;` rule reads off an item ({@link MixinListItemShape}). */
@@ -1778,10 +1769,10 @@ function mixinListItemShape(capture: MixinInteriorCapture): MixinListItemShape {
  */
 function reassembleMixinInterior<T>(
   interior: MixinInteriorFact,
-  single: (capture: MixinInteriorCapture, sink: LessRecoveredError[] | null) => T | undefined,
+  single: (capture: MixinInteriorCapture, state: unknown) => T | undefined,
   commaList: (name: string | undefined, value: Block) => T
 ): T[] {
-  const { items, separators, diagnostics: sink } = interior;
+  const { items, separators, state } = interior;
   const out: T[] = [];
   const push = (value: T | undefined): void => {
     if (value !== undefined) {
@@ -1790,12 +1781,12 @@ function reassembleMixinInterior<T>(
   };
   if (!interior.semicolons) {
     for (const item of items) {
-      push(single(item, sink));
+      push(single(item, state));
     }
     return out;
   }
   for (const { index, problem } of mixinListProblems(items.map(mixinListItemShape), separators, true)) {
-    reportMixinArgument(items[index]!, problem, sink);
+    reportMixinArgument(items[index]!, problem, state);
   }
   let first = 0;
   for (let last = 0; last < items.length; last++) {
@@ -1803,13 +1794,13 @@ function reassembleMixinInterior<T>(
       continue;
     }
     if (last === first) {
-      push(single(items[first]!, sink));
+      push(single(items[first]!, state));
     } else {
       const head = items[first]!.value;
       const name = head.kind === 'binding' && !head.rest && head.default !== undefined ? head.reference.name : undefined;
       const values: ValueSlot[] = [];
       for (let index = first; index <= last; index++) {
-        const value = mixinCommaListItem(items[index]!, sink);
+        const value = mixinCommaListItem(items[index]!, state);
         if (value !== undefined) {
           values.push(value);
         }
@@ -1830,7 +1821,7 @@ function reassembleMixinInterior<T>(
   return out;
 }
 
-function mixinParamFromInterior(capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): Param | undefined {
+function mixinParamFromInterior(capture: MixinInteriorCapture, state: unknown): Param | undefined {
   const item = capture.value;
   if (item.kind === 'anonymous-rest') {
     return { rest: true };
@@ -1839,15 +1830,15 @@ function mixinParamFromInterior(capture: MixinInteriorCapture, sink: LessRecover
     if (item.rest) {
       return { name: item.reference.name, rest: true };
     }
-    const defaultValue = item.default === undefined ? undefined : mixinListValueAt(item.default, capture, sink);
+    const defaultValue = item.default === undefined ? undefined : mixinListValueAt(item.default, capture, state);
     return defaultValue === undefined
       ? { name: item.reference.name }
       : { name: item.reference.name, default: defaultValue };
   }
   if (item.spread) {
-    reportMixinArgument(capture, 'spreadPattern', sink);
+    reportMixinArgument(capture, 'spreadPattern', state);
   }
-  const pattern = mixinListValueAt(item.value, capture, sink);
+  const pattern = mixinListValueAt(item.value, capture, state);
   return pattern === undefined ? undefined : { pattern };
 }
 
@@ -1858,10 +1849,10 @@ function mixinParamsFromInterior(interior: MixinInteriorFact): Param[] {
   return reassembleMixinInterior(interior, mixinParamFromInterior, mixinCommaListParam);
 }
 
-function mixinCallArgumentFromInterior(capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): MixinCallArgument | undefined {
+function mixinCallArgumentFromInterior(capture: MixinInteriorCapture, state: unknown): MixinCallArgument | undefined {
   const item = capture.value;
   if (item.kind === 'anonymous-rest') {
-    reportMixinArgument(capture, 'anonymousRest', sink);
+    reportMixinArgument(capture, 'anonymousRest', state);
     return undefined;
   }
   if (item.kind === 'binding') {
