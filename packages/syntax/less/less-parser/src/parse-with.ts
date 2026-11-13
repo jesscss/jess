@@ -115,11 +115,12 @@ export function createLessParseState(input: string, options: LessParseOptions = 
 }
 
 /**
- * The problems a run with this state recovered from, in source order: the ones
- * `parse()` throws the first of and `safeParse()` reports.
+ * The problems a run with this state recovered from, given the `value` the run
+ * returned: the ones `parse()` throws the first of and `safeParse()` reports,
+ * in source order, once each, and none from an attempt the run abandoned.
  */
-export function recoveredProblemsOf(state: LessRunState): readonly LessRecoveredError[] {
-  return diagnosticsOf(state) ?? [];
+export function recoveredProblemsOf(state: LessRunState, tree: unknown): readonly LessRecoveredError[] {
+  return recoveredIn(typeof tree === 'object' && tree !== null ? tree : {}, diagnosticsOf(state) ?? []);
 }
 
 function requireMode<const M extends string>(
@@ -369,12 +370,13 @@ function parseRecovering(
   ), forgivenSelectorItems);
   return {
     document,
-    recovered: inSourceOrder(recoveredInTree(document, diagnostics))
+    recovered: recoveredIn(document, diagnostics)
   };
 }
 
-/** One report per item, ordered by where it is written. */
-function inSourceOrder(diagnostics: readonly LessRecoveredError[]): readonly LessRecoveredError[] {
+/** The reports that reach `tree`, one per item, ordered by where it is written. */
+function recoveredIn(tree: object, reported: readonly LessRecoveredError[]): readonly LessRecoveredError[] {
+  const diagnostics = recoveredInTree(tree, reported);
   if (diagnostics.length < 2) {
     return diagnostics;
   }

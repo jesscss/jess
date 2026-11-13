@@ -20,7 +20,7 @@ function runRaw(
   const state = createLessParseState(input);
   const result = run(rule, input, { trivia: lessGrammar.whitespace, state });
   if (!allowRecovered) {
-    expect(recoveredProblemsOf(state), input).toEqual([]);
+    expect(recoveredProblemsOf(state, result.value), input).toEqual([]);
   }
   return result;
 }
@@ -32,7 +32,8 @@ import {
   LessUnsupportedMixinNameError,
   LessUnsupportedVariableNameError
 } from '../src/parse-error.js';
-import { createLessParseState, parse, recoveredProblemsOf } from '../src/index.js';
+import { parserDiagnostic } from '@jesscss/core/diagnostics';
+import { createLessParseState, parse, recoveredProblemsOf, safeParse } from '../src/index.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
@@ -59,7 +60,7 @@ function parsesCompleteStylesheet(source: string): boolean {
     const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state });
     return (
       result.ok && result.unconsumedFrom === null && isStylesheet(result.value)
-      && recoveredProblemsOf(state).length === 0
+      && recoveredProblemsOf(state, result.value).length === 0
     );
   } catch {
     return false;
@@ -967,13 +968,31 @@ describe('Less AST grammar facts', () => {
     ] as const) {
       const state = createLessParseState(source);
       const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state });
-      const diagnostics = recoveredProblemsOf(state);
+      const diagnostics = recoveredProblemsOf(state, result.value);
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
-
-      /* A reducer may run more than once; `parse()` keeps one report per item, as here. */
-      expect([...new Set(diagnostics.map(d => `${d.code} ${source.slice(d.offset, d.endOffset)}`))], source).toEqual([`${code} ${at}`]);
+      expect(diagnostics.map(d => `${d.code} ${source.slice(d.offset, d.endOffset)}`), source).toEqual([`${code} ${at}`]);
       expect((result.value as Stylesheet).rules[0], source).toMatchObject({ value: { type: 'Any' } });
     }
+  });
+
+  it.each([
+    '@expose @a: selector(1px);',
+    '@expose @a: /b;',
+    '.x { a: selector(1px) { b: c; } }',
+    '.x { a:hover selector(1px) { b: c; } }',
+    '.x { a:b selector(1px), .c { d: e } }'
+  ])('reads back from a raw run of %j the problems safeParse() reports: in source order, once each, none from an abandoned attempt', (source) => {
+    const state = createLessParseState(source);
+    const result = run(lessGrammar.Stylesheet, source, { trivia: lessGrammar.whitespace, state });
+    const reported = safeParse('entry.less', source).errors;
+    expect(reported.length, source).toBeGreaterThan(0);
+
+    /* A run that stops short reports that instead, and none of what it recovered from. */
+    const completed = result.ok && result.unconsumedFrom === null && result.errors.length === 0;
+    expect(
+      recoveredProblemsOf(state, result.value).map(error => parserDiagnostic({ dialect: 'Less', error, filePath: 'entry.less', source })),
+      source
+    ).toEqual(completed ? reported : []);
   });
 
   it('keeps selector() inside an @supports prelude and a supports() if-test the CSS feature test', () => {
