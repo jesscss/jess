@@ -35,10 +35,6 @@
     "throw new LessBareVariableInterpolationError(start, end, name);"
   ],
   "packages/syntax/less/less-parser/src/parse-with.ts": [
-    "throw new LessParseError(",
-    "throw new LessParseError(result.span.start, result.expected, lineOptions(input, result.span));",
-    "throw new LessParseError(result.unconsumedFrom, [], {",
-    "throw new LessParseError(result.unconsumedFrom, [], {",
     "throw new LessParseError(result.span.end, [], {"
   ],
   "packages/syntax/scss/scss-parser/src/grammar-helpers.ts": [
