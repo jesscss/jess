@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { run } from 'parseman';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { lessGrammar } from '../src/grammar.js';
-import { createLessParseState, parse, safeParse } from '../src/index.js';
+import { createLessParseState, parse, recoveredProblemsOf, safeParse } from '../src/index.js';
 import {
   DEFAULT_LESS_MATH_MODE,
   mathModeOf
@@ -21,11 +21,10 @@ describe('Less parse state', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(operationMathOutsideParens(result.value)).toBe(true);
 
-    const strict = run(lessGrammar.Document, source, {
-      state: createLessParseState(source, { mathMode: 'strict' }),
-      trivia: lessGrammar.whitespace
-    });
+    const strictState = createLessParseState(source, { mathMode: 'strict' });
+    const strict = run(lessGrammar.Document, source, { state: strictState, trivia: lessGrammar.whitespace });
     expect(strict.ok).toBe(true);
+    expect(recoveredProblemsOf(strictState, strict.value)).toEqual([]);
     expect(strict.unconsumedFrom).toBeNull();
     expect(operationMathOutsideParens(strict.value)).toBe(false);
   });

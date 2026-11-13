@@ -9,19 +9,12 @@ import type { LessRecoveredError } from '../src/parse-error.js';
 /**
  * A raw run of one grammar rule over `input`, with the state `parse()` builds
  * for the same input: the one supported way to build a run state. A problem
- * the run recovers from fails the test, as `parse()` would throw it, unless the
- * test says it expects one (`allowRecovered`).
+ * the run recovers from fails the test, as `parse()` would throw it.
  */
-function runRaw(
-  rule: Parameters<typeof run>[0],
-  input: string,
-  { allowRecovered = false }: { readonly allowRecovered?: boolean } = {}
-): ReturnType<typeof run> {
+function runRaw(rule: Parameters<typeof run>[0], input: string): ReturnType<typeof run> {
   const state = createLessParseState(input);
   const result = run(rule, input, { trivia: lessGrammar.whitespace, state });
-  if (!allowRecovered) {
-    expect(recoveredProblemsOf(state, result.value), input).toEqual([]);
-  }
+  expect(recoveredProblemsOf(state, result.value), input).toEqual([]);
   return result;
 }
 import {
@@ -457,9 +450,7 @@ describe('Less AST grammar facts', () => {
       ['@all: ~/*c*/"all"; @media @{all} { a { b: c } }', '~/*c*/"all"'],
       ['a { b: /*c*/ U+26 }', 'U+26']
     ] as const) {
-      const result = run(lessGrammar.Document, source, {
-        trivia: lessGrammar.whitespace, state: createLessParseState(source)
-      });
+      const result = runRaw(lessGrammar.Document, source);
 
       expect(result.ok, source).toBe(true);
       expect(serialize(stylesheet(result.value)).css, source).toContain(value);
@@ -3358,11 +3349,7 @@ describe('Less AST grammar facts', () => {
      * `supports()` written after the query is a general-enclosed term.
      */
     const cssImportSource = '@import url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");';
-    const cssImport = run(
-      lessGrammar.Document,
-      cssImportSource,
-      { trivia: lessGrammar.whitespace, state: createLessParseState(cssImportSource) }
-    );
+    const cssImport = runRaw(lessGrammar.Document, cssImportSource);
 
     expect(cssImport.ok).toBe(true);
     expect(cssImport.unconsumedFrom).toBeNull();
@@ -3697,9 +3684,7 @@ describe('Less AST grammar facts', () => {
     '@import "theme.less" @{media}@{print};',
     '@import "theme.less" screen and (min-width: {600px});'
   ])('reads the import postlude %j as a typed media query list', (source) => {
-    const result = run(lessGrammar.Document, source, {
-      trivia: lessGrammar.whitespace, state: createLessParseState(source)
-    });
+    const result = runRaw(lessGrammar.Document, source);
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(stylesheet(result.value).rules).toMatchObject([{
@@ -4507,11 +4492,7 @@ describe('Less AST grammar facts', () => {
   it('retains multiline declaration value slots as canonical facts', () => {
     const source =
       '.grid { grid-template-areas:\n  "header header"\n  "content sidebar"; }';
-    const result = run(lessGrammar.Document, source, {
-      // This one needs `source`: `valueOnNewLine` is derived from trivia text.
-      state: createLessParseState(source),
-      trivia: lessGrammar.whitespace
-    });
+    const result = runRaw(lessGrammar.Document, source);
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -6031,9 +6012,7 @@ describe('Less AST grammar facts', () => {
       '@container selector(.card) { .card { color: red; } }',
       '@container size(min-width: 60ch) { .card { color: red; } }'
     ]) {
-      const result = run(lessGrammar.Document, source, {
-        trivia: lessGrammar.whitespace, state: createLessParseState(source)
-      });
+      const result = runRaw(lessGrammar.Document, source);
       expect(
         result.ok
         && result.unconsumedFrom === null
