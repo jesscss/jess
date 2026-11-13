@@ -179,14 +179,40 @@ const packageRootOf = (file: string): string | undefined => {
   }
 };
 
-const realpathAsync = (p: string): Promise<string | undefined> =>
-  fs.promises.realpath(p).catch(() => undefined);
+/**
+ * How the code-closure walk reads files: asynchronously, beside a render, or
+ * synchronously, when a Deno start waits on the walk. The walk awaits either;
+ * with synchronous reads every await settles in a microtask, so the walk ends
+ * before any timer or I/O callback in this process runs, unless an
+ * asynchronous walk of the same files is already in flight (see
+ * {@link codeClosure}).
+ */
+type FileReads = {
+  realpath: (p: string) => string | undefined | Promise<string | undefined>;
+  readText: (file: string) => string | undefined | Promise<string | undefined>;
+};
+
+const asyncReads: FileReads = {
+  realpath: p => fs.promises.realpath(p).catch(() => undefined),
+  readText: file => fs.promises.readFile(file, 'utf8').catch(() => undefined)
+};
+
+const syncReads: FileReads = {
+  realpath,
+  readText: (file) => {
+    try {
+      return fs.readFileSync(file, 'utf8');
+    } catch {
+      return undefined;
+    }
+  }
+};
 
 /** Node's package lookup, reduced to the directory: `<ancestor>/node_modules/<name>`, canonicalized. */
-const packageDirFrom = async (name: string, fromDir: string, signal?: AbortSignal): Promise<string | undefined> => {
+const packageDirFrom = async (name: string, fromDir: string, reads: FileReads, signal?: AbortSignal): Promise<string | undefined> => {
   for (let dir = fromDir; ; dir = path.dirname(dir)) {
     signal?.throwIfAborted();
-    const candidate = await realpathAsync(path.join(dir, 'node_modules', name));
+    const candidate = await reads.realpath(path.join(dir, 'node_modules', name));
     if (candidate !== undefined) {
       return candidate;
     }
@@ -202,9 +228,9 @@ type PackageManifest = {
   peerDependencies?: Record<string, string>;
 };
 
-const readManifest = async (dir: string): Promise<PackageManifest> => {
+const readManifest = async (dir: string, reads: FileReads): Promise<PackageManifest> => {
   try {
-    const parsed: unknown = JSON.parse(await fs.promises.readFile(path.join(dir, 'package.json'), 'utf8'));
+    const parsed: unknown = JSON.parse(await reads.readText(path.join(dir, 'package.json')) ?? '');
     return typeof parsed === 'object' && parsed !== null ? parsed : {};
   } catch {
     return {};
@@ -218,14 +244,17 @@ const closures = new Map<string, Promise<string[]>>();
  * every package their dependencies (regular, optional and installed peer)
  * reach, as canonical directories. The engine loads this code as a render
  * needs it, so it is readable wherever it lies. Computed once per process,
- * with asynchronous file reads, so it runs beside a render in this process
- * instead of holding it up.
+ * by default with asynchronous file reads, so it runs beside a render in this
+ * process instead of holding it up; with `reads: 'sync'` it reads synchronously
+ * and settles in microtasks, so it ends before any timer or I/O callback runs.
+ * A walk of the same files already in flight is joined whatever its reads, so
+ * a `'sync'` call that finds an asynchronous walk under way waits on its I/O.
  */
-export const codeClosure = async (entryFiles: readonly string[], signal?: AbortSignal): Promise<string[]> => {
+export const codeClosure = async (entryFiles: readonly string[], signal?: AbortSignal, reads: 'async' | 'sync' = 'async'): Promise<string[]> => {
   const key = entryFiles.join('\u0000');
   let closure = closures.get(key);
   if (closure === undefined) {
-    closure = walkClosure(entryFiles, signal);
+    closure = walkClosure(entryFiles, reads === 'sync' ? syncReads : asyncReads, signal);
     closures.set(key, closure);
   }
   try {
@@ -239,26 +268,26 @@ export const codeClosure = async (entryFiles: readonly string[], signal?: AbortS
       closures.delete(key);
     }
     if (signal?.aborted !== true && err instanceof Error && err.name === 'AbortError') {
-      return codeClosure(entryFiles, signal);
+      return codeClosure(entryFiles, signal, reads);
     }
     throw err;
   }
 };
 
-const walkClosure = async (entryFiles: readonly string[], signal?: AbortSignal): Promise<string[]> => {
+const walkClosure = async (entryFiles: readonly string[], reads: FileReads, signal?: AbortSignal): Promise<string[]> => {
   const roots = new Set<string>();
   let level = entryFiles.map(packageRootOf).filter((dir): dir is string => dir !== undefined);
   while (level.length > 0) {
     const fresh = [...new Set(level)].filter(dir => !roots.has(dir));
     fresh.forEach(dir => roots.add(dir));
     const next = await Promise.all(fresh.map(async (dir) => {
-      const manifest = await readManifest(dir);
+      const manifest = await readManifest(dir, reads);
       const names = new Set([
         ...Object.keys(manifest.dependencies ?? {}),
         ...Object.keys(manifest.optionalDependencies ?? {}),
         ...Object.keys(manifest.peerDependencies ?? {})
       ]);
-      return Promise.all([...names].map(name => packageDirFrom(name, dir, signal)));
+      return Promise.all([...names].map(name => packageDirFrom(name, dir, reads, signal)));
     }));
     level = next.flat().filter((dir): dir is string => dir !== undefined);
   }
@@ -413,8 +442,8 @@ export const engineOwnCode = (compilerModule: string, selfModule: string): strin
   [fileURLToPath(compilerModule), fileURLToPath(selfModule)].map(packageRootOf).filter((dir): dir is string => dir !== undefined);
 
 /** The code directories of a compiler module and this plugin. */
-export const engineCode = (compilerModule: string, selfModule: string, signal?: AbortSignal): Promise<string[]> =>
-  codeClosure([fileURLToPath(compilerModule), fileURLToPath(selfModule)], signal);
+export const engineCode = (compilerModule: string, selfModule: string, signal?: AbortSignal, reads: 'async' | 'sync' = 'async'): Promise<string[]> =>
+  codeClosure([fileURLToPath(compilerModule), fileURLToPath(selfModule)], signal, reads);
 
 /** A failed engine render, rethrown here: a `JessError` as one (so it prints the same frame), else an `Error`. */
 export const engineFailure = (result: {

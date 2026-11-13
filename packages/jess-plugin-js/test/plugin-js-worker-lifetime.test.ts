@@ -6,7 +6,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { probe, sandboxed } from './engine/sandboxed.js';
-import { denoRunArgs } from '../src/engine.js';
+import { denoRunArgs, engineCode, readSetFor } from '../src/engine.js';
 import jsPlugin, { type JsPlugin } from '../src/index.js';
 
 const workerPath = fileURLToPath(new URL('../src/runtime-worker.ts', import.meta.url));
@@ -208,6 +208,27 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     const failure = await sandboxed(plugin).import(modulePath).then(() => undefined, (err: unknown) => String(err));
     expect(failure).toMatch(/stopped during startup by SIGKILL/);
     expect(failure).not.toMatch(/Deno runtime is required/);
+  });
+
+  it('starts Deno once, on the full read set, for an entry outside the compiler\'s install', async () => {
+    const modulePath = writeModule('export const x = 1;');
+    const root = path.dirname(modulePath);
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+    const startWorker: unknown = Reflect.get(plugin, 'startWorker');
+    if (typeof startWorker !== 'function') {
+      throw new TypeError('JsPlugin has no startWorker');
+    }
+    const readSets: string[][] = [];
+    Reflect.set(plugin, 'startWorker', (readSet: readonly string[]): unknown => {
+      readSets.push([...readSet]);
+      return Reflect.apply(startWorker, plugin, [readSet]);
+    });
+
+    plugin.prewarmEngine({ compiler: probe, compilerOptions: {}, entryDir: root, jsReadRoot: root, extension: undefined });
+    expect((await sandboxed(plugin).import(modulePath)).x).toBe(1);
+    const code = await engineCode(probe.module, new URL('../src/index.ts', import.meta.url).href);
+    expect(readSets).toEqual([readSetFor(root, root, code)]);
   });
 
   it('runs a render after an engine started ahead of time is let go while it starts', async () => {
