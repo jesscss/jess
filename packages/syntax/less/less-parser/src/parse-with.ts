@@ -117,11 +117,12 @@ export function createLessParseState(input: string, options: LessParseOptions = 
 
 /**
  * The problems a raw run with this state recovered from, given what `run()`
- * returned: exactly the ones `safeParse()` reports for the same run and
- * `parse()` throws the first of. A run that stopped short (a failure, input
- * left unconsumed, or a parseman recovery error) reports that failure instead,
- * so it has none. A completed run has each report that reaches its tree, once,
- * in source order; none from an attempt the run abandoned.
+ * returned. For a completed stylesheet run these are the ones `safeParse()`
+ * reports and `parse()` throws the first of: each report that reaches its tree,
+ * once, in source order; none from an attempt the run abandoned. For a run that
+ * stopped short (a failure, input left unconsumed, or a parseman recovery error)
+ * the list is empty, so an empty list does not mean the run succeeded: check
+ * `result.ok`, `result.unconsumedFrom` and `result.errors` first.
  */
 export function recoveredProblemsOf(state: LessRunState, result: RunResult): readonly LessRecoveredError[] {
   return runFailure(result, sourceFromState(state) ?? '') === null ? recoveredIn(result.value, diagnosticsOf(state) ?? []) : [];
