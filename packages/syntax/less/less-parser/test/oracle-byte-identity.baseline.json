@@ -10,7 +10,7 @@
     },
     {
       "name": "cst",
-      "aggregate": "5c12bf0b9f5f35fb2ce0400d886129dcbcd4bab9fb22f635d4ebf61d9e3ec1da",
+      "aggregate": "99483bbeec73b1839dadb4d95496fb6c409bcde2c1be96749e4167c06d2e621a",
       "threw": 0
     }
   ],
@@ -3521,7 +3521,7 @@
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-custom-property.css": {
       "ast": "f1db08d66e22ab41",
-      "cst": "5bf08234d7cc3e75"
+      "cst": "b4b3434d5eb9c7ee"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-math-functions.css": {
       "ast": "8da827122c075725",
