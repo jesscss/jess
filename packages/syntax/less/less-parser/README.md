@@ -80,7 +80,7 @@ Pass a different `startRule` (any capitalized grammar rule, e.g. `'SelectorList'
 | `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
 | `@jesscss/less-parser` (`.`) | `parse` | Parse Less directly to canonical AST v2 `Stylesheet`. It does not load the CST grammar. |
 | `@jesscss/less-parser` (`.`) | `createLessParseState` | Build the run state `parse()` builds, from the same options, for a raw run of a `grammar/*` table. Returns an opaque `LessRunState`. See [Extending with your own builders](#extending-with-your-own-builders). |
-| `@jesscss/less-parser` (`.`) | `recoveredProblemsOf` | The problems a raw run with a `LessRunState` recovered from, given the value it returned: the list `safeParse()` reports. |
+| `@jesscss/less-parser` (`.`) | `recoveredProblemsOf` | Given a `LessRunState` and what the raw `run()` returned, exactly the recovered problems `safeParse()` reports for that run: none for a run that stopped short. |
 
 ### Line-aware entries
 
@@ -214,9 +214,12 @@ checks the options once: `undefined` or `null` reads the default, and any other
 value outside the documented modes throws a `TypeError`. The grammar trusts the
 state after that, so a hand-built state is unchecked: an invalid mode in it is
 undefined behaviour. The returned `LessRunState` is opaque; pass it as `state`
-and read it back only through `recoveredProblemsOf(state, result.value)`, which
-lists each problem the run recovered from, as `safeParse()` reports them, where
-`parse()` would have thrown the first.
+and read it back only through `recoveredProblemsOf(state, result)`, passing what
+`run()` returned. It lists exactly the recovered problems `safeParse()` reports
+for the same run, where `parse()` would have thrown the first. A run that
+stopped short (it failed, left input unconsumed, or hit a parseman recovery
+error) reports that failure instead, so the list is empty; a completed run lists
+each problem that reaches its tree, once, in source order.
 
 The `BuildHost` signature (from parseman):
 

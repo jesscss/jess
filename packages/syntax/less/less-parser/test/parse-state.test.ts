@@ -24,7 +24,7 @@ describe('Less parse state', () => {
     const strictState = createLessParseState(source, { mathMode: 'strict' });
     const strict = run(lessGrammar.Document, source, { state: strictState, trivia: lessGrammar.whitespace });
     expect(strict.ok).toBe(true);
-    expect(recoveredProblemsOf(strictState, strict.value)).toEqual([]);
+    expect(recoveredProblemsOf(strictState, strict)).toEqual([]);
     expect(strict.unconsumedFrom).toBeNull();
     expect(operationMathOutsideParens(strict.value)).toBe(false);
   });

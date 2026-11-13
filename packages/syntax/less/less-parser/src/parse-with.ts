@@ -6,7 +6,7 @@
  * both compiled tables executes both at load time. Each entry imports exactly
  * the one table it parses with, and this module imports none.
  */
-import { buildLineIndex, offsetToLineCol, run } from 'parseman/run';
+import { buildLineIndex, offsetToLineCol, run, type RunResult } from 'parseman/run';
 import type { Span } from 'parseman';
 import type { ISafeParseResult, MathMode, ModuleMode, TriviaMap } from '@jesscss/core';
 import { DEFAULT_LESS_MATH_MODE, diagnosticsOf, rejectBareVariable, type LessDocumentFacts, type LessParseState } from './parse-state.js';
@@ -40,6 +40,7 @@ import {
 import type { lessGrammar } from './grammar/ast.js';
 import { LessParseError, type LessRecoveredError } from './parse-error.js';
 import { commentTriviaLabels } from './trivia-labels.js';
+import { sourceFromState } from './trivia-layout.js';
 
 /** The rule map both compiled Less AST variants expose. */
 export type LessAstGrammar = typeof lessGrammar;
@@ -115,12 +116,15 @@ export function createLessParseState(input: string, options: LessParseOptions = 
 }
 
 /**
- * The problems a run with this state recovered from, given the `value` the run
- * returned: the ones `parse()` throws the first of and `safeParse()` reports,
- * in source order, once each, and none from an attempt the run abandoned.
+ * The problems a raw run with this state recovered from, given what `run()`
+ * returned: exactly the ones `safeParse()` reports for the same run and
+ * `parse()` throws the first of. A run that stopped short (a failure, input
+ * left unconsumed, or a parseman recovery error) reports that failure instead,
+ * so it has none. A completed run has each report that reaches its tree, once,
+ * in source order; none from an attempt the run abandoned.
  */
-export function recoveredProblemsOf(state: LessRunState, tree: unknown): readonly LessRecoveredError[] {
-  return recoveredIn(typeof tree === 'object' && tree !== null ? tree : {}, diagnosticsOf(state) ?? []);
+export function recoveredProblemsOf(state: LessRunState, result: RunResult): readonly LessRecoveredError[] {
+  return runFailure(result, sourceFromState(state) ?? '') === null ? recoveredIn(result.value, diagnosticsOf(state) ?? []) : [];
 }
 
 function requireMode<const M extends string>(
@@ -306,6 +310,38 @@ function parseRecovering(
     rootTrivia: { select: commentTriviaLabels }
   });
 
+  const failure = runFailure(result, input);
+  if (failure !== null) {
+    throw failure;
+  }
+  if (!isStylesheet(result.value)) {
+    throw new LessParseError(result.span.end, [], {
+      ...positionAt(input, result.span.end),
+      message: 'Less parser did not produce a stylesheet.',
+      reason:
+        'The Less parser matched the input but returned a value that is not a stylesheet document.',
+      fix: 'Report this as a parser bug with the source that triggered it.'
+    });
+  }
+  /* Read before the document is decorated, so a raw run's `recoveredProblemsOf` walks the same tree. */
+  const recovered = recoveredIn(result.value, diagnostics);
+  const triviaMap = createTriviaMapFromParseman(input, result.rootTrivia?.index);
+  retainRootImportBoundaryTrivia(
+    result.value,
+    result.rootTrivia === undefined ? undefined : triviaMap
+  );
+  const document = withForgivenSelectorItems(withTriviaMap(
+    withSourceSpan(result.value, result.span),
+    triviaMap
+  ), forgivenSelectorItems);
+  return { document, recovered };
+}
+
+/**
+ * The failure `parse()` throws for a run that stopped short, or `null` when the
+ * run completed: no recovery error, a value, and no input left unconsumed.
+ */
+function runFailure(result: RunResult, input: string): LessParseError | null {
   /*
    * A recovery error outranks the two branches below, exactly as it does in the
    * CSS parser this one mirrors: it localises the FIRST real problem, where
@@ -315,14 +351,14 @@ function parseRecovering(
    */
   const recoveryError = result.errors[0];
   if (recoveryError !== undefined) {
-    throw new LessParseError(
+    return new LessParseError(
       recoveryError.span.start,
       recoveryError.expected,
       lineOptions(input, recoveryError.span)
     );
   }
   if (!result.ok) {
-    throw new LessParseError(result.span.start, result.expected, lineOptions(input, result.span));
+    return new LessParseError(result.span.start, result.expected, lineOptions(input, result.span));
   }
   if (result.unconsumedFrom !== null) {
     /*
@@ -334,7 +370,7 @@ function parseRecovering(
      * trailing trivia, which is a convention the four parsers do not share.
      */
     if (isStylesheet(result.value) && result.value.rules.length > 0) {
-      throw new LessParseError(result.unconsumedFrom, [], {
+      return new LessParseError(result.unconsumedFrom, [], {
         message: 'Unexpected Less input after a complete stylesheet.',
         reason:
           'The parser consumed a complete Less stylesheet before this token, so the remaining text is not part of any rule, declaration, or at-rule.',
@@ -342,7 +378,7 @@ function parseRecovering(
         ...positionAt(input, result.unconsumedFrom)
       });
     }
-    throw new LessParseError(result.unconsumedFrom, [], {
+    return new LessParseError(result.unconsumedFrom, [], {
       message: 'Unexpected Less syntax.',
       reason:
         'The parser could not match this token as the start of a Less rule, declaration, or at-rule.',
@@ -350,33 +386,12 @@ function parseRecovering(
       ...positionAt(input, result.unconsumedFrom)
     });
   }
-  if (!isStylesheet(result.value)) {
-    throw new LessParseError(result.span.end, [], {
-      ...positionAt(input, result.span.end),
-      message: 'Less parser did not produce a stylesheet.',
-      reason:
-        'The Less parser matched the input but returned a value that is not a stylesheet document.',
-      fix: 'Report this as a parser bug with the source that triggered it.'
-    });
-  }
-  const triviaMap = createTriviaMapFromParseman(input, result.rootTrivia?.index);
-  retainRootImportBoundaryTrivia(
-    result.value,
-    result.rootTrivia === undefined ? undefined : triviaMap
-  );
-  const document = withForgivenSelectorItems(withTriviaMap(
-    withSourceSpan(result.value, result.span),
-    triviaMap
-  ), forgivenSelectorItems);
-  return {
-    document,
-    recovered: recoveredIn(document, diagnostics)
-  };
+  return null;
 }
 
-/** The reports that reach `tree`, one per item, ordered by where it is written. */
-function recoveredIn(tree: object, reported: readonly LessRecoveredError[]): readonly LessRecoveredError[] {
-  const diagnostics = recoveredInTree(tree, reported);
+/** The reports that reach a completed run's tree, one per item, ordered by where it is written. */
+function recoveredIn(tree: unknown, reported: readonly LessRecoveredError[]): readonly LessRecoveredError[] {
+  const diagnostics = recoveredInTree(typeof tree === 'object' && tree !== null ? tree : {}, reported);
   if (diagnostics.length < 2) {
     return diagnostics;
   }

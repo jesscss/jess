@@ -14,7 +14,7 @@ import type { LessRecoveredError } from '../src/parse-error.js';
 function runRaw(rule: Parameters<typeof run>[0], input: string): ReturnType<typeof run> {
   const state = createLessParseState(input);
   const result = run(rule, input, { trivia: lessGrammar.whitespace, state });
-  expect(recoveredProblemsOf(state, result.value), input).toEqual([]);
+  expect(recoveredProblemsOf(state, result), input).toEqual([]);
   return result;
 }
 import {
@@ -53,7 +53,7 @@ function parsesCompleteStylesheet(source: string): boolean {
     const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state });
     return (
       result.ok && result.unconsumedFrom === null && isStylesheet(result.value)
-      && recoveredProblemsOf(state, result.value).length === 0
+      && recoveredProblemsOf(state, result).length === 0
     );
   } catch {
     return false;
@@ -959,7 +959,7 @@ describe('Less AST grammar facts', () => {
     ] as const) {
       const state = createLessParseState(source);
       const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state });
-      const diagnostics = recoveredProblemsOf(state, result.value);
+      const diagnostics = recoveredProblemsOf(state, result);
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
       expect(diagnostics.map(d => `${d.code} ${source.slice(d.offset, d.endOffset)}`), source).toEqual([`${code} ${at}`]);
       expect((result.value as Stylesheet).rules[0], source).toMatchObject({ value: { type: 'Any' } });
@@ -969,21 +969,33 @@ describe('Less AST grammar facts', () => {
   it.each([
     '@expose @a: selector(1px);',
     '@expose @a: /b;',
+
+    /* These three stop short today, which is a well-formed-input gap (jesscss/jess#672), not intended behaviour. */
     '.x { a: selector(1px) { b: c; } }',
     '.x { a:hover selector(1px) { b: c; } }',
-    '.x { a:b selector(1px), .c { d: e } }'
-  ])('reads back from a raw run of %j the problems safeParse() reports: in source order, once each, none from an abandoned attempt', (source) => {
+    '.x { a:b selector(1px), .c { d: e } }',
+
+    /* Input left unconsumed after a tree with reports in it. */
+    '@expose @a: 1; }',
+    'a { b: selector(1px); } }',
+    'a { b: /c; } }',
+    '.m() when (a) AND (b) { } }',
+
+    /* A failed run, after reports that carry no value. */
+    '.m() when (a) AND (b) { } @a: 1 !',
+    '@expose @x: 1; @a: 1 !',
+    '@expose a b; @a: 1 !'
+  ])('reads back from a raw run of %j exactly the recovered problems safeParse() reports', (source) => {
     const state = createLessParseState(source);
     const result = run(lessGrammar.Stylesheet, source, { trivia: lessGrammar.whitespace, state });
-    const reported = safeParse('entry.less', source).errors;
-    expect(reported.length, source).toBeGreaterThan(0);
+    const parsed = safeParse('entry.less', source);
+    expect(parsed.errors.length, source).toBeGreaterThan(0);
 
-    /* A run that stops short reports that instead, and none of what it recovered from. */
-    const completed = result.ok && result.unconsumedFrom === null && result.errors.length === 0;
+    /* With no document, safeParse() reports why the run stopped, and nothing it recovered from. */
     expect(
-      recoveredProblemsOf(state, result.value).map(error => parserDiagnostic({ dialect: 'Less', error, filePath: 'entry.less', source })),
+      recoveredProblemsOf(state, result).map(error => parserDiagnostic({ dialect: 'Less', error, filePath: 'entry.less', source })),
       source
-    ).toEqual(completed ? reported : []);
+    ).toEqual(parsed.document === undefined ? [] : parsed.errors);
   });
 
   it('keeps selector() inside an @supports prelude and a supports() if-test the CSS feature test', () => {
