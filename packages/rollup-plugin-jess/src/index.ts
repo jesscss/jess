@@ -242,10 +242,12 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
 
       /*
        * The reader is the least the page needs: hex only when no recipe holds
-       * text and every export a recipe reads is a colour export whose
-       * compile-time CSS, which the reader also reads, is a hex.
+       * text and every export a recipe reads goes straight to a colour
+       * parameter, so it is one colour, and its compile-time CSS, which the
+       * reader also reads, is a hex. An export passed through another function
+       * may be a list (`luma(extract(@list, 1))`).
        */
-      const hexOnly = !names && !text && Object.entries(runtime.defaults).every(([name, css]) => runtime.colors.includes(name) && /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(css));
+      const hexOnly = !names && !text && runtime.direct && Object.values(runtime.defaults).every(css => /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(css));
       lines.push(`import { createVars, ${hexOnly ? 'readHex' : names ? 'readNamed' : 'readUnnamed'} as read } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
       for (const [module, members] of imports) {
         lines.push(`import { ${members.join(', ')} } from ${JSON.stringify(module)};`);

@@ -180,6 +180,22 @@ describe('vite-plugin-jess', () => {
     });
   });
 
+  /* A colour export passed through another function may be a list, so the page keeps the text reader. */
+  it('reads a list given for a colour export a recipe passes through another function', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose list;\n@list: #c00;\n.a { opacity: @less.luma(@less.extract(@list, @less.length(@list))); }\n`]
+    ], async (root) => {
+      const { js } = await built(root, {});
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(isRuntime(module) && module.vars({ list: '#f00 #00f' })['--list-luma']).toBe('7.22%');
+      expect(isRuntime(module) && module.vars({ list: '#f00, #00f' })['--list-luma']).toBe('7.22%');
+      expect(() => isRuntime(module) && module.vars({ list: '#f00 blue' })).toThrow('`list` received `#f00 blue`, which is not a hex colour');
+    });
+  });
+
   it('rejects a colour name in any item of a hex-checked export, though the page reads its own names', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
