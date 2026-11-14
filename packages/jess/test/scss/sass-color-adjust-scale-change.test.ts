@@ -128,6 +128,7 @@ describe('one relative colour, each channel a slot', () => {
     ['color.change(var(--c), $blackness: 20%, $alpha: 50%)', 'hwb(from var(--c) h w 20 / 0.5)'],
     ['adjust-color(var(--c), $red: 10)', 'rgb(from var(--c) clamp(0, r + 10, 255) g b)'],
     ['scale-color(var(--c), $alpha: 40%)', 'rgb(from var(--c) r g b / calc(alpha + (1 - alpha) * 0.4))'],
+    ['scale-color(#0d6efd, $red: var(--x))', 'rgb(from #0d6efd calc(r + (255 - r) * clamp(0, var(--x) / 100%, 1) + r * clamp(-1, var(--x) / 100%, 0)) g b)'],
     ['change-color(var(--c), $alpha: var(--a))', 'rgb(from var(--c) r g b / var(--a))']
   ])('%s', async (call, form) => {
     await expect(value(call)).resolves.toBe(form);

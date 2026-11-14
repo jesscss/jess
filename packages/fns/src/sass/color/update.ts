@@ -14,8 +14,9 @@
  * - **adjust** adds. rgb channels, saturation and lightness are clamped to their
  *   range; hue, whiteness and blackness are not. Alpha is clamped by the colour.
  * - **scale** moves a channel that fraction of the way to its bound and takes
- *   only a `%` within -100% and 100%. The sign picks the formula, so a percentage
- *   only the browser knows has no form; hue cannot be scaled.
+ *   only a `%` within -100% and 100%. The sign picks the formula; over a
+ *   percentage only the browser knows one form is either formula, its factor held
+ *   at ±1 past ±100%. Hue cannot be scaled.
  * - **change** replaces, unclamped. Only `$alpha` is range-checked.
  *
  * Only the rgb, hsl and hwb spaces exist in jess's colour model, so `$space`
@@ -24,11 +25,12 @@
  *
  * HARD MODULE BOUNDARY: value domain only.
  */
-import { asNumber, channelForm, defineForm, formMath, knownUnit, type FormCall, type FormSlot } from '@jesscss/core/form';
+import { asNumber, channelForm, defineForm, knownUnit, type FormCall, type FormSlot } from '@jesscss/core/form';
 import type { Color, Dimension, Fn, FunctionCall, ValueGroup } from '@jesscss/core/value';
 import { colorHsl, colorRawRgb, isUnknownNumber, isValueGroupArray, makeDimension, TOLERANCE, checkAny, optional } from '@jesscss/core/value';
 import * as forms from '../../less/css-forms.generated.js';
 import { percentOf } from '../../shared/color/kernels.js';
+import { shareOf } from '../../less/color-form.js';
 import { COLOR } from './color-form.js';
 import { degreesOf } from './kernels.js';
 
@@ -179,7 +181,7 @@ function unknownScale(name: string, keyword: string, max: number, amount: Functi
   if (unit !== undefined && unit !== '%') {
     throw new TypeError(`$${name}: Expected ${amount.bytes} to have unit "%".`);
   }
-  return channelForm(forms.channelScaled, keyword, makeDimension(max), formMath('/', amount, makeDimension(100, '%')));
+  return channelForm(forms.channelScaled, keyword, makeDimension(max), shareOf(amount));
 }
 
 /** A number only the browser knows in a channel: on a 0–100 channel it is taken to hold a percentage (Q2). */
