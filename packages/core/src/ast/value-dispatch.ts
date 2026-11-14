@@ -320,15 +320,14 @@ export function defineFunction(
   }
 
   /* A CSS function binds what only the browser knows too, and declines over it; what the call passed, in parameter order, is what the CSS function takes: no name, no `null` (a declared optional's). */
-  const { body } = spec;
   const fn = define(name, {
     params: params.map(cssFunctionParam),
-    body: (...bound: unknown[]) => {
+    body: spec.body,
+    filter: spec.filter,
+    afterBind: (bound: readonly unknown[]) => {
       const passed = bound.flat().filter(isPassed);
       declineOverUnknown(passed, passed);
-      return Reflect.apply(body, undefined, bound);
-    },
-    filter: spec.filter
+    }
   });
   return Object.assign(fn, { params });
 }

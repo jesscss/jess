@@ -177,6 +177,11 @@ export function bindDirect(name: string, params: readonly ParamSpec[], inputs: r
 
 const isRest = (param: ParamSpec): boolean => param.rest === true;
 
+type VariadicBody = (args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<ValueGroup>;
+
+/** A variadic spec's body takes the arguments and the context. */
+const isVariadic = <S extends { readonly variadic?: boolean }>(spec: S): spec is S & { readonly body: VariadicBody } => spec.variadic === true;
+
 /**
  * A function over the call's arguments ({@link Fn}). A positional body receives
  * each parameter's value, checked by its parameter's check, a `lazy` one as a
@@ -190,6 +195,7 @@ export function define<const P extends readonly ParamSpec[]>(
     readonly body: (...args: FunctionBodyArgs<NoInfer<P>>) => MaybePromise<ValueGroup>;
     readonly variadic?: false;
     readonly filter?: boolean;
+    readonly cssFunction?: never;
   },
 ): DefinedFunction<P>;
 export function define(
@@ -199,6 +205,7 @@ export function define(
     readonly body: (args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<ValueGroup>;
     readonly variadic: true;
     readonly filter?: boolean;
+    readonly cssFunction?: never;
   },
 ): Fn;
 export function define(
@@ -208,6 +215,10 @@ export function define(
     readonly body: (...args: never[]) => MaybePromise<ValueGroup>;
     readonly variadic?: boolean;
     readonly filter?: boolean;
+    readonly cssFunction?: never;
+
+    /** Runs over the bound arguments before the body (`defineFunction`'s CSS-function decline). */
+    readonly afterBind?: (bound: readonly unknown[]) => void;
   },
 ): Fn;
 export function define(
@@ -217,14 +228,18 @@ export function define(
     readonly body: (...args: never) => MaybePromise<ValueGroup>;
     readonly variadic?: boolean;
     readonly filter?: boolean;
+    readonly cssFunction?: never;
+    readonly afterBind?: (bound: readonly unknown[]) => void;
   }
 ): unknown {
   /* Each closure reads only constants captured here, never the caller's spec literal, whose key set varies by caller. */
-  let callable: (args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<ValueGroup>;
-  const { params, body } = spec;
-  if (spec.variadic === true) {
-    callable = (args, ctx) => Reflect.apply(body, undefined, [args, ctx]);
+  let callable: VariadicBody;
+  const { params, afterBind } = spec;
+  if (isVariadic(spec)) {
+    const { body } = spec;
+    callable = (args, ctx) => body(args, ctx);
   } else {
+    const { body } = spec;
     const restParam = params.find(isRest);
 
     /*
@@ -234,7 +249,11 @@ export function define(
      * `bindDirect`'s `too many arguments` stays reachable.
      */
     const lazy = params.some(param => param.lazy === true);
-    callable = (args, ctx) => Reflect.apply(body, undefined, bindDirect(name, params, lazy ? args.map((item, index) => (params[index] ?? restParam)?.lazy ? () => item : item) : args, ctx.colorName));
+    callable = (args, ctx) => {
+      const bound = bindDirect(name, params, lazy ? args.map((item, index) => (params[index] ?? restParam)?.lazy ? () => item : item) : args, ctx.colorName);
+      afterBind?.(bound);
+      return Reflect.apply(body, undefined, bound);
+    };
   }
   const fn = Object.assign(callable, { params, variadic: spec.variadic, filter: spec.filter });
   Object.defineProperty(fn, 'name', { value: name, configurable: true });

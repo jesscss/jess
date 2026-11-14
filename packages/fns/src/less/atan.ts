@@ -1,7 +1,7 @@
 import { unaryMath } from '../shared/math/math-helper.js';
 import { fitsNumber } from './css-math-args.js';
-import { define } from '@jesscss/core/value';
+import { defineFunction } from '@jesscss/core/value';
 import type { Fn } from '@jesscss/core/value';
 
 /** `atan(value)` — inverse tangent; result in `rad`. */
-export const atan: Fn = /* @__PURE__ */ define('atan', unaryMath(Math.atan, 'rad', fitsNumber));
+export const atan: Fn = /* @__PURE__ */ defineFunction('atan', unaryMath(Math.atan, 'rad', fitsNumber));
