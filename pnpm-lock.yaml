@@ -128,8 +128,8 @@ importers:
         specifier: ^8.0.1
         version: 8.0.1
       parseman:
-        specifier: 0.61.5
-        version: 0.61.5
+        specifier: 0.62.0
+        version: 0.62.0
       puppeteer:
         specifier: ^19.10.1
         version: 19.11.1(typescript@7.0.1-rc)
@@ -335,40 +335,6 @@ importers:
     dependencies:
       '@docusaurus/core':
         specifier: 3.8.1
-        version: 3.8.1(@mdx-js/react@3.1.1(@types/react@19.1.17)(react@19.1.9))(postcss@8.5.23)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)(typescript@6.0.3)
-      '@docusaurus/preset-classic':
-        specifier: 3.8.1
-        version: 3.8.1(@algolia/client-search@5.59.0)(@mdx-js/react@3.1.1(@types/react@19.1.17)(react@19.1.9))(@types/react@19.1.17)(postcss@8.5.23)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)(search-insights@2.17.3)(typescript@6.0.3)
-      clsx:
-        specifier: ^1.2.1
-        version: 1.2.1
-      prism-react-renderer:
-        specifier: ~2.4.1
-        version: 2.4.1(react@19.1.9)
-      react:
-        specifier: ~19.1.0
-        version: 19.1.9
-      react-dom:
-        specifier: ~19.1.0
-        version: 19.1.9(react@19.1.9)
-    devDependencies:
-      '@docusaurus/plugin-content-docs':
-        specifier: ~3.8.1
-        version: 3.8.1(@mdx-js/react@3.1.1(@types/react@19.1.17)(react@19.1.9))(postcss@8.5.23)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)(typescript@6.0.3)
-      '@docusaurus/theme-classic':
-        specifier: ~3.8.1
-        version: 3.8.1(@types/react@19.1.17)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)(typescript@6.0.3)
-      '@docusaurus/types':
-        specifier: ~3.8.1
-        version: 3.8.1(postcss@8.5.23)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)
-      '@types/react':
-        specifier: ~19.1.10
-        version: 19.1.17
-
-  packages/docs/docs-less:
-    dependencies:
-      '@docusaurus/core':
-        specifier: 3.8.1
         version: 3.8.1(@mdx-js/react@3.1.1(@types/react@19.1.17)(react@19.1.9))(react-dom@19.1.9(react@19.1.9))(react@19.1.9)(typescript@6.0.3)
       '@docusaurus/preset-classic':
         specifier: 3.8.1
@@ -395,6 +361,40 @@ importers:
       '@docusaurus/types':
         specifier: ~3.8.1
         version: 3.8.1(react-dom@19.1.9(react@19.1.9))(react@19.1.9)
+      '@types/react':
+        specifier: ~19.1.10
+        version: 19.1.17
+
+  packages/docs/docs-less:
+    dependencies:
+      '@docusaurus/core':
+        specifier: 3.8.1
+        version: 3.8.1(@mdx-js/react@3.1.1(@types/react@19.1.17)(react@19.1.9))(postcss@8.5.23)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)(typescript@6.0.3)
+      '@docusaurus/preset-classic':
+        specifier: 3.8.1
+        version: 3.8.1(@algolia/client-search@5.59.0)(@mdx-js/react@3.1.1(@types/react@19.1.17)(react@19.1.9))(@types/react@19.1.17)(postcss@8.5.23)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)(search-insights@2.17.3)(typescript@6.0.3)
+      clsx:
+        specifier: ^1.2.1
+        version: 1.2.1
+      prism-react-renderer:
+        specifier: ~2.4.1
+        version: 2.4.1(react@19.1.9)
+      react:
+        specifier: ~19.1.0
+        version: 19.1.9
+      react-dom:
+        specifier: ~19.1.0
+        version: 19.1.9(react@19.1.9)
+    devDependencies:
+      '@docusaurus/plugin-content-docs':
+        specifier: ~3.8.1
+        version: 3.8.1(@mdx-js/react@3.1.1(@types/react@19.1.17)(react@19.1.9))(postcss@8.5.23)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)(typescript@6.0.3)
+      '@docusaurus/theme-classic':
+        specifier: ~3.8.1
+        version: 3.8.1(@types/react@19.1.17)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)(typescript@6.0.3)
+      '@docusaurus/types':
+        specifier: ~3.8.1
+        version: 3.8.1(postcss@8.5.23)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)
       '@types/react':
         specifier: ~19.1.10
         version: 19.1.17
@@ -707,8 +707,8 @@ importers:
   packages/parser-shared:
     dependencies:
       parseman:
-        specifier: 0.61.5
-        version: 0.61.5
+        specifier: 0.62.0
+        version: 0.62.0
     devDependencies:
       tsdown:
         specifier: ~0.21.7
@@ -750,8 +750,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: 0.61.5
-        version: 0.61.5
+        specifier: 0.62.0
+        version: 0.62.0
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -769,8 +769,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: 0.61.5
-        version: 0.61.5
+        specifier: 0.62.0
+        version: 0.62.0
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -843,8 +843,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: 0.61.5
-        version: 0.61.5
+        specifier: 0.62.0
+        version: 0.62.0
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -880,8 +880,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: 0.61.5
-        version: 0.61.5
+        specifier: 0.62.0
+        version: 0.62.0
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -9662,8 +9662,8 @@ packages:
   parse5@7.3.0:
     resolution: {integrity: sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw==}
 
-  parseman@0.61.5:
-    resolution: {integrity: sha512-88wgmcOw4EBZfcJYreHph/ttgmg+CyogKCHZlevjUD2p9oUU3AfPkSI6dm1Gs7E5oYkfHs+owWxAi6+DdtTU6g==}
+  parseman@0.62.0:
+    resolution: {integrity: sha512-z0ZZhcJglFsdzBgoLTR0v06jPkNiW+lwqNif38ukIm4BbA8Sx7RN7XAWTw9N4a4TJzg+M4yqfIGQwHA0jPpmMw==}
     engines: {node: ^20.19.0 || >=22.13.0}
     hasBin: true
 
@@ -24985,7 +24985,7 @@ snapshots:
     dependencies:
       entities: 6.0.1
 
-  parseman@0.61.5:
+  parseman@0.62.0:
     dependencies:
       linecraft: 0.2.6
       magic-string: 0.30.21

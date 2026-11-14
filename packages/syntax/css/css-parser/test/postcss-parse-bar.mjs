@@ -332,7 +332,7 @@ for (const fixture of fixtures) {
     postcssWalkedNodes: postcssNodes,
     jessAstTypedNodes: countObjects(parse(fixture.source), true),
     jessCstObjects: countObjects(cst.tree, false),
-    jessCstTriviaEntries: Array.isArray(cst.rootTrivia?.rows) ? cst.rootTrivia.rows.length : null
+    jessCstTriviaEntries: cst.rootTrivia?.rows?.length ?? null
   };
 }
 
