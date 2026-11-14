@@ -69,16 +69,18 @@ export function formatNumber(n: number): string {
    * stylesheet emits is a small integer.
    */
   if (Number.isInteger(n)) {
-    return positional(s);
+    return s.indexOf('e') === -1 ? s : positional(s);
   }
   if (!Number.isFinite(n)) {
     throw new RangeError(`${s} is not a finite number and has no CSS spelling`);
   }
   let sig = 0;
   let seenDigit = false;
+  let exponential = false;
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
     if (c === 0x65 /* e */) {
+      exponential = true;
       break;
     }
     if (c >= 0x31 /* 1 */ && c <= 0x39 /* 9 */) {
@@ -93,11 +95,13 @@ export function formatNumber(n: number): string {
     for (let p = 1; p <= MAX_PRECISION; p++) {
       const candidate = Number(n.toPrecision(p));
       if (Math.abs(candidate - n) <= tolerance) {
-        return positional(`${candidate}`);
+        const t = `${candidate}`;
+        return t.indexOf('e') === -1 ? t : positional(t);
       }
     }
   }
-  return positional(s);
+
+  return exponential ? positional(s) : s;
 }
 
 /**
@@ -117,13 +121,12 @@ export function trimNumber(n: number): number {
  * `String` switches to exponent form at |n| >= 1e21 and |n| < 1e-6, so this is
  * unreachable for anything a stylesheet plausibly holds; it exists so the guard is
  * EXPLICIT rather than emergent. It became reachable at all only when the 8-dp floor
- * went away: every value in (0, 5e-9) used to flatten to `0`.
+ * went away: every value in (0, 5e-9) used to flatten to `0`. `s` holds an exponent;
+ * each caller tests for one first, inline: this is too large to inline, and the
+ * test keeps the common case free of the call.
  */
 function positional(s: string): string {
   const e = s.indexOf('e');
-  if (e === -1) {
-    return s;
-  }
   const sign = s.charCodeAt(0) === 0x2d /* - */ ? '-' : '';
   const [whole = '', fraction = ''] = s.slice(sign.length, e).split('.');
   const digits = whole + fraction;
