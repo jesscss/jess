@@ -9,8 +9,7 @@ import type { Color, Fn, ValueGroup, Value } from '@jesscss/core/value';
 const svgGradient: Fn = /* @__PURE__ */ defineFunction('svg-gradient', {
   params: [{ type: 'any' }],
   variadic: true,
-  body: (value, ctx): Value => {
-    const items = groupItems(value);
+  body: (items, ctx): Value => {
     if (items.length < 2) {
       throw new TypeError(STOPS_ERROR);
     }

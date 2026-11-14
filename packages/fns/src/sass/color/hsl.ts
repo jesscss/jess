@@ -1,6 +1,6 @@
-import type { Fn, ValueGroup } from '@jesscss/core/value';
-import { defineFunction, groupItems } from '@jesscss/core/value';
-import { isModern, makeHsl } from './kernels.js';
+import type { Fn } from '@jesscss/core/value';
+import { defineFunction } from '@jesscss/core/value';
+import { makeHsl } from './kernels.js';
 
 /**
  * Sass `hsl()` — construct an hsl colour, or re-alpha an existing one.
@@ -20,7 +20,7 @@ export const hsl: Fn = defineFunction('hsl', {
     { name: 'alpha', type: 'any', optional: true }
   ],
   variadic: true,
-  body: (list: ValueGroup) => makeHsl(groupItems(list), isModern(list))
+  body: (args, ctx) => makeHsl(args, ctx.modern === true)
 });
 
 export default hsl;

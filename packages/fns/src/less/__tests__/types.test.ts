@@ -24,37 +24,37 @@ describe('types()', () => {
     const url: UrlValue = { type: 'Url', bytes: 'url("test.png")' };
     const context: FnCtx = { modes: { unitMode: 'preserve' }, stringify: emitValue };
 
-    expect(bool(iscolor, color, context)).toBe(true);
-    expect(bool(isnumber, px, context)).toBe(true);
-    expect(bool(isstring, quoted, context)).toBe(true);
-    expect(bool(iskeyword, keyword, context)).toBe(true);
-    expect(bool(iskeyword, url, context)).toBe(false);
-    expect(bool(isurl, url, context)).toBe(true);
-    expect(bool(isurl, makeKeyword('url("test.png")'), context)).toBe(false);
-    expect(bool(ispixel, px, context)).toBe(true);
-    expect(bool(ispercentage, pct, context)).toBe(true);
-    expect(bool(isem, em, context)).toBe(true);
-    expect(bool(isunit, makeList([px, makeQuoted('PX', '"', false)], ','), context)).toBe(true);
-    expect(bool(isunit, makeList([px, makeQuoted('em', '"', false)], ','), context)).toBe(false);
-    expect(bool(isunit, makeList([keyword, makeQuoted('px', '"', false)], ','), context)).toBe(false);
+    expect(bool(iscolor, [color], context)).toBe(true);
+    expect(bool(isnumber, [px], context)).toBe(true);
+    expect(bool(isstring, [quoted], context)).toBe(true);
+    expect(bool(iskeyword, [keyword], context)).toBe(true);
+    expect(bool(iskeyword, [url], context)).toBe(false);
+    expect(bool(isurl, [url], context)).toBe(true);
+    expect(bool(isurl, [makeKeyword('url("test.png")')], context)).toBe(false);
+    expect(bool(ispixel, [px], context)).toBe(true);
+    expect(bool(ispercentage, [pct], context)).toBe(true);
+    expect(bool(isem, [em], context)).toBe(true);
+    expect(bool(isunit, [px, makeQuoted('PX', '"', false)], context)).toBe(true);
+    expect(bool(isunit, [px, makeQuoted('em', '"', false)], context)).toBe(false);
+    expect(bool(isunit, [keyword, makeQuoted('px', '"', false)], context)).toBe(false);
   });
 
   it('treats a nested raw space group as one non-scalar argument', () => {
     const context: FnCtx = { modes: { unitMode: 'preserve' }, stringify: emitValue };
     const group = [makeDimension(1, 'px'), makeDimension(2, 'px')];
 
-    expect(bool(iscolor, makeList([group], ','), context)).toBe(false);
-    expect(bool(isnumber, makeList([group], ','), context)).toBe(false);
-    expect(bool(isstring, makeList([group], ','), context)).toBe(false);
-    expect(bool(iskeyword, makeList([group], ','), context)).toBe(false);
-    expect(bool(isurl, makeList([group], ','), context)).toBe(false);
-    expect(bool(ispixel, makeList([group], ','), context)).toBe(false);
-    expect(bool(isunit, makeList([group, makeKeyword('px')], ','), context)).toBe(false);
+    expect(bool(iscolor, [group], context)).toBe(false);
+    expect(bool(isnumber, [group], context)).toBe(false);
+    expect(bool(isstring, [group], context)).toBe(false);
+    expect(bool(iskeyword, [group], context)).toBe(false);
+    expect(bool(isurl, [group], context)).toBe(false);
+    expect(bool(ispixel, [group], context)).toBe(false);
+    expect(bool(isunit, [group, makeKeyword('px')], context)).toBe(false);
   });
 });
 
-function bool(fn: Fn, value: ValueGroup, context: FnCtx): boolean {
-  const result = fn(value, context);
+function bool(fn: Fn, args: readonly ValueGroup[], context: FnCtx): boolean {
+  const result = fn(args, context);
   if (result instanceof Promise || isValueGroupArray(result) || result.type !== 'Bool') {
     throw new TypeError('Expected a synchronous Bool result.');
   }

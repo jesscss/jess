@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeDimension, makeKeyword, makeList, type Dimension } from '@jesscss/core';
+import { makeDimension, makeKeyword, type Dimension } from '@jesscss/core';
 import { minMax } from '../min-max.js';
 
 /**
@@ -11,7 +11,7 @@ import { minMax } from '../min-max.js';
  * judgment under owner delegation 2026-10-06), where lessc 4.8.0 returns it
  * bare; every other expectation is lessc's.
  */
-const run = (isMin: boolean, ...args: Dimension[]) => minMax(isMin, makeList(args, ','));
+const run = (isMin: boolean, ...args: Dimension[]) => minMax(isMin, args);
 
 describe('Less min()/max()', () => {
   it('reduces same and convertible units, returning the argument as authored', () => {
@@ -61,13 +61,13 @@ describe('Less min()/max()', () => {
   });
 
   it('fails on a non-numeric argument and on no arguments', () => {
-    expect(() => minMax(true, makeList([makeDimension(1, 'px'), makeKeyword('var(--x)')], ',')))
+    expect(() => minMax(true, [makeDimension(1, 'px'), makeKeyword('var(--x)')]))
       .toThrow('min() requires numeric arguments');
     expect(() => minMax(true, [])).toThrow('min() requires at least one argument');
   });
 
   it('flattens list arguments and passes a single argument through', () => {
-    expect(minMax(true, makeList([[makeDimension(1, 'px'), makeDimension(5, 'px')]], ',')))
+    expect(minMax(true, [[makeDimension(1, 'px'), makeDimension(5, 'px')]]))
       .toMatchObject({ number: 1, unit: 'px' });
     expect(run(false, makeDimension(1, 'px'))).toMatchObject({ number: 1, unit: 'px' });
   });

@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { defineFunction, groupItems } from '@jesscss/core/value';
+import { defineFunction } from '@jesscss/core/value';
 import { sameStringKind } from './string-result.js';
 
 /**
@@ -19,8 +19,7 @@ export const replace: Fn = /* @__PURE__ */ defineFunction('replace', {
     { type: 'any', optional: true }
   ],
   variadic: true,
-  body: (list, ctx) => {
-    const items = groupItems(list);
+  body: (items, ctx) => {
     const input = items[0]!;
     const source = ctx.stringify(input);
     const pattern = ctx.stringify(items[1]!);

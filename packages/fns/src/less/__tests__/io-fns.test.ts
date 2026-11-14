@@ -20,7 +20,7 @@ function call(fn: Fn, list: List, c: FnCtx): ValueGroup {
    * These unit stubs are deliberately synchronous; async capability coverage lives
    * at the Compiler/Context boundary below the function package.
    */
-  const result = fn(list, c);
+  const result = fn(list.value, c);
   if (result instanceof Promise) {
     throw new Error('Expected synchronous IO function result in this unit test.');
   }

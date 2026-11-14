@@ -1,4 +1,4 @@
-import { groupItems, makeAny, defineFunction } from '@jesscss/core/value';
+import { makeAny, defineFunction } from '@jesscss/core/value';
 import type { Fn } from '@jesscss/core/value';
 
 /**
@@ -12,8 +12,8 @@ import type { Fn } from '@jesscss/core/value';
 export const escape: Fn = /* @__PURE__ */ defineFunction('escape', {
   params: [{ type: 'any' }],
   variadic: true,
-  body: (list, ctx) => {
-    const raw = ctx.stringify(groupItems(list)[0]!);
+  body: (args, ctx) => {
+    const raw = ctx.stringify(args[0]!);
     const encoded = encodeURI(raw)
       .replace(/=/g, '%3D')
       .replace(/:/g, '%3A')

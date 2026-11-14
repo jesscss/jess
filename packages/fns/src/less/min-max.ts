@@ -59,7 +59,7 @@ const isSlashList = (value: ValueGroup): boolean =>
  * accident, not a semantic, and jess preserves the whole call instead. One Less
  * fixture recorded the old bytes and was graduated with this change.
  */
-export function minMax(isMin: boolean, list: ValueGroup): Value {
+export function minMax(isMin: boolean, items: readonly ValueGroup[]): Value {
   const name = isMin ? 'min' : 'max';
 
   /*
@@ -70,7 +70,7 @@ export function minMax(isMin: boolean, list: ValueGroup): Value {
    * `@f: 12px/1.5` is `2px`; a slash list that is not all numbers is not a
    * number, so the call fails and is preserved like any other non-numeric one.
    */
-  const args = groupItems(list).flatMap(arg => isSlashList(arg) ? [arg] : groupItems(arg));
+  const args = items.flatMap(arg => isSlashList(arg) ? [arg] : groupItems(arg));
   if (args.length === 0) {
     throw new TypeError(`${name}() requires at least one argument`);
   }

@@ -7,7 +7,7 @@
  * HARD MODULE BOUNDARY: value domain only.
  */
 import type { Color, Dimension, ValueGroup } from '@jesscss/core/value';
-import { groupSeparator, isValueGroupArray } from '@jesscss/core/value';
+import { isValueGroupArray } from '@jesscss/core/value';
 
 export { clamp01, percentOf } from '../shared/color/kernels.js';
 
@@ -44,12 +44,6 @@ export function normalizeHue(d: Dimension): number {
 /** Whether an arg-list item is a materialized color operand. */
 export const isColor = (v: ValueGroup | undefined): v is Color =>
   v !== undefined && !isValueGroupArray(v) && v.type === 'Color';
-
-/** Modern color syntax is signalled by a space / slash separated call. */
-export const isModern = (value: ValueGroup): boolean => {
-  const separator = groupSeparator(value);
-  return separator === ' ' || separator === '/';
-};
 
 /**
  * A slot that takes every value the known path does: the compile knows its type,

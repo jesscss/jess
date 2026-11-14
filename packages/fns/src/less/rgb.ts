@@ -1,7 +1,7 @@
 import { defineForm, type FormCall } from '@jesscss/core/form';
 import type { Color, Dimension, FnCtx, FunctionCall, ValueGroup, Fn } from '@jesscss/core/value';
-import { colorRawRgb, defineFunction, groupItems, isValueGroupArray, makeColorRgb, RGB } from '@jesscss/core/value';
-import { fitsAny, isColor, isModern, percentOf } from './color-ctor-helper.js';
+import { colorRawRgb, defineFunction, isValueGroupArray, makeColorRgb, RGB } from '@jesscss/core/value';
+import { fitsAny, isColor, percentOf } from './color-ctor-helper.js';
 import { ALPHA_ARG, alphaOf, channelSlot, COLOR_ARG, declineSlots, isDeferredSlot } from './color-form.js';
 import { fade as form } from './css-forms.generated.js';
 import { requireDimension } from '../shared/math/math-helper.js';
@@ -22,9 +22,7 @@ import { requireDimension } from '../shared/math/math-helper.js';
 const pctOf = (d: Dimension | undefined): number | undefined =>
   d?.unit === '%' ? d.number : undefined;
 
-export function makeRgb(value: ValueGroup): Color {
-  const items = groupItems(value);
-  const modernSyntax = isModern(value);
+export function makeRgb(items: readonly ValueGroup[], modernSyntax: boolean): Color {
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
     /* `rgb(var(--r), 0, 0)` is CSS as written. */
@@ -64,14 +62,13 @@ export const colorWithAlpha = /* @__PURE__ */ defineForm('rgba', {
 });
 
 /** `rgb()`/`rgba()`: the two-slot overload's form, else the channels or one colour. */
-export const rgbBody = (list: ValueGroup, ctx: FnCtx): ReturnType<Fn> => {
-  const items = groupItems(list);
-  const first = items[0];
+export const rgbBody = (args: readonly ValueGroup[], ctx: FnCtx): ReturnType<Fn> => {
+  const first = args[0];
 
   /* An exposed colour is already that colour; a `var()` written here may hold channels (§3.8). */
-  return items.length === 2 && !isModern(list)
-    ? colorWithAlpha(list, ctx)
-    : items.length === 1 && first !== undefined && !isValueGroupArray(first) && first.type === 'FunctionCall' && first.name === 'var' && first.result === 'color' ? first : makeRgb(list);
+  return args.length === 2 && ctx.modern !== true
+    ? colorWithAlpha(args, ctx)
+    : args.length === 1 && first !== undefined && !isValueGroupArray(first) && first.type === 'FunctionCall' && first.name === 'var' && first.result === 'color' ? first : makeRgb(args, ctx.modern === true);
 };
 
 /** What a slot of `rgb()` takes: a list stays a list, and a call is what only the browser knows. */

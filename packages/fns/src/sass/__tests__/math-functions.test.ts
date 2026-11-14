@@ -18,6 +18,7 @@ import { describe, it, expect } from 'vitest';
 import { abs } from '../../shared/index.js';
 import { isUnitless, unitless } from '../math/is-unitless.js';
 import { compatible, comparable } from '../math/compatible.js';
+import { call } from '../../__tests__/harness.js';
 
 /** A `1px * 1em`-style arithmetic result, which carries an explicit unit multiset. */
 const compound = (
@@ -29,30 +30,30 @@ const compound = (
 
 describe('sass:math — abs', () => {
   it('spec core_functions/global/math.hrx § abs (genuinely shared with Less)', () => {
-    expect(abs(makeDimension(-1))).toMatchObject({ type: 'Dimension', number: 1, unit: '' });
-    expect(abs(makeDimension(-10, 'px'))).toMatchObject({ type: 'Dimension', number: 10, unit: 'px' });
+    expect(call(abs, makeDimension(-1))).toMatchObject({ type: 'Dimension', number: 1, unit: '' });
+    expect(call(abs, makeDimension(-10, 'px'))).toMatchObject({ type: 'Dimension', number: 10, unit: 'px' });
   });
 });
 
 describe('sass:math — is-unitless / unitless', () => {
   it('spec core_functions/math/unitless.hrx § unitless', () => {
-    expect(isUnitless(makeDimension(1))).toMatchObject({ type: 'Bool', value: true });
+    expect(call(isUnitless, makeDimension(1))).toMatchObject({ type: 'Bool', value: true });
   });
 
   it('spec core_functions/math/unitless.hrx § numerator', () => {
-    expect(isUnitless(makeDimension(1, 'px'))).toMatchObject({ type: 'Bool', value: false });
+    expect(call(isUnitless, makeDimension(1, 'px'))).toMatchObject({ type: 'Bool', value: false });
   });
 
   it('spec core_functions/math/unitless.hrx § denominator — math.is-unitless(1/1px)', () => {
-    expect(isUnitless(compound(1, 'px', [], ['px']))).toMatchObject({ type: 'Bool', value: false });
+    expect(call(isUnitless, compound(1, 'px', [], ['px']))).toMatchObject({ type: 'Bool', value: false });
   });
 
   it('spec core_functions/math/unitless.hrx § numerator_and_denominator — math.is-unitless(1px/1em)', () => {
-    expect(isUnitless(compound(1, 'px', ['px'], ['em']))).toMatchObject({ type: 'Bool', value: false });
+    expect(call(isUnitless, compound(1, 'px', ['px'], ['em']))).toMatchObject({ type: 'Bool', value: false });
   });
 
   it('treats % as a unit (dart-sass 1.101.0: unitless(10%) → false)', () => {
-    expect(isUnitless(makeDimension(50, '%'))).toMatchObject({ type: 'Bool', value: false });
+    expect(call(isUnitless, makeDimension(50, '%'))).toMatchObject({ type: 'Bool', value: false });
   });
 
   it('spec core_functions/math/unitless.hrx § error/wrong_name — module and global names differ', () => {
@@ -61,43 +62,43 @@ describe('sass:math — is-unitless / unitless', () => {
   });
 
   it('spec core_functions/global/math.hrx § unitless', () => {
-    expect(unitless(makeDimension(1))).toMatchObject({ type: 'Bool', value: true });
+    expect(call(unitless, makeDimension(1))).toMatchObject({ type: 'Bool', value: true });
   });
 });
 
 describe('sass:math — compatible / comparable', () => {
   it('spec core_functions/math/comparable.hrx § unitless/to_unitless', () => {
-    expect(compatible(makeDimension(1), makeDimension(2))).toMatchObject({ value: true });
+    expect(call(compatible, makeDimension(1), makeDimension(2))).toMatchObject({ value: true });
   });
 
   it('spec core_functions/math/comparable.hrx § unitless/to_unit', () => {
-    expect(compatible(makeDimension(1), makeDimension(2, 'px'))).toMatchObject({ value: true });
-    expect(compatible(makeDimension(2, 'px'), makeDimension(1))).toMatchObject({ value: true });
+    expect(call(compatible, makeDimension(1), makeDimension(2, 'px'))).toMatchObject({ value: true });
+    expect(call(compatible, makeDimension(2, 'px'), makeDimension(1))).toMatchObject({ value: true });
   });
 
   it('spec core_functions/math/comparable.hrx § unit/to_same', () => {
-    expect(compatible(makeDimension(1, 'px'), makeDimension(2, 'px'))).toMatchObject({ value: true });
+    expect(call(compatible, makeDimension(1, 'px'), makeDimension(2, 'px'))).toMatchObject({ value: true });
   });
 
   it('spec core_functions/math/comparable.hrx § unit/to_compatible', () => {
-    expect(compatible(makeDimension(1, 'px'), makeDimension(2, 'in'))).toMatchObject({ value: true });
+    expect(call(compatible, makeDimension(1, 'px'), makeDimension(2, 'in'))).toMatchObject({ value: true });
   });
 
   it('spec core_functions/math/comparable.hrx § unit/to_different', () => {
-    expect(compatible(makeDimension(1, 'px'), makeDimension(2, 'em'))).toMatchObject({ value: false });
+    expect(call(compatible, makeDimension(1, 'px'), makeDimension(2, 'em'))).toMatchObject({ value: false });
   });
 
   it('spec core_functions/math/comparable.hrx § unit/to_inverse — math.compatible(1px, 1/1px)', () => {
-    expect(compatible(makeDimension(1, 'px'), compound(1, 'px', [], ['px']))).toMatchObject({ value: false });
+    expect(call(compatible, makeDimension(1, 'px'), compound(1, 'px', [], ['px']))).toMatchObject({ value: false });
   });
 
   it('separates conversion groups (dart-sass 1.101.0: comparable(1s, 1px) → false)', () => {
-    expect(compatible(makeDimension(1, 's'), makeDimension(1, 'px'))).toMatchObject({ value: false });
+    expect(call(compatible, makeDimension(1, 's'), makeDimension(1, 'px'))).toMatchObject({ value: false });
   });
 
   it('treats % as its own group (dart-sass 1.101.0: comparable(1%, 1px) → false, comparable(1%, 2%) → true)', () => {
-    expect(compatible(makeDimension(1, '%'), makeDimension(1, 'px'))).toMatchObject({ value: false });
-    expect(compatible(makeDimension(1, '%'), makeDimension(2, '%'))).toMatchObject({ value: true });
+    expect(call(compatible, makeDimension(1, '%'), makeDimension(1, 'px'))).toMatchObject({ value: false });
+    expect(call(compatible, makeDimension(1, '%'), makeDimension(2, '%'))).toMatchObject({ value: true });
   });
 
   it('spec core_functions/math/comparable.hrx § error/wrong_name — module and global names differ', () => {
@@ -106,6 +107,6 @@ describe('sass:math — compatible / comparable', () => {
   });
 
   it('spec core_functions/global/math.hrx § comparable', () => {
-    expect(comparable(makeDimension(1, 'px'), makeDimension(1, 'in'))).toMatchObject({ value: true });
+    expect(call(comparable, makeDimension(1, 'px'), makeDimension(1, 'in'))).toMatchObject({ value: true });
   });
 });

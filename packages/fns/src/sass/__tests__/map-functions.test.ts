@@ -1,3 +1,4 @@
+import { call, named } from '../../__tests__/harness.js';
 import {
   isValueGroupArray,
   makeCollection,
@@ -79,36 +80,36 @@ describe('Sass map functions', () => {
   describe('get()', () => {
     it('gets value by key', () => {
       const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)]]);
-      const result = sync(get(map, key('a')));
+      const result = sync(call(get, map, key('a')));
       expect(dimensionOf(result).number).toBe(1);
     });
 
     it('uses Sass value equality for keys', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      const result = sync(get(map, quoted('a')));
+      const result = sync(call(get, map, quoted('a')));
       expect(dimensionOf(result).number).toBe(1);
     });
 
     it('returns Null when key not found', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      expect(nullOf(sync(get(map, key('b'))))).toMatchObject({ type: 'Null' });
+      expect(nullOf(sync(call(get, map, key('b'))))).toMatchObject({ type: 'Null' });
     });
 
     it('gets nested value', () => {
       const nestedMap = createMap([['b', makeDimension(2)]]);
       const map = makeCollection([{ key: key('a'), value: nestedMap }]);
-      const result = sync(get(map, key('a'), key('b')));
+      const result = sync(call(get, map, key('a'), key('b')));
       expect(dimensionOf(result).number).toBe(2);
     });
 
     it('returns Null for non-map intermediate value', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      expect(nullOf(sync(get(map, key('a'), key('b'))))).toMatchObject({ type: 'Null' });
+      expect(nullOf(sync(call(get, map, key('a'), key('b'))))).toMatchObject({ type: 'Null' });
     });
 
     it('works with object parameters', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      const result = sync(get({ map, key: key('a') }));
+      const result = sync(named(get, { map, key: key('a') }));
       expect(dimensionOf(result).number).toBe(1);
     });
   });
@@ -116,26 +117,26 @@ describe('Sass map functions', () => {
   describe('set()', () => {
     it('sets a new key-value pair', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      const result = collectionOf(sync(set(map, key('b'), makeDimension(2))));
+      const result = collectionOf(sync(call(set, map, key('b'), makeDimension(2))));
 
-      expect(dimensionOf(sync(get(result, key('a')))).number).toBe(1);
-      expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
+      expect(dimensionOf(sync(call(get, result, key('a')))).number).toBe(1);
+      expect(dimensionOf(sync(call(get, result, key('b')))).number).toBe(2);
     });
 
     it('overwrites existing key', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      const result = collectionOf(sync(set(map, quoted('a'), makeDimension(99))));
-      expect(dimensionOf(sync(get(result, key('a')))).number).toBe(99);
+      const result = collectionOf(sync(call(set, map, quoted('a'), makeDimension(99))));
+      expect(dimensionOf(sync(call(get, result, key('a')))).number).toBe(99);
       expect(result.entries).toHaveLength(1);
     });
 
     it('preserves original map', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      const result = collectionOf(sync(set(map, key('b'), makeDimension(2))));
+      const result = collectionOf(sync(call(set, map, key('b'), makeDimension(2))));
 
-      expect(dimensionOf(sync(get(map, key('a')))).number).toBe(1);
-      expect(nullOf(sync(get(map, key('b'))))).toMatchObject({ type: 'Null' });
-      expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
+      expect(dimensionOf(sync(call(get, map, key('a')))).number).toBe(1);
+      expect(nullOf(sync(call(get, map, key('b'))))).toMatchObject({ type: 'Null' });
+      expect(dimensionOf(sync(call(get, result, key('b')))).number).toBe(2);
     });
   });
 
@@ -143,16 +144,16 @@ describe('Sass map functions', () => {
     it('merges two maps', () => {
       const map1 = createMap([['a', makeDimension(1)]]);
       const map2 = createMap([['b', makeDimension(2)]]);
-      const result = collectionOf(sync(merge(map1, map2)));
-      expect(dimensionOf(sync(get(result, key('a')))).number).toBe(1);
-      expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
+      const result = collectionOf(sync(call(merge, map1, map2)));
+      expect(dimensionOf(sync(call(get, result, key('a')))).number).toBe(1);
+      expect(dimensionOf(sync(call(get, result, key('b')))).number).toBe(2);
     });
 
     it('overwrites keys from map2', () => {
       const map1 = createMap([['a', makeDimension(1)], ['b', makeDimension(10)]]);
       const map2 = createMap([['b', makeDimension(2)]]);
-      const result = collectionOf(sync(merge(map1, map2)));
-      expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
+      const result = collectionOf(sync(call(merge, map1, map2)));
+      expect(dimensionOf(sync(call(get, result, key('b')))).number).toBe(2);
     });
   });
 
@@ -163,13 +164,13 @@ describe('Sass map functions', () => {
       const overrideColors = createMap([['primary', key('teal')]]);
       const overrides = makeCollection([{ key: key('colors'), value: overrideColors }]);
 
-      const result = collectionOf(sync(deepMerge(defaults, overrides)));
-      const resultColors = collectionOf(sync(get(result, key('colors'))));
+      const result = collectionOf(sync(call(deepMerge, defaults, overrides)));
+      const resultColors = collectionOf(sync(call(get, result, key('colors'))));
 
-      expect(sync(get(resultColors, key('primary')))).toEqual(key('teal'));
-      expect(sync(get(resultColors, key('secondary')))).toEqual(key('grey'));
-      expect(dimensionOf(sync(get(result, key('space')))).number).toBe(4);
-      expect(sync(get(collectionOf(sync(get(defaults, key('colors')))), key('primary')))).toEqual(key('blue'));
+      expect(sync(call(get, resultColors, key('primary')))).toEqual(key('teal'));
+      expect(sync(call(get, resultColors, key('secondary')))).toEqual(key('grey'));
+      expect(dimensionOf(sync(call(get, result, key('space')))).number).toBe(4);
+      expect(sync(call(get, collectionOf(sync(call(get, defaults, key('colors')))), key('primary')))).toEqual(key('blue'));
       expect(result.entries.map(entry => entry.key)).toEqual([key('colors'), key('space')]);
     });
 
@@ -180,50 +181,50 @@ describe('Sass map functions', () => {
       const leftScalar = makeCollection([{ key: key('value'), value: makeDimension(2) }]);
       const rightMap = makeCollection([{ key: key('value'), value: nested }]);
 
-      expect(dimensionOf(sync(get(collectionOf(sync(deepMerge(leftMap, rightScalar))), key('value')))).number).toBe(2);
-      expect(collectionOf(sync(get(collectionOf(sync(deepMerge(leftScalar, rightMap))), key('value')))).entries).toHaveLength(1);
+      expect(dimensionOf(sync(call(get, collectionOf(sync(call(deepMerge, leftMap, rightScalar))), key('value')))).number).toBe(2);
+      expect(collectionOf(sync(call(get, collectionOf(sync(call(deepMerge, leftScalar, rightMap))), key('value')))).entries).toHaveLength(1);
     });
   });
 
   describe('remove()', () => {
     it('removes a key', () => {
       const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)]]);
-      const result = collectionOf(sync(remove(map, key('a'))));
-      expect(nullOf(sync(get(result, key('a'))))).toMatchObject({ type: 'Null' });
-      expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
+      const result = collectionOf(sync(call(remove, map, key('a'))));
+      expect(nullOf(sync(call(get, result, key('a'))))).toMatchObject({ type: 'Null' });
+      expect(dimensionOf(sync(call(get, result, key('b')))).number).toBe(2);
     });
 
     it('removes multiple keys', () => {
       const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)], ['c', makeDimension(3)]]);
-      const result = collectionOf(sync(remove(map, key('a'), quoted('b'))));
-      expect(nullOf(sync(get(result, key('a'))))).toMatchObject({ type: 'Null' });
-      expect(nullOf(sync(get(result, key('b'))))).toMatchObject({ type: 'Null' });
-      expect(dimensionOf(sync(get(result, key('c')))).number).toBe(3);
+      const result = collectionOf(sync(call(remove, map, key('a'), quoted('b'))));
+      expect(nullOf(sync(call(get, result, key('a'))))).toMatchObject({ type: 'Null' });
+      expect(nullOf(sync(call(get, result, key('b'))))).toMatchObject({ type: 'Null' });
+      expect(dimensionOf(sync(call(get, result, key('c')))).number).toBe(3);
     });
 
     it('returns map as-is when no keys provided', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      expect(sync(remove(map))).toBe(map);
+      expect(sync(call(remove, map))).toBe(map);
     });
   });
 
   describe('keys()', () => {
     it('returns list of all keys', () => {
       const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)]]);
-      const result = listOf(sync(keys(map)));
+      const result = listOf(sync(call(keys, map)));
       expect(result.value).toEqual([key('a'), key('b')]);
     });
 
     it('returns empty list for empty map', () => {
       const map = createMap([]);
-      expect(listOf(sync(keys(map))).value).toHaveLength(0);
+      expect(listOf(sync(call(keys, map))).value).toHaveLength(0);
     });
   });
 
   describe('values()', () => {
     it('returns list of all values', () => {
       const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)]]);
-      const result = listOf(sync(values(map)));
+      const result = listOf(sync(call(values, map)));
       expect(result.value).toHaveLength(2);
       expect(dimensionOf(result.value[0]!).number).toBe(1);
       expect(dimensionOf(result.value[1]!).number).toBe(2);
@@ -231,30 +232,30 @@ describe('Sass map functions', () => {
 
     it('returns empty list for empty map', () => {
       const map = createMap([]);
-      expect(listOf(sync(values(map))).value).toHaveLength(0);
+      expect(listOf(sync(call(values, map))).value).toHaveLength(0);
     });
   });
 
   describe('has-key()', () => {
     it('returns true when key exists', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      expect(boolOf(sync(hasKey(map, quoted('a')))).value).toBe(true);
+      expect(boolOf(sync(call(hasKey, map, quoted('a')))).value).toBe(true);
     });
 
     it('returns false when key does not exist', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      expect(boolOf(sync(hasKey(map, key('b')))).value).toBe(false);
+      expect(boolOf(sync(call(hasKey, map, key('b')))).value).toBe(false);
     });
 
     it('checks nested keys', () => {
       const nestedMap = createMap([['b', makeDimension(2)]]);
       const map = makeCollection([{ key: key('a'), value: nestedMap }]);
-      expect(boolOf(sync(hasKey(map, key('a'), quoted('b')))).value).toBe(true);
+      expect(boolOf(sync(call(hasKey, map, key('a'), quoted('b')))).value).toBe(true);
     });
 
     it('returns false for non-map intermediate value', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      expect(boolOf(sync(hasKey(map, key('a'), key('b')))).value).toBe(false);
+      expect(boolOf(sync(call(hasKey, map, key('a'), key('b')))).value).toBe(false);
     });
   });
 });
