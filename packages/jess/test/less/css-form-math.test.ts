@@ -646,7 +646,11 @@ describe('a glued minus in a call written out', () => {
     ['translate((-var(--x)), 0)', 'translate(calc(-1 * var(--x)), 0)'],
     ['-sqrt(var(--x))', 'calc(-1 * sqrt(var(--x)))'],
     ['-calc(var(--x) * 2)', 'calc(-1 * (var(--x) * 2))'],
-    ['-env(safe-area-inset-top)', 'calc(-1 * env(safe-area-inset-top))']
+    ['-env(safe-area-inset-top)', 'calc(-1 * env(safe-area-inset-top))'],
+    ['-VAR(--x)', 'calc(-1 * VAR(--x))'],
+    ['rgb(-var(--r), 0, 0)', 'rgb(calc(-1 * var(--r)), 0, 0)'],
+    ['hsl(-var(--h) 50% 50%)', 'hsl(calc(-1 * var(--h)) 50% 50%)'],
+    ['rgb(-calc(var(--r) * 2), 0, 0)', 'rgb(calc(-1 * (var(--r) * 2)), 0, 0)']
   ])('%s', async (source, form) => {
     await expect(value(source)).resolves.toBe(form);
   });

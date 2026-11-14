@@ -85,8 +85,9 @@ function fallbackCall(name: string, args: ValueGroup, modes: EvalModes | undefin
   const written = call.written?.args ?? args;
 
   /* A glued minus on what only the browser knows is one function token to CSS (`-var(--x)`, `-abs(…)`): the value negated. */
-  const negative = name.charCodeAt(0) === 45 && isNegatable(name.slice(1));
-  const callee = negative ? name.slice(1) : name;
+  const bare = name.charCodeAt(0) === 45 ? name.slice(1) : name;
+  const negative = bare !== name && isNegatable(bare);
+  const callee = negative ? bare : name;
   const out = keepAsWritten(makeFunctionCall(callee, written, `${callee}(${verbatimArgs(written, modes, call.written?.keywords ?? call.authored, isMathFunctionName(callee), callee.charCodeAt(0) !== 45)})`));
   return negative ? negatedMath(out) : out;
 }

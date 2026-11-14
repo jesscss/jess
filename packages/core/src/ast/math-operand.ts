@@ -168,19 +168,36 @@ export function negated(v: Value): Value {
 }
 
 /** Whether a glued minus on a call of `name` (`-var(--x)`, `-abs(…)`) is a number only the browser knows, negated. */
-export const isNegatable = (name: string): boolean =>
-  name === 'var' || name === 'env' || name === 'attr' || isMathFunctionName(name);
+export function isNegatable(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower === 'var' || lower === 'env' || lower === 'attr' || isMathFunctionName(lower);
+}
+
+/** A call inside a CSS colour call Less keeps as written: a glued minus on what only the browser knows is the value negated there too (CSS-NATIVE-BUILTINS §3.4). */
+export function writtenCall(name: string, inner: string): string {
+  const callee = name.slice(1);
+  if (name.charCodeAt(0) !== 45 || !isNegatable(callee)) {
+    return `${name}(${inner})`;
+  }
+  return callee.toLowerCase() === 'calc' ? `calc(-1 * (${inner}))` : `calc(-1 * ${callee}(${inner}))`;
+}
 
 export const negatedMath = (v: Value): Value => mathOnDeferred('*', MINUS_ONE, v);
 
-/** The result of a built-in written with a glued minus (`-sqrt(4)`, `-percentage(var(--x))`), negated when it is a number or a form of a number only the browser knows; otherwise `undefined`, and the call is written out as before. */
+/**
+ * The result of a built-in written with a glued minus (`-sqrt(4)`, `-percentage(var(--x))`,
+ * `-abs(var(--x))`), negated when it is a number, a form of a number only the browser
+ * knows, or the CSS math function a built-in declined to; otherwise `undefined`, and the
+ * call is written out as before.
+ */
 export function negatedCall(value: EvalValue): Value | undefined {
   if (typeof value !== 'object' || isValueGroupArray(value)) {
     return undefined;
   }
-  return value.type === 'Dimension'
-    ? makeDimension(0 - value.number, value.unit)
-    : value.type === 'FunctionCall' && value.computed && value.result === 'numeric' ? negatedMath(value) : undefined;
+  if (value.type === 'Dimension') {
+    return operate('*', MINUS_ONE, value, CSS_UNITS);
+  }
+  return value.type === 'FunctionCall' && (value.computed ? value.result === 'numeric' : isMathFunctionName(value.name)) ? negatedMath(value) : undefined;
 }
 
 /** What only the browser knows by name, whatever it holds; a glued minus is the same value negated. */
