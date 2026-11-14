@@ -12,7 +12,6 @@ import { defineFunction } from './value-dispatch.js';
 import { isValueGroup } from './value-eval.js';
 import type { ValueGroup } from './value-eval.js';
 import { makeBool, makeDimension, NULL } from './value-factory.js';
-import { groupItems } from './value-list.js';
 
 export function isModuleFn(value: unknown): value is Fn {
   return typeof value === 'function'
@@ -65,7 +64,7 @@ function moduleCallable(value: ModuleCallable, name: string): Fn {
     params: [],
     variadic: true,
     body: args => mapMaybe(
-      value(...groupItems(args)),
+      value(...args),
       result => moduleFunctionResult(result, name)
     )
   });

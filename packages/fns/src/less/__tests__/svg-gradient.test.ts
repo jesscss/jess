@@ -9,7 +9,7 @@ const context: FnCtx = {
 };
 
 function call(...args: Value[]): Value {
-  const result = svgGradient(makeList(args, ','), context);
+  const result = svgGradient(args, context);
   if (result instanceof Promise || isValueGroupArray(result)) {
     throw new TypeError('Expected a synchronous scalar svg-gradient result.');
   }

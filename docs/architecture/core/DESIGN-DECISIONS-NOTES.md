@@ -384,6 +384,10 @@ the import planner), though their imports share one binding. An `@expose` in a
 `(reference)`-imported file does nothing, silently (`declareExpose` returns when
 `referenceImportDepth` is non-zero, and the planner skips hidden imports).
 
+## V4
+
+- 2026-11-12 — implementation note (agent), on perf/runtime-setter (jesscss/jess#652). The output number policy has one owner, `packages/patch-css/src/format-number.ts` (`formatNumber`, `trimNumber`, `TOLERANCE`), and `packages/core/src/ast/format-number.ts` re-exports it. It moved because the browser runtime spells the ratio a percentage export holds (`50%` as its ratio) in `@jesscss/patch-css`, which has no dependencies, and that value must be spelled by the compile's own policy. A second copy in the runtime could drift from the compile's output. The row itself is unchanged.
+
 ## V6
 
 2026-11-11. The exact base-10 arithmetic is one module on native `BigInt`,

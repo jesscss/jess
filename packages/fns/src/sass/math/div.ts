@@ -1,4 +1,4 @@
-import { defineFunction, emitValue, groupItems, isUnknownNumber, isValueGroupArray, operate, operatedOnUnknown, type Dimension, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
+import { defineFunction, emitValue, isUnknownNumber, isValueGroupArray, operate, operatedOnUnknown, type Dimension, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
 
 const number = (item: ValueGroup, name: string): Dimension | FunctionCall => {
   if (isValueGroupArray(item) || (item.type !== 'Dimension' && (item.type !== 'FunctionCall' || !isUnknownNumber(item)))) {
@@ -40,8 +40,7 @@ const div = defineFunction('div', {
     { name: 'number2', type: 'Dimension' }
   ],
   variadic: true,
-  body: (args, ctx) => {
-    const items = groupItems(args);
+  body: (items, ctx) => {
     if (items.length !== 2) {
       throw new TypeError(items.length < 2 ? `Missing argument $number${items.length + 1}.` : `Only 2 arguments allowed, but ${items.length} were passed.`);
     }

@@ -48,33 +48,43 @@ const NUMBER = /^[+-]?(?:\d*\.)?\d+(?:e[+-]?\d+)?/i;
  */
 export const ratioOf = (n: number, by: number): number => Number((n / by).toPrecision(15));
 
-/** The value an export's `--name` holds: `value`, or for a `%` one its ratio. Throws when a CSS form reads it in another unit. */
-function held(spec: ExposedSpec, key: string, name: string, value: string): string {
+/** What `--name` holds for a value given for `key`: the value, checked, or what it stands for. */
+export type Hold<S> = (spec: S, key: string, name: string, value: string) => string;
+
+/** `value`, after checking it is in the unit a CSS form reads it in. Throws when it is not. */
+export function checkUnit(spec: Pick<ExposedSpec, 'units'>, key: string, name: string, value: string): string {
   const unit = Object.hasOwn(spec.units, name) ? spec.units[name] : undefined;
-  if (unit === undefined) {
-    return value;
+  if (unit !== undefined) {
+    const text = value.trim();
+    const number = NUMBER.exec(text)?.[0];
+    if (number === undefined || text.slice(number.length).toLowerCase() !== unit.toLowerCase()) {
+      throw new TypeError(`${key} is read by a CSS form in ${unit === '' ? 'a number' : unit}, as its compile-time value is; ${value} would mean something else there.`);
+    }
   }
-  const text = value.trim();
-  const number = NUMBER.exec(text)?.[0];
-  if (number === undefined || text.slice(number.length).toLowerCase() !== unit.toLowerCase()) {
-    throw new TypeError(`${key} is read by a CSS form in ${unit === '' ? 'a number' : unit}, as its compile-time value is; ${value} would mean something else there.`);
-  }
-  return spec.ratios.includes(name) ? formatNumber(ratioOf(Number(number), 100)) : value;
+  return value;
+}
+
+/** {@link checkUnit}, then a `%` export's ratio: `50%` is `0.5`. Only an export with a unit can be one. */
+export function holdRatio(spec: ExposedSpec, key: string, name: string, value: string): string {
+  checkUnit(spec, key, name, value);
+  return Object.hasOwn(spec.units, name) && spec.ratios.includes(name) ? formatNumber(ratioOf(Number.parseFloat(value), 100)) : value;
 }
 
 /**
- * The custom property of each export `given`, by `--name`, and each export's
- * name to the value given. Throws for a key the stylesheet does not expose.
+ * The custom property of each export `given`, by `--name`, holding what `hold`
+ * makes of its value; each export's name to the value given, in `names`. Throws
+ * for a key the stylesheet does not expose. A stylesheet passes the least
+ * `hold` it needs, so a page bundles only that: none when no CSS form reads an
+ * export, {@link checkUnit} when one does, {@link holdRatio} for a `%` export.
  */
-export function exposedVars(spec: ExposedSpec, given: ExportValues, names?: Record<string, string>): Record<string, string> {
+export function exposedVars<S extends Pick<ExposedSpec, 'keys'>>(spec: S, given: ExportValues, hold?: Hold<S>, names?: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const key of Object.keys(given)) {
+  for (const [key, value] of Object.entries(given)) {
     const name = Object.hasOwn(spec.keys, key) ? spec.keys[key] : undefined;
     if (name === undefined) {
       throw new TypeError(`The stylesheet exposes no variable with the key ${key}.`);
     }
-    const value = given[key]!;
-    out[`--${name}`] = held(spec, key, name, value);
+    out[`--${name}`] = hold === undefined ? value : hold(spec, key, name, value);
     if (names !== undefined) {
       names[name] = value;
     }
@@ -90,8 +100,7 @@ export function exposedVars(spec: ExposedSpec, given: ExportValues, names?: Reco
  */
 export function writeVars(vars: Readonly<Record<string, string>>, target: StyleTarget = document.documentElement): void {
   const { style } = target;
-  for (const property of Object.keys(vars)) {
-    const value = vars[property]!;
+  for (const [property, value] of Object.entries(vars)) {
     if (style.getPropertyValue(property) !== value) {
       style.setProperty(property, value);
     }

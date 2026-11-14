@@ -42,6 +42,12 @@
       "import": "./lib/form.js",
       "require": "./lib/form.cjs"
     },
+    "./call-named": {
+      "types": "./lib/call-named.d.ts",
+      "source": "./src/call-named.ts",
+      "import": "./lib/call-named.js",
+      "require": "./lib/call-named.cjs"
+    },
     "./ast": {
       "types": "./lib/ast.d.ts",
       "source": "./src/ast.ts",
@@ -67,8 +73,7 @@
     "@jesscss/patch-css": "workspace:*",
     "@jridgewell/gen-mapping": "~0.3.12",
     "@ungap/set-methods": "~0.1.1",
-    "chalk": "^4.1.2",
-    "color-name": "~2.0.0"
+    "chalk": "^4.1.2"
   },
   "scripts": {
     "ci": "pnpm build && pnpm test --run",
@@ -91,6 +96,7 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
+    "color-name": "~2.0.0",
     "rollup-plugin-circular-dependencies": "~1.1.2",
     "rollup-plugin-visualizer": "~6.0.3",
     "vite-plugin-circular-dependency": "~0.5.0",

@@ -14,7 +14,7 @@
  * HARD MODULE BOUNDARY: value domain only (no `../../tree`, no legacy node).
  */
 import type { Color, Dimension, ValueGroup, Value } from '@jesscss/core/value';
-import { HEX, HSL, RGB, colorHsl, colorRawRgb, colorRgbRounded, groupSeparator, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core/value';
+import { HEX, HSL, RGB, colorHsl, colorRawRgb, colorRgbRounded, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core/value';
 import { clamp01, percentOf } from '../../shared/color/kernels.js';
 
 export function requireColor(value: Value): Color {
@@ -137,12 +137,6 @@ export function normalizeHue(d: Dimension): number {
 /** Whether an arg-list item is a materialized color operand. */
 export const isColor = (v: ValueGroup | undefined): v is Color =>
   v !== undefined && !isValueGroupArray(v) && v.type === 'Color';
-
-/** Modern color syntax is signalled by a space / slash separated call. */
-export const isModern = (value: ValueGroup): boolean => {
-  const separator = groupSeparator(value);
-  return separator === ' ' || separator === '/';
-};
 
 /** A structural arg-list item narrowed to a single value (a nested group is a type error). */
 export function requireValue(v: ValueGroup | undefined): Value {

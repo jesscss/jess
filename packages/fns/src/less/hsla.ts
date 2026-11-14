@@ -6,5 +6,5 @@ import type { Fn } from '@jesscss/core/value';
 export const hsla: Fn = /* @__PURE__ */ defineFunction('hsla', {
   params: HSL_PARAMS,
   variadic: true,
-  body: list => makeHsl(list)
+  body: (args, ctx) => makeHsl(args, ctx.modern === true)
 });

@@ -29,7 +29,7 @@ import * as stringGlobals from '../string/globals.js';
 const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: ValueGroup) => emitValue(value) };
 
 function call(fn: Fn, ...args: ValueGroup[]): ValueGroup {
-  const result = fn(makeList(args, ','), ctx);
+  const result = fn(args, ctx);
   if (result === undefined || result instanceof Promise) {
     throw new TypeError('Expected a synchronous Sass string result.');
   }

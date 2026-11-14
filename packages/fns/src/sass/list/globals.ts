@@ -15,5 +15,6 @@ import separator from './separator.js';
 /** `list-separator($list)` — the global spelling of `list.separator()`. */
 export const listSeparator = defineFunction('list-separator', {
   params: separator.params,
-  body: list => separator(list)
+  variadic: true,
+  body: (args, ctx) => separator(args, ctx)
 });

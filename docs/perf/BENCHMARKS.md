@@ -283,6 +283,44 @@ What it decided:
 
 Rerun the page after any change to how `writeVars` writes.
 
+### Runtime bundle goals
+
+Set 2026-11-11. The size is the length of the module Vite builds for a page
+that imports a stylesheet's `vars` (the `packages/vite-plugin-jess` size
+tests: Vite 6, library build, its default unminified output), with minified and
+gzip sizes beside it. Every PR reports each goal as goal → measured.
+
+| Goal | Target | Measured 2026-11-11 |
+|---|---|---|
+| G1. setter only, no derived value | ≤ 450 B without the unit check, ≤ 1,000 B with it (was ≤ 1,500 B, ≤ 700 B gzip, met 2026-11-11) | **met**: 381 B, 234 B gzip (no CSS form reads the export); 906 B, 470 B gzip with the unit check (`rgb(@r, 0, 0)`). Was 2,195 B. |
+| G2. one-function recipe, `lightness(@brand)` | ≤ 15,000 B once its module code tree-shakes; ≤ 3,000 B once the compiler and the runtime share one value walker | 31,736 B, 10,289 B gzip, of which big.js is 8.6 KB; 23,153 B (7,776 B gzip) with big.js gone. Was 43,976 B. |
+| G3. ratchet | each size test's ceiling is its measured size plus about 5%, and no PR raises one | ceilings 400, 950 and 33,300 B |
+| G4. setter speed | one `setProperty` per changed variable; one variable on 12,000 elements stays at 6.5 ms (table above) | `writeVars` unchanged since that run |
+
+What each step bought, for `lightness(@brand)`:
+
+| Step | Size |
+|---|---|
+| before | 43,976 B |
+| each `@jesscss/core` source module its own lib file; each node constructor sets its own prototype; the node-copy table built on the first copy, so a page that copies no node drops every constructor | 33,233 B |
+| the 148 named colors as one `name rrggbb` string, read into a map on first lookup | 31,971 B |
+| `set` its own export beside `vars` (`createVars`), so a page that calls only `vars` drops the writer | 31,736 B |
+| (measured with big.js stubbed out: it is not called) | 23,153 B |
+
+What is left in it, largest first: `defineFunction`'s argument binding
+(`value-dispatch`), `@jesscss/patch-css` with the number formatter, the recipe
+runner (`@jesscss/fns/runtime`), then colour parsing and value emit.
+
+Tried and not taken:
+
+- **`/* @__PURE__ */` on the copy table.** The minifier of `@jesscss/core`'s
+  published build strips it, even with `comments.annotation` on, so the
+  table is built lazily instead.
+- **One lib file per `@jesscss/fns` module.** `lightness` already takes only
+  0.8 KB of `@jesscss/fns`. Built that way, rolldown also exports a
+  `less_exports` namespace from `@jesscss/fns/less`, which the compiler rejects
+  as a stylesheet value.
+
 ## Fixtures (the standard inputs)
 
 - `packages/jess/benchmark/benchmark.less` (104KB) + `benchmark.css` (expected) — the main perf fixture. EXEMPT from byte-identity gates.

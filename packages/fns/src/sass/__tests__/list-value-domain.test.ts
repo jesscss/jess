@@ -55,10 +55,10 @@ describe('Sass list functions on the AST-v2 value domain', () => {
   });
 
   it('uses the variadic registry contract for zip', () => {
-    const value = sync(zip(makeList([
+    const value = sync(zip([
       [makeDimension(1), makeDimension(2)],
       [makeDimension(3), makeDimension(4)]
-    ], ','), ctx));
+    ], ctx));
     if (isValueGroupArray(value) || value.type !== 'List') {
       throw new TypeError('Expected zip() to return a list.');
     }

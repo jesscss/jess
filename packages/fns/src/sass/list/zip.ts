@@ -4,7 +4,7 @@ const zip = defineFunction('zip', {
   params: [{ name: 'lists', type: 'any', rest: true }] as const,
   variadic: true,
   body: (args) => {
-    const itemLists = groupItems(args).map(groupItems);
+    const itemLists = args.map(groupItems);
     if (itemLists.length === 0) {
       return makeList([], ',');
     }

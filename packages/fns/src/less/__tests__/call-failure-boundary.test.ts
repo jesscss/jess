@@ -10,7 +10,7 @@ describe('built-in call failures', () => {
     const registry = makeLessRegistry();
     const args = makeList([makeKeyword('not-a-color')], ',');
 
-    expect(() => registry.dispatch('rgb', args, ctx)).toThrow('Invalid arguments for rgb function');
+    expect(() => registry.dispatch('rgb', args.value, ctx)).toThrow('Invalid arguments for rgb function');
   });
 
   it('centralizes resolved-call preservation and error policy at the evaluator boundary', () => {
@@ -39,7 +39,7 @@ describe('built-in call failures', () => {
      * and the evaluator decides — and `unitMode` was never the right lever.
      */
     for (const unitMode of ['preserve', 'strict'] as const) {
-      expect(() => registry.dispatch('min', args, { ...ctx, modes: { unitMode } })).toThrow('min() arguments have incompatible units');
+      expect(() => registry.dispatch('min', args.value, { ...ctx, modes: { unitMode } })).toThrow('min() arguments have incompatible units');
     }
   });
 
@@ -92,8 +92,8 @@ describe('built-in call failures', () => {
     const registry = makeLessRegistry();
     const extractArgs = makeList([makeKeyword('one'), makeDimension(2)], ',');
     const emptyArgs = makeList([], ',');
-    expect(() => registry.dispatch('extract', extractArgs, ctx)).toThrow('extract() index 2 out of range for length 1');
-    expect(() => registry.dispatch('data-uri', emptyArgs, ctx)).toThrow('data-uri() requires a path');
+    expect(() => registry.dispatch('extract', extractArgs.value, ctx)).toThrow('extract() index 2 out of range for length 1');
+    expect(() => registry.dispatch('data-uri', emptyArgs.value, ctx)).toThrow('data-uri() requires a path');
     const extractResult = evaluator.call('extract', extractArgs, ctx.modes);
     const dataUriResult = evaluator.call('data-uri', emptyArgs, ctx.modes);
     if (extractResult instanceof Promise || dataUriResult instanceof Promise) {

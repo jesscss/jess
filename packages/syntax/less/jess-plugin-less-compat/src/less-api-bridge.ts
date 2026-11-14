@@ -5,7 +5,6 @@ import {
   emitValue,
   ERR,
   FunctionDeclined,
-  groupItems,
   HEX,
   makeColorRgb,
   makeAny,
@@ -563,7 +562,7 @@ export class LessApiBridge {
     const adapted = defineFunction(lowerName, {
       variadic: true,
       params: [],
-      body: value => this.invokeNativeFunction(fn, groupItems(value))
+      body: args => this.invokeNativeFunction(fn, args)
     });
     this.#nativeFns.set(adapted, fn);
     this.#fns.push(adapted);
