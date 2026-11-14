@@ -2,9 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ExportColor, ExportRecipe, Fn } from '@jesscss/core';
+import { define, makeDimension } from '@jesscss/core/value';
 import * as less from '@jesscss/fns/less';
 import { holdRatio } from '@jesscss/patch-css';
-import { color, createRuntime, readNamed, readUnnamed, type RuntimeRecipe } from '@jesscss/fns/runtime';
+import { call, color, createRuntime, readNamed, readUnnamed, type RuntimeRecipe } from '@jesscss/fns/runtime';
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../src/index.js';
 
@@ -29,7 +30,7 @@ function toRuntime(recipe: ExportRecipe | ExportColor | string): RuntimeRecipe {
     throw new Error(`No ${recipe.fn.name} in ${recipe.fn.module}`);
   }
 
-  return [fn as Fn, recipe.args.map(toRuntime)];
+  return [call(fn as Fn), recipe.args.map(toRuntime)];
 }
 
 async function compileWithPartial(partial: string, a = '#c00') {
@@ -579,13 +580,18 @@ describe('the export runtime', () => {
   });
 
   it('rejects a value given as a function', () => {
-    const runtime = createRuntime({ keys: { brand: 'brand' }, defaults: { brand: '#c00' }, units: {}, read: readNamed, derived: { '--brand-lightness': [less.lightness, [{ export: 'brand' }]] } });
+    const runtime = createRuntime({ keys: { brand: 'brand' }, defaults: { brand: '#c00' }, units: {}, read: readNamed, derived: { '--brand-lightness': [call(less.lightness), [{ export: 'brand' }]] } });
     expect(() => runtime.vars({ brand: 'hsl(10, 50%, 50%)' })).toThrow('"hsl(10, 50%, 50%)" is a function');
+  });
+
+  it('refuses a defined function that computes asynchronously', () => {
+    const later = define('later', { params: [], variadic: true, body: async () => makeDimension(1) });
+    expect(() => call(later)([])).toThrow('later() computes asynchronously, which the runtime cannot do.');
   });
 
   it('sets the properties on the target it is given', async () => {
     const set: Record<string, string> = {};
-    createRuntime({ keys: { brand: 'brand' }, defaults: { brand: '#c00' }, units: {}, read: readNamed, derived: { '--brand-lightness': [less.lightness, [{ export: 'brand' }]] } })
+    createRuntime({ keys: { brand: 'brand' }, defaults: { brand: '#c00' }, units: {}, read: readNamed, derived: { '--brand-lightness': [call(less.lightness), [{ export: 'brand' }]] } })
       .set({ brand: '#000' }, {
         style: {
           getPropertyValue: name => set[name] ?? '',

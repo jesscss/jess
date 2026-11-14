@@ -36,7 +36,8 @@ describe('rollup-plugin-jess', () => {
 
     /* A page that reads colour names may be given a keyword, so its call keeps the defined function, which checks it. */
     const names = moduleCode('', { ...runtime, names: true });
-    expect(names).toContain('import { lightness as f0 } from "@jesscss/fns/less";');
+    expect(names).toContain('import { lightness as f1 } from "@jesscss/fns/less";');
+    expect(names).toContain('[f0(f1), [{"export":"brand"}]]');
     expect(names).not.toContain('lightnessOf');
   });
 
