@@ -40,6 +40,24 @@ describe('Less @expose variables (A4)', () => {
     await expect(render(`@use "#less";\n@expose ${name};\n${source}`)).resolves.toContain(written);
   });
 
+  /* The runtime sets a `%` export as its ratio (`vars({ r: '50%' })` is `--r: 0.5`), so a colour written as CSS reads it as every other value does. */
+  it.each([
+    ['@use "#less";\n', 'rgb(@r, 0, 0)', 'rgb(calc(var(--r, 0.1) * 100%), 0, 0)'],
+    ['@use "#less";\n', 'rgb(@r 0 0)', 'rgb(calc(var(--r, 0.1) * 100%) 0 0)'],
+    ['@use "#less";\n', 'hsl(120, @r, 50%)', 'hsl(120, calc(var(--r, 0.1) * 100%), 50%)'],
+    ['@use "#less";\n', 'hsl(120 50% 50% / @r)', 'hsl(120 50% 50% / calc(var(--r, 0.1) * 100%))'],
+    ['', 'rgb(@r, 0, 0)', 'rgb(calc(var(--r, 0.1) * 100%), 0, 0)'],
+    ['', 'hsl(120, @r, 50%)', 'hsl(120, calc(var(--r, 0.1) * 100%), 50%)']
+  ])('a colour written as CSS reads an exposed percentage as its ratio: %s%s', async (use, written, printed) => {
+    const exported = await result(`${use}@expose r;\n@r: 10%;\n.x { v: ${written}; }`);
+    expect(exported.css).toContain(`v: ${printed};`);
+    expect(exported.runtime?.ratios).toEqual(['r']);
+  });
+
+  it('a colour written as CSS reads an export of an exposed percentage as its ratio', async () => {
+    await expect(render('@use "#less";\n@expose a, b;\n@a: 10%;\n@b: @a;\n.x { v: rgb(@b, 0%, 0%); }')).resolves.toContain('v: rgb(calc(var(--b, var(--a, 0.1)) * 100%), 0%, 0%);');
+  });
+
   it('a built-in reading an exposed slash list keeps its recipe', async () => {
     const css = await render('@use "#less";\n@expose a;\n@a: 1/2;\n.x { b: @less.percentage(@a); c: @less.ceil(@a); }');
     expect(css).toContain('b: var(--a-percentage, 50%);');

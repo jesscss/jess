@@ -54,8 +54,9 @@ configured on, and one set in a `styles.config` is loaded once per process,
 so it is shared too. To keep stylesheets you do not trust apart, give each its
 own `Compiler` and configure no `jsPlugin()` instance that two of them share.
 
-Values cross the boundary through a small typed bridge (dimensions, colors,
-quoted strings, lists, detached rules, …).
+A script receives the compiler's values as Less 4 tree nodes (dimensions,
+colors, quoted strings, lists, detached rules, …), and its result converts back
+to a compiler value.
 
 The **only** code loaded directly in your Node process — outside the sandbox —
 is the built-in `@jesscss/fns` package. It is recognized by the **realpath** of

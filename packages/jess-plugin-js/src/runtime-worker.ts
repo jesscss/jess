@@ -3,25 +3,20 @@
  * The Deno process behind `@jesscss/plugin-js`. This module runs twice: as the
  * process's main thread, which only relays (`relay`), and as the worker thread
  * that runs whole renders (`serve`). The work itself lives in
- * `plugin-runtime.ts` and `engine-runtime.ts`.
+ * `plugin-runtime.ts` and `engine-runtime.ts`, which only the worker thread
+ * imports: the relay loads no compiler code, so the engine is ready sooner.
  */
-import { computeResponse, installLessGlobals } from './plugin-runtime.js';
-
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 const isRuntimeThread = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
 const runtimeApi = isRuntimeThread ? self.name : Deno.args.includes('--runtime-api=less') ? 'less' : 'module';
 
-if (isRuntimeThread && runtimeApi === 'less') {
-  installLessGlobals();
-}
-
 const send = (payload) => {
   self.postMessage(`${JSON.stringify(payload)}\n`);
 };
 
-const handleRequest = async (req) => {
+const handleRequest = async (computeResponse, req) => {
   if (!req || typeof req.id !== 'number' || typeof req.type !== 'string') {
     return;
   }
@@ -32,7 +27,7 @@ const handleRequest = async (req) => {
  * The worker thread: stdin arrives from the main thread in chunks, and each
  * request line is answered in order, one at a time.
  */
-function serve() {
+function serve({ computeResponse }) {
   /*
    * On a worker thread `Deno.exit()` (which `process.exit()` calls) and
    * `close()` would end only the thread and leave every later request
@@ -61,9 +56,11 @@ function serve() {
       } catch {
         continue;
       }
-      previous = previous.then(() => handleRequest(req));
+      previous = previous.then(() => handleRequest(computeResponse, req));
     }
   };
+
+  /* `ready` comes after `onmessage` is set: the worker drops any message that arrives before the runtime has loaded. */
   send({ type: 'ready' });
 }
 
@@ -90,7 +87,13 @@ async function relay() {
 }
 
 if (isRuntimeThread) {
-  serve();
+  /* A runtime that fails to load fails the thread, as a static import would: the host never sees `ready`. */
+  void import('./plugin-runtime.js').then((runtime) => {
+    if (runtimeApi === 'less') {
+      runtime.installLessGlobals();
+    }
+    serve(runtime);
+  });
 } else {
   void relay();
 }

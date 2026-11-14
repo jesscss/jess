@@ -54,6 +54,12 @@
       "import": "./lib/ast.js",
       "require": "./lib/ast.cjs"
     },
+    "./sourcemap": {
+      "types": "./lib/sourcemap.d.ts",
+      "source": "./src/sourcemap.ts",
+      "import": "./lib/sourcemap.js",
+      "require": "./lib/sourcemap.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -67,7 +73,6 @@
     "@jesscss/patch-css": "workspace:*",
     "@jridgewell/gen-mapping": "~0.3.12",
     "@ungap/set-methods": "~0.1.1",
-    "big.js": "^7.0.1",
     "chalk": "^4.1.2"
   },
   "scripts": {
@@ -91,7 +96,6 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
-    "@types/big.js": "^6.2.2",
     "color-name": "~2.0.0",
     "rollup-plugin-circular-dependencies": "~1.1.2",
     "rollup-plugin-visualizer": "~6.0.3",

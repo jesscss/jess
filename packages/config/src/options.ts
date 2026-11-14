@@ -1,6 +1,9 @@
 import type { StylesConfig, FileMatchOptions, UnitMode } from './types.js';
-import picomatch from 'picomatch';
+import { createRequire } from 'module';
 import path from 'path';
+
+/* Loaded when a `file` option is a glob, which most configs never use. */
+let picomatch: typeof import('picomatch') | undefined;
 
 /**
  * Options bag the `strict` preset can expand. Any bag carrying a `strict` flag
@@ -145,6 +148,10 @@ function matchesFile(pattern: string | undefined, filePath: string | undefined):
   }
 
   // Try glob/pattern match using picomatch
+  if (picomatch === undefined) {
+    const loaded: typeof import('picomatch') = createRequire(import.meta.url)('picomatch');
+    picomatch = loaded;
+  }
   const isMatch = picomatch(pattern, { dot: true });
   return isMatch(filePath) || isMatch(normalizedFile);
 }

@@ -178,8 +178,8 @@ describe('@plugin function failures are never silent', () => {
   }, 30000);
 
   /*
-   * NaN has no CSS spelling, and the sandbox's JSON transport turns it into
-   * `null` — which reads as a declined call. It is a fault in the plugin, named
+   * NaN has no CSS spelling. Unchecked, it reached the compiler as `null`,
+   * which reads as a declined call. It is a fault in the plugin, named
    * at the call.
    */
   it.each(['NaN', 'Infinity'])('reports a %s result at the call site instead of dropping or re-emitting the call', async (result) => {

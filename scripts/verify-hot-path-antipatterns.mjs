@@ -74,6 +74,14 @@ const OWNERSHIP = {
  * `--report` lists it with its reason.
  */
 const EXCEPTIONS = [
+  ...['text.indexOf(\'e\')', 'text.slice(0, e)', 'text.slice(e + 1)'].map(snippet => ({
+    file: 'packages/core/src/ast/decimal.ts',
+    rule: 'no-source-text-rescan',
+    snippet,
+    reason: 'The receiver is String(n), the shortest decimal spelling of an operand double, not source text: '
+      + 'an operand is often a computed value the parser never saw, so there is no node fact to read. '
+      + 'Exact base-10 arithmetic (ledger V6) needs that spelling; each operation reads one string of at most 24 characters once.'
+  })),
   {
     file: 'packages/core/src/ast/serialize.ts',
     rule: 'no-loop-invariant-accessor',

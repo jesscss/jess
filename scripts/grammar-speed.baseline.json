@@ -23,11 +23,11 @@
   "grammars": {
     "css": {
       "fixture": "benchmark.css",
-      "instructionsPerParse": 1434256124
+      "instructionsPerParse": 1406797925
     },
     "less": {
       "fixture": "benchmark.less",
-      "instructionsPerParse": 1834181483
+      "instructionsPerParse": 1755591483
     },
     "scss": {
       "fixture": "gen-workload",
@@ -35,7 +35,7 @@
     },
     "jess": {
       "fixture": "benchmark.css",
-      "instructionsPerParse": 1925530251
+      "instructionsPerParse": 1811954350
     }
   }
 }
