@@ -11,9 +11,8 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { isValueGroup, isValueGroupArray, type ArgumentKeyword, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { calcOperand, numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
-import { callKeyword, NULL } from './value-factory.js';
-import { keepAsWritten } from './value-operate.js';
-import { checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl, define, emptyCollection, isListShaped } from './define.js';
+import { NULL } from './value-factory.js';
+import { checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl, define, emptyCollection, isListShaped, mismatch, readWritten, valueNode } from './define.js';
 import type {
   Check,
   DefinedFunction,
@@ -219,8 +218,9 @@ function cssFunctionParam(param: ParamSpec): ParamSpec {
 }
 
 function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown, colorName: FnCtx['colorName']): ValueGroup {
-  if (!isValueGroup(value)) {
-    throw new TypeError(`${name}: each argument must be a value node`);
+  const node = valueNode(name, value);
+  if (type === 'any') {
+    return node;
   }
 
   /*
@@ -233,22 +233,20 @@ function validateValue(name: string, index: number, type: NormalizedParamType, v
    * the table (R8 spec, colour names). A call written out as-is is read
    * as the keyword that spells it, unless the slot asks for the call.
    */
-  const single = isValueGroupArray(value) ? undefined : value;
-  if (single !== undefined && type !== 'any' && type.includes('FunctionCall') && isDeferred(single, type)) {
+  const single = isValueGroupArray(node) ? undefined : node;
+  if (single !== undefined && type.includes('FunctionCall') && isDeferred(single, type)) {
     return single;
   }
-  const bound = type === 'any'
-    ? value
-    : single?.type === 'FunctionCall' || single?.type === 'Arithmetic'
-      ? keepAsWritten(callKeyword(single))
-      : single?.type === 'Keyword' && type.includes('Color')
-        ? colorName?.(single) ?? single
-        : type.includes('Collection') && groupItems(value).length === 0 && isListShaped(value)
-          ? emptyCollection()
-          : value;
+  const read = single === undefined ? node : readWritten(single);
+  const bound = read !== node
+    ? read
+    : single?.type === 'Keyword' && type.includes('Color')
+      ? colorName?.(single) ?? single
+      : type.includes('Collection') && groupItems(node).length === 0 && isListShaped(node)
+        ? emptyCollection()
+        : node;
   if (!isValueForType(bound, type)) {
-    const expected = type === 'any' ? 'any' : type.filter(kind => kind !== 'FunctionCall').join('|');
-    throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${isValueGroupArray(bound) ? 'sequence' : bound.type}`);
+    throw mismatch(name, index, type.filter(kind => kind !== 'FunctionCall').join('|'), bound);
   }
   return bound;
 }

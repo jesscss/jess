@@ -17,7 +17,7 @@ import type { Check, DefinedFunction, Fn, FnCtx, FunctionBodyArgs, Kind, LazyVal
 
 type DirectInput = ValueGroup | LazyValue;
 
-function valueNode(name: string, value: unknown): ValueGroup {
+export function valueNode(name: string, value: unknown): ValueGroup {
   if (!isValueGroup(value)) {
     throw new TypeError(`${name}: each argument must be a value node`);
   }
@@ -27,7 +27,10 @@ function valueNode(name: string, value: unknown): ValueGroup {
 /** A call written out as-is is read as the keyword that spells it. */
 const isWritten = (value: Value): value is Extract<Value, { readonly type: 'FunctionCall' | 'Arithmetic' }> => value.type === 'FunctionCall' || value.type === 'Arithmetic';
 
-function mismatch(name: string, index: number, kind: string, value: ValueGroup): TypeError {
+/** A value with a call written out as-is read as the keyword that spells it. */
+export const readWritten = (value: Value): Value => isWritten(value) ? keepAsWritten(callKeyword(value)) : value;
+
+export function mismatch(name: string, index: number, kind: string, value: ValueGroup): TypeError {
   const got = isValueGroupArray(value) ? 'sequence' : isWritten(value) ? 'Keyword' : value.type;
   return new TypeError(`${name}: arg ${index} expected ${kind}, got ${got}`);
 }
@@ -75,7 +78,7 @@ export function checkColor(name: string, index: number, input: unknown, colorNam
 /** A keyword. A call written out as-is is the keyword that spells it. */
 export function checkKeyword(name: string, index: number, input: unknown): ValueGroup {
   const value = valueNode(name, input);
-  const bound = !isValueGroupArray(value) && isWritten(value) ? keepAsWritten(callKeyword(value)) : value;
+  const bound = isValueGroupArray(value) ? value : readWritten(value);
   if (!isValueGroupArray(bound) && bound.type === 'Keyword') {
     return bound;
   }
