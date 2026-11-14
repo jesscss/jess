@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeCollection, makeDimension, makeKeyword, makeList, serializeValue, type ValueGroup } from '@jesscss/core';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { sync } from '../../__tests__/harness.js';
+import { sync, call } from '../../__tests__/harness.js';
 import * as sassGlobals from '../index.js';
 import { sassFns } from '../registry.js';
 import * as listModule from '../list/index.js';
@@ -46,13 +46,13 @@ describe('sass globals — renamed map members', () => {
   });
 
   it('delegates to the module body, including the rest parameter', () => {
-    expect(bytes(sassGlobals.mapGet(map, makeKeyword('a')))).toBe(bytes(mapModule.get(map, makeKeyword('a'))));
-    expect(bytes(sassGlobals.mapGet(map, makeKeyword('b'), makeKeyword('c')))).toBe('3');
-    expect(bytes(sassGlobals.mapHasKey(map, makeKeyword('b'), makeKeyword('c')))).toBe('true');
-    expect(bytes(sassGlobals.mapKeys(map))).toBe(bytes(mapModule.keys(map)));
-    expect(bytes(sassGlobals.mapValues(map))).toBe(bytes(mapModule.values(map)));
-    expect(bytes(sassGlobals.mapRemove(map, makeKeyword('a'), makeKeyword('b')))).toBe(bytes(mapModule.remove(map, makeKeyword('a'), makeKeyword('b'))));
-    expect(bytes(sassGlobals.mapMerge(map, nested))).toBe(bytes(mapModule.merge(map, nested)));
+    expect(bytes(call(sassGlobals.mapGet, map, makeKeyword('a')))).toBe(bytes(call(mapModule.get, map, makeKeyword('a'))));
+    expect(bytes(call(sassGlobals.mapGet, map, makeKeyword('b'), makeKeyword('c')))).toBe('3');
+    expect(bytes(call(sassGlobals.mapHasKey, map, makeKeyword('b'), makeKeyword('c')))).toBe('true');
+    expect(bytes(call(sassGlobals.mapKeys, map))).toBe(bytes(call(mapModule.keys, map)));
+    expect(bytes(call(sassGlobals.mapValues, map))).toBe(bytes(call(mapModule.values, map)));
+    expect(bytes(call(sassGlobals.mapRemove, map, makeKeyword('a'), makeKeyword('b')))).toBe(bytes(call(mapModule.remove, map, makeKeyword('a'), makeKeyword('b'))));
+    expect(bytes(call(sassGlobals.mapMerge, map, nested))).toBe(bytes(call(mapModule.merge, map, nested)));
   });
 });
 
@@ -69,7 +69,7 @@ describe('sass globals — renamed list member', () => {
   });
 
   it('delegates to the module body', () => {
-    expect(bytes(sassGlobals.listSeparator(commaList))).toBe(bytes(listModule.separator(commaList)));
-    expect(bytes(sassGlobals.listSeparator(commaList))).toBe('comma');
+    expect(bytes(call(sassGlobals.listSeparator, commaList))).toBe(bytes(call(listModule.separator, commaList)));
+    expect(bytes(call(sassGlobals.listSeparator, commaList))).toBe('comma');
   });
 });

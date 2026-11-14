@@ -1,7 +1,6 @@
 import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
-import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js';
-import { addExact } from '../../util/decimal.js';
+import * as forms from '../../less/css-forms.generated.js';
+import { defineAlphaAdjuster } from './color-form.js';
 
 /**
  * `color.opacify(color, amount)` — raise alpha by an absolute 0-1 amount.
@@ -14,17 +13,6 @@ import { addExact } from '../../util/decimal.js';
  * dart-sass: `opacify(rgba(255,0,0,0.5), 0.1)` → `rgba(255, 0, 0, 0.6)`;
  * `opacify(rgba(255,0,0,0.5), 0.9)` → `red` (clamped to 1).
  */
-export const opacify: Fn = defineFunction('opacify', {
-  params: [
-    { name: 'color', type: 'Color' },
-    { name: 'amount', type: 'Dimension' },
-    { name: 'excess', type: 'any', optional: true }
-  ],
-  body: (c, amt, excess) => {
-    noExcess(excess, 2);
-    const color = requireColor(c);
-    return withAlpha(color, addExact(color.alpha, fractionAmount(amt)));
-  }
-});
+export const opacify: Fn = /* @__PURE__ */ defineAlphaAdjuster('opacify', forms.fadein);
 
 export default opacify;

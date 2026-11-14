@@ -8,14 +8,6 @@ $desaturate: @($color, $amount) > { result: hsl(from $color h clamp(0, s - $amou
 $desaturate-relative: @($color, $amount) > { result: hsl(from $color h clamp(0, s - s * $amount / 100, 100) l); }
 $spin: @($color, $amount) > { result: hsl(from $color calc(h + $amount) s l); }
 $greyscale: @($color) > { result: hsl(from $color h 0 l); }
-$darken-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l - $amount / 1%, 100)); }
-$darken-relative-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l - l * $amount / 1% / 100, 100)); }
-$lighten-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l + $amount / 1%, 100)); }
-$lighten-relative-deferred: @($color, $amount) > { result: hsl(from $color h s clamp(0, l + l * $amount / 1% / 100, 100)); }
-$saturate-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s + $amount / 1%, 100) l); }
-$saturate-relative-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s + s * $amount / 1% / 100, 100) l); }
-$desaturate-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s - $amount / 1%, 100) l); }
-$desaturate-relative-deferred: @($color, $amount) > { result: hsl(from $color h clamp(0, s - s * $amount / 1% / 100, 100) l); }
 $percentage: @($value) > { result: calc($value * 100%); }
 $unit: @($value, $one) > { result: calc($value * $one); }
 $convert: @($value) > { result: calc($value); }
@@ -32,10 +24,28 @@ $fadeout: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - $a
 $fadeout-relative: @($color, $amount) > { result: rgb(from $color r g b / calc(alpha - alpha * $amount)); }
 $hsv: @($h, $w, $b) > { result: hwb($h $w $b); }
 $hsva: @($h, $w, $b, $a) > { result: hwb($h $w $b / $a); }
+$hsv-white: @($s, $v) > { result: calc((1 - $s / 100%) * $v); }
+$hsv-white-known: @($share, $v) > { result: calc($share * $v); }
+$hsv-black: @($v) > { result: calc(100% - $v); }
 $mix: @($a, $weight, $b) > { result: color-mix(in srgb, $a $weight, $b); }
 $average: @($a, $b) > { result: color-mix(in srgb, $a, $b); }
 $tint: @($color, $weight) > { result: color-mix(in srgb, white $weight, $color); }
 $shade: @($color, $weight) > { result: color-mix(in srgb, black $weight, $color); }
 $mix-over: @($color, $weight, $r, $g, $b, $a) > { result: rgb(from $color clamp(0, (r * alpha * $weight + $r) / (alpha * $weight + $a), 255) clamp(0, (g * alpha * $weight + $g) / (alpha * $weight + $a), 255) clamp(0, (b * alpha * $weight + $b) / (alpha * $weight + $a), 255) / calc(alpha * $weight + $a)); }
+$invert: @($color) > { result: rgb(from $color calc(255 - r) calc(255 - g) calc(255 - b)); }
+$invert-weighted: @($color, $weight) > { result: color-mix(in srgb, rgb(from $color calc(255 - r) calc(255 - g) calc(255 - b)) $weight, $color); }
 $contrast: @($color) > { result: contrast-color($color); }
 $contrast-between: @($color, $r, $red, $g, $green, $b, $blue, $a, $alpha) > { result: rgb(from contrast-color($color) calc($r + $red * r / 255) calc($g + $green * r / 255) calc($b + $blue * r / 255) / calc($a + $alpha * r / 255)); }
+$rgb-slots: @($color, $r, $g, $b) > { result: rgb(from $color $r $g $b); }
+$rgb-slots-alpha: @($color, $r, $g, $b, $a) > { result: rgb(from $color $r $g $b / $a); }
+$hsl-slots: @($color, $h, $s, $l) > { result: hsl(from $color $h $s $l); }
+$hsl-slots-alpha: @($color, $h, $s, $l, $a) > { result: hsl(from $color $h $s $l / $a); }
+$hwb-slots: @($color, $h, $w, $b) > { result: hwb(from $color $h $w $b); }
+$hwb-slots-alpha: @($color, $h, $w, $b, $a) > { result: hwb(from $color $h $w $b / $a); }
+$channel-clamped: @($ch, $n, $max) > { result: clamp(0, $ch + $n, $max); }
+$channel-clamped-deferred: @($ch, $n, $max) > { result: clamp(0, $ch + $n / 1%, $max); }
+$channel-moved: @($ch, $n) > { result: calc($ch + $n); }
+$channel-moved-deferred: @($ch, $n) > { result: calc($ch + $n / 1%); }
+$channel-set-deferred: @($n) > { result: calc($n / 1%); }
+$channel-up: @($ch, $max, $f) > { result: calc($ch + ($max - $ch) * $f); }
+$channel-down: @($ch, $f) > { result: calc($ch + $ch * $f); }

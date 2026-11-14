@@ -6,7 +6,7 @@
  * both compiled tables executes both at load time. Each entry imports exactly
  * the one table it parses with, and this module imports none.
  */
-import { buildLineIndex, offsetToLineCol, run } from 'parseman';
+import { buildLineIndex, offsetToLineCol, run } from 'parseman/run';
 import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
@@ -18,6 +18,7 @@ import {
   type ForgivenSelectorItem,
   type Stylesheet
 } from '@jesscss/core/ast';
+import { InvalidRulePreludeError } from '@jesscss/core/diagnostics';
 import type { scssGrammar } from './grammar/ast.js';
 import { ScssParseError, type ScssRecoveredError } from './parse-error.js';
 import { commentTriviaLabels } from './trivia-labels.js';
@@ -145,6 +146,12 @@ export function parseRecoveringWith(grammar: ScssAstGrammar, input: string): Scs
    * trivia, which is a convention the four parsers do not share.
    */
   if (result.unconsumedFrom !== null) {
+    /* The statement that stopped held a pseudo no argument rule reads: the first real problem, at the pseudo. */
+    const stoppedFrom = result.unconsumedFrom;
+    const unreadable = diagnostics.find(error => error instanceof InvalidRulePreludeError && error.offset >= stoppedFrom);
+    if (unreadable !== undefined) {
+      throw unreadable;
+    }
     if (isStylesheet(result.value) && result.value.rules.length > 0) {
       throw new ScssParseError(result.unconsumedFrom, [], {
         message: 'Unexpected SCSS input after a complete stylesheet.',

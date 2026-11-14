@@ -6,7 +6,7 @@
     "directory": "packages/patch-css"
   },
   "type": "module",
-  "version": "2.0.0-alpha.32",
+  "version": "2.0.0-alpha.33",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
@@ -14,20 +14,15 @@
     "access": "public"
   },
   "scripts": {
-    "ci": "pnpm build && pnpm test",
-    "test": "echo 'patch-css has no active test suite (see test:tofix)'",
-    "prepublishOnly": "pnpm build",
-    "dist": "rollup -c",
     "build": "pnpm clean && pnpm compile",
-    "clean": "shx rm -rf ./dist ./lib tsconfig.tsbuildinfo",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly && pnpm dist",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts --minify && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsc -p tsconfig.build.json -w",
-    "serve": "lite-server --baseDir=\"test\"",
-    "test:tofix": "pnpm dist && jest",
-    "lint:fix:TOFIX": "eslint --fix '**/*.{js,ts}'",
-    "lint:TOFIX": "eslint '**/*.{js,ts}'"
+    "prepublishOnly": "pnpm build",
+    "test": "vitest run",
+    "lint": "eslint src test"
   },
-  "description": "Attach stylesheets given an id",
+  "description": "Sets a Jess stylesheet's exposed variables on the page",
   "main": "lib/index.cjs",
   "module": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -40,9 +35,9 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
-    "dist"
+    "lib"
   ],
   "author": "Matthew Dean",
-  "license": "MIT"
+  "license": "MIT",
+  "sideEffects": false
 }

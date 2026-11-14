@@ -24,20 +24,51 @@ async function runtime(source: string): Promise<unknown> {
 }
 
 describe('Less @expose variables (A4)', () => {
+  /* Chrome 156: a percentage beside number channels is invalid in the comma syntax; `--r: 0.1` is rgb(26, 0, 0). */
   it.each([
     ['@r: 10; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(var(--r, 10), 0, 0);'],
-    ['@r: 10%; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(var(--r, 10%), 0, 0);'],
-    ['@r: 2px; .x { v: @less.rgb(@r, 0, 0); }', 'v: var(--r-rgb, rgb(2, 0, 0));'],
+    ['@r: 10%; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(calc(var(--r, 0.1) * 100 * 2.55), 0, 0);'],
+    ['@r: 10%; .x { v: @less.rgba(@r, 128, 0, .5); }', 'v: rgba(calc(var(--r, 0.1) * 100 * 2.55), 128, 0, 0.5);'],
+    ['@r: 10%; .x { v: @less.rgb(@r, 0%, 0%); }', 'v: rgb(calc(var(--r, 0.1) * 100%), 0%, 0%);'],
+    ['@r: 2px; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(calc(var(--r, 2px) / 1px), 0, 0);'],
     ['@h: 30; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30) 37.5% 25%);'],
     ['@h: 30deg; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30deg) 37.5% 25%);'],
-    ['@h: 30px; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: var(--h-hsv, #bf8f60);'],
-    ['@a: 50%; .x { v: @less.rgba(#c00, @a); }', 'v: rgb(from #c00 r g b / var(--a, 50%));'],
-    ['@a: 2px; .x { v: @less.rgba(#c00, @a); }', 'v: var(--a-rgba, rgb(204, 0, 0));'],
+    ['@h: 30px; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(calc(var(--h, 30px) / 1px) 37.5% 25%);'],
+    ['@a: 50%; .x { v: @less.rgba(#c00, @a); }', 'v: rgb(from #c00 r g b / calc(var(--a, 0.5) * 100%));'],
+    ['@a: 2px; .x { v: @less.rgba(#c00, @a); }', 'v: rgb(from #c00 r g b / calc(var(--a, 2px) / 1px));'],
     ['@b: 5px; .x { v: @less.mod(10px, @b); }', 'v: rem(10px, var(--b, 5px));'],
-    ['@b: 5px; .x { v: @less.mod(10em, @b); }', 'v: var(--b-mod, 0em);']
+    ['@b: 5px; .x { v: @less.mod(10em, @b); }', 'v: rem(10em, var(--b, 5px) / 1px * 1em);']
   ])('one slot field answers whether a form holds the value: %s', async (source, written) => {
     const name = /@(\w+):/.exec(source)?.[1];
     await expect(render(`@use "#less";\n@expose ${name};\n${source}`)).resolves.toContain(written);
+  });
+
+  /* The runtime sets a `%` export as its ratio (`vars({ r: '50%' })` is `--r: 0.5`), so a colour written as CSS reads it as every other value does. */
+  it.each([
+    ['@use "#less";\n', 'rgb(@r, 0, 0)', 'rgb(calc(var(--r, 0.1) * 100%), 0, 0)'],
+    ['@use "#less";\n', 'rgb(@r 0 0)', 'rgb(calc(var(--r, 0.1) * 100%) 0 0)'],
+    ['@use "#less";\n', 'hsl(120, @r, 50%)', 'hsl(120, calc(var(--r, 0.1) * 100%), 50%)'],
+    ['@use "#less";\n', 'hsl(120 50% 50% / @r)', 'hsl(120 50% 50% / calc(var(--r, 0.1) * 100%))'],
+    ['', 'rgb(@r, 0, 0)', 'rgb(calc(var(--r, 0.1) * 100%), 0, 0)'],
+    ['', 'hsl(120, @r, 50%)', 'hsl(120, calc(var(--r, 0.1) * 100%), 50%)']
+  ])('a colour written as CSS reads an exposed percentage as its ratio: %s%s', async (use, written, printed) => {
+    const exported = await result(`${use}@expose r;\n@r: 10%;\n.x { v: ${written}; }`);
+    expect(exported.css).toContain(`v: ${printed};`);
+    expect(exported.runtime?.ratios).toEqual(['r']);
+  });
+
+  it('a colour written as CSS reads an export of an exposed percentage as its ratio', async () => {
+    await expect(render('@use "#less";\n@expose a, b;\n@a: 10%;\n@b: @a;\n.x { v: rgb(@b, 0%, 0%); }')).resolves.toContain('v: rgb(calc(var(--b, var(--a, 0.1)) * 100%), 0%, 0%);');
+  });
+
+  it.each([
+    ['@less.rgb(var(--r), 10%, 0)', 'rgb(var(--r), 25.5, 0)'],
+    ['@less.rgb(10%, 0, var(--b))', 'rgb(25.5, 0, var(--b))'],
+    ['@less.rgb(var(--r), 10%, 0%)', 'rgb(var(--r), 10%, 0%)'],
+    ['@less.rgb(10%, 0, 0, var(--a))', 'rgb(25.5, 0, 0, var(--a))'],
+    ['@less.rgb(var(--r), 0, 0, 50%)', 'rgb(var(--r), 0, 0, 50%)']
+  ])('a percentage channel beside a number is a number in the comma syntax, the alpha aside: %s', async (call, printed) => {
+    await expect(render(`@use "#less";\n.x { v: ${call}; }`)).resolves.toContain(`v: ${printed};`);
   });
 
   it('a built-in reading an exposed slash list keeps its recipe', async () => {
@@ -129,9 +160,6 @@ describe('Less @expose variables (A4)', () => {
     ['nested CSS forms', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lighten(@less.darken(@brand, 10%), 5%); }', 'v: hsl(from hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100)) h s clamp(0, l + 5, 100));'],
     ['a CSS form as a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @c; }\n.a { .m(@less.darken(@brand, 10%)); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
     ['a CSS form of a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @less.darken(@c, 10%); }\n.a { .m(@brand); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
-    ['an amount no form takes in its unit', '@use "#less";\n@expose a;\n@a: 10;\n.b { v: @less.darken(#c00, @a); }', 'v: var(--a-darken, #990000);'],
-    ['a number holding a unit, which a form takes as a number', '@use "#less";\n@expose a;\n@a: 0.5px;\n.b { v: @less.percentage(@a); }', 'v: var(--a-percentage, 50%);'],
-    ['a divisor in another unit than the dividend', '@use "#less";\n@expose a;\n@a: 2;\n.b { v: @less.mod(5px, @a); }', 'v: var(--a-mod, 1px);'],
     ['a unit, which picks no form', '@use "#less";\n@expose u;\n@u: em;\n.b { v: @less.unit(5px, @u); }', 'v: var(--u-unit, 5em);'],
     ['a method, which picks no form', '@use "#less";\n@expose m;\n@m: relative;\n.b { v: @less.darken(#c00, 10%, @m); }', 'v: var(--m-darken, #b80000);']
   ])('follows the exposed variable through %s', async (_what, source, expected) => {
@@ -139,7 +167,8 @@ describe('Less @expose variables (A4)', () => {
   });
 
   it.each([
-    ['an amount', '@use "#less";\n@expose a;\n@a: 10%;\n.b { v: @less.darken(#c00, @a); }', 'v: hsl(from #c00 h s clamp(0, l - var(--a, 10%) / 1%, 100));'],
+    ['an amount', '@use "#less";\n@expose a;\n@a: 10%;\n.b { v: @less.darken(#c00, @a); }', 'v: hsl(from #c00 h s clamp(0, l - var(--a, 0.1) * 100, 100));'],
+    ['a percentage turned into a length', '@use "#less";\n@expose a;\n@a: 50%;\n.b { v: @less.unit(@a, px); }', 'v: calc(var(--a, 0.5) * 100 * 1px);'],
     ['a number', '@use "#less";\n@expose a;\n@a: 0.5;\n.b { v: @less.percentage(@a); }', 'v: calc(var(--a, 0.5) * 100%);'],
     ['a divisor in the dividend\'s unit', '@use "#less";\n@expose a;\n@a: 2px;\n.b { v: @less.mod(5px, @a); }', 'v: rem(5px, var(--a, 2px));'],
     ['a divisor in the dividend\'s unit, in any case', '@use "#less";\n@expose a;\n@a: 2px;\n.b { v: @less.mod(5PX, @a); }', 'v: rem(5PX, var(--a, 2px));'],
@@ -201,12 +230,12 @@ describe('Less @expose variables (A4)', () => {
 
     it('follows an exposed variable it computes with through a mixin argument', async () => {
       await expect(renderBesideImage('@use "#less";\n@expose w;\n@w: 8px;\n.m(@l) { v: @l; }\n.a { .m(@less.max(@w, @less.image-width("a.png"))); }'))
-        .resolves.toContain('v: var(--w-max, 17px);');
+        .resolves.toContain('v: max(var(--w, 8px), 17px);');
     });
 
     it('follows an exposed variable beside it', async () => {
       await expect(renderBesideImage('@use "#less";\n@expose w;\n@w: 8px;\n.a { v: @less.max(@w, @less.image-width("a.png")); }'))
-        .resolves.toContain('v: var(--w-max, 17px);');
+        .resolves.toContain('v: max(var(--w, 8px), 17px);');
     });
   });
 
@@ -238,7 +267,7 @@ describe('Less @expose variables (A4)', () => {
   it('names a generated property apart from every exposed variable', async () => {
     const css = await render('@use "#less";\n@expose brand;\n@brand: #c00;\n@expose brand-lightness;\n@brand-lightness: 99%;\n.a { v: @less.lightness(@brand); w: @brand-lightness; }');
     expect(css).toContain('v: var(--brand-lightness-2, 40%);');
-    expect(css).toContain('w: var(--brand-lightness, 99%);');
+    expect(css).toContain('w: calc(var(--brand-lightness, 0.99) * 100%);');
   });
 
   it('returns what the runtime is generated from', async () => {
@@ -246,14 +275,47 @@ describe('Less @expose variables (A4)', () => {
       exports: ['brand', 'gap'],
       keys: { brand: 'brand', gap: 'gap' },
       defaults: { brand: '#c00' },
+      units: {},
+      ratios: [],
       derived: {
         // eslint-disable-next-line @typescript-eslint/naming-convention -- a custom property name
         '--brand-lightness': {
           fn: { module: '@jesscss/fns/less', name: 'lightness' },
           args: [{ fn: { module: '@jesscss/fns/less', name: 'multiply' }, args: [{ export: 'brand' }, '#888'] }]
         }
-      }
+      },
+      colors: ['brand'],
+      names: false,
+      ownNames: false,
+      direct: true
     });
+  });
+
+  it.each([
+    ['#c00', '#888', false],
+    ['red', '#888', true],
+    ['#c00', 'gray', false]
+  ])('reads colour names at runtime for @brand: %s and a %s argument only when the stylesheet writes one: %s', async (own, other, names) => {
+    await expect(runtime(`@use "#less";\n@expose brand;\n@brand: ${own};\n.a { v: @less.lightness(@less.multiply(@brand, ${other})); }`)).resolves.toMatchObject({ names });
+  });
+
+  it('reads a colour name a recipe writes for a colour parameter at compile time', async () => {
+    await expect(runtime('@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lightness(@less.multiply(@brand, gray)); }')).resolves.toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- a custom property name
+      derived: { '--brand-lightness': { args: [{ args: [{ export: 'brand' }, { color: 'gray', rgb: [128, 128, 128], alpha: 1 }] }] } },
+      names: false
+    });
+  });
+
+  /* Owner, 2026-11-13: "I agree with the reco" (gate a colour export passed through extract() too). */
+  it('counts an export as a colour export when it reaches a colour parameter, through another function too, and its value holds a colour', async () => {
+    await expect(runtime('@use "#less";\n@expose l;\n@l: #f00 #00f;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: ['l'], names: false, direct: false });
+    await expect(runtime('@use "#less";\n@expose l;\n@l: red #00f;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: ['l'], names: true });
+    await expect(runtime('@use "#less";\n@expose b;\n@b: rgb(0 0 255);\n.a { v: @less.luma(@b); }')).resolves.toMatchObject({ colors: ['b'], names: false, ownNames: false, direct: true });
+    await expect(runtime('@use "#less";\n@expose b;\n@b: blue;\n.a { v: @less.luma(@b); }')).resolves.toMatchObject({ colors: ['b'], names: true, ownNames: true });
+    await expect(runtime('@use "#less";\n@expose l;\n@l: 1px 2px;\n.a { v: @less.unit(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: [], names: false });
+    await expect(runtime('@use "#less";\n@expose b;\n@b: #00f;\n.a { v: @less.length(@b); }')).resolves.toMatchObject({ colors: [], names: false });
+    await expect(runtime('@use "#less";\n@expose b, c;\n@b: #00f;\n@c: red;\n.a { v: @less.luma(@b); w: @less.length(@c); }')).resolves.toMatchObject({ colors: ['b'], names: false, ownNames: false });
   });
 
   it('returns no runtime for a document that exposes nothing', async () => {

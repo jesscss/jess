@@ -1,9 +1,9 @@
-import { defineFunction, makeBool } from '@jesscss/core/value';
+import { makeBool, define, checkDimension } from '@jesscss/core/value';
 import { compatibleUnits } from './units.js';
 
 const params = [
-  { name: 'number1', type: 'Dimension' },
-  { name: 'number2', type: 'Dimension' }
+  { name: 'number1', type: 'Dimension', check: checkDimension },
+  { name: 'number2', type: 'Dimension', check: checkDimension }
 ] as const;
 
 /**
@@ -19,13 +19,13 @@ const params = [
  *   comparable(1%, 2%)    → true
  *   math.compatible(1px, 1px * 1px) → false
  */
-const compatible = defineFunction('compatible', {
+const compatible = define('compatible', {
   params,
   body: (number1, number2) => makeBool(compatibleUnits(number1, number2))
 });
 
 /** The global spelling of {@link compatible}. Same body, Sass's global name. */
-const comparable = defineFunction('comparable', {
+const comparable = define('comparable', {
   params,
   body: (number1, number2) => makeBool(compatibleUnits(number1, number2))
 });

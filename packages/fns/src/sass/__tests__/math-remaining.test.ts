@@ -15,6 +15,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Dimension, ValueGroup } from '@jesscss/core';
 import { isValueGroupArray, makeDimension, makeKeyword, makeList, makeNull } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
+import { call } from '../../__tests__/harness.js';
 import { unit } from '../math/unit.js';
 import { percentage } from '../math/percentage.js';
 import { random } from '../math/random.js';
@@ -38,35 +39,35 @@ const compound = (
 
 describe('sass:math — unit', () => {
   it('spec core_functions/math/unit.hrx § none', () => {
-    expect(unit(makeDimension(1))).toMatchObject({ type: 'Quoted', value: '', quote: '"' });
+    expect(call(unit, makeDimension(1))).toMatchObject({ type: 'Quoted', value: '', quote: '"' });
   });
 
   it('spec core_functions/math/unit.hrx § one_numerator', () => {
-    expect(unit(makeDimension(1, 'px'))).toMatchObject({ value: 'px' });
+    expect(call(unit, makeDimension(1, 'px'))).toMatchObject({ value: 'px' });
   });
 
   it('spec core_functions/math/unit.hrx § multiple_numerators — 1px * 1em * 1rad', () => {
-    expect(unit(compound(1, 'px', ['px', 'em', 'rad'], []))).toMatchObject({ value: 'px*em*rad' });
+    expect(call(unit, compound(1, 'px', ['px', 'em', 'rad'], []))).toMatchObject({ value: 'px*em*rad' });
   });
 
   it('spec core_functions/math/unit.hrx § one_denominator — 1/1px', () => {
-    expect(unit(compound(1, 'px', [], ['px']))).toMatchObject({ value: 'px^-1' });
+    expect(call(unit, compound(1, 'px', [], ['px']))).toMatchObject({ value: 'px^-1' });
   });
 
   it('spec core_functions/math/unit.hrx § multiple_denominators — 1 / 1px / 3em / 4rad', () => {
-    expect(unit(compound(1, 'px', [], ['px', 'em', 'rad']))).toMatchObject({ value: '(px*em*rad)^-1' });
+    expect(call(unit, compound(1, 'px', [], ['px', 'em', 'rad']))).toMatchObject({ value: '(px*em*rad)^-1' });
   });
 
   it('spec core_functions/math/unit.hrx § numerator_and_denominator/single — 1px / 1em', () => {
-    expect(unit(compound(1, 'px', ['px'], ['em']))).toMatchObject({ value: 'px/em' });
+    expect(call(unit, compound(1, 'px', ['px'], ['em']))).toMatchObject({ value: 'px/em' });
   });
 
   it('spec core_functions/math/unit.hrx § numerator_and_denominator/multiple — 1px * 1em / 1rad / 1s', () => {
-    expect(unit(compound(1, 'px', ['px', 'em'], ['rad', 's']))).toMatchObject({ value: 'px*em/(rad*s)' });
+    expect(call(unit, compound(1, 'px', ['px', 'em'], ['rad', 's']))).toMatchObject({ value: 'px*em/(rad*s)' });
   });
 
   it('spec core_functions/global/math.hrx § unit — the global returns a QUOTED unit, not Less\'s bare number', () => {
-    expect(unit(makeDimension(5, 'px'))).toMatchObject({ type: 'Quoted', value: 'px' });
+    expect(call(unit, makeDimension(5, 'px'))).toMatchObject({ type: 'Quoted', value: 'px' });
   });
 
   it('spec core_functions/math/unit.hrx § error/too_many_args — one argument only', () => {
@@ -76,50 +77,50 @@ describe('sass:math — unit', () => {
 
 describe('sass:math — percentage', () => {
   it('spec core_functions/math/percentage.hrx § zero', () => {
-    expect(percentage(makeDimension(0))).toMatchObject({ type: 'Dimension', number: 0, unit: '%' });
+    expect(call(percentage, makeDimension(0))).toMatchObject({ type: 'Dimension', number: 0, unit: '%' });
   });
 
   it('spec core_functions/math/percentage.hrx § small', () => {
-    expect(percentage(makeDimension(0.246))).toMatchObject({ number: 24.6, unit: '%' });
+    expect(call(percentage, makeDimension(0.246))).toMatchObject({ number: 24.6, unit: '%' });
   });
 
   it('spec core_functions/math/percentage.hrx § large', () => {
-    expect(percentage(makeDimension(123.456))).toMatchObject({ bytes: '12345.6%' });
+    expect(call(percentage, makeDimension(123.456))).toMatchObject({ bytes: '12345.6%' });
   });
 
   it('spec core_functions/math/percentage.hrx § integer', () => {
-    expect(percentage(makeDimension(42))).toMatchObject({ number: 4200, unit: '%' });
+    expect(call(percentage, makeDimension(42))).toMatchObject({ number: 4200, unit: '%' });
   });
 
   it('spec core_functions/math/percentage.hrx § negative', () => {
-    expect(percentage(makeDimension(-0.4))).toMatchObject({ number: -40, unit: '%' });
+    expect(call(percentage, makeDimension(-0.4))).toMatchObject({ number: -40, unit: '%' });
   });
 
   it('spec core_functions/math/percentage.hrx § error/unit — rejects a unit, where Less returns 5000%', () => {
-    expect(() => percentage(makeDimension(1, '%'))).toThrow('$number: Expected 1% to have no units.');
-    expect(() => percentage(makeDimension(50, 'px'))).toThrow('$number: Expected 50px to have no units.');
+    expect(() => call(percentage, makeDimension(1, '%'))).toThrow('$number: Expected 1% to have no units.');
+    expect(() => call(percentage, makeDimension(50, 'px'))).toThrow('$number: Expected 50px to have no units.');
   });
 });
 
 describe('sass:math — random', () => {
   it('spec core_functions/math/random.hrx § no_arg', () => {
-    const result = dimensionOf(random());
+    const result = dimensionOf(call(random));
     expect(result).toMatchObject({ type: 'Dimension', unit: '' });
     expect(result.number).toBeGreaterThanOrEqual(0);
     expect(result.number).toBeLessThan(1);
   });
 
   it('spec core_functions/math/random.hrx § null', () => {
-    expect(dimensionOf(random(makeNull(true))).number).toBeLessThan(1);
+    expect(dimensionOf(call(random, makeNull(true))).number).toBeLessThan(1);
   });
 
   it('spec core_functions/math/random.hrx § one', () => {
-    expect(random(makeDimension(1))).toMatchObject({ number: 1 });
+    expect(call(random, makeDimension(1))).toMatchObject({ number: 1 });
   });
 
   it('spec core_functions/math/random.hrx § one_hundred', () => {
     for (let attempt = 0; attempt < 50; attempt++) {
-      const value = dimensionOf(random(makeDimension(100))).number;
+      const value = dimensionOf(call(random, makeDimension(100))).number;
       expect(Number.isInteger(value)).toBe(true);
       expect(value).toBeGreaterThan(0);
       expect(value).toBeLessThanOrEqual(100);
@@ -127,20 +128,20 @@ describe('sass:math — random', () => {
   });
 
   it('spec core_functions/math/random.hrx § ignores_units', () => {
-    expect(random(makeDimension(1, 'px'))).toMatchObject({ number: 1, unit: '' });
+    expect(call(random, makeDimension(1, 'px'))).toMatchObject({ number: 1, unit: '' });
   });
 
   it('spec core_functions/math/random.hrx § within_precision — 1.0000000000001 is the integer 1', () => {
-    expect(random(makeDimension(1.0000000000001))).toMatchObject({ number: 1 });
+    expect(call(random, makeDimension(1.0000000000001))).toMatchObject({ number: 1 });
   });
 
   it('spec core_functions/math/random.hrx § error/decimal', () => {
-    expect(() => random(makeDimension(1.5))).toThrow('$limit: 1.5 is not an int.');
+    expect(() => call(random, makeDimension(1.5))).toThrow('$limit: 1.5 is not an int.');
   });
 
   it('spec core_functions/math/random.hrx § error/zero and § error/negative', () => {
-    expect(() => random(makeDimension(0))).toThrow('$limit: Must be greater than 0, was 0.');
-    expect(() => random(makeDimension(-1))).toThrow('$limit: Must be greater than 0, was -1.');
+    expect(() => call(random, makeDimension(0))).toThrow('$limit: Must be greater than 0, was 0.');
+    expect(() => call(random, makeDimension(-1))).toThrow('$limit: Must be greater than 0, was -1.');
   });
 });
 

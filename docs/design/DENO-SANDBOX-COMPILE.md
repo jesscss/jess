@@ -1,24 +1,31 @@
 # Sandboxed compiles run whole in Deno
 
-**Status:** design, decided (§8; ledger row A19), not yet implemented. Tracks
-jesscss/jess#497. It replaces
+**Status:** decided (§8; ledger row A19) and implemented. A render that
+reaches a sandboxed script moves whole into the Deno engine (`routeRender`,
+`packages/compiler/src/sandbox-route.ts`). The move is triggered by the script
+plugin's `import` and `importLessPlugin`, or earlier, for a placed `@plugin`, by
+`rerouteForPlacedPlugins` (`packages/core/src/plugin-reroute.ts`). The engine
+runs under native `--allow-read`/`--allow-net` flags
+(`packages/jess-plugin-js/src/engine.ts`). §1 describes the per-call worker
+this replaced. Tracks jesscss/jess#497. It replaces
 the per-call worker and the permission broker described in
 [`architecture/js-execution-deno-spec.md`](../architecture/js-execution-deno-spec.md)
 (its "Permission broker" section and its non-goal "running the entire Jess
-compile in Deno"). The rest of that spec (lazy activation, script boundaries,
-the value bridge, error categories) still holds.
+compile in Deno"), and its value bridge: a plugin call converts values once
+each way, with no wire format (§3). The rest of that spec (lazy activation,
+script boundaries, error categories) still holds.
 
 Section 8 records the trust and API decisions this design rests on.
 
-## 1. What happens today
+## 1. What it replaced
 
-`@jesscss/plugin-js` runs stylesheet JavaScript (Less `@plugin`, script `@use`)
-in a Deno subprocess. The compile stays in Node, so every plugin function call
-during evaluation is a round trip: encode, pipe, wait, decode. Every file
-access Deno makes is a second round trip, to a permission broker socket in the
+`@jesscss/plugin-js` ran stylesheet JavaScript (Less `@plugin`, script `@use`)
+in a Deno subprocess. The compile stayed in Node, so every plugin function call
+during evaluation was a round trip: encode, pipe, wait, decode. Every file
+access Deno made was a second round trip, to a permission broker socket in the
 Node host.
 
-Measured on `dev` (`66717170b`, Node 24.11.1, Deno 2.9.6, M4 Pro at load
+Measured then on `dev` (`66717170b`, Node 24.11.1, Deno 2.9.6, M4 Pro at load
 averages 10–20, so indicative), compiling the less.js corpus
 `3rd-party/bootstrap4.less`:
 
@@ -28,6 +35,12 @@ averages 10–20, so indicative), compiling the less.js corpus
 | plugin function calls, one round trip each | 2,437 |
 | main thread idle, waiting on the worker | 115 ms of a 388 ms warm render (medians of 10) |
 | render time when the first `@plugin` is reached | 145 ms into the first render (735 ms total); 51–64 ms into a warm render (325–540 ms) |
+
+Now a plugin call is a function call inside the engine (§3), and a warm
+`bootstrap4.less` render in the engine costs what the same render costs in
+Node with scripts unsandboxed: 109–111 ms against 107–111 ms (5 interleaved
+rounds, medians of 25 warm renders, M4 Pro at load average ~5, so
+indicative).
 
 ## 2. The routing rule
 
@@ -76,13 +89,24 @@ through a value the compiler checks, not through a load error.
 compiler's engine at once: Deno spawns, imports the compiler and loads the
 entry's dialect while the render runs in Node, so a render that reaches a
 script finds it warm. A render that loads no script lets it go (the process
-is killed and the read-set work still in flight is aborted), and no later
+is killed and the code-closure walk still in flight is aborted), and no later
 render in that process starts one ahead of time. Its output never depends on
-Deno; its cold start pays the plugin import and the spawn call on the main
-thread, about 3 ms. Deno spawns on the read set its code closure can only add
-to (the read roots and the compiler's and plugin-js's own packages) while the
-closure, about a hundred package manifests, is walked; when the closure adds a
-folder, the process is switched before any render reaches it.
+Deno. Its cold start pays, on the main thread, the plugin import, the spawn
+call and the early read-root discovery: the read roots (§8.2) are found with
+synchronous file reads, which cannot be aborted, and cost one `realpath` per
+link in the governing `node_modules` (about 2 ms warm for this workspace's 76
+links, 44 ms with a cold file cache). Deno spawns on the read set its code
+closure can only add to (the read roots and the compiler's and plugin-js's own
+packages) while the closure, about a hundred package manifests, is walked with
+asynchronous reads that the let-go aborts; when the closure adds a folder, the
+process is switched before any render reaches it. An entry outside the
+compiler's install (a global or npx CLI, whose packages are in no read root) is
+the exception: there the closure always adds folders, so it is walked first,
+with synchronous reads (15–22 ms on the main thread). The walk still awaits each
+step, but every await settles in a microtask, so it ends before any timer or
+I/O callback in the process runs, unless an asynchronous walk of the same files
+is already in flight (another render's), which it then joins. Deno then starts
+once on the full read set instead of being started, killed and started again.
 
 **Compilers that can run there.** A compiler class runs in the engine when it
 declares its own `static moduleIdentity` (module and export), as jess's
@@ -114,9 +138,10 @@ imported into the host process. A global `jess` therefore needs
   as a `JessError`.
 - **What runs inside.** The Deno side imports the same compiler package the
   host uses, from where it is installed, and renders with the script runtime
-  in-process. The script runtime is today's `runtime-worker.ts` facade and
-  value bridge, called directly instead of over a pipe, so plugin values cross
-  the same conversion as today and output stays byte-identical.
+  in-process. A plugin call is a function call: the compiler's values become
+  the Less 4 tree nodes a plugin reads, and its result becomes a compiler
+  value, each converted once (`toPluginValue` / `fromPluginValue` in
+  `plugin-values.ts`), with no wire format in between.
 - **Plugins load once.** A script loads once per Deno process and loads again
   only when its file changes.
 - **One trust domain per compiler.** Scripts share the engine's realm with the
@@ -408,9 +433,66 @@ process; 3 interleaved rounds):
 The cold sandboxed CLI is ~180 ms slower than the cold unsandboxed one: Deno
 loads the compiler a second time and starts cold. The prototype forced every
 render into Deno; the routing of §2 adds the Node time to the first boundary on
-a cold first render. Starting the Deno process in the background when
-plugin-js is installed, while Node begins the compile, would overlap the two;
-that is an optimization to measure after the routing lands.
+a cold first render.
+
+**Starting Deno at CLI entry** (measured after the routing landed; not
+shipped). An experiment spawned the engine process before the CLI imported the
+compiler, with the same read set and flags, and handed it to plugin-js when the
+command and arguments matched exactly (killed otherwise; no process outlived the
+CLI). Cold CLI on a 16-core mini PC (WSL, Node v24.11.1), median of 21
+interleaved runs, ms:
+
+| fixture | dev | prestart | prestart off | lessc 4.x |
+|---|---|---|---|---|
+| `bootstrap4.less` | 936 | 958 | 953 | 461 |
+| `benchmark.less` | 476 | 528 | 485 | 299 |
+| a two-rule file | 154 | 212 | 164 | 74 |
+
+- Deno started earlier (spawn at ~88 ms instead of ~154 ms), but its warm-up
+  request waited for the read-set scan, which finished at ~218 ms, the moment
+  the compile sent its own warm-up and render. The early start bought nothing,
+  and a file with no script paid ~45–50 ms for a process it then killed.
+- Sending the warm-up as soon as Deno was ready made `bootstrap4.less` 890 ms
+  (−52 ms) and cost 3–17 ms on files with no script. Parked.
+- Either way the first render inside Deno takes ~550–600 ms (a warm compile
+  is ~145 ms on the M4 Pro above). That first render, not the spawn, is the
+  cold-start cost.
+
+**Where a cold CLI run goes** (after the relay stopped loading the compiler
+and the early read roots became synchronous; M4 Pro, load averages 9–13, so
+indicative). Cold CLI, spawn to exit, median of 15 interleaved runs, ms. The
+"no engine" arm runs plugins in Node through a measurement-only switch; it is
+not a shipping path and only separates the sandbox from the compiler:
+
+| fixture | jess | jess, no engine | lessc 4.9.1 |
+|---|---|---|---|
+| a one-rule file, no script | 117.6 | 110.6 | 62.9 |
+| a one-rule file with one `@plugin` | 222.7 | 110.9 | 67.8 |
+| the same, outside the compiler's install | 219.1 (245.5 before it started once) | — | — |
+| `bootstrap4.less` | 506.9 | 437.4 | 270.7 |
+
+- The plain path, on the one-rule file: Node starts in 22 ms; the jess import
+  is ~34 ms with the compile cache; the render is ~27 ms, of which the first
+  parse is 22–23 ms. That first parse is parseman assembling its tables when a
+  process first runs a grammar.
+- The sandboxed path, on `bootstrap4.less` (timeline inside the process,
+  median of 5): the engine is started 7 ms into the render; Deno is ready 42 ms
+  after the spawn; its warm-up, which imports the compiler and loads the
+  dialect, takes ~57 ms more; the render in Deno takes ~255 ms (in Node,
+  266 ms). Of the 42 ms to ready, Deno and its two threads take 15 ms and the
+  runtime's import of `@jesscss/core` the other ~28 ms. Inside Deno,
+  `@jesscss/core` imports in 20–23 ms and the rest of the compiler in
+  28–30 ms; Deno's V8 code cache is already in use (`--no-code-cache` raises
+  them to 38 and 41 ms).
+- The gap to lessc on `bootstrap4.less` is mostly the compiler's own render
+  (~255–266 ms against lessc's ~150 ms first compile); the sandbox adds ~70 ms,
+  which is the compiler loading a second time, in Deno.
+- Outside the compiler's install the engine used to be started, killed when
+  the closure added folders, and started again ~40 ms later (+31 to +44 ms on
+  the CLI). It now starts once, after a synchronous closure walk. The
+  outside-the-install row is its own A/B (15 interleaved runs, load ~14), in
+  which the same file inside the install took 199.8 ms before and 204.8 ms
+  after, the same code path.
 
 ## 8. Decisions
 

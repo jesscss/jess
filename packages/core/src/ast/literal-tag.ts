@@ -19,11 +19,13 @@
  * `LiteralTag` enum / `LitFields` / packed-tag contract are gone — the node type
  * IS the classification.
  */
-import type { Value } from './value-eval.js';
+import type { Color, Value } from './value-eval.js';
 import { HEX } from './color.js';
-import { makeBool, makeColorRgb, makeKeyword } from './value-factory.js';
-import { DimensionValueNode, QuotedValueNode } from './node-ctors.js';
+import { makeBool, makeKeyword } from './value-factory.js';
+import { ColorValueNode, DimensionValueNode, QuotedValueNode } from './node-ctors.js';
 import { namedColor } from './color-names.js';
+
+type Mutable<T> = { -readonly [P in keyof T]: T[P] };
 
 /*
  * SYNTHETIC-ONLY classifiers, used solely by the sniff below. A PARSED literal is
@@ -32,30 +34,16 @@ import { namedColor } from './color-names.js';
 const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
 const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
-/** Byte-identical port of the legacy engine's `parseHexString`. */
+/**
+ * The rgb and alpha a hex colour spells: `#` and 3, 4, 6 or 8 hex digits, as the
+ * grammar's colour token and {@link HEX_RE} take them. A short digit `d` is the
+ * byte `dd`, `d * 17`; the alpha, given by four or eight digits, is its byte over 255.
+ */
 export function parseHex(hex: string): { rgb: [number, number, number]; alpha: number } {
-  const hexValue = hex.slice(1);
-  const rgba: number[] = [];
-  if (hexValue.length >= 6) {
-    const chunks = hexValue.match(/.{2}/g) ?? [];
-    chunks.forEach((c, i) => {
-      if (i < 3) {
-        rgba.push(parseInt(c, 16));
-      } else {
-        rgba.push(parseInt(c, 16) / 255);
-      }
-    });
-  } else {
-    hexValue.split('').forEach((c, i) => {
-      if (i < 3) {
-        rgba.push(parseInt(c + c, 16));
-      } else {
-        rgba.push(parseInt(c + c, 16) / 255);
-      }
-    });
-  }
-  const [r = 0, g = 0, b = 0, a = 1] = rgba;
-  return { rgb: [r, g, b], alpha: a };
+  const short = hex.length < 6;
+  const width = short ? 1 : 2;
+  const channel = (i: number): number => parseInt(hex.slice(1 + i * width, 1 + width + i * width), 16) * (short ? 17 : 1);
+  return { rgb: [channel(0), channel(1), channel(2)], alpha: hex.length % 4 === 1 ? channel(3) / 255 : 1 };
 }
 
 /** Synthetic-only numeric split (no pre-parsed fields): a computed numeric string. */
@@ -88,13 +76,26 @@ function quotedFromBytes(str: string): Value {
 export function colorFromSrc(src: string): Value {
   if (src.charCodeAt(0) === 35 /* # */) {
     const { rgb, alpha } = parseHex(src);
-    return makeColorRgb(rgb, alpha, HEX, { src });
+    return spelledColor(src, rgb, alpha);
   }
   const named = namedColor(src);
   if (named) {
-    return makeColorRgb(named.rgb, named.alpha, HEX, { src });
+    return spelledColor(src, named.rgb, named.alpha);
   }
   return makeKeyword(src);
+}
+
+/**
+ * A colour as its author spelled it, a hex or a name, with its channels; the
+ * browser runtime builds a recipe's colour name with it too (R8 spec). Its
+ * bytes are its spelling, as `serializeColor` writes a colour with a `src`, so
+ * it is built without the serializer: a runtime page that reads a hex bundles
+ * no colour writer.
+ */
+export function spelledColor(src: string, rgb: readonly [number, number, number], alpha: number): Color {
+  const c: Mutable<Color> = new ColorValueNode(rgb, alpha, HEX, src);
+  c.src = src;
+  return c;
 }
 
 /**
@@ -151,13 +152,14 @@ export function quotedFromFields(value: string, quote: string, escaped: boolean,
  * Classify + build a string the parser never typed by sniffing its bytes. A
  * quoted-looking string materializes as a quoted value; `true`/`false` as a
  * value-domain `Bool` (guard booleanness — no AST `Bool` node exists); a numeric /
- * hex / named-color shape as its typed value; else a keyword.
+ * hex shape as its typed value, a colour name too when `named` is given; else
+ * a keyword.
  */
-function sniffBuild(text: string): Value {
+function sniffBuild(text: string, named?: typeof namedColor): Value {
   const c0 = text.charCodeAt(0);
   if (c0 === 35 /* # */ && HEX_RE.test(text)) {
     const { rgb, alpha } = parseHex(text);
-    return makeColorRgb(rgb, alpha, HEX, { src: text });
+    return spelledColor(text, rgb, alpha);
   }
 
   // Numeric: ONE family (united or unitless — no split).
@@ -171,10 +173,10 @@ function sniffBuild(text: string): Value {
   }
 
   // A bare identifier that names a CSS color materializes as a Color.
-  if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(text)) {
-    const named = namedColor(text);
-    if (named) {
-      return makeColorRgb(named.rgb, named.alpha, HEX, { src: text });
+  if (named !== undefined && /^[a-zA-Z][a-zA-Z0-9]*$/.test(text)) {
+    const color = named(text);
+    if (color) {
+      return spelledColor(text, color.rgb, color.alpha);
     }
   }
   return isQuotedBytes(text) ? quotedFromBytes(text) : makeKeyword(text);
@@ -186,5 +188,10 @@ function sniffBuild(text: string): Value {
  * sniff.
  */
 export function sniffLiteral(str: string): Value {
+  return sniffBuild(str.trim(), namedColor);
+}
+
+/** {@link sniffLiteral} without the colour-name table: a name stays the keyword it spells, as the compile reads one. */
+export function sniffUnnamed(str: string): Value {
   return sniffBuild(str.trim());
 }

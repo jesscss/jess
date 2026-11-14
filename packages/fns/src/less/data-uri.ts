@@ -1,4 +1,4 @@
-import { groupItems, makeKeyword, defineFunction } from '@jesscss/core/value';
+import { makeKeyword, define, checkAny, optional } from '@jesscss/core/value';
 import type { Fn, Value } from '@jesscss/core/value';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { lookupMime } from '../util/mime.js';
@@ -9,11 +9,10 @@ import { lookupMime } from '../util/mime.js';
  * base64-encoded. If the injected IO capability cannot read the file, it returns
  * the authored `url()` call as a value-domain keyword.
  */
-const dataUri: Fn = defineFunction('data-uri', {
-  params: [{ type: 'any' }, { type: 'any', optional: true }],
+const dataUri: Fn = /* @__PURE__ */ define('data-uri', {
+  params: [{ type: 'any', check: checkAny }, /* @__PURE__ */ optional({ type: 'any', check: checkAny })],
   variadic: true,
-  body: (value, ctx): MaybePromise<Value> => {
-    const items = groupItems(value);
+  body: (items, ctx): MaybePromise<Value> => {
     if (items.length === 0) {
       throw new TypeError('data-uri() requires a path');
     }

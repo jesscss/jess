@@ -1,19 +1,14 @@
-import { defineFunction, groupItems, groupSeparator, makeDimension } from '@jesscss/core/value';
+import { groupItems, makeDimension, define, checkAny } from '@jesscss/core/value';
 
 /**
  * Less `length()` — the number of items in a list (or `1` for a single value).
  * @param value a list or single value
  * @returns the item count as a unitless `Dimension`
  */
-const length = defineFunction('length', {
-  params: [{ type: 'any' }],
+const length = /* @__PURE__ */ define('length', {
+  params: [{ type: 'any', check: checkAny }],
   variadic: true,
-  body: (list) => {
-    const args = groupItems(list);
-    const target = groupSeparator(list) === ',' ? args[0] : list;
-    const items = groupItems(target);
-    return makeDimension(items.length);
-  }
+  body: args => makeDimension(groupItems(args[0]).length)
 });
 
 export default length;

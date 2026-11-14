@@ -1,17 +1,17 @@
-import type { Fn, ValueGroup } from '@jesscss/core/value';
-import { defineFunction, groupItems } from '@jesscss/core/value';
-import { isModern, makeRgb } from './kernels.js';
+import type { Fn } from '@jesscss/core/value';
+import { define, checkAny, optional } from '@jesscss/core/value';
+import { rgbBody } from './rgb.js';
 
 /** Sass `rgba()` — the same construction kernel as `rgb()` under its own dispatch name. */
-export const rgba: Fn = defineFunction('rgba', {
+export const rgba: Fn = define('rgba', {
   params: [
-    { name: 'red', type: 'any' },
-    { name: 'green', type: 'any', optional: true },
-    { name: 'blue', type: 'any', optional: true },
-    { name: 'alpha', type: 'any', optional: true }
+    { name: 'red', type: 'any', check: checkAny },
+    /* @__PURE__ */ optional({ name: 'green', type: 'any', check: checkAny }),
+    /* @__PURE__ */ optional({ name: 'blue', type: 'any', check: checkAny }),
+    /* @__PURE__ */ optional({ name: 'alpha', type: 'any', check: checkAny })
   ],
   variadic: true,
-  body: (list: ValueGroup) => makeRgb(groupItems(list), isModern(list))
+  body: rgbBody
 });
 
 export default rgba;

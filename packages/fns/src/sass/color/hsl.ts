@@ -1,6 +1,6 @@
-import type { Fn, ValueGroup } from '@jesscss/core/value';
-import { defineFunction, groupItems } from '@jesscss/core/value';
-import { isModern, makeHsl } from './kernels.js';
+import type { Fn } from '@jesscss/core/value';
+import { define, checkAny, optional } from '@jesscss/core/value';
+import { makeHsl } from './kernels.js';
 
 /**
  * Sass `hsl()` — construct an hsl colour, or re-alpha an existing one.
@@ -12,15 +12,15 @@ import { isModern, makeHsl } from './kernels.js';
  * `0`), and hue accepts any angle unit wrapped to 0-360 (`hsl(-40,50%,50%)` →
  * `hsl(320, …)`, `hsl(0.5turn,…)` → `hsl(180, …)`).
  */
-export const hsl: Fn = defineFunction('hsl', {
+export const hsl: Fn = define('hsl', {
   params: [
-    { name: 'hue', type: 'any' },
-    { name: 'saturation', type: 'any', optional: true },
-    { name: 'lightness', type: 'any', optional: true },
-    { name: 'alpha', type: 'any', optional: true }
+    { name: 'hue', type: 'any', check: checkAny },
+    /* @__PURE__ */ optional({ name: 'saturation', type: 'any', check: checkAny }),
+    /* @__PURE__ */ optional({ name: 'lightness', type: 'any', check: checkAny }),
+    /* @__PURE__ */ optional({ name: 'alpha', type: 'any', check: checkAny })
   ],
   variadic: true,
-  body: (list: ValueGroup) => makeHsl(groupItems(list), isModern(list))
+  body: (args, ctx) => makeHsl(args, ctx.modern === true)
 });
 
 export default hsl;

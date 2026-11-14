@@ -1,4 +1,4 @@
-import { compareOrder, defineFunction } from '@jesscss/core/value';
+import { compareOrder, defineFunction, checkDimension } from '@jesscss/core/value';
 import { convertToMatch } from './units.js';
 
 /**
@@ -14,10 +14,11 @@ import { convertToMatch } from './units.js';
  * When `$min` is not below `$max`, `$min` wins. (sass-spec `core_functions/math/clamp.hrx`.)
  */
 const clamp = defineFunction('clamp', {
+  cssFunction: true,
   params: [
-    { name: 'min', type: 'Dimension' },
-    { name: 'number', type: 'Dimension' },
-    { name: 'max', type: 'Dimension' }
+    { name: 'min', type: 'Dimension', check: checkDimension },
+    { name: 'number', type: 'Dimension', check: checkDimension },
+    { name: 'max', type: 'Dimension', check: checkDimension }
   ] as const,
   body: (min, number, max) => {
     convertToMatch(number, min, '$number', '$min');

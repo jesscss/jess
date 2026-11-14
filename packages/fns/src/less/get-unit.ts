@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { makeKeyword, defineFunction } from '@jesscss/core/value';
+import { makeKeyword, define, checkDimension } from '@jesscss/core/value';
 import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
@@ -7,7 +7,7 @@ import { requireDimension } from '../shared/math/math-helper.js';
  * number). The value-domain inverse of `unit(d, u)`. Byte-faithful to legacy
  * `get-unit` (`new Anonymous(n.unit.toString())`).
  */
-export const getUnit: Fn = defineFunction('get-unit', {
-  params: [{ type: 'Dimension' }],
+export const getUnit: Fn = /* @__PURE__ */ define('get-unit', {
+  params: [{ type: 'Dimension', check: checkDimension }],
   body: d => makeKeyword(requireDimension(d).unit ?? '')
 });

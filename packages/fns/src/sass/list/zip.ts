@@ -1,10 +1,10 @@
-import { defineFunction, groupItems, makeList, type ValueGroup } from '@jesscss/core/value';
+import { groupItems, makeList, define, checkAny, type ValueGroup, rest } from '@jesscss/core/value';
 
-const zip = defineFunction('zip', {
-  params: [{ name: 'lists', type: 'any', rest: true }] as const,
+const zip = define('zip', {
+  params: [/* @__PURE__ */rest({ name: 'lists', type: 'any', check: checkAny })] as const,
   variadic: true,
   body: (args) => {
-    const itemLists = groupItems(args).map(groupItems);
+    const itemLists = args.map(groupItems);
     if (itemLists.length === 0) {
       return makeList([], ',');
     }

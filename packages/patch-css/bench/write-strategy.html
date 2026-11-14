@@ -1,0 +1,155 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>patch-css write strategy</title>
+<!--
+  How a page should take new custom-property values (docs/perf/BENCHMARKS.md,
+  "patch-css write strategy"). Open in a browser; results print below and on
+  window.results. Each sample writes one update and forces style + layout, so
+  it times the write and the recalc it causes on a page where every element
+  reads the variables. Each cell is the median and interquartile range of all
+  samples over four rounds, each round in a rotated strategy order; the A/A
+  column repeats the first strategy, so its gap from that strategy is noise.
+  performance.now() is coarsened to 0.1 ms here, so a 0.1 ms gap means nothing.
+-->
+<style>
+  body { margin: 0; font: 12px system-ui; }
+  .card { display: inline-block; width: 60px; margin: 2px; padding: calc(var(--v3, 2px) * 1); background: var(--v0, #eee); color: var(--v1, #222); border: 1px solid var(--v2, #999); }
+  .card i { display: block; height: var(--v4, 4px); background: var(--v5, #ccc); opacity: var(--v6, 1); }
+  .card b { display: block; outline: 1px solid var(--v7, red); font-weight: var(--v8, 400); letter-spacing: var(--v9, 0); }
+  pre { position: fixed; top: 0; right: 0; background: #fff; margin: 0; padding: 8px; z-index: 1; }
+</style>
+<pre id="out">running…</pre>
+<div id="cards"></div>
+<script type="module">
+const CARDS = 3000;
+const NAMES = Array.from({ length: 10 }, (_, i) => `--v${i}`);
+const SAMPLES = 150;
+
+const html = '<div class="card"><i></i><b>x</b><span>y</span></div>'.repeat(CARDS);
+document.getElementById('cards').innerHTML = html;
+const probe = document.querySelector('#cards > .card:last-child b');
+const root = document.documentElement;
+
+let tick = 0;
+const value = (name, n) => {
+  const i = Number(name.slice(3));
+  switch (i) {
+    case 3: case 4: return `${2 + (n % 5)}px`;
+    case 6: return String(0.5 + (n % 5) / 10);
+    case 8: return String(100 * (1 + (n % 8)));
+    case 9: return `${n % 3}px`;
+    default: return `hsl(${(n * 37 + i * 20) % 360} 60% 50%)`;
+  }
+};
+const update = (count) => {
+  tick++;
+  const out = {};
+  for (let i = 0; i < count; i++) out[NAMES[(tick + i) % NAMES.length]] = value(NAMES[(tick + i) % NAMES.length], tick);
+  return out;
+};
+
+function inlineAll() {
+  return { write(out) { for (const k in out) root.style.setProperty(k, out[k]); }, reset() { for (const k of NAMES) root.style.removeProperty(k); } };
+}
+/** What `writeVars` does: skip a value the style already holds, read from the style. */
+function inlineChanged() {
+  return {
+    write(out) { for (const k in out) { if (root.style.getPropertyValue(k) !== out[k]) root.style.setProperty(k, out[k]); } },
+    reset() { for (const k of NAMES) root.style.removeProperty(k); }
+  };
+}
+function sheetReplace() {
+  const sheet = new CSSStyleSheet();
+  const all = new Map();
+  return {
+    install() { document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]; },
+    write(out) { for (const k in out) all.set(k, out[k]); let text = ':root{'; for (const [k, v] of all) text += `${k}:${v};`; sheet.replaceSync(`${text}}`); },
+    reset() { all.clear(); sheet.replaceSync(''); document.adoptedStyleSheets = document.adoptedStyleSheets.filter(s => s !== sheet); }
+  };
+}
+function sheetRuleChanged() {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(':root{}');
+  const style = sheet.cssRules[0].style;
+  const last = new Map();
+  return {
+    install() { document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]; },
+    write(out) { for (const k in out) { if (last.get(k) !== out[k]) { last.set(k, out[k]); style.setProperty(k, out[k]); } } },
+    reset() { last.clear(); for (const k of NAMES) style.removeProperty(k); document.adoptedStyleSheets = document.adoptedStyleSheets.filter(s => s !== sheet); }
+  };
+}
+
+/** `inlineAll (A/A)` repeats `inlineAll`: the gap between the two is the noise floor. */
+const STRATEGIES = { inlineAll, 'inlineAll (A/A)': inlineAll, inlineChanged, sheetReplace, sheetRuleChanged };
+
+const flush = () => { void probe.offsetHeight; return getComputedStyle(probe).outlineColor; };
+const quantile = (xs, q) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor((s.length - 1) * q)]; };
+
+/**
+ * One update per sample, `calls` vars() calls per update, `count` names per
+ * call; `same` re-sends the last values. `frame` merges the calls into one
+ * write, as batching them into an animation frame would; `readBetween` reads
+ * layout after each call, as a page that measures between updates does.
+ */
+function run(make, { count, calls = 1, same = false, frame = false, readBetween = false }) {
+  const strategy = make();
+  strategy.install?.();
+  tick = 0;
+  const warm = update(NAMES.length);
+  strategy.write(warm);
+  flush();
+  const times = [];
+  let lastOut = warm;
+  for (let s = 0; s < SAMPLES + 20; s++) {
+    const batches = [];
+    for (let c = 0; c < calls; c++) batches.push(same ? lastOut : update(count));
+    const t0 = performance.now();
+    if (frame) {
+      const merged = {};
+      for (const b of batches) Object.assign(merged, b);
+      strategy.write(merged);
+    } else {
+      for (const b of batches) {
+        strategy.write(b);
+        if (readBetween) flush();
+      }
+    }
+    flush();
+    const t1 = performance.now();
+    if (s >= 20) times.push(t1 - t0);
+    lastOut = batches[batches.length - 1];
+  }
+  strategy.reset();
+  flush();
+  return times;
+}
+
+const SCENARIOS = {
+  'one var changes': { count: 1 },
+  'all 10 change': { count: 10 },
+  'nothing changes': { count: 10, same: true },
+  '5 calls before a frame, at once': { count: 2, calls: 5 },
+  '5 calls before a frame, merged': { count: 2, calls: 5, frame: true },
+  '5 calls, layout read between each': { count: 2, calls: 5, readBetween: true }
+};
+
+const results = {};
+await new Promise(r => setTimeout(r, 300));
+const order = Object.entries(STRATEGIES);
+for (let round = 0; round < 4; round++) {
+  for (const [scenario, opts] of Object.entries(SCENARIOS)) {
+    /* Each round starts one strategy later, so no strategy always runs after another. */
+    for (let i = 0; i < order.length; i++) {
+      const [name, make] = order[(i + round) % order.length];
+      ((results[scenario] ??= {})[name] ??= []).push(...run(make, opts));
+    }
+  }
+}
+const table = {};
+const ms = (x) => Number(x.toFixed(1));
+for (const [scenario, byName] of Object.entries(results)) {
+  table[scenario] = Object.fromEntries(Object.entries(byName).map(([n, xs]) => [n, `${ms(quantile(xs, 0.5))} (${ms(quantile(xs, 0.25))}–${ms(quantile(xs, 0.75))})`]));
+}
+window.results = { elements: document.querySelectorAll('#cards *').length, samples: SAMPLES * 4, ms: table, visible: document.visibilityState, ua: navigator.userAgent };
+document.getElementById('out').textContent = JSON.stringify(window.results, null, 1);
+</script>

@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { HEX, colorRawRgb, defineFunction, makeColorRgb } from '@jesscss/core/value';
+import { HEX, colorRawRgb, makeColorRgb, define, checkColor, checkAny, optional } from '@jesscss/core/value';
 import { ieHexString, noExcess, requireColor } from './kernels.js';
 
 /**
@@ -13,8 +13,8 @@ import { ieHexString, noExcess, requireColor } from './kernels.js';
  * `ie-hex-str(rgba(1.6,2,3,0.333))` → `#55020203` (channels and alpha quantize at
  * this output boundary — that IS the boundary).
  */
-export const ieHexStr: Fn = defineFunction('ie-hex-str', {
-  params: [{ name: 'color', type: 'Color' }, { name: 'excess', type: 'any', optional: true }],
+export const ieHexStr: Fn = define('ie-hex-str', {
+  params: [{ name: 'color', type: 'Color', check: checkColor }, /* @__PURE__ */ optional({ name: 'excess', type: 'any', check: checkAny })],
   body: (c, excess) => {
     noExcess(excess, 1);
     const color = requireColor(c);

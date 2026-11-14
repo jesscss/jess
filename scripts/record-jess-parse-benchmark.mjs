@@ -177,8 +177,8 @@ const label = options.label
   || `parseman-${parseman.resolved}-${gitState.commit?.slice(0, 12) ?? 'unknown'}`;
 
 const build = options.skipBuild
-  ? skipped(['pnpm', '--filter', '@jesscss/jess-parser', 'build'])
-  : run('pnpm', ['--filter', '@jesscss/jess-parser', 'build']);
+  ? skipped(['pnpm', '--filter', '@jesscss/jess-parser...', 'build'])
+  : run('pnpm', ['--filter', '@jesscss/jess-parser...', 'build']);
 
 const macro = options.skipGates
   ? skipped(['pnpm', 'run', 'check:macro'])

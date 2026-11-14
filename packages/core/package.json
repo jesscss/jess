@@ -9,7 +9,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.32",
+  "version": "2.0.0-alpha.33",
   "description": "The Jess Core Library",
   "main": "lib/index.cjs",
   "module": "lib/index.js",
@@ -42,11 +42,23 @@
       "import": "./lib/form.js",
       "require": "./lib/form.cjs"
     },
+    "./call-named": {
+      "types": "./lib/call-named.d.ts",
+      "source": "./src/call-named.ts",
+      "import": "./lib/call-named.js",
+      "require": "./lib/call-named.cjs"
+    },
     "./ast": {
       "types": "./lib/ast.d.ts",
       "source": "./src/ast.ts",
       "import": "./lib/ast.js",
       "require": "./lib/ast.cjs"
+    },
+    "./sourcemap": {
+      "types": "./lib/sourcemap.d.ts",
+      "source": "./src/sourcemap.ts",
+      "import": "./lib/sourcemap.js",
+      "require": "./lib/sourcemap.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -58,11 +70,10 @@
   },
   "dependencies": {
     "@jesscss/awaitable-pipe": "workspace:*",
+    "@jesscss/patch-css": "workspace:*",
     "@jridgewell/gen-mapping": "~0.3.12",
     "@ungap/set-methods": "~0.1.1",
-    "big.js": "^7.0.1",
-    "chalk": "^4.1.2",
-    "color-name": "~2.0.0"
+    "chalk": "^4.1.2"
   },
   "scripts": {
     "ci": "pnpm build && pnpm test --run",
@@ -85,7 +96,7 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
-    "@types/big.js": "^6.2.2",
+    "color-name": "~2.0.0",
     "rollup-plugin-circular-dependencies": "~1.1.2",
     "rollup-plugin-visualizer": "~6.0.3",
     "vite-plugin-circular-dependency": "~0.5.0",

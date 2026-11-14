@@ -1,11 +1,18 @@
-import { formNumber, isDimension, knownUnit } from '@jesscss/core/form';
-import type { ValueGroup } from '@jesscss/core/value';
-import { inUnits } from './color-ctor-helper.js';
+import { asNumber, formNumber, isDimension, knownUnit } from '@jesscss/core/form';
+import { makeDimension, checkKinds, type ValueGroup } from '@jesscss/core/value';
+import { fitsAny, inUnits } from './color-ctor-helper.js';
 
 export const fitsNumber = (value: ValueGroup): boolean => inUnits(value, ['']);
 
-/** A number a form reads, or what only the browser knows of one, taken to hold a number (Q3). */
-export const NUMBER_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsNumber } as const;
+/** What `sin()`, `cos()` and `tan()` take: a number or an angle. */
+export const fitsAngle = (value: ValueGroup): boolean => inUnits(value, ['', 'deg', 'grad', 'rad', 'turn']);
+
+/** A number a form reads in any unit, or what only the browser knows of one, of no known type taken to hold a number (Q3). */
+export const NUMBER_ARG = { type: ['Dimension', 'FunctionCall'], check: checkKinds, fits: fitsAny } as const;
+
+/** `value` as a number: its known unit dropped. */
+export const numberOf = (value: ValueGroup): ValueGroup =>
+  isDimension(value) ? makeDimension(value.number) : asNumber(value);
 
 export { isDimension };
 

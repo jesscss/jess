@@ -1,6 +1,10 @@
-import type { Fn } from '@jesscss/core/value';
-import { colorRawRgb, defineFunction, makeColorRgb } from '@jesscss/core/value';
-import { noExcess, percentAmount, requireColor } from './kernels.js';
+import { checkKinds, optional } from '@jesscss/core/value';
+import { defineForm, type FormCall } from '@jesscss/core/form';
+import type { Dimension, Fn, FunctionCall, ValueGroup } from '@jesscss/core/value';
+import * as forms from '../../less/css-forms.generated.js';
+import { percentOf } from '../../less/mix-form.js';
+import { COLOR, EXCESS } from './color-form.js';
+import { noExcess, percentAmount } from './kernels.js';
 
 /**
  * `color.invert(color, $weight: 100%)` — mix the channel-wise inverse into the
@@ -13,22 +17,22 @@ import { noExcess, percentAmount, requireColor } from './kernels.js';
  * weight SCALE — `invert(#f00, 0.5)` → `rgb(253.725, 1.275, 1.275)`, i.e. a bare
  * `0.5` means half a percent, not half.
  *
- * `invert(50%)` (the CSS filter) is not a colour call: it fails the kind check
- * and re-emits verbatim, matching dart-sass.
+ * `invert(50%)` (the CSS filter) is not a colour call: it fails the kind check.
+ * Over one argument only the browser knows, a call not through a module may be
+ * the filter (Q13).
  */
-export const invert: Fn = defineFunction('invert', {
-  params: [
-    { name: 'color', type: 'Color' },
-    { name: 'weight', type: 'Dimension', optional: true },
-    { name: 'excess', type: 'any', optional: true }
-  ],
-  body: (c, weight, excess) => {
+export const invert: Fn = /* @__PURE__ */ defineForm('invert', {
+  params: [COLOR, /* @__PURE__ */ optional({ type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'weight' }), EXCESS],
+  filter: true,
+  form: (color: ValueGroup, weight?: Dimension | FunctionCall, excess?: ValueGroup): FormCall => {
     noExcess(excess, 2);
-    const color = requireColor(c);
-    const w = weight === undefined ? 1 : percentAmount(weight);
-    const rgb = colorRawRgb(color);
-    const blend = (v: number): number => (255 - v) * w + v * (1 - w);
-    return makeColorRgb([blend(rgb[0]), blend(rgb[1]), blend(rgb[2])], color.alpha, color.format);
+    if (weight === undefined) {
+      return [forms.invert, color];
+    }
+    if (weight.type === 'Dimension') {
+      percentAmount(weight);
+    }
+    return [forms.invertWeighted, color, percentOf(weight)];
   }
 });
 

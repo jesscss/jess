@@ -23,6 +23,9 @@ export type JessErrorCode =
   | 'parse/unsupported-mixin-name'
   | 'parse/unparenthesized-mixin-guard'
   | 'parse/leading-separator-value'
+  | 'parse/at-root-placement'
+  | 'parse/invalid-rule-prelude'
+  | 'parse/return-placement'
   | 'parse/uncalled-mixin-reference'
   | 'parse/important-on-mixin-reference'
   | 'parse/import-postlude-on-compile-time-import'
@@ -62,6 +65,7 @@ export type JessErrorCode =
   | 'eval/expose-not-declared'
   | 'eval/expose-conflict'
   | 'eval/expose-key-conflict'
+  | 'eval/expose-unit-conflict'
   | 'eval/loop-iteration-limit'
   | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
@@ -70,6 +74,7 @@ export type JessErrorCode =
   | 'eval/invalid-unit-arithmetic'
   | 'eval/division-by-zero'
   | 'eval/unexpressible-unit'
+  | 'eval/unresolved-builtin'
   | 'eval/url-option-skipped'
   | 'eval/charset-not-utf8'
   | 'eval/incomparable-operands'
@@ -214,6 +219,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   ],
   ['parse/leading-separator-value', leadingSeparatorValueText('/')],
   [
+    'parse/invalid-rule-prelude',
+    {
+      summary: 'This rule\'s prelude is not a selector',
+      reason: 'A block makes this a rule, and no selector reads what comes before it, so a browser drops the rule.',
+      fix: 'Write a selector. If a declaration comes first, end it with `;`.'
+    }
+  ],
+  [
     'parse/arithmetic-outside-expression',
     {
       summary: '`*` multiplies only inside $( … ).',
@@ -299,6 +312,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '@expose takes a comma-separated list of variable names',
       reason: '@expose is followed by one or more variable names without their @, separated by commas, and ends at a semicolon.',
       fix: 'Write the names it exposes, for example: @expose brand, gap;'
+    }
+  ],
+  [
+    'parse/return-placement',
+    {
+      summary: '`@return` is outside a place a function can read it',
+      reason: 'A function yields a `@return` written directly in its body or in an `@if`/`@else` branch of it. Anywhere else, there is no value to yield and nothing for the compiler to write.',
+      fix: 'Write the `@return` directly in the function body or an `@if`/`@else` branch: assign in the loop, and return after it.'
     }
   ],
   [
@@ -439,6 +460,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '@expose ${name} and @expose ${other} at ${at} are both ${key} in JavaScript',
       reason: 'The runtime keys each exposed variable by its name with dash-case turned to camelCase (brand-color is brandColor), so ${name} and ${other} would be one key.',
       fix: 'Rename one of the variables, or expose only one of them.'
+    }
+  ],
+  [
+    'eval/expose-unit-conflict',
+    {
+      summary: 'Exposed variable @${name} read with two units',
+      reason: '@${name} is exposed and its value has no known unit, so the CSS function that reads it sets the unit it is given at run time: ${fn}() reads it as ${unit}, and ${other}() as ${otherUnit}. No value set at run time is both.',
+      fix: 'Read @${name} in one unit, or expose a separate variable for each.'
     }
   ],
   [
@@ -593,6 +622,15 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
+    'eval/unresolved-builtin',
+    {
+      summary: 'Built-in left to the browser',
+      reason:
+        '${name}() did not compute at compile time. It printed ${printed}, so the output depends on browser support for that form.',
+      fix: 'Pass values known at compile time, or leave this check off if the browsers you target support that form.'
+    }
+  ],
+  [
     'eval/unexpressible-unit',
     {
       summary: 'Unit has no CSS spelling',
@@ -647,6 +685,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '`${what}` is not valid in any CSS value',
       reason: 'CSS reads `${what}` as a delim token, and no CSS value accepts it, so a browser drops the declaration.',
       fix: '${fix}'
+    }
+  ],
+  [
+    'parse/at-root-placement',
+    {
+      summary: '`@at-root` is not supported',
+      reason: '`@at-root` moves a rule out of its parent in the output, and the compiler has no way to write that yet. Writing the at-rule as it stands would give CSS that means something else.',
+      fix: 'Write the rule at the top level, outside its parent.'
     }
   ],
   [

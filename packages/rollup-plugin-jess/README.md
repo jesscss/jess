@@ -85,13 +85,23 @@ Each value is keyed by the variable's name with dash-case turned to camelCase:
 Values are CSS literals (`#08f`, `8px`, `red`). The runtime recomputes each
 derived value with the same function the compile ran.
 
+A value that a computed value reads as a colour, or that holds a colour (`@list: #f00 #00f` read through `extract()`), is a hex colour (`#08f`). A
+colour name (`red`) throws a `TypeError`, unless the stylesheet itself writes a
+name the runtime reads (the variable's own value) or the plugin option
+`colorNames: true` is set; this keeps the colour-name table out of the bundle
+(R8 runtime spec, colour names). A name a computed call's own argument writes
+as a colour, as in `lightness(multiply(@brand, gray))`, is read when the
+stylesheet compiles and brings no table.
+
 The module imports the runtime from `@jesscss/fns`, so a Rollup build of such a
 stylesheet needs [`@rollup/plugin-node-resolve`](https://github.com/rollup/plugins/tree/master/packages/node-resolve)
 to bundle it. Vite resolves it on its own.
 
 ## Options
 
-The plugin forwards options to the `jess` compiler. See `jess`’s `ConfigOptions`.
+- `config`: passed to the `jess` compiler. See `jess`’s `ConfigOptions`.
+- `colorNames`: accept a colour name from `vars()` and `set()` for a variable a
+  computed value reads as a colour. Default `false`.
 
 
 ## License

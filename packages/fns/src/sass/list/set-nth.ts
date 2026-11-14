@@ -1,11 +1,11 @@
-import { defineFunction, listValueAt } from '@jesscss/core/value';
+import { listValueAt, define, checkAny, checkDimension } from '@jesscss/core/value';
 import { createSassListResult, getSassListInfo, resolveSassListIndex } from './util.js';
 
-const setNth = defineFunction('set-nth', {
+const setNth = define('set-nth', {
   params: [
-    { name: 'list', type: 'any' },
-    { name: 'index', type: 'Dimension' },
-    { name: 'value', type: 'any' }
+    { name: 'list', type: 'any', check: checkAny },
+    { name: 'index', type: 'Dimension', check: checkDimension },
+    { name: 'value', type: 'any', check: checkAny }
   ] as const,
   body: (list, index, value) => {
     const info = getSassListInfo(list);

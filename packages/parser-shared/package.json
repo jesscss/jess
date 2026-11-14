@@ -5,7 +5,7 @@
     "url": "git+https://github.com/jesscss/jess.git",
     "directory": "packages/parser-shared"
   },
-  "version": "2.0.0-alpha.32",
+  "version": "2.0.0-alpha.33",
   "type": "module",
   "publishConfig": {
     "access": "public"
@@ -49,6 +49,6 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "dependencies": {
-    "parseman": "0.61.3"
+    "parseman": "0.62.0"
   }
 }

@@ -7,6 +7,7 @@ import type { Plugin, PluginContext, RollupLog } from 'rollup';
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
 type ExportRuntimeData = NonNullable<RenderResult['runtime']>;
 type ExportRecipe = ExportRuntimeData['derived'][string];
+type ExportColor = Extract<Extract<ExportRecipe, { args: unknown }>['args'][number], { color: string }>;
 type Diagnostic = RenderResult['errors'][number] | RenderResult['warnings'][number];
 
 export type JessRollupPluginOptions = {
@@ -27,6 +28,17 @@ export type JessRollupPluginOptions = {
    * Emit file name for the CSS asset. Defaults to `<basename>.css`.
    */
   cssFileName?: (id: string) => string;
+
+  /**
+   * Accept a colour name (`red`) from `vars()` for an export that a computed
+   * value reads as a colour. Without it the name table ships only when the
+   * stylesheet itself writes a name the runtime reads (such an export's own
+   * value, or an argument of a computed call); otherwise `vars()`
+   * takes a hex colour there and throws a `TypeError` on a name
+   * (docs/architecture/core/spec/R8-browser-runtime.md, colour names).
+   * Default: false
+   */
+  colorNames?: boolean;
 };
 
 /** The part of Vite's hot-update context this plugin reads. */
@@ -56,7 +68,7 @@ const INLINE = '?inline';
  */
 const cssId = (file: string): string => `${file}${MODULES.test(file) ? '.module.css' : '.css'}`;
 
-/** Where the runtime's own imports (`@jesscss/fns/…`) resolve from: this package, which depends on them. */
+/** Where the runtime's own imports (`@jesscss/patch-css`, `@jesscss/fns/…`) resolve from: this package, which depends on them. */
 const ANCHOR = fileURLToPath(import.meta.url);
 
 /**
@@ -64,7 +76,8 @@ const ANCHOR = fileURLToPath(import.meta.url);
  * compiler. The module's default export is the CSS; the CSS is also emitted as
  * an asset (Rollup) or imported (Vite). A stylesheet that exposes variables
  * (`@expose brand;`) also exports `vars(values)` and `set(values,
- * target?)` from `@jesscss/fns/runtime`, which recompute what depends on them
+ * target?)`: over `@jesscss/patch-css` when nothing is computed from an export,
+ * else `vars` from `@jesscss/fns/runtime`, which recomputes what depends on them
  * (docs/architecture/core/spec/R8-browser-runtime.md).
  */
 export default function jessRollupPlugin(options: JessRollupPluginOptions = {}): Plugin & { enforce: 'pre'; configResolved(config: { readonly root: string }): void; handleHotUpdate<M>(context: HotUpdate<M>): M[] } {
@@ -135,7 +148,7 @@ export default function jessRollupPlugin(options: JessRollupPluginOptions = {}):
       } else if (emitCss) {
         this.emitFile({ type: 'asset', fileName: cssFileName(file), source: result.css });
       }
-      return { code: moduleCode(result.css, result.runtime, cssImport), map: { mappings: '' } };
+      return { code: moduleCode(result.css, result.runtime, cssImport, options.colorNames === true), map: { mappings: '' } };
     }
   };
 }
@@ -183,7 +196,7 @@ function log(diagnostic: Diagnostic, file: string): RollupLog {
 }
 
 /** The stylesheet's JS module: its CSS, and the runtime when it exposes variables. */
-export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, cssImport?: string): string {
+export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, cssImport?: string, colorNames = false): string {
   const modules = cssImport?.endsWith('.module.css') === true;
   const lines = cssImport === undefined ? [] : modules ? [`export * from ${JSON.stringify(cssImport)};`, `export { default } from ${JSON.stringify(cssImport)};`] : [`import ${JSON.stringify(cssImport)};`];
   if (runtime !== undefined) {
@@ -199,16 +212,80 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
       }
       return id;
     };
-    const write = (recipe: ExportRecipe | string): string =>
-      typeof recipe === 'string' || 'export' in recipe
+
+    /* A recipe's own argument as text, which only a text reader reads. */
+    const holdsText = (recipe: ExportRecipe | ExportColor | string): boolean =>
+      typeof recipe === 'string' || ('fn' in recipe && recipe.args.some(holdsText));
+    const text = Object.values(runtime.derived).some(holdsText);
+
+    /* Names are read when asked for, or when the stylesheet itself writes one the runtime reads: a colour export's value, or a recipe's own argument. */
+    const names = colorNames || runtime.names;
+
+    /*
+     * The reader is the least the page needs: hex only when no recipe holds
+     * text and every export a recipe reads goes straight to a colour
+     * parameter, so it is one colour, and its compile-time CSS, which the
+     * reader also reads, is a hex. An export passed through another function
+     * may be a list (`luma(extract(@list, 1))`).
+     */
+    const hexOnly = !names && !text && runtime.direct && Object.values(runtime.defaults).every(css => /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(css));
+
+    /*
+     * A call whose arguments the page proves one colour each, on a page that
+     * reads each export as a colour, calls the function's body directly, so the
+     * page bundles no definer or binder: the reader's parse is the check (DESIGN-DECISIONS-NOTES.md, "Direct body calls").
+     * Any other call runs the defined function, which checks its arguments.
+     * A derived property whose recipe is such a call, of a body whose declared
+     * result is one node that is not `Any`, is written as that node's text, so
+     * a page whose properties all are bundles no value writer.
+     */
+    const bodyOf = (recipe: ExportRecipe) => hexOnly && 'fn' in recipe ? recipe.body : undefined;
+    const asText = (recipe: ExportRecipe): boolean => bodyOf(recipe)?.bytes === true;
+    const call = (recipe: Extract<ExportRecipe, { fn: unknown }>, top: boolean): string => {
+      const body = bodyOf(recipe);
+      return body === undefined
+        ? `${local('@jesscss/fns/runtime', 'call')}(${local(recipe.fn.module, recipe.fn.name)})`
+        : `(a) => ${local(body.module, body.name)}(...a)${top && body.bytes === true ? '.bytes' : ''}`;
+    };
+    const write = (recipe: ExportRecipe | ExportColor | string, top = false): string =>
+      typeof recipe === 'string'
         ? JSON.stringify(recipe)
-        : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
-    const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
-    lines.push(`import { createRuntime } from '@jesscss/fns/runtime';`);
-    for (const [module, names] of imports) {
-      lines.push(`import { ${names.join(', ')} } from ${JSON.stringify(module)};`);
+        : 'export' in recipe
+          ? JSON.stringify(recipe)
+          : 'color' in recipe
+            ? `[${local('@jesscss/fns/runtime', 'color')}(${JSON.stringify(recipe.color)}, ${JSON.stringify(recipe.rgb)}, ${recipe.alpha}), []]`
+            : `[${call(recipe, top)}, [${recipe.args.map(arg => write(arg)).join(', ')}]]`;
+    const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe, true)}`);
+    const emit = Object.values(runtime.derived).every(asText) ? '' : `, emit: ${local('@jesscss/fns/runtime', 'emitValue')}`;
+
+    /* The least check the exports need: none when no CSS form reads one. */
+    const hold = runtime.ratios.length > 0 ? 'holdRatio' : Object.keys(runtime.units).length > 0 ? 'checkUnit' : undefined;
+    if (derived.length === 0) {
+      /* Two exports, so a page that imports only `vars` drops the writer. */
+      const spec = hold === undefined ? { keys: runtime.keys } : hold === 'checkUnit' ? { keys: runtime.keys, units: runtime.units } : { keys: runtime.keys, units: runtime.units, ratios: runtime.ratios };
+      const held = hold === undefined ? '' : `, ${hold}`;
+      lines.push(
+        `import { exposedVars${held}, writeVars } from '@jesscss/patch-css';`,
+        `const spec = ${JSON.stringify(spec)};`,
+        `export const vars = (values) => exposedVars(spec, values${held});`,
+        `export const set = (values, target) => writeVars(exposedVars(spec, values${held}), target);`
+      );
+    } else {
+      const held = hold === undefined ? '' : `, hold: ${local('@jesscss/patch-css', hold)}`;
+      lines.push(`import { createVars, ${hexOnly ? 'readHex' : names ? 'readNamed' : 'readUnnamed'} as read } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
+      for (const [module, members] of imports) {
+        lines.push(`import { ${members.join(', ')} } from ${JSON.stringify(module)};`);
+      }
+
+      /* The hex check stays the ruling's: off only when asked, or when a colour export's own value is a name. */
+      const hex = colorNames || runtime.ownNames
+        ? ''
+        : `, hex: ${JSON.stringify(Object.fromEntries(Object.entries(runtime.keys).filter(([, name]) => runtime.colors.includes(name)).map(([key, name]) => [name, key])))}`;
+      lines.push(
+        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}${hold === undefined ? '' : `, units: ${JSON.stringify(runtime.units)}`}${hold === 'holdRatio' ? `, ratios: ${JSON.stringify(runtime.ratios)}` : ''}${held}${runtime.colors.length > 0 ? hex : ''}, read${emit}, derived: { ${derived.join(', ')} } });`,
+        `export const set = (values, target) => writeVars(vars(values), target);`
+      );
     }
-    lines.push(`export const { vars, set } = createRuntime({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, derived: { ${derived.join(', ')} } });`);
   }
   if (!modules) {
     lines.push(`export default ${JSON.stringify(css)};`);

@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { makeDimension, define, checkAny } from '@jesscss/core/value';
 import type { Fn, Value } from '@jesscss/core/value';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { readImageDimensions } from './image-helper.js';
@@ -7,8 +7,8 @@ import { readImageDimensions } from './image-helper.js';
  * Less `image-height()` — the intrinsic height of an image file, in pixels.
  * The evaluator retains the raw typed argument group and injects file IO.
  */
-const imageHeight: Fn = defineFunction('image-height', {
-  params: [{ type: 'any' }],
+const imageHeight: Fn = /* @__PURE__ */ define('image-height', {
+  params: [{ type: 'any', check: checkAny }],
   variadic: true,
   body: (value, ctx): MaybePromise<Value> => {
     const dimensions = readImageDimensions(value, ctx);

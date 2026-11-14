@@ -1,5 +1,5 @@
 import type { Dimension, ValueGroup, Value } from '@jesscss/core/value';
-import { emitValue, groupItems, isValueGroupArray } from '@jesscss/core/value';
+import { declineOverUnknown, emitValue, groupItems, isValueGroupArray } from '@jesscss/core/value';
 import { compareSassNumbers } from './compare.js';
 
 const isDimension = (value: ValueGroup): value is Dimension =>
@@ -54,13 +54,14 @@ const isDimension = (value: ValueGroup): value is Dimension =>
  * that commit's citations as unverified; these were re-checked against the
  * installed corpus and the binary.
  */
-export function sassMinMax(isMin: boolean, list: ValueGroup, strict: boolean): Value {
+export function sassMinMax(isMin: boolean, items: readonly ValueGroup[], strict: boolean): Value {
   const name = isMin ? 'min' : 'max';
-  const args = groupItems(list).flatMap(groupItems);
+  const args = items.flatMap(groupItems);
   if (args.length === 0) {
     throw new TypeError(strict ? 'At least one argument must be passed.' : `${name}() requires at least one argument`);
   }
 
+  declineOverUnknown(args);
   const numbers: Dimension[] = [];
   for (const arg of args) {
     if (!isDimension(arg)) {

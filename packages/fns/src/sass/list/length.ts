@@ -1,8 +1,8 @@
-import { defineFunction, groupItems, makeDimension } from '@jesscss/core/value';
+import { groupItems, makeDimension, define, checkAny } from '@jesscss/core/value';
 
 /** Sass `list.length()`; scalar values are one-item lists. */
-const length = defineFunction('length', {
-  params: [{ name: 'list', type: 'any' }] as const,
+const length = define('length', {
+  params: [{ name: 'list', type: 'any', check: checkAny }] as const,
   body: list => makeDimension(groupItems(list).length)
 });
 

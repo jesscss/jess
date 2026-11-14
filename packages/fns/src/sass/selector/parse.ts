@@ -1,5 +1,5 @@
 import type { FnCtx, ValueGroup } from '@jesscss/core/value';
-import { defineFunction, groupItems, isValueGroupArray, selectorValue } from '@jesscss/core/value';
+import { isValueGroupArray, selectorValue, define, checkAny } from '@jesscss/core/value';
 
 /**
  * The text Sass reads a `$selector` argument as: a string, a space list of
@@ -47,8 +47,7 @@ function joinTexts(items: readonly ValueGroup[], separator: string, level: numbe
  * `ctx.parseSelector`; a string that is not a selector list throws with Dart
  * Sass's message.
  */
-export function parseSelectorValue(args: ValueGroup, ctx: FnCtx): ValueGroup {
-  const items = groupItems(args);
+export function parseSelectorValue(items: readonly ValueGroup[], ctx: FnCtx): ValueGroup {
   if (items.length > 1) {
     throw new TypeError(`Only 1 argument allowed, but ${items.length} were passed.`);
   }
@@ -64,8 +63,8 @@ export function parseSelectorValue(args: ValueGroup, ctx: FnCtx): ValueGroup {
   return selectorValue(ctx.parseSelector(text));
 }
 
-const parse = defineFunction('parse', {
-  params: [{ name: 'selector', type: 'any' }] as const,
+const parse = define('parse', {
+  params: [{ name: 'selector', type: 'any', check: checkAny }] as const,
   variadic: true,
   body: parseSelectorValue
 });

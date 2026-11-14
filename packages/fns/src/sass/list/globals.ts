@@ -9,11 +9,12 @@
  * callable that delegates to the single body in the module file. This is the
  * same shape as `sass/string/globals.ts`.
  */
-import { defineFunction } from '@jesscss/core/value';
+import { define } from '@jesscss/core/value';
 import separator from './separator.js';
 
 /** `list-separator($list)` — the global spelling of `list.separator()`. */
-export const listSeparator = defineFunction('list-separator', {
+export const listSeparator = define('list-separator', {
   params: separator.params,
-  body: list => separator(list)
+  variadic: true,
+  body: (args, ctx) => separator(args, ctx)
 });

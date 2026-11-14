@@ -1,5 +1,6 @@
 import { defineForm, formNumber, type FormCall } from '@jesscss/core/form';
-import { decimalStep, type Arithmetic, type Dimension, type Fn, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
+import { decimalStep, checkKinds, type Arithmetic, type Dimension, type Fn, type FunctionCall, type ValueGroup, optional } from '@jesscss/core/value';
+import { fitsAny } from './color-ctor-helper.js';
 import { fitsNumber, isDimension, plain, unitBeside } from './css-math-args.js';
 import { round as form, roundDeferred, roundDeferredUnit } from './css-forms.generated.js';
 
@@ -13,8 +14,9 @@ import { round as form, roundDeferred, roundDeferredUnit } from './css-forms.gen
  */
 const round: Fn = /* @__PURE__ */ defineForm('round', {
   params: [
-    { name: 'value', type: ['Dimension', 'FunctionCall'], fits: fitsNumber },
-    { name: 'precision', type: ['Dimension', 'FunctionCall'], fits: fitsNumber, optional: true }
+    /* A literal, not `...NUMBER_ARG`: a spread keeps this pure call, and the evaluator a form runs on, in every bundle. */
+    { type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'value', fits: fitsAny },
+    /* @__PURE__ */ optional({ type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'precision', fits: fitsNumber })
   ],
   form: (value: ValueGroup, precision?: Dimension | FunctionCall | Arithmetic): FormCall => {
     const unit = unitBeside(value);

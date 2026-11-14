@@ -4,7 +4,7 @@ import extract from '../extract.js';
 
 const ctx: FnCtx = { modes: { unitMode: 'preserve' }, stringify: emitValue };
 const call = (...args: ValueGroup[]): ValueGroup => {
-  const result = extract(makeList(args, ','), ctx);
+  const result = extract(args, ctx);
   if (result instanceof Promise) {
     throw new TypeError('Expected extract() to be synchronous in this test.');
   }

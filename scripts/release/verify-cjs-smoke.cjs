@@ -12,6 +12,60 @@
  * Runs against the BUILT lib, so invoke after `build:release`.
  */
 const path = require('node:path');
+const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+
+/*
+ * 0) Load order. A chunk that requires its own package's root `index.cjs` makes a
+ *    cycle: requiring a subpath entry FIRST leaves the root's exports that come
+ *    from that chunk `undefined` for good (it happened when rolldown's interop
+ *    runtime landed in core's `index` chunk). So each package's subpath `require`
+ *    entries load first in a fresh process, then the root, and no root export may
+ *    be undefined.
+ */
+const packagesDir = path.join(__dirname, '../../packages');
+const packageDirs = [];
+const walk = (dir) => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === 'node_modules') continue;
+    const full = path.join(dir, entry.name);
+    if (fs.existsSync(path.join(full, 'package.json'))) packageDirs.push(full);
+    else walk(full);
+  }
+};
+walk(packagesDir);
+
+/* Program entries, not library entries: requiring one starts it (an LSP server opens its connection). */
+const programEntries = new Set(['editor/language-service ./server']);
+const cycles = [];
+const unbuilt = [];
+for (const dir of packageDirs) {
+  const exportsField = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).exports;
+  const root = exportsField?.['.']?.require;
+  if (typeof root !== 'string') continue;
+  if (!fs.existsSync(path.join(dir, root))) {
+    unbuilt.push(path.relative(packagesDir, dir));
+    continue;
+  }
+  for (const [sub, conditions] of Object.entries(exportsField)) {
+    const file = sub === '.' ? undefined : conditions?.require;
+    if (typeof file !== 'string' || !fs.existsSync(path.join(dir, file))) continue;
+    if (programEntries.has(`${path.relative(packagesDir, dir)} ${sub}`)) continue;
+    const undefinedKeys = execFileSync(process.execPath, ['-e',
+      `require(${JSON.stringify(path.join(dir, file))});` +
+      `const m = require(${JSON.stringify(path.join(dir, root))});` +
+      'process.stdout.write(Object.keys(m).filter((k) => m[k] === undefined).join(","));'
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000 });
+    if (undefinedKeys) cycles.push(`${path.relative(packagesDir, dir)}: ${sub} then . leaves ${undefinedKeys} undefined`);
+  }
+}
+if (unbuilt.length > 0) {
+  console.log(`CJS load order not checked, not built: ${unbuilt.join(', ')}`);
+}
+if (cycles.length > 0) {
+  console.error(`CJS smoke FAILED: a subpath loaded before the root leaves root exports undefined (a chunk cycle):\n  ${cycles.join('\n  ')}`);
+  process.exit(1);
+}
 
 const compilerCjs = path.join(__dirname, '../../packages/compiler/lib/index.cjs');
 const mod = require(compilerCjs);

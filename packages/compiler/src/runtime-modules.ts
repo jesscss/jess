@@ -26,8 +26,12 @@ function packageRecipe(recipe: ExportRecipe, plugins: readonly PluginInterface[]
   if (provided === undefined && (module.startsWith('.') || module.startsWith('/'))) {
     throw new Error(`${name}() reads an exported variable, and the browser runtime cannot import it from the relative module "${module}"; import it from a package.`);
   }
+  if (recipe.body !== undefined && (recipe.body.module.startsWith('.') || recipe.body.module.startsWith('/'))) {
+    throw new Error(`${name}() names its body in the relative module "${recipe.body.module}", which the browser runtime cannot import; export it from a package.`);
+  }
   return {
+    ...recipe,
     fn: { module: provided ?? module, name },
-    args: recipe.args.map(arg => typeof arg === 'string' ? arg : packageRecipe(arg, plugins))
+    args: recipe.args.map(arg => typeof arg === 'string' || 'color' in arg ? arg : packageRecipe(arg, plugins))
   };
 }

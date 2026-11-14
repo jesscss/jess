@@ -40,16 +40,13 @@ export type { ApplySelectorKind, ExtendSelectorKind, SelectorPolicyKind } from '
 /** Canonical AST-v2 stylesheet execution. Parser construction stays under `./ast`. */
 export { prepareStaticImports, serialize } from './ast/serialize.js';
 export type { PreparedImports, PrepareStaticImportsOptions, SerializeOptions, Position } from './ast/serialize.js';
-export type { ExportRecipe, ExportRuntimeData } from './ast/export-reads.js';
+export type { ExportColor, ExportRecipe, ExportRuntimeData } from './ast/export-reads.js';
 export type { FnOrigin } from './ast/module-values.js';
+export type { BodyOrigin } from './ast/functions/types.js';
 
 /** Print a parsed stylesheet as `.jess` source (no evaluation). */
 export { emitJess, NoJessSpelling } from './ast/emit-jess.js';
 export type { EmitJessOptions, JessSpellingGap } from './ast/emit-jess.js';
-
-/** Build a v3 source map from the render's position stream (see `trackPositions`). */
-export { buildAstSourceMap, removeSourceMapBasepath } from './ast/sourcemap.js';
-export type { AstSourceMapOptions } from './ast/sourcemap.js';
 
 /** Construct the typed value evaluator used by the canonical AST-v2 execution path. */
 export { buildEvaluator } from './ast/evaluator.js';
@@ -88,8 +85,6 @@ export type {
   FnIo,
   SelectorParse,
   FnRecord,
-  PartialFnRecord,
-  FunctionArgs,
   FunctionBodyArgs,
   Kind,
   LazyValue,

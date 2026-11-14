@@ -11,9 +11,10 @@
  * HARD MODULE BOUNDARY: imports only the value domain, the factory, and the shared
  * units table.
  */
-import Big from 'big.js';
+import { ratioOf } from '@jesscss/patch-css';
+import { addExact, modExact, mulExact, subExact } from './decimal.js';
 import { DimensionValueNode } from './node-ctors.js';
-import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Arithmetic, type Color, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, NoCssForm, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Arithmetic, type Color, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
 import { groupItems } from './value-list.js';
 import { compressDimensionBytes } from './compress.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
@@ -33,74 +34,18 @@ export { UnitArithmeticError } from './value-eval.js';
 
 /**
  * Scalar arithmetic for dimension operands — the one choke point for `+ - * / %`
- * in the AST-v2 engine.
- *
- * `+`, `-` and `*` run in EXACT BASE 10. A CSS author writes decimals; IEEE-754
- * stores binary, and a terminating decimal such as `0.1` or `0.33333333333333`
- * is a repeating binary fraction. Chained arithmetic then accumulates that error
- * and, when it subtracts near-equal quantities, cancels away the significant
- * digits — `1 - 0.33333333333333` three times lands 1.2% away from the true
- * decimal `1e-14`. Every one of those float subtractions is correctly rounded
- * (measured: 0 ulp error per step), so the loss is the BASE, not the operation,
- * and no reassociation recovers it.
- *
- * This is NOT a rounding step. Ledger **V5** forbids quantizing at construction
- * because it compounds; **V4** puts the sole quantization at output
- * (`formatNumber`, shortest decimal within 1e-10 relative). Exact arithmetic
- * REMOVES error rather than introducing it, and leaves the output policy alone.
- *
- * `/` DELIBERATELY STAYS ON FLOAT, and this is a correctness decision rather
- * than a performance one. big.js `div` rounds to `Big.DP` DECIMAL PLACES (20 by
- * default), not significant digits, so it under-resolves small magnitudes:
- * `1e-15 / 3` gives `3.3333e-16` (5 significant digits) where float gives
- * `3.3333333333333336e-16` (17). Routing division through it would make jess
- * LESS accurate for exactly the small magnitudes this work is about — the same
- * class of mistake as the 8-decimal-place floor removed in `f42decf7f` /
- * `137cfa8fa`, which annihilated colour magnitudes below ~5e-9. No fixed `DP`
- * fixes it: `DP` is absolute and magnitudes are not. There is also nothing to
- * preserve — a quotient of terminating decimals is generally non-terminating, so
- * unlike `+ - *` there is no exact decimal answer being thrown away.
- *
- * Operands arrive as `number`. Constructing the `Big` from the parsed double is
- * exact and needs no source-text plumbing: `String(double)` is the SHORTEST
- * round-tripping decimal (verified: 0 failures in 200k random doubles), so it
- * recovers the authored decimal for any literal a double can represent, and
- * `Big(0.33333333333333)` and `Big('0.33333333333333')` are the same value.
+ * in the AST-v2 engine. `+ - * %` run in exact base 10 and `/` stays on float,
+ * by ledger V6; {@link addExact} says why.
  */
 function calculate(a: number, op: string, b: number): number {
   switch (op) {
-    case '+': return exact(a, b, ADD, a + b);
-    case '-': return exact(a, b, SUB, a - b);
-    case '*': return exact(a, b, MUL, a * b);
+    case '+': return addExact(a, b);
+    case '-': return subExact(a, b);
+    case '*': return mulExact(a, b);
     case '/': return a / b;
-    case '%': return exact(a, b, MOD, a % b);
+    case '%': return modExact(a, b);
   }
   throw new TypeError(`Unknown operator ${op}`);
-}
-
-const ADD = 0, SUB = 1, MUL = 2, MOD = 3;
-
-/**
- * Run one exact base-10 operation, falling back to the already-computed float
- * result when either operand is non-finite (big.js throws on NaN/Infinity, and a
- * numeric oddity must not become a hard error) or when the operands are integers
- * — integers below 2^53 are exact in a double already, so base 10 buys nothing.
- */
-function exact(a: number, b: number, kind: number, fallback: number): number {
-  if (!Number.isFinite(a) || !Number.isFinite(b)) {
-    return fallback;
-  }
-  if (Number.isSafeInteger(a) && Number.isSafeInteger(b)) {
-    return fallback;
-  }
-  const x = new Big(String(a));
-  const y = new Big(String(b));
-  switch (kind) {
-    case ADD: return Number(x.plus(y));
-    case SUB: return Number(x.minus(y));
-    case MUL: return Number(x.times(y));
-    default: return Number(x.mod(y));
-  }
 }
 
 /* ---------------------------------------------------------- color math */
@@ -714,10 +659,9 @@ export function groupAsWritten(v: Value): Value {
  * unoperated `18 / 2` a mixin argument binds), and an operation kept as
  * written whose operands the rule did not reject (`foo / bar`). In every
  * dialect that computes: a keyword (`foo`,
- * `auto`), a string, quoted or escaped, a colour call written out as-is, and in
- * `.scss` any call written out as-is (`var(--x)`; owner 2026-10-23). Elsewhere math
- * on a call is CSS's: what only the browser knows is in a `calc()` ({@link mathOnDeferred},
- * V38). A colour, a named one included (V13), only
+ * `auto`), a string, quoted or escaped, and a call of a known other type written
+ * out as-is. Other math on a call is CSS's: what only the browser knows is in a
+ * `calc()` ({@link mathOnDeferred}, V38). A colour, a named one included (V13), only
  * in `.scss` (`scss`; owner 2026-10-23: *"ya keep it an error in .scss"*):
  * Less and `.jess` keep colour math. A boolean, a list and a map in `.scss`
  * and `.jess` (`sass`).
@@ -736,7 +680,7 @@ function invalidOperand(v: ValueGroup, sass: boolean, scss: boolean): string | n
       }
       return !keptAsWritten.has(v) ? 'keyword' : keptAsWritten.get(v) === '' ? 'function call' : null;
     case 'FunctionCall':
-      return writtenCalcInner(v) === null && (scss || v.result === 'color' || v.result === 'other') ? 'function call' : null;
+      return writtenCalcInner(v) === null && (v.result === 'color' || v.result === 'other') ? 'function call' : null;
     case 'Color':
       return scss ? 'color' : null;
     case 'Quoted':
@@ -811,7 +755,7 @@ export function quotedFromLead(lead: EvalValue | undefined, text: string): EvalV
  * {@link operate} decides.
  */
 export function checkedOperation(op: string, left: ValueGroup, right: ValueGroup, ev: Pick<ValueEvaluator, 'sassOperands' | 'sassCalculations'>, keepsMath: boolean): null {
-  return keepsMath || (ev.sassOperands === true && op === '/') ? null : operandRule(op, left, right, ev);
+  return keepsMath || (ev.sassOperands === true && op === '/' && !isDeferredOperand(left) && !isDeferredOperand(right)) ? null : operandRule(op, left, right, ev);
 }
 
 /**
@@ -857,8 +801,13 @@ export function exposedOperand(value: ValueGroup): ValueGroup {
     return value;
   }
   const result = isValueGroupArray(held) || held.type === 'List' || invalidOperand(held, false, false) !== null ? 'other' : null;
-  const colour = !isValueGroupArray(held) && (isColourOperand(held) || (held.type === 'FunctionCall' && held.result === 'color'));
-  return colour || result !== null ? keepAsWritten(withFields(value, { result: colour ? 'color' : result })) : value;
+  if (!isValueGroupArray(held) && (isColourOperand(held) || (held.type === 'FunctionCall' && held.result === 'color'))) {
+    return keepAsWritten(withFields(value, { result: 'color' }));
+  }
+  if (result !== null) {
+    return keepAsWritten(withFields(value, { result }));
+  }
+  return !isValueGroupArray(held) && held.type === 'Dimension' ? keepAsWritten(withFields(value, { result: 'numeric' })) : value;
 }
 
 /** Math on what only the browser knows is defined over one value, and a list is not one (V36). */
@@ -875,11 +824,91 @@ function rejectList(op: string, left: Value, right: Value): void {
  */
 export function mathOnDeferred(op: string, left: Value, right: Value): Value {
   rejectList(op, left, right);
+  const ratio = op === '/' ? overPercent(left, right) : undefined;
+  if (ratio !== undefined) {
+    return ratio;
+  }
+  if (op === '/' && right.type === 'Dimension' && right.unit === '%' && readsRatio(left)) {
+    throw new NoCssForm(`\`${emitValue(left)} / ${emitValue(right)}\` divides a percentage the property resolves first`);
+  }
   const spelling = `${mathSpelling(left, op, false)} ${op} ${mathSpelling(right, op, true)}`;
   return carriedClash(makeCalc(makeArithmetic(op, left, right, true, spelling), calcBytes(spelling, op), true), left, right);
 }
 
+/**
+ * `calc(var(--a, 0.5) * 100%) / 1%`, a `%` export's read over a percentage, is
+ * its ratio times the quotient, `var(--a, 0.5) * 100`, through any product of
+ * plain numbers around it (`(@a * 2)`, `-@a`) and any sum of such products and
+ * percentages (`(@a + 1%)` is `var(--a, 0.5) * 100 + 1`): no percentage is left
+ * for the property to resolve before the division reads it. A form over an
+ * export's read that does not fold has none ({@link mathOnDeferred})
+ * (docs/architecture/core/spec/R8-browser-runtime.md, *Percentages*).
+ */
+export function overPercent(left: Value, right: Value): Value | undefined {
+  return right.type === 'Dimension' && right.unit === '%' && right.number !== 0 ? cancelPercent(left, right.number) : undefined;
+}
+
+/** Whether `v` holds an export's ratio read ({@link isRatioProduct}). */
+function readsRatio(v: EvalValue): boolean {
+  if (typeof v === 'string') {
+    return false;
+  }
+  if (isValueGroupArray(v)) {
+    return v.some(readsRatio);
+  }
+  return v.type === 'FunctionCall' ? (v.name === 'var' && v.result === 'numeric') || readsRatio(v.args) : v.type === 'Arithmetic' && (readsRatio(v.left) || readsRatio(v.right));
+}
+
+/** An export's ratio read (its `var()`, typed by its compile-time number), times or over plain numbers (`-1 * var(--a, 0.5)`), in a `calc()` or a group or not. */
+function isRatioProduct(v: EvalValue): v is Value {
+  if (typeof v === 'string' || isValueGroupArray(v)) {
+    return false;
+  }
+  if (v.type === 'FunctionCall') {
+    return v.name === 'var' ? v.result === 'numeric' : v.name === 'calc' && isRatioProduct(v.args);
+  }
+  return v.type === 'Arithmetic' && (v.op === ''
+    ? isRatioProduct(v.left)
+    : (v.op === '*' || v.op === '/') && ((isPlainNumber(v.left) && isRatioProduct(v.right)) || (isPlainNumber(v.right) && isRatioProduct(v.left))));
+}
+
+const isPlainNumber = (v: EvalValue): v is Dimension =>
+  typeof v !== 'string' && !isValueGroupArray(v) && v.type === 'Dimension' && v.unit === '';
+
+export function cancelPercent(v: EvalValue, by: number): Value | undefined {
+  if (typeof v === 'string' || isValueGroupArray(v)) {
+    return undefined;
+  }
+  if ((v.type === 'FunctionCall' && v.name === 'calc') || (v.type === 'Arithmetic' && v.op === '')) {
+    return cancelPercent(v.type === 'Arithmetic' ? v.left : v.args, by);
+  }
+  if (v.type === 'Arithmetic' && isAdditive(v.op)) {
+    const left = percentTerm(v.left, by);
+    const right = left === undefined ? undefined : percentTerm(v.right, by);
+    return right === undefined ? undefined : mathOnDeferred(v.op, left!, right);
+  }
+  if (v.type !== 'Arithmetic' || (v.op !== '*' && v.op !== '/') || typeof v.right === 'string' || isValueGroupArray(v.right)) {
+    return undefined;
+  }
+  if (v.op === '*' && v.right.type === 'Dimension' && v.right.unit === '%' && isRatioProduct(v.left)) {
+    const factor = ratioOf(v.right.number, by);
+    return factor === 1 ? v.left : mathOnDeferred('*', v.left, makeDimension(factor));
+  }
+  if (isPlainNumber(v.left) && v.op === '*') {
+    const inner = cancelPercent(v.right, by);
+    return inner === undefined ? undefined : mathOnDeferred('*', v.left, inner);
+  }
+  const inner = isPlainNumber(v.right) ? cancelPercent(v.left, by) : undefined;
+  return inner === undefined ? undefined : mathOnDeferred(v.op, inner, v.right);
+}
+
+export { ratioOf };
+
 const isAdditive = (op: string | undefined): boolean => op === '+' || op === '-';
+
+/** A term of a sum over a percentage: a percentage is its quotient, a ratio read is folded ({@link cancelPercent}). */
+const percentTerm = (v: EvalValue, by: number): Value | undefined =>
+  typeof v !== 'string' && !isValueGroupArray(v) && v.type === 'Dimension' && v.unit === '%' ? makeDimension(ratioOf(v.number, by)) : cancelPercent(v, by);
 
 /** A number's kept spelling as an operand: a sum stays one computation, and a product is grouped where it divides. */
 const preservedOperand = (v: Dimension, spelled: string, op: string, isRight: boolean): string =>

@@ -1,4 +1,4 @@
-import { coerceNamedColorKeyword, colorRgbRounded, defineFunction, groupItems, isValueGroupArray, makeKeyword } from '@jesscss/core/value';
+import { coerceNamedColorKeyword, colorRgbRounded, groupItems, isValueGroupArray, makeKeyword, define, checkAny } from '@jesscss/core/value';
 import type { Color, Fn, ValueGroup, Value } from '@jesscss/core/value';
 
 /**
@@ -6,11 +6,10 @@ import type { Color, Fn, ValueGroup, Value } from '@jesscss/core/value';
  * structural value groups (`Color [Dimension]`), never recovered from rendered
  * bytes. A malformed call throws so the shared call boundary owns preservation.
  */
-const svgGradient: Fn = defineFunction('svg-gradient', {
-  params: [{ type: 'any' }],
+const svgGradient: Fn = /* @__PURE__ */ define('svg-gradient', {
+  params: [{ type: 'any', check: checkAny }],
   variadic: true,
-  body: (value, ctx): Value => {
-    const items = groupItems(value);
+  body: (items, ctx): Value => {
     if (items.length < 2) {
       throw new TypeError(STOPS_ERROR);
     }

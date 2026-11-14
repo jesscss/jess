@@ -1,6 +1,14 @@
-import type { Fn, ValueGroup } from '@jesscss/core/value';
-import { defineFunction, groupItems } from '@jesscss/core/value';
-import { isModern, makeRgb } from './kernels.js';
+import type { Fn, FnCtx, ValueGroup } from '@jesscss/core/value';
+import { isValueGroupArray, define, checkAny, optional } from '@jesscss/core/value';
+import { colorWithAlpha } from '../../less/rgb.js';
+import { isColor, makeRgb } from './kernels.js';
+
+const isCall = (value: ValueGroup | undefined): boolean =>
+  value !== undefined && !isValueGroupArray(value) && value.type === 'FunctionCall';
+
+/** The channels or a colour with an alpha; a colour or an alpha not known takes the two-slot form (`rgba(currentcolor, .5)`, `rgba(#000, var(--a))`). */
+export const rgbBody = (args: readonly ValueGroup[], ctx: FnCtx): ReturnType<Fn> =>
+  args.length === 2 && ctx.modern !== true && (!isColor(args[0]) || isCall(args[1])) ? colorWithAlpha(args, ctx) : makeRgb(args, ctx.modern === true);
 
 /**
  * Sass `rgb()` — construct an rgb colour, or re-alpha an existing one.
@@ -15,15 +23,15 @@ import { isModern, makeRgb } from './kernels.js';
  * Overloads covered: three/four positional channels, the space/slash modern form
  * (`rgb(1 2 3 / 0.5)`), and the colour + alpha form (`rgb(#f00, 0.5)`).
  */
-export const rgb: Fn = defineFunction('rgb', {
+export const rgb: Fn = define('rgb', {
   params: [
-    { name: 'red', type: 'any' },
-    { name: 'green', type: 'any', optional: true },
-    { name: 'blue', type: 'any', optional: true },
-    { name: 'alpha', type: 'any', optional: true }
+    { name: 'red', type: 'any', check: checkAny },
+    /* @__PURE__ */ optional({ name: 'green', type: 'any', check: checkAny }),
+    /* @__PURE__ */ optional({ name: 'blue', type: 'any', check: checkAny }),
+    /* @__PURE__ */ optional({ name: 'alpha', type: 'any', check: checkAny })
   ],
   variadic: true,
-  body: (list: ValueGroup) => makeRgb(groupItems(list), isModern(list))
+  body: rgbBody
 });
 
 export default rgb;

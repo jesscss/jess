@@ -1,4 +1,4 @@
-import { defineFunction, makeKeyword } from '@jesscss/core/value';
+import { makeKeyword, define, checkKinds } from '@jesscss/core/value';
 import { STRING_KINDS, stringText, type SassString } from './util.js';
 
 /**
@@ -8,8 +8,8 @@ import { STRING_KINDS, stringText, type SassString } from './util.js';
  * `unquote("a b")` → `a b`, `unquote("hello world")` → `hello world`. The result
  * is an unquoted string even when its text is not a valid identifier.
  */
-const unquote = defineFunction('unquote', {
-  params: [{ name: 'string', type: STRING_KINDS }] as const,
+const unquote = define('unquote', {
+  params: [{ type: STRING_KINDS, check: checkKinds, name: 'string' }] as const,
   body: (string: SassString) => (string.type === 'Keyword' ? string : makeKeyword(stringText(string)))
 });
 

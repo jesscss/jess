@@ -61,8 +61,9 @@ describe('contrast() is contrast-color()', () => {
     );
     expect(out).toContain('filter: contrast(var(--amount));');
     expect(out).toContain('backdrop-filter: blur(2px) contrast(var(--c)) brightness(1.2);');
-    expect(out).toContain('color: contrast(var(--bg));');
-    expect(await render('contrast(var(--amount))', { compile: { functionMode: 'error' } })).toContain('x: contrast(var(--amount));');
+    expect(out).toContain('color: contrast-color(var(--bg));');
+    expect(await render('contrast(var(--amount))', { compile: { functionMode: 'error' } })).toContain('x: contrast-color(var(--amount));');
+    expect(await render('contrast(calc(1 * var(--amount)))')).toContain('x: contrast(calc(1 * var(--amount)));');
     expect(await render('darken(contrast(var(--c)), 10%)')).toContain('x: hsl(from contrast(var(--c)) h s clamp(0, l - 10, 100));');
   });
 

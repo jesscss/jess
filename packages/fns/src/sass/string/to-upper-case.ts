@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core/value';
+import { define, checkKinds } from '@jesscss/core/value';
 import { STRING_KINDS, asciiCase, reString, stringText, type SassString } from './util.js';
 
 /**
@@ -8,8 +8,8 @@ import { STRING_KINDS, asciiCase, reString, stringText, type SassString } from '
  * `ABC` (quoting preserved), and the mapping is ASCII-ONLY —
  * `to-upper-case("straße")` → `"STRAßE"`, `to-upper-case("ä")` → `"ä"`.
  */
-const toUpperCase = defineFunction('to-upper-case', {
-  params: [{ name: 'string', type: STRING_KINDS }] as const,
+const toUpperCase = define('to-upper-case', {
+  params: [{ type: STRING_KINDS, check: checkKinds, name: 'string' }] as const,
   body: (string: SassString) => reString(string, asciiCase(stringText(string), true))
 });
 

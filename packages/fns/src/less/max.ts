@@ -1,9 +1,9 @@
-import { defineFunction } from '@jesscss/core/value';
-import { minMax } from './min-max.js';
+import { define, checkDimension } from '@jesscss/core/value';
+import { fitsBeside, minMax } from './min-max.js';
 
 /** Less `max()` — reference-unit coercion, canonical comparison. */
-const max = defineFunction('max', {
-  params: [{ type: 'Dimension' }],
+const max = /* @__PURE__ */ define('max', {
+  params: [{ type: 'Dimension', check: checkDimension, fits: fitsBeside }],
   variadic: true,
   body: list => minMax(false, list)
 });

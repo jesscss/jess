@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension, type Dimension } from '@jesscss/core/value';
+import { defineFunction, makeDimension, checkDimension, type Dimension, rest } from '@jesscss/core/value';
 import { convertToMatch } from './units.js';
 
 /**
@@ -13,7 +13,8 @@ import { convertToMatch } from './units.js';
  * (sass-spec `core_functions/math/hypot.hrx`.)
  */
 const hypot = defineFunction('hypot', {
-  params: [{ name: 'numbers', type: 'Dimension', rest: true }] as const,
+  cssFunction: true,
+  params: [/* @__PURE__ */rest({ name: 'numbers', type: 'Dimension', check: checkDimension })] as const,
   body: (numbers: readonly Dimension[]) => {
     const first = numbers[0];
     if (first === undefined) {

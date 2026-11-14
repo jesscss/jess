@@ -618,6 +618,32 @@ export class LeadingSeparatorValueError extends SyntaxError {
 }
 
 /**
+ * A rule whose prelude no selector reads: its block makes it a rule, so it parses
+ * and the error sits on the prelude (ledger P45).
+ */
+export class InvalidRulePreludeError extends SyntaxError {
+  readonly code = 'parse/invalid-rule-prelude' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason: string;
+  readonly fix: string;
+
+  /** The selector the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, recoveredValue: object) {
+    const text = ERR.invalidRulePrelude();
+    super(text.message);
+    this.name = 'InvalidRulePreludeError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.reason = text.reason ?? '';
+    this.fix = text.fix ?? '';
+    this.recoveredValue = recoveredValue;
+  }
+}
+
+/**
  * Sass's `if($condition, $if-true, $if-false)`, which Dart Sass deprecates in
  * favor of CSS `if()` (its deprecation `if-function`). A parse WARNING: the
  * call is still evaluated, as Dart Sass evaluates it.
@@ -883,6 +909,13 @@ export const ERR = {
       ...args
     });
   },
+  exposeUnitConflict(args: Common & { meta: { name: string; fn: string; unit: string; other: string; otherUnit: string } }) {
+    return makeJessError({
+      code: 'eval/expose-unit-conflict',
+      phase: 'eval',
+      ...args
+    });
+  },
   invalidFunction(args: Common & { meta: { name: string; reason: string } }) {
     return makeJessError({
       code: 'eval/invalid-function',
@@ -1124,6 +1157,15 @@ export const ERR = {
     });
   },
 
+  /** A rule whose prelude no selector reads (`InvalidRulePreludeError`). */
+  invalidRulePrelude(args: Common = {}) {
+    return makeJessError({
+      code: 'parse/invalid-rule-prelude',
+      phase: 'parse',
+      ...args
+    });
+  },
+
   /** A value led by a `/` or `*` with nothing on its left (ledger P33), parsed and then an error (P45). */
   leadingSeparatorValue(operator: string, args: Common = {}) {
     const text = leadingSeparatorValueText(operator);
@@ -1133,6 +1175,15 @@ export const ERR = {
       summary: text.summary,
       reason: text.reason,
       fix: text.fix,
+      ...args
+    });
+  },
+
+  /** A `@return` no function can read: parsed, then an error where it is reached (ledger P45). */
+  returnPlacement(args: Common = {}) {
+    return makeJessError({
+      code: 'parse/return-placement',
+      phase: 'parse',
       ...args
     });
   },
@@ -1167,6 +1218,15 @@ export const ERR = {
   invalidSupportsCondition(args: Common & { meta: { what: string } }) {
     return makeJessError({
       code: 'css/invalid-supports-condition',
+      phase: 'parse',
+      ...args
+    });
+  },
+
+  /** `@at-root`, which has no output carrier (ledger P10): parsed, then an error (P45). */
+  atRootPlacement(args: Common = {}) {
+    return makeJessError({
+      code: 'parse/at-root-placement',
       phase: 'parse',
       ...args
     });
@@ -1209,6 +1269,14 @@ export const ERR = {
   },
 
   /** A `@plugin`/`@use` function raised — user code failed, not a value mismatch. */
+  unresolvedBuiltin(args: Common & { meta: { name: string; printed: string } }) {
+    return makeJessError({
+      severity: 'error',
+      code: 'eval/unresolved-builtin',
+      phase: 'eval',
+      ...args
+    });
+  },
   pluginFunctionThrew(
     args: Common & { meta: { name: string; reason: string } }
   ) {

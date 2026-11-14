@@ -715,14 +715,14 @@ export function isSimple(value: unknown): value is SimpleSelector {
   );
 }
 
+/*
+ * The selector-family guards check the constructor-written `type` in one call,
+ * rather than one `isNodeType` call per member: the parsers run them on every
+ * selector part.
+ */
 export function isSimpleToken(value: unknown): value is SimpleToken {
-  return isNodeType(
-    value,
-    'SimpleSelector'
-  ) || isNodeType(
-    value,
-    'PseudoSelector'
-  );
+  return typeof value === 'object' && value !== null && 'type' in value
+    && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
 }
 
 /*
@@ -851,7 +851,8 @@ export function isCompound(value: unknown): value is CompoundSelector {
 }
 
 export function isSelectorTerm(value: unknown): value is SelectorTerm {
-  return isSimpleToken(value) || isCompound(value);
+  return typeof value === 'object' && value !== null && 'type' in value
+    && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector' || value.type === 'CompoundSelector');
 }
 
 /** The selector term the tokens spell: a lone token stays direct, adjacent tokens form a compound. */
@@ -873,7 +874,9 @@ export function isRelative(value: unknown): value is Extract<SelectorBranch, { r
 }
 
 export function isSelectorBranch(value: unknown): value is SelectorBranch {
-  return isSelectorTerm(value) || isComplex(value) || isRelative(value);
+  return typeof value === 'object' && value !== null && 'type' in value
+    && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector' || value.type === 'CompoundSelector'
+      || value.type === 'ComplexSelector' || value.type === 'RelativeSelector');
 }
 
 export function isSelectorList(value: unknown): value is SelectorList {

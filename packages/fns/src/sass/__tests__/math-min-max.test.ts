@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeDimension, makeKeyword, makeList, type Dimension } from '@jesscss/core';
+import { makeDimension, makeKeyword, type Dimension } from '@jesscss/core';
 import { sassMinMax } from '../math/min-max.js';
 
 /**
@@ -14,7 +14,7 @@ import { sassMinMax } from '../math/min-max.js';
  * trustworthy; these were re-checked.
  */
 const run = (isMin: boolean, strict: boolean, ...args: Dimension[]) =>
-  sassMinMax(isMin, makeList(args, ','), strict);
+  sassMinMax(isMin, args, strict);
 
 describe('Sass min()/max()', () => {
   it('spec § three_args / units/same / units/compatible', () => {
@@ -76,14 +76,14 @@ describe('Sass min()/max()', () => {
   it('spec § error/too_few_args and § error/type — module wording vs global', () => {
     expect(() => sassMinMax(true, [], true)).toThrow('At least one argument must be passed.');
     expect(() => sassMinMax(true, [], false)).toThrow('min() requires at least one argument');
-    expect(() => sassMinMax(true, makeList([makeDimension(1), makeKeyword('c')], ','), true))
+    expect(() => sassMinMax(true, [makeDimension(1), makeKeyword('c')], true))
       .toThrow('c is not a number.');
-    expect(() => sassMinMax(true, makeList([makeDimension(1), makeKeyword('c')], ','), false))
+    expect(() => sassMinMax(true, [makeDimension(1), makeKeyword('c')], false))
       .toThrow('min() requires numeric arguments');
   });
 
   it('spec § global/trailing_comma — list flattening', () => {
-    expect(sassMinMax(true, makeList([[makeDimension(1, 'px'), makeDimension(2, 'px')]], ','), false))
+    expect(sassMinMax(true, [[makeDimension(1, 'px'), makeDimension(2, 'px')]], false))
       .toMatchObject({ number: 1, unit: 'px' });
   });
 });

@@ -59,6 +59,7 @@ export {
   textOf,
   colorHsl,
   colorHslClamped,
+  colorLightness,
   colorRawRgb,
   colorRgbRounded,
   withFields
@@ -79,18 +80,20 @@ export { CollectionOverlay, isCollection, collectionEntries, collectionEntryInde
 export { HEX, RGB, HSL, holdsNone, serializeColor, hslToRgb } from './ast/color.js';
 export { serializeValue } from './ast/serialize-value.js';
 export { decimalStep, round } from './ast/round.js';
+export { addExact, modExact, mulExact, percentToFraction, subExact } from './ast/decimal.js';
 
 // --- shared value COMPARISON primitive (§5.1) ---
 export { compareOrder } from './ast/value-guards.js';
 
 // --- the binary operators (`+ - * /`) every dialect computes with ---
-export { operate } from './ast/value-operate.js';
+export { operate, ratioOf } from './ast/value-operate.js';
+export { operated as operatedOnUnknown } from './ast/math-operand.js';
 
 // --- unit table / conversion ---
 export { convertValue, foldUnit, groupOf, isCssUnit, unify, unitFactor } from './ast/value-units.js';
 
 // --- literal materialize / sniff ---
-export { parseHex, sniffLiteral, coerceNamedColorKeyword } from './ast/literal-tag.js';
+export { parseHex, sniffLiteral, sniffUnnamed, spelledColor, coerceNamedColorKeyword } from './ast/literal-tag.js';
 
 // --- selector values (`&`, `selector.parse()`) ---
 export { selectorValue } from './ast/selector-text.js';
@@ -104,12 +107,11 @@ export type {
   Fn,
   FnSpec,
   ParamSpec,
+  Check,
   FnCtx,
   FnIo,
   SelectorParse,
   FnRecord,
-  PartialFnRecord,
-  FunctionArgs,
   FunctionBodyArgs,
   Kind,
   LazyValue,
@@ -117,6 +119,10 @@ export type {
   ParamValue
 } from './ast/functions/types.js';
 
+export { TOLERANCE } from './ast/format-number.js';
+
 // --- registry seam ---
-export { createFnRegistry, defineFunction, FunctionDeclined, NoCssForm } from './ast/value-dispatch.js';
+export { checkKinds, createFnRegistry, declineOverUnknown, defineFunction, FunctionDeclined, isUnknownNumber } from './ast/value-dispatch.js';
+export { define, lazy, optional, rest, withDefault, checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl } from './ast/define.js';
+export { NoCssForm } from './ast/value-eval.js';
 export type { FnRegistry } from './ast/value-dispatch.js';

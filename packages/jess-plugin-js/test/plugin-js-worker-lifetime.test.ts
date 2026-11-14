@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { probe, sandboxed } from './engine/sandboxed.js';
+import { denoRunArgs, engineCode, readSetFor } from '../src/engine.js';
 import jsPlugin, { type JsPlugin } from '../src/index.js';
 
 const workerPath = fileURLToPath(new URL('../src/runtime-worker.ts', import.meta.url));
@@ -34,6 +35,9 @@ const exited = (child: ChildProcessWithoutNullStreams, ms: number): Promise<bool
     });
   });
 
+/* The runtime's own imports (the compiler's values) resolve from the workspace. */
+const workspaceRoot = path.resolve(path.dirname(workerPath), '../../..');
+
 /**
  * The worker as a host runs it, reading request lines from stdin. Closing stdin
  * is what the worker sees when its host dies, however it dies: the pipe's
@@ -42,7 +46,7 @@ const exited = (child: ChildProcessWithoutNullStreams, ms: number): Promise<bool
 const startWorker = async (modulePath: string) => {
   const child = spawn(
     denoPath,
-    ['run', '--no-prompt', `--allow-read=${path.dirname(modulePath)},${path.dirname(workerPath)}`, workerPath, '--runtime-api=module'],
+    ['run', '--no-prompt', `--allow-read=${path.dirname(modulePath)},${workspaceRoot}`, workerPath, '--runtime-api=module'],
     { stdio: ['pipe', 'pipe', 'pipe'] }
   );
   const lines: Array<{ id?: number; type?: string }> = [];
@@ -149,6 +153,27 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     expect(brokerSockets()).toBe(before);
   });
 
+  it('exits without ready, with the import error, when the worker cannot load the runtime', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-js-no-runtime-'));
+    const script = path.join(root, 'runtime-worker.ts');
+    fs.copyFileSync(workerPath, script);
+    const child = spawn(denoPath, denoRunArgs([root], {}, script), { stdio: ['pipe', 'pipe', 'pipe'] });
+    children.push(child);
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    // stdin stays open: only the failed import can end the process.
+    expect(await exited(child, 5000)).toBe(true);
+    expect(stdout).not.toContain('ready');
+    expect(stderr).toMatch(/Module not found[^\n]*plugin-runtime\.js/);
+  });
+
   it('fails startup at once when the worker exits before it is ready', async () => {
     const modulePath = writeModule('export const x = 1;');
     const root = path.dirname(modulePath);
@@ -183,6 +208,27 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     const failure = await sandboxed(plugin).import(modulePath).then(() => undefined, (err: unknown) => String(err));
     expect(failure).toMatch(/stopped during startup by SIGKILL/);
     expect(failure).not.toMatch(/Deno runtime is required/);
+  });
+
+  it('starts Deno once, on the full read set, for an entry outside the compiler\'s install', async () => {
+    const modulePath = writeModule('export const x = 1;');
+    const root = path.dirname(modulePath);
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+    const startWorker: unknown = Reflect.get(plugin, 'startWorker');
+    if (typeof startWorker !== 'function') {
+      throw new TypeError('JsPlugin has no startWorker');
+    }
+    const readSets: string[][] = [];
+    Reflect.set(plugin, 'startWorker', (readSet: readonly string[]): unknown => {
+      readSets.push([...readSet]);
+      return Reflect.apply(startWorker, plugin, [readSet]);
+    });
+
+    plugin.prewarmEngine({ compiler: probe, compilerOptions: {}, entryDir: root, jsReadRoot: root, extension: undefined });
+    expect((await sandboxed(plugin).import(modulePath)).x).toBe(1);
+    const code = await engineCode(probe.module, new URL('../src/index.ts', import.meta.url).href);
+    expect(readSets).toEqual([readSetFor(root, root, code)]);
   });
 
   it('runs a render after an engine started ahead of time is let go while it starts', async () => {

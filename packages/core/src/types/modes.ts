@@ -38,6 +38,20 @@ export type UnitMode = typeof UNIT_MODES[number];
 export type FunctionMode = 'preserve' | 'error';
 
 /**
+ * Whether a namespaced built-in (`@less.fade(…)`, `color.adjust(…)`) that did not
+ * compute at compile time is reported. Its output depends on the browser
+ * supporting the form it printed, which a `FunctionMode` counts as success.
+ *
+ * - `off`: say nothing.
+ * - `warn`: warn at the call.
+ * - `error`: report an error at the call; the compile fails at the end.
+ *
+ * A bare call is ambient and a variable exposed with `@expose` is deferred on
+ * purpose, so neither counts.
+ */
+export type UnresolvedBuiltinsMode = 'off' | 'warn' | 'error';
+
+/**
  * Less module modes — whether a `.less` document has an ambient built-in
  * function namespace (ledger P36).
  *

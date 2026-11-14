@@ -2,14 +2,14 @@
   "reviewVersion": 2,
   "id": "jess-function-bindings",
   "definitionDigest": "c327223c6be426f6ea7c2d8f6212bf8d9b8f9b1b8717d189e36c9d97253dc347",
-  "contractDigest": "3eff2a43c7033347115289ff49f09ad90ae141305f881c7c725acbbff6427b23",
+  "contractDigest": "4d96d4dc8506f11aa58c6b517107971dbf1751c6230fb6a86795402ca5d3c22c",
   "implementations": {
-    "owner": "b1d9e61caf804844a7f42037f9ee53cc06ae78624401cd1fd464de5f0c524ad5",
-    "compiler-convert": "885808c741bfa52db105f9eab2b51446ff8fd3534557abf3876114aaea2bdcca",
-    "less-equivalence": "820a582fda25b3b746d0ee6553fe66a786c75aa2d991abaf54cc8f322fe3a588",
+    "owner": "c4feef9b75ce5c0baad559f8838ec2d8e98eb2f95d6984c709647097ed5d9a2c",
+    "compiler-convert": "025fbfaf6a326041c74696279aa2c2587884ba6edf24db9310f7b2ffdb31801c",
+    "less-equivalence": "ddf02419b51ff689350e3dee0e7aa9c735555dfb38baf2a2471f9925ead4ca08",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "d46a456dacad8fc205dd41cd378c76fcaa88772415fa4016f75bcbc907c20457",
     "sass-selector-parse": "0f15e760ecafc11546d65927c5d0a92168d849ebbf163e4dfe0dfae683096d81"
   },
-  "rationale": "The root package.json pins parseman exactly at 0.61.3 instead of ^0.61.3. The installed parseman, the binding names, modules and exports jessFunctions projects, and the consumers are unchanged."
+  "rationale": "parseman 0.61.5 -> 0.62.0: dependency bump; no change to the capability's owner, consumers or checks"
 }

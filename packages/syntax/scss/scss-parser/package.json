@@ -9,7 +9,7 @@
     "access": "public"
   },
   "description": "SCSS parser for Jess, layered on the Jess CSS parser (experimental)",
-  "version": "2.0.0-alpha.32",
+  "version": "2.0.0-alpha.33",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
@@ -105,7 +105,7 @@
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
-    "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
+    "build": "pnpm compile",
     "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
@@ -116,7 +116,7 @@
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
-    "parseman": "0.61.3"
+    "parseman": "0.62.0"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"

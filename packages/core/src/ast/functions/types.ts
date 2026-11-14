@@ -15,7 +15,7 @@
  * HARD MODULE BOUNDARY: value domain only — no `../tree`, no legacy nodes.
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { EvalModes, Value, ValueGroup } from '../value-eval.js';
+import type { Any, EvalModes, Value, ValueGroup } from '../value-eval.js';
 
 export type Kind = Value['type'];
 export type ParamType = Kind | readonly Kind[] | 'any';
@@ -43,7 +43,25 @@ interface ParamSpecBase {
    * field, which has no form.
    */
   readonly fits?: (value: ValueGroup, vals: readonly ValueGroup[]) => boolean;
+
+  /**
+   * Checks one argument for this slot and returns it as the body receives it,
+   * or throws. An imported function (`check: checkColor`, `check: checkKinds`
+   * for several types), so a function bundles only the checks it names;
+   * `defineFunction` fills it from `type`.
+   */
+  readonly check?: Check;
 }
+
+/**
+ * A parameter's check of one argument: the function's name and the slot, the
+ * value, the call's colour-name reading ({@link FnCtx.colorName}), the
+ * parameter's `type`, and every argument of the call, which a `rest` check
+ * reads from its slot on. It returns the value as the body receives it: a
+ * wrapper's check (`optional`, `withDefault`, `lazy`, `rest` in `define.ts`)
+ * returns `undefined`, the default, a thunk or an array.
+ */
+export type Check = (name: string, index: number, value: unknown, colorName: FnCtx['colorName'], type: ParamType | undefined, inputs: readonly unknown[]) => unknown;
 
 type ParamTypeSpec = ParamSpecBase & {
   /**
@@ -86,7 +104,19 @@ export type ParamSpec = ParamTypeSpec | LegacyParamKindSpec;
  */
 export interface FnCtx {
   readonly modes: EvalModes;
+
+  /** The call wrote CSS modern colour syntax (`rgb(0 128 255 / 50%)`), space and slash separated. */
+  readonly modern?: boolean;
   readonly stringify: (v: ValueGroup) => string;
+
+  /**
+   * Reads a colour name passed to a parameter checked as a colour as that
+   * colour (`lighten(red, 10%)`); a keyword that names no colour comes back as
+   * given. The compile passes `coerceNamedColorKeyword`. The browser runtime
+   * passes none, so it bundles no name table: a name it reads is already a
+   * colour (R8 spec, colour names). Absent, a name stays the keyword it spells.
+   */
+  readonly colorName?: (keyword: Value) => Value;
   readonly io?: FnIo;
   readonly parseSelector?: SelectorParse;
 }
@@ -116,6 +146,12 @@ export interface FnIo {
 }
 
 interface BaseSpec {
+  /** A number only the browser knows leaves the call the CSS function of its name (`value-dispatch.ts` {@link declineOverUnknown}). */
+  readonly cssFunction?: boolean;
+
+  /** The name is also a CSS filter function (`filter-position.ts`). */
+  readonly filter?: boolean;
+
   /** Dispatch name while this declarative spec is being assembled into a callable. */
   readonly name?: string;
   readonly params: readonly ParamSpec[];
@@ -128,16 +164,14 @@ export interface PositionalSpec extends BaseSpec {
 }
 
 /**
- * A VARIADIC fn (owner complexity guardrail: a flag, not a rebuilt coercion
- * layer). The dispatcher SKIPS positional bind and hands the body the whole arg
- * structural value group — the shape a list / rest fn (`length`/`extract`/
- * `min`/`max`) or an overloaded / context-sensitive Tier-B fn (`rgb`/`hsl`/
- * `replace`/`%`) needs to see the real elements, the call's separator (the
- * modern-syntax signal), and the {@link FnCtx}. `params` is documentation-only.
+ * A VARIADIC fn: the dispatcher skips the positional bind and hands the body the
+ * call's arguments and the {@link FnCtx}, for a list or rest fn
+ * (`length`/`extract`/`min`/`max`) or an overloaded or context-sensitive one
+ * (`rgb`/`hsl`/`replace`/`%`). `params` is documentation-only.
  */
 export interface VariadicSpec extends BaseSpec {
   readonly variadic: true;
-  readonly body: (value: ValueGroup, ctx: FnCtx) => MaybePromise<ValueGroup>;
+  readonly body: (args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<ValueGroup>;
 }
 
 export type FnSpec = PositionalSpec | VariadicSpec;
@@ -174,65 +208,65 @@ export type FunctionBodyArgs<P extends readonly ParamSpec[]> =
     ? [BodyParam<Head>, ...FunctionBodyArgs<Tail>]
     : [];
 
-/** Tuple accepted by direct positional invocation. */
-export type FunctionArgs<P extends readonly ParamSpec[]> =
-  P extends readonly [infer Head extends ParamSpec, ...infer Tail extends readonly ParamSpec[]]
-    ? Head['rest'] extends true
-      ? [...ParamInput<Head>[]]
-      : IsOptional<Head> extends true
-        ? [ParamInput<Head>?, ...FunctionArgs<Tail>]
-        : [ParamInput<Head>, ...FunctionArgs<Tail>]
-    : [];
-
-/** A named record may leave out an optional or defaulted slot, and a rest slot (it binds zero items). */
+/** A named record (`callNamed`) may leave out an optional or defaulted slot, and a rest slot (it binds zero items). */
 type IsRecordOptional<P extends ParamSpec> = P['rest'] extends true ? true : IsOptional<P>;
 type RequiredRecord<P extends readonly ParamSpec[]> = {
-  [Item in P[number] as IsRecordOptional<Item> extends true ? never : Item['name'] & string]: ParamInput<Item>;
+  [Item in P[number] as IsRecordOptional<Item> extends true ? never : Item['name'] & string]: ParamValue<Item>;
 };
 type OptionalRecord<P extends readonly ParamSpec[]> = {
   [Item in P[number] as IsRecordOptional<Item> extends true ? Item['name'] & string : never]?: Item['rest'] extends true
-    ? readonly ParamInput<Item>[]
-    : ParamInput<Item>;
+    ? readonly ParamValue<Item>[]
+    : ParamValue<Item>;
 };
+
+/** Named arguments for `callNamed`: each an evaluated value, which the function hands a `lazy` parameter as a thunk. */
 export type FnRecord<P extends readonly ParamSpec[] = readonly ParamSpec[]> = Readonly<
   RequiredRecord<P> & OptionalRecord<P>
 >;
 
-/** Named fields that may supplement positional arguments in a mixed direct call. */
-export type PartialFnRecord<P extends readonly ParamSpec[] = readonly ParamSpec[]> = Readonly<
-  Partial<FnRecord<P>>
->;
-
-/**
- * Canonical direct value function. It is a plain callable with its authoritative
- * metadata (`name`, `params`) attached—no legacy record/body/options aliases.
- *
- * The record and mixed overloads are a Sass/Jess embedding capability. Parser
- * evaluators always use the `(List, FnCtx)` overload; in particular, a Less
- * evaluator remains positional-only until its syntax explicitly gains records.
- */
-export type DefinedFunction<P extends readonly ParamSpec[]> = {
-  (...args: FunctionArgs<P>): MaybePromise<ValueGroup>;
-  (record: FnRecord<P>): MaybePromise<ValueGroup>;
-  (...args: [...FunctionArgs<P>, PartialFnRecord<P>]): MaybePromise<ValueGroup>;
-  (value: ValueGroup, ctx: FnCtx): MaybePromise<ValueGroup>;
-  readonly name: string;
+/** A function {@link defineFunction} built, its parameters typed. */
+export type DefinedFunction<P extends readonly ParamSpec[]> = Fn & {
   readonly params: P;
   readonly variadic?: false;
 };
 
 /**
- * The only runtime function contract. A function is its implementation; the
- * registry always calls it with the evaluator's typed argument list and context.
+ * The one calling convention: the call's arguments, evaluated, in the order the
+ * call wrote them (keyword arguments already at their parameters' positions), and
+ * the {@link FnCtx}. A JS caller holding named arguments uses `callNamed`
+ * (`@jesscss/core/call-named`).
  */
-export type Fn = ((value: ValueGroup, ctx: FnCtx) => MaybePromise<ValueGroup>) & {
+export type Fn = ((args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<ValueGroup>) & {
+  /** The name is also a CSS filter function (`filter-position.ts`). */
+  readonly filter?: boolean;
   readonly name: string;
   readonly params: readonly ParamSpec[];
   readonly variadic?: boolean;
 
   /** The module export a function imported into a stylesheet binds (module-values.ts `bindModuleFunction`). */
   readonly origin?: FnOrigin;
+
+  /**
+   * Where this function's body is exported, so a generated runtime module can
+   * call it directly where it proves each argument's kind at build time: the
+   * reader's parse is the check (DESIGN-DECISIONS-NOTES.md,
+   * "Direct body calls"). The defined function is `define` over that same body.
+   */
+  readonly bodyExport?: BodyOrigin;
 };
+
+/**
+ * Where a built-in's body is exported. `bytes` when the body's declared result
+ * is one node that is not `Any`, whose text is its `bytes` (what `emitValue`
+ * writes for it), so a generated runtime module writes that text without the
+ * value writer (DESIGN-DECISIONS-NOTES.md, "Direct body calls").
+ */
+export interface BodyOrigin extends FnOrigin {
+  readonly bytes?: true;
+}
+
+/** A body's {@link BodyOrigin}, which may say `bytes` only when the body's declared result `R` is one node that is not `Any`. */
+export type BodyExport<R> = FnOrigin & { readonly bytes?: [R] extends [Exclude<Value, Any>] ? true : never };
 
 /** Where an imported function comes from: the module as the stylesheet names it, and the export. */
 export interface FnOrigin {

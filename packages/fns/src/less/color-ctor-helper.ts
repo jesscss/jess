@@ -7,7 +7,7 @@
  * HARD MODULE BOUNDARY: value domain only.
  */
 import type { Color, Dimension, ValueGroup } from '@jesscss/core/value';
-import { groupSeparator, isValueGroupArray } from '@jesscss/core/value';
+import { isValueGroupArray } from '@jesscss/core/value';
 
 export { clamp01, percentOf } from '../shared/color/kernels.js';
 
@@ -45,11 +45,13 @@ export function normalizeHue(d: Dimension): number {
 export const isColor = (v: ValueGroup | undefined): v is Color =>
   v !== undefined && !isValueGroupArray(v) && v.type === 'Color';
 
-/** Modern color syntax is signalled by a space / slash separated call. */
-export const isModern = (value: ValueGroup): boolean => {
-  const separator = groupSeparator(value);
-  return separator === ' ' || separator === '/';
-};
+/**
+ * A slot that takes every value the known path does: the compile knows its type,
+ * and the form converts it to what it means there (docs/design/CSS-NATIVE-BUILTINS.md §2).
+ * It cannot judge anything else, a list above all, which keeps the call's recipe.
+ */
+export const fitsAny = (value: ValueGroup): boolean =>
+  !isValueGroupArray(value) && (value.type === 'Dimension' || value.type === 'Color' || value.type === 'Keyword' || value.type === 'FunctionCall' || value.type === 'Arithmetic');
 
 /**
  * Whether a slot's form means what this value computes to: a dimension of one of

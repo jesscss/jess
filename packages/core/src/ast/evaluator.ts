@@ -15,16 +15,17 @@
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { EmptyListValueError, emitValue, isEmptyList, isValueGroupArray, itemBoundary, joinGroup, readText, writtenArgument, type ArgumentKeyword, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
 import { valueLayoutOf } from './provenance.js';
-import type { Fn, FnIo, SelectorParse } from './functions/types.js';
+import type { Fn, FnIo, ParamSpec, SelectorParse } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { keepAsWritten, keptMathOf, mathText, operate } from './value-operate.js';
 import { isMathFunctionName } from './math-functions.js';
 import { writtenCallValue } from './math-operand.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
-import type { FnRegistry } from './value-dispatch.js';
-import { dispatchFn, numberArguments } from './value-dispatch.js';
-import { makeFunctionCall, withFields } from './value-factory.js';
+import type { FnRegistry, FunctionDeclined } from './value-dispatch.js';
+import { numberArguments } from './value-dispatch.js';
+import { coerceNamedColorKeyword } from './literal-tag.js';
+import { makeFunctionCall, makeList, withFields } from './value-factory.js';
 import { emitCompressed } from './compress.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
@@ -73,8 +74,8 @@ interface WrittenCall {
   readonly authored?: readonly ArgumentKeyword[];
   readonly rejectEmpty: boolean;
 
-  /** `.scss` keeps math on what only the browser knows as written (slice 8); elsewhere, a group of it outside a math function is a `calc()`, there being no `(...)` in CSS. */
-  readonly keptMath?: boolean;
+  /** The parameters of the callable that failed, by which a declined call's keywords are checked. */
+  readonly params?: readonly ParamSpec[];
 }
 
 function fallbackCall(name: string, args: ValueGroup, modes: EvalModes | undefined, call: WrittenCall): Value {
@@ -82,13 +83,16 @@ function fallbackCall(name: string, args: ValueGroup, modes: EvalModes | undefin
     throw new EmptyListValueError(`An empty list is an argument of \`${name}()\`, a call written out as-is; an empty list has no CSS spelling.`);
   }
   const written = call.written?.args ?? args;
-  return keepAsWritten(makeFunctionCall(name, written, `${name}(${verbatimArgs(written, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name), call.keptMath !== true && name.charCodeAt(0) !== 45)})`));
+  return keepAsWritten(makeFunctionCall(name, written, `${name}(${verbatimArgs(written, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name), name.charCodeAt(0) !== 45)})`));
 }
 
 /** `name(args)` written out as-is, as a call with no callable is. */
 export function writeCall(name: string, args: ValueGroup, modes: EvalModes): Value {
   return fallbackCall(name, args, modes, { rejectEmpty: false });
 }
+
+/** By name: a provided module (`#less`) is loaded by its resolved path, and may run another build of the class. */
+const isDeclined = (error: unknown): error is FunctionDeclined => error instanceof Error && error.name === 'FunctionDeclined';
 
 /**
  * A registered callable has already been selected. Its failure is therefore an
@@ -102,8 +106,11 @@ function recoverCallFailure(
   modes: EvalModes,
   call: WrittenCall
 ): Value {
-  /* By name: a provided module (`#less`) is loaded by its resolved path, and may run another build of the class. */
-  const declined = error instanceof Error && error.name === 'FunctionDeclined';
+  const declined = isDeclined(error);
+  const stray = declined ? call.written?.keywords?.find(argument => argument.name !== undefined && !call.params?.some(param => param.name === argument.name)) : undefined;
+  if (stray !== undefined) {
+    throw new TypeError(`${name}: no parameter named \`$${stray.name}\``);
+  }
   if (modes.functionMode === 'error' && !declined) {
     throw error;
   }
@@ -112,7 +119,9 @@ function recoverCallFailure(
   if (!declined) {
     return fallbackCall(name, args, modes, call);
   }
-  const written = fallbackCall(name.slice(name.lastIndexOf('.') + 1), args, modes, call);
+  const bound = error.bound;
+  const respelled = bound !== undefined && (error.respelled || call.written !== undefined || bound.length !== groupItems(args).length);
+  const written = fallbackCall(name.slice(name.lastIndexOf('.') + 1), respelled ? makeList(bound, ',') : args, modes, respelled ? { rejectEmpty: call.rejectEmpty } : call);
 
   /* Of no known type, it is still CSS, which a call written out because it failed is not (`isUnwrittenBuiltin`). */
   return written.type === 'FunctionCall' && written.result === null ? keepAsWritten(withFields(written, { computed: true })) : written;
@@ -156,7 +165,6 @@ export function buildEvaluator(
 ): ValueEvaluator {
   const { parseSelector } = options;
   const rejectEmpty = options.sassOperands === true;
-  const keptMath = options.sassCalculations === true;
   const call = (
     name: string,
     args: ValueGroup,
@@ -190,15 +198,17 @@ export function buildEvaluator(
     const fn = scoped ?? (ambient ? registry.get(name) : undefined);
     if (fn) {
       try {
-        const result = dispatchFn(fn, numberArguments(fn, args, evaluator, modes), { modes, stringify, io, parseSelector });
-        return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty, keptMath }) : result;
+        /* `args` is the call's comma list, or the items of a modern colour call ({@link FnCtx.modern}). */
+        const modern = isValueGroupArray(args);
+        const result = fn(numberArguments(fn, modern ? args : groupItems(args), evaluator, modes), { modes, stringify, colorName: coerceNamedColorKeyword, io, parseSelector, modern });
+        return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty, params: fn.params }) : result;
       } catch (err) {
-        return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty, keptMath });
+        return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty, params: fn.params });
       }
     }
 
     // Unknown function: emit verbatim.
-    return fallbackCall(name, args, modes, { written, authored, rejectEmpty, keptMath });
+    return fallbackCall(name, args, modes, { written, authored, rejectEmpty });
   };
 
   /* The callee's declared parameter names — the binding surface a keyword

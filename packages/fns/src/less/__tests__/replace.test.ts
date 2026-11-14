@@ -19,7 +19,7 @@ const ctx: FnCtx = {
 };
 
 function call(fn: Fn, ...args: ValueGroup[]): ValueGroup | Promise<ValueGroup> {
-  return fn(makeList(args, ',') as List, ctx);
+  return fn(args, ctx);
 }
 
 function quotedValue(value: ValueGroup): { readonly type: 'Quoted'; readonly value: string; readonly quote: string } {
@@ -34,7 +34,7 @@ describe('replace()', () => {
     expect(typeof replace).toBe('function');
     expect(replace.name).toBe('replace');
     expect(replace.variadic).toBe(true);
-    expect(replace.params).toEqual([
+    expect(replace.params).toMatchObject([
       { type: 'any' },
       { type: 'any' },
       { type: 'any' },

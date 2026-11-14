@@ -1,5 +1,5 @@
 import type { Fn, FnCtx, ValueGroup, Value } from '@jesscss/core/value';
-import { defineFunction, emitValue, groupItems } from '@jesscss/core/value';
+import { emitValue, define, checkAny, optional } from '@jesscss/core/value';
 import { sameStringKind } from './string-result.js';
 
 /** The selected token's Less string or CSS form, with uppercase URL encoding. */
@@ -9,15 +9,14 @@ function tokenValue(token: string, value: ValueGroup, ctx: FnCtx): string {
 }
 
 const FORMAT_PARAMS: Fn['params'] = [
-  { type: 'any' },
-  { type: 'any', optional: true },
-  { type: 'any', optional: true },
-  { type: 'any', optional: true },
-  { type: 'any', optional: true }
+  { type: 'any', check: checkAny },
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny })
 ];
 
-function formatKernel(list: ValueGroup, ctx: FnCtx): Value {
-  const items = groupItems(list);
+function formatKernel(items: readonly ValueGroup[], ctx: FnCtx): Value {
   const template = items[0]!;
   let result = ctx.stringify(template);
 
@@ -46,14 +45,14 @@ function formatKernel(list: ValueGroup, ctx: FnCtx): Value {
  * @returns the formatted string
  */
 /** The registered whole-word spelling used by the AST-v2 evaluator. */
-export const format: Fn = defineFunction('string-format', {
+export const format: Fn = /* @__PURE__ */ define('string-format', {
   params: FORMAT_PARAMS,
   variadic: true,
   body: formatKernel
 });
 
 /** The `%()` spelling retained by the public Less callable export. */
-export const formatPercent: Fn = defineFunction('%', {
+export const formatPercent: Fn = /* @__PURE__ */ define('%', {
   params: FORMAT_PARAMS,
   variadic: true,
   body: formatKernel

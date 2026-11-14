@@ -1,4 +1,8 @@
-import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/core/value';
+import { checkKinds, optional } from '@jesscss/core/value';
+import { defineForm, formNumber, isDimension, type FormCall } from '@jesscss/core/form';
+import type { Fn, ValueGroup } from '@jesscss/core/value';
+import { round as form } from '../../less/css-forms.generated.js';
+import { unitBeside } from '../../less/css-math-args.js';
 
 /**
  * Sass `math.round($number)` / the global `round()`.
@@ -8,26 +12,18 @@ import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/co
  * while Sass follows CSS `round()`, whose second argument is the STEP to round
  * to the nearest multiple of (`round(1.234, 2)` → `2`).
  *
- * Ties go through the shared core kernel, so they break away from zero as in
- * dart-sass and Less (`math.round(-2.5)` → `-3`). That rule is symmetric, so the
- * step's sign does not matter (`round(2.5, -1)` → `3`).
+ * Its form is `calc(sign(number) * round(abs(number), step))`, so ties break away
+ * from zero as in dart-sass and Less (`math.round(-2.5)` → `-3`, V8).
  */
-const round = defineFunction('round', {
+const round: Fn = /* @__PURE__ */ defineForm('round', {
   params: [
-    { name: 'number', type: 'Dimension' },
-    { name: 'step', type: 'Dimension', optional: true }
-  ] as const,
-  body: (number, step) => {
-    if (step === undefined) {
-      return makeDimension(roundNumber(number.number), number.unit);
-    }
-    if (step.number === 0) {
-      return makeDimension(Number.NaN, number.unit);
-    }
-    const multiple = roundNumber(number.number / step.number) * step.number;
-
-    // Re-derive through the step so binary-fraction steps do not leak float dust.
-    return makeDimension(Number(multiple.toPrecision(15)), number.unit || step.unit);
+    { type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'number' },
+    /* @__PURE__ */ optional({ type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'step' })
+  ],
+  form: (number: ValueGroup, step?: ValueGroup): FormCall => {
+    const unit = unitBeside(number) || (step === undefined ? '' : unitBeside(step));
+    const known = isDimension(number) ? formNumber(number.number, unit || number.unit) : number;
+    return [form, known, step === undefined ? formNumber(1, unit) : isDimension(step) ? formNumber(step.number, step.unit || unit) : step];
   }
 });
 

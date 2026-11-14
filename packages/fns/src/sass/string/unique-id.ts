@@ -1,4 +1,4 @@
-import { defineFunction, makeKeyword } from '@jesscss/core/value';
+import { makeKeyword, define } from '@jesscss/core/value';
 
 /** The base-36 range dart-sass draws from: always six digits, never zero-padded away. */
 const MIN = 36 ** 5;
@@ -11,7 +11,7 @@ const RANGE = 36 ** 6 - MIN;
  * emits e.g. `uu7ad4j`, `uuvphk8`). The value is random per call, not a
  * monotonic counter, so nothing may depend on a particular id.
  */
-const uniqueId = defineFunction('unique-id', {
+const uniqueId = define('unique-id', {
   params: [] as const,
   body: () => makeKeyword(`u${Math.floor(MIN + Math.random() * RANGE).toString(36)}`)
 });

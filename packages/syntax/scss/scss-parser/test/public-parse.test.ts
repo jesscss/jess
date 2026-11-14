@@ -158,10 +158,7 @@ describe('@jesscss/scss-parser public parse API', () => {
 
     for (const malformed of [
       '.card { value: --; }',
-      '.card { value: --#{$name}; }',
-      '.card { value: --theme#{$name}; }',
-      '.card { value: -- theme; }',
-      '@media (width: --#{$value}) { .bad { color: red; } }'
+      '.card { value: -- theme; }'
     ]) {
       expect(() => parse(malformed), malformed).toThrow(SyntaxError);
     }
@@ -548,13 +545,8 @@ describe('@jesscss/scss-parser public parse API', () => {
     });
 
     /* See the matching note in ast-grammar.test.ts for why three entries left. */
-    for (const source of [
-      '@import "theme.css" #{$media};',
-      '@import "theme.css" screen /* no raw/comment tail */ and (color);',
-      '@import "theme.css" screen, #{$media};'
-    ]) {
-      expect(() => parse(source), source).toThrow(SyntaxError);
-    }
+    expect(() => parse('@import "theme.css" screen /* no raw/comment tail */ and (color);')).toThrow(SyntaxError);
+    expect(() => parse('@import "theme.css" screen, #{$media};')).not.toThrow();
 
     /* A comma-separated `@import` is one import per argument; the tail belongs to the last. */
     expect(serialize(parse('@import "a.css", "b.css" screen;')).css).toBe('@import "a.css";\n@import "b.css" screen;\n');
@@ -1070,8 +1062,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       '@keyframes fade { from, { opacity: 0; } }',
       '@keyframes fade { 50 { opacity: 0; } }',
       '@keyframes fade { .from { opacity: 0; } }',
-      '@keyframes fade { 50% { .nested { opacity: 0; } } }',
-      '.host { @keyframes fade { from { opacity: 0; } } }'
+      '@keyframes fade { 50% { .nested { opacity: 0; } } }'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }

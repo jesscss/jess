@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core/value';
+import { define, checkColor } from '@jesscss/core/value';
 import type { Fn } from '@jesscss/core/value';
 import { colorBlend, requireColor } from './color-helper.js';
 
@@ -6,7 +6,7 @@ import { colorBlend, requireColor } from './color-helper.js';
 export const multiplyBase = (cb: number, cs: number): number => cb * cs;
 
 /** `multiply(color1, color2)` — Photoshop multiply blend. Byte-faithful to `less/multiply`. */
-export const multiply: Fn = defineFunction('multiply', {
-  params: [{ type: 'Color' }, { type: 'Color' }],
+export const multiply: Fn = /* @__PURE__ */ define('multiply', {
+  params: [{ type: 'Color', check: checkColor }, { type: 'Color', check: checkColor }],
   body: (c1, c2) => colorBlend(multiplyBase, requireColor(c1), requireColor(c2))
 });

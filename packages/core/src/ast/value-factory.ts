@@ -11,7 +11,7 @@ import type {
 } from './value-eval.js';
 import { isMathFunctionName } from './math-functions.js';
 import type { Operation } from './nodes.js';
-import { colorRgb, colorSourceRgb, HSL, hslToRgb, rgbToHsl, serializeColor } from './color.js';
+import { colorRgb, colorSourceRgb, HSL, hslToRgb, rgbLightness, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 import {
   AnyValueNode, BlockValueNode, BoolValueNode, CollectionValueNode, ColorValueNode, CompoundDimensionValueNode, DimensionValueNode,
@@ -58,6 +58,9 @@ export const colorHslClamped = (c: Color): [number, number, number] => {
   const [h, s, l] = colorHsl(c);
   return [((h % 360) + 360) % 360, clamp01(s, 1), clamp01(l, 1)];
 };
+
+/** A color's lightness, 0-1, as {@link colorHslClamped} reads it, without computing hue and saturation. */
+export const colorLightness = (c: Color): number => clamp01(c.hsl ? c.hsl[2] : rgbLightness(c.rgb[0], c.rgb[1], c.rgb[2]), 1);
 
 /** A color's ROUNDED + clamped concrete rgb (legacy `Color.get rgb()`). */
 export const colorRgbRounded = colorRgb;
@@ -177,10 +180,13 @@ export const makeGroupedKeyword = (text: string, groups: number): Keyword => new
 /** The CSS colour functions a call's type reads by name (css-color-4 §5–§10, css-color-5 §3, §8, css-color-4 §6.5 `light-dark`). */
 const COLOR_FUNCTIONS: ReadonlySet<string> = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix', 'contrast-color', 'light-dark']);
 
+/** The tests of a CSS `if()` (css-values-5 §if), which are no number or colour. */
+const IF_TESTS: ReadonlySet<string> = new Set(['media', 'supports', 'style']);
+
 /** The CSS type a call produces, by its name ({@link CallResult}). */
 function callResult(name: string): CallResult {
   const lower = name.toLowerCase();
-  return COLOR_FUNCTIONS.has(lower) ? 'color' : isMathFunctionName(lower) ? 'numeric' : null;
+  return COLOR_FUNCTIONS.has(lower) ? 'color' : isMathFunctionName(lower) ? 'numeric' : IF_TESTS.has(lower) ? 'other' : null;
 }
 
 /** A call written out as-is, spelled `bytes` ({@link FunctionCall}). */
