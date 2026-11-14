@@ -69,18 +69,16 @@ export function formatNumber(n: number): string {
    * stylesheet emits is a small integer.
    */
   if (Number.isInteger(n)) {
-    return s.indexOf('e') === -1 ? s : positional(s);
+    return positional(s);
   }
   if (!Number.isFinite(n)) {
     throw new RangeError(`${s} is not a finite number and has no CSS spelling`);
   }
   let sig = 0;
   let seenDigit = false;
-  let exponential = false;
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
     if (c === 0x65 /* e */) {
-      exponential = true;
       break;
     }
     if (c >= 0x31 /* 1 */ && c <= 0x39 /* 9 */) {
@@ -90,18 +88,16 @@ export function formatNumber(n: number): string {
       sig++;
     }
   }
-  if (sig <= SIG_DIGIT_GATE) {
-    return exponential ? positional(s) : s;
-  }
-  const tolerance = Math.abs(n) * TOLERANCE;
-  for (let p = 1; p <= MAX_PRECISION; p++) {
-    const candidate = Number(n.toPrecision(p));
-    if (Math.abs(candidate - n) <= tolerance) {
-      const t = `${candidate}`;
-      return t.indexOf('e') === -1 ? t : positional(t);
+  if (sig > SIG_DIGIT_GATE) {
+    const tolerance = Math.abs(n) * TOLERANCE;
+    for (let p = 1; p <= MAX_PRECISION; p++) {
+      const candidate = Number(n.toPrecision(p));
+      if (Math.abs(candidate - n) <= tolerance) {
+        return positional(`${candidate}`);
+      }
     }
   }
-  return exponential ? positional(s) : s;
+  return positional(s);
 }
 
 /**
@@ -128,29 +124,15 @@ function positional(s: string): string {
   if (e === -1) {
     return s;
   }
-  const exponent = Number(s.slice(e + 1));
-  let mantissa = s.slice(0, e);
-  let sign = '';
-  if (mantissa.charCodeAt(0) === 0x2d /* - */) {
-    sign = '-';
-    mantissa = mantissa.slice(1);
-  }
-  const dot = mantissa.indexOf('.');
-  let digits = mantissa;
-  let fractionLen = 0;
-  if (dot !== -1) {
-    digits = mantissa.slice(0, dot) + mantissa.slice(dot + 1);
-    fractionLen = mantissa.length - dot - 1;
-  }
+  const sign = s.charCodeAt(0) === 0x2d /* - */ ? '-' : '';
+  const [whole = '', fraction = ''] = s.slice(sign.length, e).split('.');
+  const digits = whole + fraction;
 
-  // value === digits * 10^shift
-  const shift = exponent - fractionLen;
-  if (shift >= 0) {
-    return `${sign}${digits}${'0'.repeat(shift)}`;
-  }
-  const point = digits.length + shift;
-  if (point > 0) {
-    return `${sign}${digits.slice(0, point)}.${digits.slice(point)}`;
-  }
-  return `${sign}0.${'0'.repeat(-point)}${digits}`;
+  // the decimal point sits `point` digits into `digits`
+  const point = whole.length + Number(s.slice(e + 1));
+  return sign + (point <= 0
+    ? `0.${'0'.repeat(-point)}${digits}`
+    : point >= digits.length
+      ? digits + '0'.repeat(point - digits.length)
+      : `${digits.slice(0, point)}.${digits.slice(point)}`);
 }
