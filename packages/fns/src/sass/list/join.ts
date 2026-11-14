@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core/value';
+import { define, checkAny, checkKinds } from '@jesscss/core/value';
 import { createSassListResult, getSassListInfo, resolveSassBracketed, resolveSassSeparator } from './util.js';
 
 /*
@@ -8,12 +8,12 @@ import { createSassListResult, getSassListInfo, resolveSassBracketed, resolveSas
  */
 const undecided = (info: ReturnType<typeof getSassListInfo>): boolean => info.sep === ' ' && info.values.length <= 1;
 
-const join = defineFunction('join', {
+const join = define('join', {
   params: [
-    { name: 'list1', type: 'any' },
-    { name: 'list2', type: 'any' },
-    { name: 'separator', type: ['Quoted', 'Keyword'], optional: true },
-    { name: 'bracketed', type: ['Bool', 'Quoted', 'Keyword'], optional: true }
+    { name: 'list1', type: 'any', check: checkAny },
+    { name: 'list2', type: 'any', check: checkAny },
+    { type: ['Quoted', 'Keyword'], check: checkKinds, name: 'separator', optional: true },
+    { type: ['Bool', 'Quoted', 'Keyword'], check: checkKinds, name: 'bracketed', optional: true }
   ] as const,
   body: (list1, list2, separator, bracketed) => {
     const left = getSassListInfo(list1);

@@ -1,8 +1,8 @@
-import { colorRgbRounded, defineFunction, makeDimension } from '@jesscss/core/value';
+import { colorRgbRounded, makeDimension, define, checkColor } from '@jesscss/core/value';
 
 /** Less/Sass `green()` over the canonical value domain. */
-const green = defineFunction('green', {
-  params: [{ name: 'color', type: 'Color' }] as const,
+const green = define('green', {
+  params: [{ name: 'color', type: 'Color', check: checkColor }] as const,
   body: color => makeDimension(colorRgbRounded(color)[1])
 });
 

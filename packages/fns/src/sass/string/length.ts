@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { makeDimension, define, checkKinds } from '@jesscss/core/value';
 import { STRING_KINDS, codePoints, stringText, type SassString } from './util.js';
 
 /**
@@ -9,8 +9,8 @@ import { STRING_KINDS, codePoints, stringText, type SassString } from './util.js
  * sequence still counts each code point separately (`"é"` → `2`).
  * Non-string arguments error (`str-length(10px)`), enforced by `type`.
  */
-const length = defineFunction('length', {
-  params: [{ name: 'string', type: STRING_KINDS }] as const,
+const length = define('length', {
+  params: [{ type: STRING_KINDS, check: checkKinds, name: 'string' }] as const,
   body: (string: SassString) => makeDimension(codePoints(stringText(string)).length)
 });
 

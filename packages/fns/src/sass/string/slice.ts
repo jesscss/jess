@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core/value';
+import { define, checkKinds, checkDimension } from '@jesscss/core/value';
 import type { Dimension } from '@jesscss/core/value';
 import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString, stringText, type SassString } from './util.js';
 
@@ -18,11 +18,11 @@ import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString,
  * str-slice(Hello, 2, 4)    → ell       str-slice("😊abc", 1, 2)   → "😊a"
  * ```
  */
-const slice = defineFunction('slice', {
+const slice = define('slice', {
   params: [
-    { name: 'string', type: STRING_KINDS },
-    { name: 'start-at', type: 'Dimension' },
-    { name: 'end-at', type: 'Dimension', optional: true }
+    { type: STRING_KINDS, check: checkKinds, name: 'string' },
+    { name: 'start-at', type: 'Dimension', check: checkDimension },
+    { name: 'end-at', type: 'Dimension', check: checkDimension, optional: true }
   ] as const,
   body: (string: SassString, startAt: Dimension, endAt: Dimension | undefined) => {
     const chars = codePoints(stringText(string));

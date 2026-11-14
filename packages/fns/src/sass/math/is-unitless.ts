@@ -1,4 +1,4 @@
-import { defineFunction, makeBool } from '@jesscss/core/value';
+import { makeBool, define, checkDimension } from '@jesscss/core/value';
 import { isUnitlessDimension } from './units.js';
 
 /**
@@ -11,14 +11,14 @@ import { isUnitlessDimension } from './units.js';
  *   math.is-unitless(1px * 1px) → false
  *   unitless("a")           → Error: $number: "a" is not a number.
  */
-const isUnitless = defineFunction('is-unitless', {
-  params: [{ name: 'number', type: 'Dimension' }] as const,
+const isUnitless = define('is-unitless', {
+  params: [{ name: 'number', type: 'Dimension', check: checkDimension }] as const,
   body: number => makeBool(isUnitlessDimension(number))
 });
 
 /** The deprecated global spelling of {@link isUnitless}. Same body, Sass's global name. */
-const unitless = defineFunction('unitless', {
-  params: [{ name: 'number', type: 'Dimension' }] as const,
+const unitless = define('unitless', {
+  params: [{ name: 'number', type: 'Dimension', check: checkDimension }] as const,
   body: number => makeBool(isUnitlessDimension(number))
 });
 

@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core/value';
+import { define, checkKinds } from '@jesscss/core/value';
 import { STRING_KINDS, addQuotes, stringText, type SassString } from './util.js';
 
 /**
@@ -9,8 +9,8 @@ import { STRING_KINDS, addQuotes, stringText, type SassString } from './util.js'
  * error (`quote(10px)`, `quote(#fff)`, `quote(red)`, `quote(a b)` all raise
  * `$string: … is not a string.`), which the `type` spec enforces.
  */
-const quote = defineFunction('quote', {
-  params: [{ name: 'string', type: STRING_KINDS }] as const,
+const quote = define('quote', {
+  params: [{ type: STRING_KINDS, check: checkKinds, name: 'string' }] as const,
   body: (string: SassString) => addQuotes(stringText(string))
 });
 

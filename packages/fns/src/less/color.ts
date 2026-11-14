@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { colorRgbRounded, makeColorRgb, defineFunction, HEX, parseHex, namedColor } from '@jesscss/core/value';
+import { colorRgbRounded, makeColorRgb, HEX, parseHex, namedColor, define, checkKinds } from '@jesscss/core/value';
 
 const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
 
@@ -16,8 +16,8 @@ const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
  * validated directly against Less 4.x, not the adapter (differential asserts built-in
  * = Less 4.x for the quoted cases).
  */
-export const color: Fn = /* @__PURE__ */ defineFunction('color', {
-  params: [{ type: ['Color', 'Quoted'] }],
+export const color: Fn = /* @__PURE__ */ define('color', {
+  params: [{ type: ['Color', 'Quoted'], check: checkKinds }],
   body: (arg) => {
     if (arg.type === 'Color') {
       const c = arg;

@@ -6,12 +6,12 @@
  * @example
  * map.values((a: 1, b: 2)) // 1, 2
  */
-import { defineFunction, makeList } from '@jesscss/core/value';
+import { makeList, define, checkCollection } from '@jesscss/core/value';
 
-const values = defineFunction(
+const values = define(
   'values',
   {
-    params: [{ name: 'map', type: 'Collection' }] as const,
+    params: [{ name: 'map', type: 'Collection', check: checkCollection }] as const,
     body: map => makeList(map.entries.map(entry => entry.value), ',')
   }
 );

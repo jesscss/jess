@@ -1,5 +1,5 @@
 import { asNumber, defineForm, type FormCall } from '@jesscss/core/form';
-import { makeDimension, type Dimension, type Fn, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
+import { makeDimension, checkKinds, type Dimension, type Fn, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
 import { spin } from '../../less/css-forms.generated.js';
 import { COLOR, EXCESS } from './color-form.js';
 import { degreesOf, noExcess } from './kernels.js';
@@ -15,7 +15,7 @@ import { degreesOf, noExcess } from './kernels.js';
  * definition rather than a re-export of the Less callable.
  */
 export const adjustHue: Fn = /* @__PURE__ */ defineForm('adjust-hue', {
-  params: [COLOR, { name: 'degrees', type: ['Dimension', 'FunctionCall'] }, EXCESS],
+  params: [COLOR, { type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'degrees' }, EXCESS],
   form: (color: ValueGroup, degrees: Dimension | FunctionCall, excess?: ValueGroup): FormCall => {
     noExcess(excess, 2);
     return [spin, color, degrees.type === 'Dimension' ? makeDimension(degreesOf(degrees)) : asNumber(degrees)];

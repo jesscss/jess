@@ -1,5 +1,5 @@
 import { defineForm } from '@jesscss/core/form';
-import { RGB, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { RGB, checkKinds, type Fn, type ValueGroup } from '@jesscss/core/value';
 import * as forms from '../../less/css-forms.generated.js';
 import { mixForm, type Weight } from '../../less/mix-form.js';
 import { EXCESS } from './color-form.js';
@@ -19,9 +19,9 @@ import { noExcess, weightAmount } from './kernels.js';
  */
 export const mix: Fn = /* @__PURE__ */ defineForm('mix', {
   params: [
-    { name: 'color1', type: ['Color', 'FunctionCall'] },
-    { name: 'color2', type: ['Color', 'FunctionCall'] },
-    { name: 'weight', type: ['Dimension', 'FunctionCall'], optional: true },
+    { type: ['Color', 'FunctionCall'], check: checkKinds, name: 'color1' },
+    { type: ['Color', 'FunctionCall'], check: checkKinds, name: 'color2' },
+    { type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'weight', optional: true },
     EXCESS
   ],
   format: RGB,

@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core/value';
+import { defineFunction, checkDimension } from '@jesscss/core/value';
 import { applyMath } from '../../shared/math/math-helper.js';
 import { assertNoUnits } from './units.js';
 
@@ -13,7 +13,7 @@ import { assertNoUnits } from './units.js';
  */
 const sqrt = defineFunction('sqrt', {
   cssFunction: true,
-  params: [{ name: 'number', type: 'Dimension' }] as const,
+  params: [{ name: 'number', type: 'Dimension', check: checkDimension }] as const,
   body: number => applyMath(Math.sqrt, null, [assertNoUnits(number, 'number')])
 });
 

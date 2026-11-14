@@ -1,11 +1,11 @@
-import { defineFunction } from '@jesscss/core/value';
+import { define, checkAny, checkKinds } from '@jesscss/core/value';
 import { createSassListResult, getSassListInfo, resolveSassSeparator } from './util.js';
 
-const append = defineFunction('append', {
+const append = define('append', {
   params: [
-    { name: 'list', type: 'any' },
-    { name: 'value', type: 'any' },
-    { name: 'separator', type: ['Quoted', 'Keyword'], optional: true }
+    { name: 'list', type: 'any', check: checkAny },
+    { name: 'value', type: 'any', check: checkAny },
+    { type: ['Quoted', 'Keyword'], check: checkKinds, name: 'separator', optional: true }
   ] as const,
   body: (list, value, separator) => {
     const info = getSassListInfo(list);

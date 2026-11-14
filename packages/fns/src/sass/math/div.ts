@@ -1,4 +1,4 @@
-import { defineFunction, emitValue, isUnknownNumber, isValueGroupArray, operate, operatedOnUnknown, type Dimension, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
+import { emitValue, isUnknownNumber, isValueGroupArray, operate, operatedOnUnknown, define, checkDimension, type Dimension, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
 
 const number = (item: ValueGroup, name: string): Dimension | FunctionCall => {
   if (isValueGroupArray(item) || (item.type !== 'Dimension' && (item.type !== 'FunctionCall' || !isUnknownNumber(item)))) {
@@ -34,10 +34,10 @@ const number = (item: ValueGroup, name: string): Dimension | FunctionCall => {
  * Over a number only the browser knows it is `calc(number1 / number2)`, what the
  * `.scss` `/` that computes writes there (V38).
  */
-const div = defineFunction('div', {
+const div = define('div', {
   params: [
-    { name: 'number1', type: 'Dimension' },
-    { name: 'number2', type: 'Dimension' }
+    { name: 'number1', type: 'Dimension', check: checkDimension },
+    { name: 'number2', type: 'Dimension', check: checkDimension }
   ],
   variadic: true,
   body: (items, ctx) => {

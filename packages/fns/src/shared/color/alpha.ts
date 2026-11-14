@@ -1,8 +1,8 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { makeDimension, define, checkColor } from '@jesscss/core/value';
 
 /** Less/Sass `alpha()` over the canonical value domain. */
-const alpha = defineFunction('alpha', {
-  params: [{ name: 'color', type: 'Color' }] as const,
+const alpha = define('alpha', {
+  params: [{ name: 'color', type: 'Color', check: checkColor }] as const,
   body: color => makeDimension(Math.min(Math.max(color.alpha, 0), 1))
 });
 

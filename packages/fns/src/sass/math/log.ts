@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension, type Dimension, type Null } from '@jesscss/core/value';
+import { defineFunction, makeDimension, checkDimension, checkKinds, type Dimension, type Null } from '@jesscss/core/value';
 import { assertNoUnits } from './units.js';
 
 /**
@@ -15,8 +15,8 @@ import { assertNoUnits } from './units.js';
 const log = defineFunction('log', {
   cssFunction: true,
   params: [
-    { name: 'number', type: 'Dimension' },
-    { name: 'base', type: ['Dimension', 'Null'], optional: true }
+    { name: 'number', type: 'Dimension', check: checkDimension },
+    { type: ['Dimension', 'Null'], check: checkKinds, name: 'base', optional: true }
   ] as const,
   body: (number: Dimension, base: Dimension | Null | undefined) => {
     const value = Math.log(assertNoUnits(number, 'number').number);

@@ -4,7 +4,7 @@
  * Recurses only when both colliding values are maps. Every other collision uses
  * the second map's value, while the first map owns established key order.
  */
-import { CollectionOverlay, defineFunction, isCollection, makeCollection, type Collection } from '@jesscss/core/value';
+import { CollectionOverlay, isCollection, makeCollection, define, checkCollection, type Collection } from '@jesscss/core/value';
 
 type Entry = Collection['entries'][number];
 
@@ -29,12 +29,12 @@ function deepMergeCollections(map1: Collection, map2: Collection): Collection {
   return makeCollection(entries.items);
 }
 
-const deepMerge = defineFunction(
+const deepMerge = define(
   'deep-merge',
   {
     params: [
-      { name: 'map1', type: 'Collection' },
-      { name: 'map2', type: 'Collection' }
+      { name: 'map1', type: 'Collection', check: checkCollection },
+      { name: 'map2', type: 'Collection', check: checkCollection }
     ] as const,
     body: deepMergeCollections
   }

@@ -6,14 +6,14 @@
  * @example
  * map.merge((a: 1), (b: 2)) // (a: 1, b: 2)
  */
-import { CollectionOverlay, defineFunction, makeCollection } from '@jesscss/core/value';
+import { CollectionOverlay, makeCollection, define, checkCollection } from '@jesscss/core/value';
 
-const merge = defineFunction(
+const merge = define(
   'merge',
   {
     params: [
-      { name: 'map1', type: 'Collection' },
-      { name: 'map2', type: 'Collection' }
+      { name: 'map1', type: 'Collection', check: checkCollection },
+      { name: 'map2', type: 'Collection', check: checkCollection }
     ] as const,
     body: (map1, map2) => {
       const entries = new CollectionOverlay<(typeof map1.entries)[number]>();

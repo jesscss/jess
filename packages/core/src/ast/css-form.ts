@@ -17,7 +17,8 @@ import { buildEvaluator } from './evaluator.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import { keyword, type AnonymousMixin } from './nodes.js';
 import { evalFormChannel, evalFormResult, formActivation, formChannelLane, formLane, type BindingCell, type FormActivation } from './serialize.js';
-import { bindDirect, createFnRegistry, defineFunction } from './value-dispatch.js';
+import { createFnRegistry, defineFunction, withCheck } from './value-dispatch.js';
+import { bindDirect } from './define.js';
 import { HEX, RGB } from './color.js';
 import { isValueGroupArray, type Color, type Dimension, type Value, type ValueGroup } from './value-eval.js';
 import { DimensionValueNode } from './node-ctors.js';
@@ -222,8 +223,9 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format:
  */
 export function defineForm(name: string, spec: { readonly params: readonly ParamSpec[]; readonly form: (...args: never[]) => FormCall | Color; readonly format?: number; readonly filter?: boolean }): Fn {
   const activations = new Map<AnonymousMixin, FormActivation>();
+  const params = spec.params.map(withCheck);
   return defineFunction(name, {
-    params: spec.params,
+    params,
     variadic: true,
     filter: spec.filter,
     body: (items, ctx): MaybePromise<ValueGroup> => {
@@ -231,7 +233,7 @@ export function defineForm(name: string, spec: { readonly params: readonly Param
       if (spec.filter === true && items.length === 1 && lone !== undefined && !isValueGroupArray(lone) && lone.type === 'FunctionCall' && lone.result === 'numeric') {
         throw new TypeError(`${name}: arg 0 expected Color, got a number`);
       }
-      const call: FormCall | Color = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, items, ctx.colorName));
+      const call: FormCall | Color = Reflect.apply(spec.form, undefined, bindDirect(name, params, items, ctx.colorName));
       if ('type' in call) {
         return call;
       }

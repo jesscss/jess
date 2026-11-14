@@ -1,16 +1,16 @@
-import { defineFunction } from '@jesscss/core/value';
+import { define, checkDimension } from '@jesscss/core/value';
 import { sassMinMax } from './min-max.js';
 
 /** The global Sass `min()` — a bare call, preserved by the engine when it fails. */
-const min = defineFunction('min', {
-  params: [{ type: 'Dimension' }],
+const min = define('min', {
+  params: [{ type: 'Dimension', check: checkDimension }],
   variadic: true,
   body: list => sassMinMax(true, list, false)
 });
 
 /** `math.min()` — the MODULE form; explicitly namespaced, so failure reaches the user. */
-const mathMin = defineFunction('min', {
-  params: [{ type: 'Dimension' }],
+const mathMin = define('min', {
+  params: [{ type: 'Dimension', check: checkDimension }],
   variadic: true,
   body: list => sassMinMax(true, list, true)
 });
