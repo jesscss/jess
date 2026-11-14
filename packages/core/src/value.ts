@@ -92,7 +92,7 @@ export { operated as operatedOnUnknown } from './ast/math-operand.js';
 export { convertValue, foldUnit, groupOf, isCssUnit, unify, unitFactor } from './ast/value-units.js';
 
 // --- literal materialize / sniff ---
-export { parseHex, sniffLiteral, coerceNamedColorKeyword } from './ast/literal-tag.js';
+export { parseHex, sniffLiteral, sniffUnnamed, coerceNamedColorKeyword } from './ast/literal-tag.js';
 
 // --- selector values (`&`, `selector.parse()`) ---
 export { selectorValue } from './ast/selector-text.js';

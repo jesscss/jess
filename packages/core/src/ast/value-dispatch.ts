@@ -105,13 +105,29 @@ export function takesColor(param: ParamSpec | undefined): boolean {
  * any value, or a list, receives the list (`length(16/17)` is `2`). Each
  * argument is governed by its own parameter, then by the `rest` parameter, or
  * a variadic function's last one.
+ *
+ * A colour name passed to a parameter checked as a colour is that colour
+ * (`lighten(red, 10%)` binds `#ff0000`), read here at the point of use without
+ * the un-operated literal ever being reclassified; a keyword that is no colour
+ * name still fails the slot. The binder itself reads no names, so the browser
+ * runtime, which calls functions without this pass, bundles the name table only
+ * when it reads names (R8 spec, colour names).
  */
-export function numberArguments(fn: Fn, items: readonly ValueGroup[], ev: Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>, modes: EvalModes): readonly ValueGroup[] {
+export function compileArguments(fn: Fn, items: readonly ValueGroup[], ev: Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>, modes: EvalModes): readonly ValueGroup[] {
   let out: ValueGroup[] | undefined;
   const tail = fn.variadic === true ? fn.params.at(-1) : fn.params.find(isRest);
   for (let index = 0; index < items.length; index++) {
     const item = items[index]!;
     if (isValueGroupArray(item)) {
+      continue;
+    }
+    if (item.type === 'Keyword') {
+      if (takesColor(fn.params[index] ?? tail)) {
+        const color = coerceNamedColorKeyword(item);
+        if (color !== item) {
+          (out ??= [...items])[index] = color;
+        }
+      }
       continue;
     }
     const isCalc = item.type === 'FunctionCall' && item.name === 'calc' && ev.sassCalculations !== true;
@@ -249,11 +265,9 @@ function validateValue(name: string, index: number, type: NormalizedParamType, v
     ? value
     : single?.type === 'FunctionCall' || single?.type === 'Arithmetic'
       ? keepAsWritten(callKeyword(single))
-      : single?.type === 'Keyword' && type.includes('Color')
-        ? coerceNamedColorKeyword(single)
-        : type.includes('Collection') && groupItems(value).length === 0 && isListShaped(value)
-          ? EMPTY_COLLECTION
-          : value;
+      : type.includes('Collection') && groupItems(value).length === 0 && isListShaped(value)
+        ? EMPTY_COLLECTION
+        : value;
   if (!isValueForType(bound, type)) {
     const expected = type === 'any' ? 'any' : type.filter(kind => kind !== 'FunctionCall').join('|');
     throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${isValueGroupArray(bound) ? 'sequence' : bound.type}`);

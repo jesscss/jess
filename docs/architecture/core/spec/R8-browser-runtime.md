@@ -49,9 +49,22 @@ as a colour (`ExportRuntimeData.colors`). The generated module passes that list
 to `createVars` as `hex` unless names are on, and `vars()` throws on a given
 value there that starts with a letter, which needs no name table:
 `` `brand` received `blue`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names. ``
-Pinned in `packages/vite-plugin-jess/test/index.test.ts`. The table still
-reaches the bundle through the value reader and the colour parameter check;
-it leaves when those stop importing it (stage 4, steps 1b and 3).
+Pinned in `packages/vite-plugin-jess/test/index.test.ts`.
+
+The table reaches the bundle only when names are on, and through only one
+path: the value reader, which the generated module picks (`sniffLiteral`, or
+`sniffUnnamed` without the table). The function binder reads no names. A
+colour name passed to a parameter checked as a colour becomes that colour in
+the compile's argument pass (`compileArguments`, `value-dispatch.ts`) and in
+`callNamed`, so compiled output is unchanged. The runtime needs no such step,
+because a name it reads is already a colour. A function whose own body reads
+names (`iscolor`) still bundles the table.
+
+Names also count as "on" when a computed call's own argument spells one
+(`lightness(multiply(@brand, gray))`): the stylesheet writes that name, and the
+runtime has to read it back as a colour (`ExportRuntimeData.names`,
+`spellsColorName` in `export-reads.ts`). Pinned in
+`packages/jess/test/less-expose-variables.test.ts`.
 
 Split off on 2026-11-01 as its own task: built-in functions that have a CSS
 counterpart are represented internally as that counterpart (`darken()` as

@@ -271,8 +271,17 @@ describe('Less @expose variables (A4)', () => {
           args: [{ fn: { module: '@jesscss/fns/less', name: 'multiply' }, args: [{ export: 'brand' }, '#888'] }]
         }
       },
-      colors: ['brand']
+      colors: ['brand'],
+      names: false
     });
+  });
+
+  it.each([
+    ['#c00', '#888', false],
+    ['red', '#888', true],
+    ['#c00', 'gray', true]
+  ])('reads colour names at runtime for @brand: %s and a %s argument only when the stylesheet writes one: %s', async (own, other, names) => {
+    await expect(runtime(`@use "#less";\n@expose brand;\n@brand: ${own};\n.a { v: @less.lightness(@less.multiply(@brand, ${other})); }`)).resolves.toMatchObject({ names });
   });
 
   it('returns no runtime for a document that exposes nothing', async () => {
