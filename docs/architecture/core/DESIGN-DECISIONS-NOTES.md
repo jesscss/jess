@@ -437,3 +437,18 @@ threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
   at a parameter not checked as a colour, or inside a list, still turns names
   on, and so does an export passed through `extract()`; the last stays open for
   the owner in the R8 spec. Pinned in `packages/jess/test/export-runtime.test.ts`.
+- 2026-11-13 — owner ruling, verbatim, on the case left open above. Asked
+  "Should a colour export that reaches a colour function via extract() accept
+  colour names in vars()?", with the orchestrator's recommendation "No, gate it
+  too: it throws unless `colorNames: true` is set, the same as the rest of your
+  ruling, and those pages stay small": *"I agree with the reco"*. Implementation
+  note (agent): an export a recipe reads whose compile-time value holds a colour
+  (a hex, a colour function's value or a name, alone or in a list) is a colour
+  export however the recipe passes it on (`export-reads.ts` `recordDefaults`),
+  so it takes the hex check, and `readsNames` no longer turns names on for an
+  export a recipe does not pass straight to a colour parameter. An export whose
+  value holds no colour (`@l: 1px 2px`) takes no check. Names written in a
+  recipe's own argument at a parameter not checked as a colour still turn names
+  on: the stylesheet writes them, not the page. Pinned in
+  `packages/jess/test/less-expose-variables.test.ts` and
+  `packages/vite-plugin-jess/test/index.test.ts`.

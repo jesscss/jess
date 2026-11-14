@@ -80,14 +80,13 @@ vars({ brand: '#08f' });           // { '--brand': '#08f', '--brand-darken': '#0
 Each value is keyed by the variable's name with dash-case turned to camelCase:
 `@brand-color` is `brandColor`.
 
-A value that a computed value reads as a colour is a hex colour (`#08f`). A
+A value that a computed value reads as a colour, or that holds a colour (`@list: #f00 #00f` read through `extract()`), is a hex colour (`#08f`). A
 colour name (`red`) throws a `TypeError`, unless the stylesheet itself writes a
 name the runtime reads (the variable's own value) or the plugin option
 `colorNames: true` is set; this keeps the colour-name table out of the bundle
 (R8 runtime spec, colour names). A name a computed call's own argument writes
 as a colour, as in `lightness(multiply(@brand, gray))`, is read when the
-stylesheet compiles and brings no table. A variable a computed value reads in any other
-way (through `extract()`, say) still takes colour names, and the table ships.
+stylesheet compiles and brings no table.
 
 ## Options
 

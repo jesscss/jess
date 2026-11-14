@@ -123,7 +123,8 @@ describe('vite-plugin-jess', () => {
   it.each([
     ['#c00', {}, false],
     ['#c00', { colorNames: true }, true],
-    ['red', {}, true]
+    ['red', {}, true],
+    ['rgb(0 0 255)', {}, false]
   ] as const)('takes a colour name for @brand: %s with %o only when names are on', async (own, options, names) => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
@@ -158,18 +159,36 @@ describe('vite-plugin-jess', () => {
     });
   });
 
-  /* The page still may not pass a name where the runtime reads names for another reason (R8 spec, colour names, the open case). */
-  it('rejects a colour name for @brand when the runtime reads names for an export passed through extract()', async () => {
+  /* A colour export passed through extract() takes the hex check too (owner, 2026-11-13: "I agree with the reco"). */
+  it('rejects a colour name for an export passed through extract(), and bundles no name table', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
       ['theme.less', `@use "#less";\n@expose brand, l;\n@brand: #c00;\n@l: #f00 #00f;\n.a { v: @less.lightness(@less.multiply(@brand, #888)); w: @less.luma(@less.extract(@l, 1)); }\n`]
     ], async (root) => {
       const { js } = await built(root, {});
-      expect(js).toContain('aliceblue');
+      expect(js).not.toContain('aliceblue');
       const file = path.join(root, 'main.mjs');
       fs.writeFileSync(file, js);
       const module: unknown = await import(file);
       expect(() => isRuntime(module) && module.vars({ brand: 'blue' })).toThrow('`brand` received `blue`, which is not a hex colour');
+      expect(() => isRuntime(module) && module.vars({ l: 'red #00f' })).toThrow('`l` received `red #00f`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names.');
+      expect(isRuntime(module) && module.vars({ l: '#000 #00f' })['--l-luma']).toBe('0%');
+    });
+  });
+
+  it('rejects a colour name in any item of a hex-checked export, though the page reads its own names', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose b;\n@b: #f00 #00f;\n.a { v: @less.luma(@less.extract(@b, 2)); w: @less.isunit(@b, red); }\n`]
+    ], async (root) => {
+      const { js } = await built(root, {});
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      for (const given of ['#00f red', '#00f, red', 'blue,#00f']) {
+        expect(() => isRuntime(module) && module.vars({ b: given })).toThrow(`\`b\` received \`${given}\`, which is not a hex colour`);
+      }
+      expect(isRuntime(module) && module.vars({ b: '#fff #000' })['--b-luma']).toBe('0%');
     });
   });
 
