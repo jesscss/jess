@@ -32,6 +32,11 @@
       "import": "./lib/less/registry.js",
       "require": "./lib/less/registry.cjs"
     },
+    "./less/bodies": {
+      "types": "./lib/less/bodies.d.ts",
+      "import": "./lib/less/bodies.js",
+      "require": "./lib/less/bodies.cjs"
+    },
     "./sass": {
       "types": "./lib/sass/index.d.ts",
       "import": "./lib/sass/index.js",

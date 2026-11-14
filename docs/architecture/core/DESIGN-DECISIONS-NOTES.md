@@ -472,3 +472,36 @@ threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
   - `rest` is the last parameter; one array given at its slot is taken as its
     arguments.
   Pinned in `packages/core/src/ast/__tests__/define-binding.test.ts`.
+
+## Direct body calls (proposed OPEN row)
+
+- 2026-11-14 — orchestrator ruling, relayed, applying the owner's bar for the
+  browser runtime: *"only the absolute absolute minimum for calculating the new
+  value, plus the tiny stylesheet manager to set the new custom var value"*,
+  *"each aspect should be tree-shaken"*, *"(and least duplication)"*. The
+  runtime may call a built-in's body directly when the generated module has
+  already proven the argument kinds: the reader's parse is the check (the
+  stage-4 value-walker design, §2.5, which the R8 spec cites at R8-13). No
+  ledger row covers this; proposed as OPEN for the orchestrator to add.
+  Conditions:
+  1. One body per built-in. `fns` exports the body and the defined function is
+     `define(spec, body)` over that same body; nothing is re-implemented on the
+     runtime side.
+  2. The generated module takes the direct call only for a recipe whose
+     argument kinds it proves at build time; any other recipe keeps the defined
+     function. The choice is per recipe, when the module is generated, never at
+     runtime.
+  3. One test shows the direct call and the defined function give identical
+     results on the same checked values.
+  4. A bundle assertion shows the lightness page holds no definer or binder.
+  Implementation note (agent): a defined function names its body's export in
+  `bodyExport` (`define.ts`); bodies live in `@jesscss/fns/less/bodies`, not in
+  `@jesscss/fns/less`, whose every function export is callable from a
+  stylesheet. `callRecipe` (`export-reads.ts`) records the body when each
+  parameter takes only a colour (required, no default, not lazy or rest) and each
+  argument is an export or a literal colour; the rollup plugin calls it only
+  when the page reads hex alone, since a page that reads colour names may be
+  given a keyword the defined function would refuse. Pinned in
+  `packages/fns/src/__tests__/lightness-body.test.ts`,
+  `packages/rollup-plugin-jess/test/index.test.ts` and
+  `packages/vite-plugin-jess/test/index.test.ts`.

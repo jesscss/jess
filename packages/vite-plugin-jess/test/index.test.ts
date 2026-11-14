@@ -96,8 +96,10 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { js } = await built(root);
 
-      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 6,956 B measured (2,877 B gzip), with a hex colour read by one channel reader; 7,124 B with the legacy hex port; 7,652 B with the full hsl conversion, one binder loop over per-parameter checks and its definition-time check that a flag has its wrapper (7,445 B without it); 8,387 B with a spelled colour built without the colour writer; 11,115 B with the hex-only reader; 14,571 B with the value text reader; 14,514 B measured (5,281 B gzip), with patch-css minified; 14,737 B before; 15,717 B with the unit check and unit tables; 19,126 B with the binder's general check, and no colour-name table (R8-13); 22,359 B when it came with every value reader and the binder, 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
-      expect(js.length).toBeLessThan(7_300);
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 4,841 B measured (2,130 B gzip), with the body called directly, so no definer or binder; 6,956 B with the defined function; 7,124 B with the legacy hex port; 7,652 B with the full hsl conversion, one binder loop over per-parameter checks and its definition-time check that a flag has its wrapper (7,445 B without it); 8,387 B with a spelled colour built without the colour writer; 11,115 B with the hex-only reader; 14,571 B with the value text reader; 14,514 B measured (5,281 B gzip), with patch-css minified; 14,737 B before; 15,717 B with the unit check and unit tables; 19,126 B with the binder's general check, and no colour-name table (R8-13); 22,359 B when it came with every value reader and the binder, 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
+      expect(js.length).toBeLessThan(5_080);
+      expect(js).not.toContain('a flag needs its wrapper');
+      expect(js).not.toContain('missing required argument');
       expect(js).not.toContain('computes from CSS literals');
       expect(js).not.toContain('is read by a CSS form');
       expect(js).not.toContain('dvmin');

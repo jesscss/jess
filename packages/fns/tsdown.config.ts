@@ -7,6 +7,7 @@ export default defineConfig({
     registry: './src/registry.ts',
     'less/index': './src/less/index.ts',
     'less/registry': './src/less/registry.ts',
+    'less/bodies': './src/less/bodies.ts',
     'sass/index': './src/sass/index.ts',
     'sass/registry': './src/sass/registry.ts',
     'sass/color/index': './src/sass/color/index.ts',

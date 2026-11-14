@@ -245,6 +245,14 @@ export type Fn = ((args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<Valu
 
   /** The module export a function imported into a stylesheet binds (module-values.ts `bindModuleFunction`). */
   readonly origin?: FnOrigin;
+
+  /**
+   * Where this function's body is exported, so a generated runtime module can
+   * call it directly where it proves each argument's kind at build time: the
+   * reader's parse is the check (DESIGN-DECISIONS-NOTES.md,
+   * "Direct body calls"). The defined function is `define` over that same body.
+   */
+  readonly bodyExport?: FnOrigin;
 };
 
 /** Where an imported function comes from: the module as the stylesheet names it, and the export. */

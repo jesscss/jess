@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Compiler } from 'jess';
-import jess from '../src/index.js';
+import jess, { moduleCode } from '../src/index.js';
 import commonJs from '@rollup/plugin-commonjs';
 import nodeResolve from '@rollup/plugin-node-resolve';
 
@@ -25,6 +25,21 @@ const buildFile = async (filePath: string) => {
 };
 
 describe('rollup-plugin-jess', () => {
+  it('calls a body directly only for a recipe whose arguments the page proves colours', () => {
+    const fn = { module: '@jesscss/fns/less', name: 'lightness' };
+    const body = { module: '@jesscss/fns/less/bodies', name: 'lightnessOf' };
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+    const runtime = { exports: ['brand'], keys: { brand: 'brand' }, defaults: { brand: '#c00' }, units: {}, ratios: [], colors: ['brand'], names: false, ownNames: false, direct: true, derived: { '--brand-lightness': { fn, args: [{ export: 'brand' }], body } } };
+    const hex = moduleCode('', runtime);
+    expect(hex).toContain('import { lightnessOf as f0 } from "@jesscss/fns/less/bodies";');
+    expect(hex).toContain('[(a) => f0(...a), [{"export":"brand"}]]');
+
+    /* A page that reads colour names may be given a keyword, so its call keeps the defined function, which checks it. */
+    const names = moduleCode('', { ...runtime, names: true });
+    expect(names).toContain('import { lightness as f0 } from "@jesscss/fns/less";');
+    expect(names).not.toContain('lightnessOf');
+  });
+
   it('exports the runtime of a stylesheet that exposes variables', async () => {
     const bundle = await rollup.rollup({ input: path.resolve(__dirname, './runtime.less'), plugins: [nodeResolve(), commonJs(), jess()] });
     const { output } = await bundle.generate({ format: 'es' });

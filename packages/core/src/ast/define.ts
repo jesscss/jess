@@ -13,7 +13,7 @@ import { isValueGroup, isValueGroupArray, type Collection, type Value, type Valu
 import { groupItems } from './value-list.js';
 import { callKeyword, makeCollection } from './value-factory.js';
 import { keepAsWritten } from './value-operate.js';
-import type { Check, DefinedFunction, Fn, FnCtx, FunctionBodyArgs, Kind, LazyValue, ParamSpec } from './functions/types.js';
+import type { Check, DefinedFunction, Fn, FnCtx, FnOrigin, FunctionBodyArgs, Kind, LazyValue, ParamSpec } from './functions/types.js';
 
 export function valueNode(name: string, value: unknown): ValueGroup {
   if (!isValueGroup(value)) {
@@ -218,6 +218,9 @@ export function define<const P extends readonly ParamSpec[]>(
     readonly variadic?: false;
     readonly filter?: boolean;
     readonly cssFunction?: never;
+
+    /** Where `body` is exported, for a generated runtime module's direct call ({@link Fn.bodyExport}). */
+    readonly bodyExport?: FnOrigin;
   },
 ): DefinedFunction<P>;
 export function define(
@@ -251,6 +254,9 @@ export function define(
     readonly variadic?: boolean;
     readonly filter?: boolean;
     readonly cssFunction?: never;
+
+    /** Where `body` is exported, for a generated runtime module's direct call ({@link Fn.bodyExport}). */
+    readonly bodyExport?: FnOrigin;
     readonly afterBind?: (bound: readonly unknown[]) => void;
   }
 ): unknown {
@@ -271,7 +277,7 @@ export function define(
       return Reflect.apply(body, undefined, bound);
     };
   }
-  const fn = Object.assign(callable, { params, variadic: spec.variadic, filter: spec.filter });
+  const fn = Object.assign(callable, { params, variadic: spec.variadic, filter: spec.filter, bodyExport: spec.bodyExport });
   Object.defineProperty(fn, 'name', { value: name, configurable: true });
   return fn;
 }

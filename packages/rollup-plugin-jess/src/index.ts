@@ -212,15 +212,38 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
       }
       return id;
     };
-    let text = false;
+
+    /* A recipe's own argument as text, which only a text reader reads. */
+    const holdsText = (recipe: ExportRecipe | ExportColor | string): boolean =>
+      typeof recipe === 'string' || ('fn' in recipe && recipe.args.some(holdsText));
+    const text = Object.values(runtime.derived).some(holdsText);
+
+    /* Names are read when asked for, or when the stylesheet itself writes one the runtime reads: a colour export's value, or a recipe's own argument. */
+    const names = colorNames || runtime.names;
+
+    /*
+     * The reader is the least the page needs: hex only when no recipe holds
+     * text and every export a recipe reads goes straight to a colour
+     * parameter, so it is one colour, and its compile-time CSS, which the
+     * reader also reads, is a hex. An export passed through another function
+     * may be a list (`luma(extract(@list, 1))`).
+     */
+    const hexOnly = !names && !text && runtime.direct && Object.values(runtime.defaults).every(css => /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(css));
+
+    /*
+     * A call whose arguments the page proves one colour each, on a page that
+     * reads each export as a colour, calls the function's body directly, so the
+     * page bundles no definer or binder: the reader's parse is the check (DESIGN-DECISIONS-NOTES.md, "Direct body calls").
+     * Any other call runs the defined function, which checks its arguments.
+     */
     const write = (recipe: ExportRecipe | ExportColor | string): string =>
       typeof recipe === 'string'
-        ? (text = true, JSON.stringify(recipe))
+        ? JSON.stringify(recipe)
         : 'export' in recipe
           ? JSON.stringify(recipe)
           : 'color' in recipe
             ? `[${local('@jesscss/fns/runtime', 'color')}(${JSON.stringify(recipe.color)}, ${JSON.stringify(recipe.rgb)}, ${recipe.alpha}), []]`
-            : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
+            : `[${hexOnly && recipe.body !== undefined ? `(a) => ${local(recipe.body.module, recipe.body.name)}(...a)` : local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
     const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
 
     /* The least check the exports need: none when no CSS form reads one. */
@@ -236,18 +259,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         `export const set = (values, target) => writeVars(exposedVars(spec, values${held}), target);`
       );
     } else {
-      /* Names are read when asked for, or when the stylesheet itself writes one the runtime reads: a colour export's value, or a recipe's own argument. */
-      const names = colorNames || runtime.names;
       const held = hold === undefined ? '' : `, hold: ${local('@jesscss/patch-css', hold)}`;
-
-      /*
-       * The reader is the least the page needs: hex only when no recipe holds
-       * text and every export a recipe reads goes straight to a colour
-       * parameter, so it is one colour, and its compile-time CSS, which the
-       * reader also reads, is a hex. An export passed through another function
-       * may be a list (`luma(extract(@list, 1))`).
-       */
-      const hexOnly = !names && !text && runtime.direct && Object.values(runtime.defaults).every(css => /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(css));
       lines.push(`import { createVars, ${hexOnly ? 'readHex' : names ? 'readNamed' : 'readUnnamed'} as read } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
       for (const [module, members] of imports) {
         lines.push(`import { ${members.join(', ')} } from ${JSON.stringify(module)};`);
