@@ -63,18 +63,26 @@ the bundle only when names are on, or when a function's own body reads names
 As built, names are on when `colorNames: true` is set, or when the compile's
 `ExportRuntimeData.names` is set (`readsNames` in `export-reads.ts`). It is set
 in three cases. The first is the ruling's. The other two keep the runtime's
-behaviour from before the gate, pending the owner:
+behaviour from before the gate:
 - a colour export's own value is a name (the ruling);
-- a recipe's own argument spells a name (`lightness(multiply(@brand, gray))`).
-  The stylesheet writes that name and the runtime has to read it back as a
-  colour. **Open:** is this the stylesheet's own value in the ruling's sense?
+- a recipe's own argument spells a name that the compile does not read as a
+  colour: one passed to a parameter not checked as a colour, or one inside a
+  list;
 - a recipe reads an export it does not pass straight to a colour parameter
   (`luma(extract(@list, 1))`). The value can still reach a colour parameter,
   but the hex check covers only exports the compile sees reach one. **Open:**
   should such an export count as a colour export, take the hex check, and drop
   the names?
 
-Pinned in `packages/jess/test/less-expose-variables.test.ts`.
+A colour name a recipe's own argument writes for a parameter checked as a
+colour (`gray` in `lightness(multiply(@brand, gray))`) is known when the
+stylesheet compiles, so the compile reads it as that colour there and does not
+set `names` for it (orchestrator ruling, 2026-11-13). The recipe carries the
+name and its channels (`ExportColor`), and the runtime builds the colour from
+them as the compile's binder builds it from the name.
+
+Pinned in `packages/jess/test/less-expose-variables.test.ts` and
+`packages/jess/test/export-runtime.test.ts`.
 
 Split off on 2026-11-01 as its own task: built-in functions that have a CSS
 counterpart are represented internally as that counterpart (`darken()` as

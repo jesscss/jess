@@ -420,3 +420,16 @@ threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
   is already a `Color`, because `sniffLiteral` reads it, or it is rejected
   before any call. A JavaScript caller that builds its own `FnCtx` (through
   `callNamed`, say) passes `colorName` to get the same reading.
+
+## R8-13
+
+- 2026-11-13 — orchestrator ruling (not the owner's), applying R8-13, on
+  perf/runtime-literal-colours. A colour name a recipe's own argument writes for
+  a parameter checked as a colour (`gray` in `lightness(multiply(@brand, gray))`)
+  is known when the stylesheet compiles, so the compile reads it as that colour
+  and the runtime ships no name table for it. The recipe carries the name and
+  its channels, and both sides build the colour with `spelledColor`
+  (`literal-tag.ts`), keeping the name as written (`Gray` prints `Gray`). A name
+  at a parameter not checked as a colour, or inside a list, still turns names
+  on, and so does an export passed through `extract()`; the last stays open for
+  the owner in the R8 spec. Pinned in `packages/jess/test/export-runtime.test.ts`.

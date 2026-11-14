@@ -29,7 +29,19 @@ import { cancelPercent, exposedOperand, insideParens, keepAsWritten, mathOnDefer
  * How the runtime computes a value derived from exports: an export's value, an
  * argument's compile-time CSS, or an imported function of those.
  */
-export type ExportRecipe = { readonly export: string } | { readonly fn: FnOrigin; readonly args: ReadonlyArray<ExportRecipe | string> };
+export type ExportRecipe = { readonly export: string } | { readonly fn: FnOrigin; readonly args: ReadonlyArray<ExportRecipe | ExportColor | string> };
+
+/**
+ * A colour name a recipe's own argument writes for a parameter checked as a
+ * colour (`gray` in `lightness(multiply(@brand, gray))`), read as that colour
+ * at compile time, as the compile's binder reads it, so the runtime needs no
+ * name table for it: the name as written, and its channels.
+ */
+export interface ExportColor {
+  readonly color: string;
+  readonly rgb: readonly [number, number, number];
+  readonly alpha: number;
+}
 
 /** What the runtime module is generated from ({@link ExportState.runtime}). */
 export interface ExportRuntime {
@@ -1100,17 +1112,26 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
     exportNotWritten(node, `@${recipeExport(stray.recipe)}`, recipeExport(stray.recipe), e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
   }
   const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
-  const args = vals.map(v => recipes.get(lone(v)) ?? emitValue(v));
   const rest = fn?.params.find(param => param.rest === true);
   const runtime = e.s.exports.runtime;
-  args.forEach((arg, index) => {
-    if (typeof arg === 'string') {
-      if (runtime !== undefined && !runtime.literalNames && spellsColorName(vals[index]!)) {
-        runtime.literalNames = true;
+  const args = vals.map((v, index): ExportRecipe | ExportColor | string => {
+    const recipe = recipes.get(lone(v));
+    const color = takesColor(fn?.params[index] ?? rest);
+    if (recipe !== undefined) {
+      if (color && 'export' in recipe) {
+        runtime?.colors.add(recipe.export);
       }
-    } else if ('export' in arg && takesColor(fn?.params[index] ?? rest)) {
-      runtime?.colors.add(arg.export);
+      return recipe;
     }
+    const keyword = color && !isValueGroupArray(v) && v.type === 'Keyword' ? v : undefined;
+    const named = keyword === undefined ? undefined : namedColor(keyword.text);
+    if (keyword !== undefined && named !== undefined) {
+      return { color: keyword.text, rgb: named.rgb, alpha: named.alpha };
+    }
+    if (runtime !== undefined && !runtime.literalNames && spellsColorName(v)) {
+      runtime.literalNames = true;
+    }
+    return emitValue(v);
   });
   return { fn: origin, args };
 }
@@ -1121,7 +1142,7 @@ function recipeExport(recipe: ExportRecipe): string {
     return recipe.export;
   }
   for (const arg of recipe.args) {
-    if (typeof arg !== 'string') {
+    if (typeof arg !== 'string' && !('color' in arg)) {
       return recipeExport(arg);
     }
   }

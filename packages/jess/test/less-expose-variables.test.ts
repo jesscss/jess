@@ -279,9 +279,17 @@ describe('Less @expose variables (A4)', () => {
   it.each([
     ['#c00', '#888', false],
     ['red', '#888', true],
-    ['#c00', 'gray', true]
+    ['#c00', 'gray', false]
   ])('reads colour names at runtime for @brand: %s and a %s argument only when the stylesheet writes one: %s', async (own, other, names) => {
     await expect(runtime(`@use "#less";\n@expose brand;\n@brand: ${own};\n.a { v: @less.lightness(@less.multiply(@brand, ${other})); }`)).resolves.toMatchObject({ names });
+  });
+
+  it('reads a colour name a recipe writes for a colour parameter at compile time', async () => {
+    await expect(runtime('@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lightness(@less.multiply(@brand, gray)); }')).resolves.toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- a custom property name
+      derived: { '--brand-lightness': { args: [{ args: [{ export: 'brand' }, { color: 'gray', rgb: [128, 128, 128], alpha: 1 }] }] } },
+      names: false
+    });
   });
 
   it('reads colour names at runtime for an export a recipe does not pass straight to a colour parameter', async () => {

@@ -7,6 +7,7 @@ import type { Plugin, PluginContext, RollupLog } from 'rollup';
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
 type ExportRuntimeData = NonNullable<RenderResult['runtime']>;
 type ExportRecipe = ExportRuntimeData['derived'][string];
+type ExportColor = Extract<Extract<ExportRecipe, { args: unknown }>['args'][number], { color: string }>;
 type Diagnostic = RenderResult['errors'][number] | RenderResult['warnings'][number];
 
 export type JessRollupPluginOptions = {
@@ -211,10 +212,12 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
       }
       return id;
     };
-    const write = (recipe: ExportRecipe | string): string =>
+    const write = (recipe: ExportRecipe | ExportColor | string): string =>
       typeof recipe === 'string' || 'export' in recipe
         ? JSON.stringify(recipe)
-        : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
+        : 'color' in recipe
+          ? `[${local('@jesscss/fns/runtime', 'color')}(${JSON.stringify(recipe.color)}, ${JSON.stringify(recipe.rgb)}, ${recipe.alpha}), []]`
+          : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
     const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
     if (derived.length === 0) {
       /*

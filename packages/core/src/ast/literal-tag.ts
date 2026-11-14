@@ -19,7 +19,7 @@
  * `LiteralTag` enum / `LitFields` / packed-tag contract are gone — the node type
  * IS the classification.
  */
-import type { Value } from './value-eval.js';
+import type { Color, Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { makeBool, makeColorRgb, makeKeyword } from './value-factory.js';
 import { DimensionValueNode, QuotedValueNode } from './node-ctors.js';
@@ -88,14 +88,17 @@ function quotedFromBytes(str: string): Value {
 export function colorFromSrc(src: string): Value {
   if (src.charCodeAt(0) === 35 /* # */) {
     const { rgb, alpha } = parseHex(src);
-    return makeColorRgb(rgb, alpha, HEX, { src });
+    return spelledColor(src, rgb, alpha);
   }
   const named = namedColor(src);
   if (named) {
-    return makeColorRgb(named.rgb, named.alpha, HEX, { src });
+    return spelledColor(src, named.rgb, named.alpha);
   }
   return makeKeyword(src);
 }
+
+/** A colour as its author spelled it, a hex or a name, with its channels; the browser runtime builds a recipe's colour name with it too (R8 spec). */
+export const spelledColor = (src: string, rgb: readonly [number, number, number], alpha: number): Color => makeColorRgb(rgb, alpha, HEX, { src });
 
 /**
  * Coerce a named-color `Keyword` VALUE to its `Color` at a POINT OF USE
