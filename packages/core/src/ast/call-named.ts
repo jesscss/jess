@@ -9,6 +9,7 @@
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { DefinedFunction, Fn, FnCtx, FnRecord, ParamSpec } from './functions/types.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
+import { takesColor } from './value-dispatch.js';
 import { isValueGroup, isValueGroupArray, type ValueGroup } from './value-eval.js';
 
 export function callNamed<const P extends readonly ParamSpec[]>(fn: DefinedFunction<P>, record: FnRecord<P>, ctx: FnCtx): MaybePromise<ValueGroup>;
@@ -18,7 +19,7 @@ export function callNamed(fn: Fn, record: object, ctx: FnCtx): MaybePromise<Valu
   fn.params.forEach((param, index) => {
     const value: unknown = param.name !== undefined && Object.hasOwn(record, param.name) ? Reflect.get(record, param.name) : undefined;
     if (isValueGroup(value)) {
-      args[index] = !isValueGroupArray(value) && value.type === 'Keyword' && fn.colorSlots[index] === true ? coerceNamedColorKeyword(value) : value;
+      args[index] = !isValueGroupArray(value) && value.type === 'Keyword' && takesColor(param) ? coerceNamedColorKeyword(value) : value;
     }
   });
   return fn(args, ctx);

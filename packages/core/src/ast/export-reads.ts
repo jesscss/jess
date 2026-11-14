@@ -10,7 +10,7 @@ import type { FnOrigin } from './module-values.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { calcOperand } from './math-operand.js';
-import { isBrowserColor } from './value-dispatch.js';
+import { isBrowserColor, takesColor } from './value-dispatch.js';
 import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
 import { groupItems } from './value-list.js';
@@ -94,23 +94,13 @@ export interface ExportRuntimeData {
   readonly names: boolean;
 }
 
-/** Whether a colour export's own value is a name (an identifier: a colour export's value is a colour). */
-function namedDefault(runtime: ExportRuntime): boolean {
-  for (const name of runtime.colors) {
-    if (/^[a-z]/i.test(runtime.defaults.get(name) ?? '')) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /** A render's `runtime` result field: none when nothing is exported. */
 export function runtimeData(x: ExportState<unknown>): { runtime?: ExportRuntimeData } {
   settle(x);
   const runtime = x.runtime;
   return runtime === undefined
     ? {}
-    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), units: Object.fromEntries(runtime.units), ratios: [...runtime.ratios], derived: Object.fromEntries(runtime.derived), colors: [...runtime.colors], names: runtime.literalNames || namedDefault(runtime) } };
+    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), units: Object.fromEntries(runtime.units), ratios: [...runtime.ratios], derived: Object.fromEntries(runtime.derived), colors: [...runtime.colors], names: runtime.literalNames || [...runtime.colors].some(name => /^[a-z]/i.test(runtime.defaults.get(name) ?? '')) } };
 }
 
 /** A mixin argument as written, in the caller's frame. */
@@ -1077,9 +1067,7 @@ const spellsColorName = (v: ValueGroup): boolean =>
     ? v.some(spellsColorName)
     : v.type === 'List'
       ? spellsColorName(v.value)
-      : v.type === 'Keyword'
-        ? namedColor(v.text) !== undefined
-        : v.type === 'Color' && namedColor(emitValue(v)) !== undefined;
+      : (v.type === 'Keyword' || v.type === 'Color') && namedColor(emitValue(v)) !== undefined;
 
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */
 function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>, e: ExportLane<F>): ExportRecipe {
@@ -1094,13 +1082,14 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
   }
   const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
   const args = vals.map(v => recipes.get(lone(v)) ?? emitValue(v));
+  const rest = fn?.params.find(param => param.rest === true);
   const runtime = e.s.exports.runtime;
   args.forEach((arg, index) => {
     if (typeof arg === 'string') {
       if (runtime !== undefined && !runtime.literalNames && spellsColorName(vals[index]!)) {
         runtime.literalNames = true;
       }
-    } else if ('export' in arg && fn !== undefined && (fn.colorSlots[index] ?? fn.colorTail)) {
+    } else if ('export' in arg && takesColor(fn?.params[index] ?? rest)) {
       runtime?.colors.add(arg.export);
     }
   });

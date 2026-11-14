@@ -122,7 +122,7 @@ export function compileArguments(fn: Fn, items: readonly ValueGroup[], ev: Pick<
       continue;
     }
     if (item.type === 'Keyword') {
-      if (fn.colorSlots[index] ?? fn.colorTail) {
+      if (takesColor(fn.params[index] ?? tail)) {
         const color = coerceNamedColorKeyword(item);
         if (color !== item) {
           (out ??= [...items])[index] = color;
@@ -403,8 +403,7 @@ export function defineFunction(
       return Reflect.apply(body, undefined, bound);
     };
   }
-  const tail = spec.variadic === true ? spec.params.at(-1) : spec.params.find(isRest);
-  const fn = Object.assign(callable, { params: spec.params, variadic: spec.variadic, filter: spec.filter, colorSlots: spec.params.map(takesColor), colorTail: takesColor(tail) });
+  const fn = Object.assign(callable, { params: spec.params, variadic: spec.variadic, filter: spec.filter });
   Object.defineProperty(fn, 'name', { value: name, configurable: true });
   return fn;
 }

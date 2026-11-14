@@ -216,12 +216,6 @@ export type Fn = ((args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<Valu
   readonly params: readonly ParamSpec[];
   readonly variadic?: boolean;
 
-  /** By parameter, whether it is checked as a colour, so a colour name passed to it is read as one; fixed when the function is defined. */
-  readonly colorSlots: readonly boolean[];
-
-  /** Whether the parameter that takes every further argument (the `rest` one, or a variadic function's last) is checked as a colour. */
-  readonly colorTail: boolean;
-
   /** The module export a function imported into a stylesheet binds (module-values.ts `bindModuleFunction`). */
   readonly origin?: FnOrigin;
 };
