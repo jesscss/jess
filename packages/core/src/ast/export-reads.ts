@@ -10,7 +10,7 @@ import type { FnOrigin } from './module-values.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { calcOperand } from './math-operand.js';
-import { isBrowserColor, takesColor } from './value-dispatch.js';
+import { isBrowserColor, takesColor, takesOnlyColor } from './value-dispatch.js';
 import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
 import { groupItems } from './value-list.js';
@@ -72,6 +72,9 @@ export interface ExportRuntime {
   /** Whether a colour export's own value spells a colour name (`@brand: red`), so the runtime takes names for it ({@link spellsColorName}). */
   ownNames: boolean;
 
+  /** Whether a recipe passes an export to a parameter not checked as a colour (`extract(@list, 1)`). */
+  indirect: boolean;
+
   /** Each generated custom property's name, by its recipe as JSON: one name per recipe, however the call is spelled. */
   readonly named: Map<string, string>;
 
@@ -106,6 +109,9 @@ export interface ExportRuntimeData {
 
   /** Whether a colour export's own value spells a colour name, so a name given for a colour export is read rather than refused. */
   readonly ownNames: boolean;
+
+  /** Whether every export a recipe reads goes straight to a parameter checked as a colour (`lightness(@brand)`), so the runtime reads each as one colour. */
+  readonly direct: boolean;
 }
 
 /**
@@ -123,7 +129,7 @@ export function runtimeData(x: ExportState<unknown>): { runtime?: ExportRuntimeD
   const runtime = x.runtime;
   return runtime === undefined
     ? {}
-    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), units: Object.fromEntries(runtime.units), ratios: [...runtime.ratios], derived: Object.fromEntries(runtime.derived), colors: [...runtime.colors], names: readsNames(runtime), ownNames: runtime.ownNames } };
+    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), units: Object.fromEntries(runtime.units), ratios: [...runtime.ratios], derived: Object.fromEntries(runtime.derived), colors: [...runtime.colors], names: readsNames(runtime), ownNames: runtime.ownNames, direct: !runtime.indirect } };
 }
 
 /** A mixin argument as written, in the caller's frame. */
@@ -358,7 +364,7 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), literalNames: false, ownNames: false, named: new Map(), properties: new Map(), slots: new Map() };
+  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), literalNames: false, ownNames: false, indirect: false, named: new Map(), properties: new Map(), slots: new Map() };
 }
 
 /**
@@ -1136,10 +1142,16 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
   const runtime = e.s.exports.runtime;
   const args = vals.map((v, index): ExportRecipe | ExportColor | string => {
     const input = byValue.get(lone(v));
-    const color = takesColor(fn?.params[index] ?? rest);
+    const param = fn?.params[index] ?? rest;
+    const color = takesColor(param);
     if (input !== undefined) {
-      if (color && runtime !== undefined) {
-        markColors(runtime, readsOf([input]));
+      if (runtime !== undefined) {
+        if (color) {
+          markColors(runtime, readsOf([input]));
+        }
+
+        /* An inner call's exports are its own call's arguments, recorded there. */
+        runtime.indirect ||= !takesOnlyColor(param) && 'export' in input.recipe;
       }
       return input.recipe;
     }

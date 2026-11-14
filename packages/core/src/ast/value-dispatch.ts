@@ -95,6 +95,12 @@ export function takesColor(param: ParamSpec | undefined): boolean {
   return type === 'Color' || (Array.isArray(type) && type.includes('Color'));
 }
 
+/** Whether a parameter takes only a colour, or a call written out as-is, so a value given for it is always a colour. */
+export function takesOnlyColor(param: ParamSpec | undefined): boolean {
+  const type: unknown = param?.type ?? param?.kinds;
+  return type === 'Color' || (Array.isArray(type) && type.every(kind => kind === 'Color' || kind === 'FunctionCall'));
+}
+
 /**
  * A parameter typed as a number (it accepts a `Dimension` and not a `List`)
  * expects a number, so a slash list passed to it is its quotient
