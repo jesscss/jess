@@ -209,6 +209,14 @@ describe('the export runtime', () => {
     expect(() => runtime.vars({ a: '.5' })).toThrow('a is read by a CSS form in %');
   });
 
+  it('writes a percentage\'s ratio in the digits of its compile-time fallback', async () => {
+    const exported = await compile('@use "#less";\n@expose a;\n@a: 33.333333333333%;\n.x { w: @a; }');
+    const fallback = /var\(--a, ([^)]+)\)/.exec(exported.css)?.[1];
+    const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, derived: {} });
+    expect(fallback).toBe('0.3333333333');
+    expect(runtime.vars({ a: '33.333333333333%' })).toEqual({ '--a': fallback });
+  });
+
   /*
    * Each printed form is what was measured in Chrome 156.0.8078.75 (getComputedStyle),
    * with `--a` set to the ratio and with the fallback alone; both gave the value in
@@ -555,6 +563,7 @@ describe('the export runtime', () => {
     createRuntime({ keys: { brand: 'brand' }, defaults: { brand: '#c00' }, units: {}, derived: { '--brand-lightness': [less.lightness, [{ export: 'brand' }]] } })
       .set({ brand: '#000' }, {
         style: {
+          getPropertyValue: name => set[name] ?? '',
           setProperty: (name, value) => {
             set[name] = value;
           }

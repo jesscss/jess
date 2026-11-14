@@ -11,6 +11,7 @@
  * HARD MODULE BOUNDARY: imports only the value domain, the factory, and the shared
  * units table.
  */
+import { ratioOf } from '@jesscss/patch-css';
 import { addExact, modExact, mulExact, subExact } from './decimal.js';
 import { DimensionValueNode } from './node-ctors.js';
 import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, NoCssForm, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Arithmetic, type Color, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
@@ -901,14 +902,13 @@ export function cancelPercent(v: EvalValue, by: number): Value | undefined {
   return inner === undefined ? undefined : mathOnDeferred(v.op, inner, v.right);
 }
 
+export { ratioOf };
+
 const isAdditive = (op: string | undefined): boolean => op === '+' || op === '-';
 
 /** A term of a sum over a percentage: a percentage is its quotient, a ratio read is folded ({@link cancelPercent}). */
 const percentTerm = (v: EvalValue, by: number): Value | undefined =>
   typeof v !== 'string' && !isValueGroupArray(v) && v.type === 'Dimension' && v.unit === '%' ? makeDimension(ratioOf(v.number, by)) : cancelPercent(v, by);
-
-/** `n / by` to fifteen significant digits, so `0.1 / 1` is not `0.1000000000000000055`; the runtime writes an exposed percentage's ratio with it. */
-export const ratioOf = (n: number, by: number): number => Number((n / by).toPrecision(15));
 
 /** A number's kept spelling as an operand: a sum stays one computation, and a product is grouped where it divides. */
 const preservedOperand = (v: Dimension, spelled: string, op: string, isRight: boolean): string =>
