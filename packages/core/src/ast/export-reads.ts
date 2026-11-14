@@ -10,7 +10,7 @@ import type { FnOrigin } from './module-values.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { calcOperand } from './math-operand.js';
-import { isBrowserColor, takesColor } from './value-dispatch.js';
+import { isBrowserColor, takesColor, takesOnlyColor } from './value-dispatch.js';
 import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
 import { groupItems } from './value-list.js';
@@ -1142,7 +1142,8 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
   const runtime = e.s.exports.runtime;
   const args = vals.map((v, index): ExportRecipe | ExportColor | string => {
     const input = byValue.get(lone(v));
-    const color = takesColor(fn?.params[index] ?? rest);
+    const param = fn?.params[index] ?? rest;
+    const color = takesColor(param);
     if (input !== undefined) {
       if (runtime !== undefined) {
         if (color) {
@@ -1150,7 +1151,7 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
         }
 
         /* An inner call's exports are its own call's arguments, recorded there. */
-        runtime.indirect ||= !color && 'export' in input.recipe;
+        runtime.indirect ||= !takesOnlyColor(param) && 'export' in input.recipe;
       }
       return input.recipe;
     }

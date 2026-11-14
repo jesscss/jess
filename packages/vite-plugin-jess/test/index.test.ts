@@ -196,6 +196,19 @@ describe('vite-plugin-jess', () => {
     });
   });
 
+  it('reads a quoted hex given for a colour export a recipe passes through color()', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose a;\n@a: #c00;\n.a { v: @less.lightness(@less.color(@a)); }\n`]
+    ], async (root) => {
+      const { js } = await built(root, {});
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(isRuntime(module) && module.vars({ a: '"#f00"' })['--a-lightness']).toBe('50%');
+    });
+  });
+
   it('rejects a colour name in any item of a hex-checked export, though the page reads its own names', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
