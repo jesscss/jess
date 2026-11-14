@@ -28,11 +28,18 @@ const GROUP_FACTORS: readonly Readonly<Record<string, number>>[] = [
  */
 const GROUP_CANONICAL = ['px', 's', 'rad', 'hz', 'dppx'] as const;
 
+/*
+ * Built when first read, so a bundle that never converts or checks a unit
+ * drops them: the published core is minified, which strips purity marks.
+ */
+let canonicalFactors: readonly number[] | undefined;
+let cssUnits: ReadonlySet<string> | undefined;
+
 /** Each group's canonical-unit factor, so `unify` needn't re-look-it-up per call. */
-const GROUP_CANONICAL_FACTOR = GROUP_FACTORS.map((f, g) => f[GROUP_CANONICAL[g]!]!);
+const groupCanonicalFactor = (): readonly number[] => canonicalFactors ??= GROUP_FACTORS.map((f, g) => f[GROUP_CANONICAL[g]!]!);
 
 /** Every unit CSS defines (css-values-4 §6, §7; css-contain-3 §9; css-grid-1 §7.2.3), keys lowercase. */
-const CSS_UNITS: ReadonlySet<string> = /* @__PURE__ */ new Set([
+const cssUnitSet = (): ReadonlySet<string> => cssUnits ??= new Set([
   '%', 'fr',
   'cm', 'mm', 'q', 'in', 'pc', 'pt', 'px',
   'cap', 'ch', 'em', 'ex', 'ic', 'lh', 'rcap', 'rch', 'rem', 'rex', 'ric', 'rlh',
@@ -48,7 +55,7 @@ const CSS_UNITS: ReadonlySet<string> = /* @__PURE__ */ new Set([
 ]);
 
 /** Whether CSS defines `unit`; a number's empty unit is one. */
-export const isCssUnit = (unit: string): boolean => unit === '' || CSS_UNITS.has(foldUnit(unit));
+export const isCssUnit = (unit: string): boolean => unit === '' || cssUnitSet().has(foldUnit(unit));
 
 const UNIT_TO_GROUP = new Map<string, UnitGroup>();
 for (let g = 0; g < GROUP_FACTORS.length; g++) {
@@ -95,7 +102,7 @@ export function unify(number: number, unit: string): { number: number; unit: str
   if (g === undefined) {
     return { number, unit: key };
   }
-  return { number: number * (GROUP_FACTORS[g]![key]! / GROUP_CANONICAL_FACTOR[g]!), unit: GROUP_CANONICAL[g] };
+  return { number: number * (GROUP_FACTORS[g]![key]! / groupCanonicalFactor()[g]!), unit: GROUP_CANONICAL[g] };
 }
 
 /**
