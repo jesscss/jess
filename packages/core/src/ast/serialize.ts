@@ -227,7 +227,7 @@ import { cssFilterCall, mayBeFilter } from './filter-position.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, moduleReferenceCallNode, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
-import { isTestedAsWritten, markSupportsTest, markTested, mathOperand, Tested, negatedCall, slashOperated, writtenMath, writtenPercent } from './math-operand.js';
+import { isTestedAsWritten, markTested, mathOperand, negatedCall, slashOperated, writtenCall, writtenMath, writtenPercent } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type FnOrigin, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -7891,7 +7891,7 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: Lane): MaybePr
       inner += itemBoundary(authored?.[index - 1], glue, compress);
       inner += writtenArgument(node.args[index]!, emitValueC(vals[index]!, e), compress);
     }
-    return literal(`${node.name}(${inner})`);
+    return writtenCall(node, `${node.name}(${inner})`);
   });
 }
 
@@ -8987,7 +8987,7 @@ function evalCall(
   }
 
   /* A feature test (`supports(margin-left: -var(--x))`) tests the declaration as written, a glued minus included (CSS-NATIVE-BUILTINS §3.4). */
-  if (!e.ev || isTestedAsWritten(node) || markSupportsTest(node) === Tested.Operated) {
+  if (!e.ev || isTestedAsWritten(node)) {
     return preserveCall(node, frame, e);
   }
   const lname = node.name.toLowerCase();
@@ -21705,7 +21705,7 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: Lane): May
       return concatPreludeParts([
         evalSupportsPrelude(node.left, frame, e),
         plain(node.operator === ':' ? ': ' : ` ${node.operator} `),
-        evalSupportsPrelude(node.right, frame, node.operator === ':' && markTested(node.right) === Tested.Operated ? deriveLane(e, 'written') : e)
+        evalSupportsPrelude(node.right, frame, e)
       ]);
     case 'Sequence': {
       const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
@@ -22025,7 +22025,7 @@ function atRulePreludeBytes(node: AtRuleBlock, frame: Frame, e: Emit): MaybeProm
     return '';
   }
   if (lname === '@supports') {
-    return mapMaybe(evalSupportsPrelude(checkedSupportsPrelude(node, node.prelude, e.s), frame, e), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
+    return mapMaybe(evalSupportsPrelude(markTested(checkedSupportsPrelude(node, node.prelude, e.s)), frame, e), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
   }
   if (lname === '@media' || lname === '@container') {
     return mapMaybe(evalQueryPreludeParts(node.prelude, frame, e), parts => normalizePreludeParts(parts, normalizeQueryPrelude, e.compress === true));

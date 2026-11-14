@@ -681,7 +681,8 @@ describe('a glued minus in a call written out', () => {
 
   it.each([
     ['@supports (width: -var(--x) percentage(0.5)) { .a { b: 1; } }', '@supports (width: -var(--x) 50%)'],
-    ['@supports (margin: -var(--x) + 1px) { .a { b: 1; } }', '@supports (margin: -var(--x) + 1px)'],
+    ['@supports (margin: -var(--x) + 1px) { .a { b: 1; } }', '@supports (margin: calc(-var(--x) + 1px))'],
+    ['@g: 2px; @supports (margin: calc(-var(--x) + @g) (@g * 2)) { .a { b: 1; } }', '@supports (margin: calc(-var(--x) + 2px) 4px)'],
     ['.c { d: if(supports(width: -var(--x) percentage(0.5)): 1px; else: 2px); }', 'd: if(supports(width: -var(--x) 50%): 1px; else: 2px);'],
     ['.c { d: if(media(min-width: -var(--x)): 1px; else: 2px); }', 'd: if(media(min-width: calc(-1 * var(--x))): 1px; else: 2px);']
   ])('a feature query keeps only the glued minus as written: %s', async (source, expected) => {
