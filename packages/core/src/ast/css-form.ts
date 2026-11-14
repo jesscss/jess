@@ -22,7 +22,6 @@ import { HEX, RGB } from './color.js';
 import { isValueGroupArray, type Color, type Dimension, type Value, type ValueGroup } from './value-eval.js';
 import { DimensionValueNode } from './node-ctors.js';
 import { makeColorHsl, makeColorRgb, makeDimension, withFields } from './value-factory.js';
-import { groupItems } from './value-list.js';
 import { insideParens, keepAsWritten } from './value-operate.js';
 import { negated } from './math-operand.js';
 
@@ -227,8 +226,7 @@ export function defineForm(name: string, spec: { readonly params: readonly Param
     params: spec.params,
     variadic: true,
     filter: spec.filter,
-    body: (args: ValueGroup, ctx: { readonly modes: { readonly compress?: boolean } }): MaybePromise<ValueGroup> => {
-      const items = groupItems(args);
+    body: (items, ctx): MaybePromise<ValueGroup> => {
       const lone = items[0];
       if (spec.filter === true && items.length === 1 && lone !== undefined && !isValueGroupArray(lone) && lone.type === 'FunctionCall' && lone.result === 'numeric') {
         throw new TypeError(`${name}: arg 0 expected Color, got a number`);

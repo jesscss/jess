@@ -23,7 +23,7 @@ const ctx: FnCtx = {
 };
 
 function call(fn: Fn, ...args: Value[]): Dimension {
-  const result = fn(makeList(args as readonly ValueGroup[], ','), ctx);
+  const result = fn(args, ctx);
   if (result instanceof Promise || isValueGroupArray(result) || result.type !== 'Dimension') {
     throw new TypeError('Expected a Dimension result.');
   }

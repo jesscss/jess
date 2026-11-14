@@ -142,13 +142,11 @@ if (root) {
   }
 }
 
-/** Invoke `fn` the way the evaluator does: one structural group + the fn context. */
+/** Invoke `fn` the way the evaluator does: the call's arguments, a space or slash list as a modern call's, and the fn context. */
 function invoke(fn: Fn, args: string): Value {
   const read = readValue(args);
-  const group: ValueGroup = !isValueGroupArray(read) && read.type === 'List'
-    ? read
-    : makeList([read], ',');
-  const result = fn(group, fnCtx);
+  const list = !isValueGroupArray(read) && read.type === 'List' ? read : undefined;
+  const result = list === undefined ? fn([read], fnCtx) : fn(list.value, { ...fnCtx, modern: list.sep !== ',' });
   if (result instanceof Promise || isValueGroupArray(result)) {
     throw new Error('expected a single synchronous value');
   }

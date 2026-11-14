@@ -300,7 +300,9 @@ function readSingle(text: string): Value {
     if (!ctor) {
       throw new Error(`unsupported constructor in fixture: ${name}()`);
     }
-    const result = ctor(readValue(call[2]!), CTX);
+    const read = readValue(call[2]!);
+    const list = !isValueGroupArray(read) && read.type === 'List' ? read : undefined;
+    const result = list === undefined ? ctor([read], CTX) : ctor(list.value, { ...CTX, modern: list.sep !== ',' });
     if (result instanceof Promise || isValueGroupArray(result)) {
       throw new Error(`constructor did not return a single value: ${text}`);
     }

@@ -3,9 +3,9 @@
  * functions, under their global names.
  *
  * Every global spelling is the module member name with a `map-` prefix, and a
- * registry keys on `fn.name`, so each global gets its own callable that
- * delegates to the single body in the module file — no logic is duplicated and
- * no name is overloaded. This is the same shape as `sass/string/globals.ts`.
+ * registry keys on `fn.name`, so each global gets its own callable that hands
+ * its arguments to the module member — no logic is duplicated and no name is
+ * overloaded. This is the same shape as `sass/string/globals.ts`.
  *
  * `map.set` and the `map.deep-*` members have no global spelling and are
  * deliberately absent.
@@ -21,35 +21,41 @@ import values from './values.js';
 /** `map-get($map, $key, $keys...)` — the global spelling of `map.get()`. */
 export const mapGet = defineFunction('map-get', {
   params: get.params,
-  body: (map, key, rest) => get(map, key, ...rest)
+  variadic: true,
+  body: (args, ctx) => get(args, ctx)
 });
 
 /** `map-has-key($map, $key, $keys...)` — the global spelling of `map.has-key()`. */
 export const mapHasKey = defineFunction('map-has-key', {
   params: hasKey.params,
-  body: (map, key, rest) => hasKey(map, key, ...rest)
+  variadic: true,
+  body: (args, ctx) => hasKey(args, ctx)
 });
 
 /** `map-keys($map)` — the global spelling of `map.keys()`. */
 export const mapKeys = defineFunction('map-keys', {
   params: keys.params,
-  body: map => keys(map)
+  variadic: true,
+  body: (args, ctx) => keys(args, ctx)
 });
 
 /** `map-values($map)` — the global spelling of `map.values()`. */
 export const mapValues = defineFunction('map-values', {
   params: values.params,
-  body: map => values(map)
+  variadic: true,
+  body: (args, ctx) => values(args, ctx)
 });
 
 /** `map-merge($map1, $map2)` — the global spelling of `map.merge()`. */
 export const mapMerge = defineFunction('map-merge', {
   params: merge.params,
-  body: (map1, map2) => merge(map1, map2)
+  variadic: true,
+  body: (args, ctx) => merge(args, ctx)
 });
 
 /** `map-remove($map, $keys...)` — the global spelling of `map.remove()`. */
 export const mapRemove = defineFunction('map-remove', {
   params: remove.params,
-  body: (map, rest) => remove(map, ...rest)
+  variadic: true,
+  body: (args, ctx) => remove(args, ctx)
 });

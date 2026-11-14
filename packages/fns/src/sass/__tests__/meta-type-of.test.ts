@@ -7,6 +7,7 @@ import { isValueGroupArray, makeBlock, makeBool, makeCollection, makeColorRgb, m
 import type { UrlValue } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
 import { typeOf } from '../meta/type-of.js';
+import { call } from '../../__tests__/harness.js';
 
 /** Narrow `type-of`'s synchronous Keyword result without a type assertion. */
 const text = (value: ReturnType<typeof typeOf>): string => {
@@ -18,40 +19,40 @@ const text = (value: ReturnType<typeof typeOf>): string => {
 
 describe('sass:meta — type-of', () => {
   it('§ number/unitless and § number/unit', () => {
-    expect(text(typeOf(makeDimension(1)))).toBe('number');
-    expect(text(typeOf(makeDimension(1.5, 'px')))).toBe('number');
+    expect(text(call(typeOf, makeDimension(1)))).toBe('number');
+    expect(text(call(typeOf, makeDimension(1.5, 'px')))).toBe('number');
   });
 
   it('§ string/quoted and § string/unquoted', () => {
-    expect(text(typeOf(makeQuoted('c', '"', false)))).toBe('string');
-    expect(text(typeOf(makeKeyword('c')))).toBe('string');
+    expect(text(call(typeOf, makeQuoted('c', '"', false)))).toBe('string');
+    expect(text(call(typeOf, makeKeyword('c')))).toBe('string');
     const url: UrlValue = { type: 'Url', bytes: 'url(c)' };
-    expect(text(typeOf(url))).toBe('string');
+    expect(text(call(typeOf, url))).toBe('string');
   });
 
   it('§ color', () => {
-    expect(text(typeOf(makeColorRgb([255, 0, 0], 1, HEX)))).toBe('color');
+    expect(text(call(typeOf, makeColorRgb([255, 0, 0], 1, HEX)))).toBe('color');
   });
 
   it('§ boolean/true and § boolean/false', () => {
-    expect(text(typeOf(makeBool(true)))).toBe('bool');
-    expect(text(typeOf(makeBool(false)))).toBe('bool');
+    expect(text(call(typeOf, makeBool(true)))).toBe('bool');
+    expect(text(call(typeOf, makeBool(false)))).toBe('bool');
   });
 
   it('§ null', () => {
-    expect(text(typeOf(makeNull(true)))).toBe('null');
+    expect(text(call(typeOf, makeNull(true)))).toBe('null');
   });
 
   it('§ list/empty and § list/non_empty', () => {
-    expect(text(typeOf([]))).toBe('list');
-    expect(text(typeOf([makeDimension(1), makeDimension(2), makeDimension(3)]))).toBe('list');
-    expect(text(typeOf(makeList([makeDimension(1), makeDimension(2)], ',')))).toBe('list');
-    expect(text(typeOf(makeBlock([makeDimension(1)], 'square')))).toBe('list');
+    expect(text(call(typeOf, []))).toBe('list');
+    expect(text(call(typeOf, [makeDimension(1), makeDimension(2), makeDimension(3)]))).toBe('list');
+    expect(text(call(typeOf, makeList([makeDimension(1), makeDimension(2)], ',')))).toBe('list');
+    expect(text(call(typeOf, makeBlock([makeDimension(1)], 'square')))).toBe('list');
   });
 
   it('§ map — a Collection is a map, but the empty list is still a list', () => {
-    expect(text(typeOf(makeCollection([{ key: makeKeyword('a'), value: makeDimension(1) }])))).toBe('map');
-    expect(text(typeOf([]))).toBe('list');
+    expect(text(call(typeOf, makeCollection([{ key: makeKeyword('a'), value: makeDimension(1) }])))).toBe('map');
+    expect(text(call(typeOf, []))).toBe('list');
   });
 
   it('takes exactly one argument (§ error/too_many_args)', () => {

@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/naming-convention -- custom property and variable names */
 import { describe, expect, it } from 'vitest';
-import { exposedVars, writeVars, type StyleTarget } from '../src/index.js';
+import { checkUnit, exposedVars as allVars, holdRatio, writeVars, type ExportValues, type StyleTarget } from '../src/index.js';
 
 const spec = { keys: { brand: 'brand', gap: 'gap', mix: 'mix-weight', ratio: 'ratio' }, units: { gap: 'px', ratio: '', 'mix-weight': '%' }, ratios: ['mix-weight'] };
+const exposedVars = (s: typeof spec, given: ExportValues): Record<string, string> => allVars(s, given, holdRatio);
 
 /** An inline style that records each write and reads back what it holds, as a browser's does. */
 function target(): StyleTarget & { readonly writes: Array<[string, string]>; readonly held: Map<string, string> } {
@@ -48,6 +49,12 @@ describe('exposedVars', () => {
 
   it('takes any unit CSS reads as one, beyond ASCII', () => {
     expect(exposedVars({ keys: { a: 'a' }, units: { a: 'µm' }, ratios: [] }, { a: '2µm' })).toEqual({ '--a': '2µm' });
+  });
+
+  it('holds each value as given with no hold, and checks only the unit with checkUnit', () => {
+    expect(allVars(spec, { gap: '1em', mix: '50%' })).toEqual({ '--gap': '1em', '--mix-weight': '50%' });
+    expect(allVars(spec, { mix: '50%' }, checkUnit)).toEqual({ '--mix-weight': '50%' });
+    expect(() => allVars(spec, { gap: '1em' }, checkUnit)).toThrow('in px');
   });
 
   it('rejects a key the stylesheet does not expose', () => {

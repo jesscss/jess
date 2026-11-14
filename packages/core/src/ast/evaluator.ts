@@ -23,7 +23,7 @@ import { isMathFunctionName } from './math-functions.js';
 import { writtenCallValue } from './math-operand.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry, FunctionDeclined } from './value-dispatch.js';
-import { dispatchFn, numberArguments } from './value-dispatch.js';
+import { numberArguments } from './value-dispatch.js';
 import { makeFunctionCall, makeList, withFields } from './value-factory.js';
 import { emitCompressed } from './compress.js';
 
@@ -197,7 +197,9 @@ export function buildEvaluator(
     const fn = scoped ?? (ambient ? registry.get(name) : undefined);
     if (fn) {
       try {
-        const result = dispatchFn(fn, numberArguments(fn, args, evaluator, modes), { modes, stringify, io, parseSelector });
+        /* `args` is the call's comma list, or the items of a modern colour call ({@link FnCtx.modern}). */
+        const modern = isValueGroupArray(args);
+        const result = fn(numberArguments(fn, modern ? args : groupItems(args), evaluator, modes), { modes, stringify, io, parseSelector, modern });
         return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty, params: fn.params }) : result;
       } catch (err) {
         return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty, params: fn.params });

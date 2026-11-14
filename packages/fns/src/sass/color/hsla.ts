@@ -1,6 +1,6 @@
-import type { Fn, ValueGroup } from '@jesscss/core/value';
-import { defineFunction, groupItems } from '@jesscss/core/value';
-import { isModern, makeHsl } from './kernels.js';
+import type { Fn } from '@jesscss/core/value';
+import { defineFunction } from '@jesscss/core/value';
+import { makeHsl } from './kernels.js';
 
 /** Sass `hsla()` — the same construction kernel as `hsl()` under its own dispatch name. */
 export const hsla: Fn = defineFunction('hsla', {
@@ -11,7 +11,7 @@ export const hsla: Fn = defineFunction('hsla', {
     { name: 'alpha', type: 'any', optional: true }
   ],
   variadic: true,
-  body: (list: ValueGroup) => makeHsl(groupItems(list), isModern(list))
+  body: (args, ctx) => makeHsl(args, ctx.modern === true)
 });
 
 export default hsla;

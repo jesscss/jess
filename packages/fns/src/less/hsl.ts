@@ -1,6 +1,6 @@
 import type { Color, ValueGroup, Fn } from '@jesscss/core/value';
-import { colorHsl, defineFunction, groupItems, makeColorHsl, HSL } from '@jesscss/core/value';
-import { clamp01, fitsAny, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
+import { colorHsl, defineFunction, makeColorHsl, HSL } from '@jesscss/core/value';
+import { clamp01, fitsAny, isColor, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { ALPHA_ARG, channelSlot, declineSlots, HUE_UNITS, hueSlot, isDeferredSlot, percentSlot } from './color-form.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
@@ -21,9 +21,7 @@ const hslSlot = (value: ValueGroup, index: number): ValueGroup =>
  * grey-canonical `hsl(0, 0%, 50.19607843%)`). A real Less operation
  * (`lighten(hsl(...))`, arithmetic) still rebuilds the color and recomputes.
  */
-export function makeHsl(value: ValueGroup): Color {
-  const items = groupItems(value);
-  const modernSyntax = isModern(value);
+export function makeHsl(items: readonly ValueGroup[], modernSyntax: boolean): Color {
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
     /* `hsl(var(--h), 50%, 50%)` is CSS as written. */
@@ -69,5 +67,5 @@ export const HSL_PARAMS = [
 export const hsl: Fn = /* @__PURE__ */ defineFunction('hsl', {
   params: HSL_PARAMS,
   variadic: true,
-  body: list => makeHsl(list)
+  body: (args, ctx) => makeHsl(args, ctx.modern === true)
 });

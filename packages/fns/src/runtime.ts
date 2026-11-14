@@ -1,5 +1,5 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { exposedVars, writeVars, type ExportValues, type ExposedSpec, type StyleTarget } from '@jesscss/patch-css';
+import { exposedVars, holdRatio, writeVars, type ExportValues, type ExposedSpec, type StyleTarget } from '@jesscss/patch-css';
 import type { Fn, ValueGroup } from '@jesscss/core/value';
 import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, sniffLiteral } from '@jesscss/core/value';
 
@@ -43,10 +43,11 @@ export interface Runtime {
 
 const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value) };
 
-export function createRuntime(spec: RuntimeSpec): Runtime {
-  const vars = (given: ExportValues): Record<string, string> => {
+/** {@link Runtime.vars} alone, so a page that never calls `set` bundles no writer. */
+export function createVars(spec: RuntimeSpec): Runtime['vars'] {
+  return (given: ExportValues): Record<string, string> => {
     const values: Record<string, string> = {};
-    const out = exposedVars(spec, given, values);
+    const out = exposedVars(spec, given, holdRatio, values);
     const parsed = new Map<string, ValueGroup>();
     const read = (name: string): ValueGroup => {
       let value = parsed.get(name);
@@ -64,6 +65,10 @@ export function createRuntime(spec: RuntimeSpec): Runtime {
     }
     return out;
   };
+}
+
+export function createRuntime(spec: RuntimeSpec): Runtime {
+  const vars = createVars(spec);
   return { vars, set: (values, target) => writeVars(vars(values), target) };
 }
 
@@ -88,7 +93,7 @@ function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup): ValueGr
     return read(recipe.export);
   }
   const [fn, args] = recipe;
-  const result = fn(makeList(args.map(arg => run(arg, read)), ','), CTX);
+  const result = fn(args.map(arg => run(arg, read)), CTX);
   if (isThenable(result)) {
     throw new TypeError(`${fn.name}() computes asynchronously, which the runtime cannot do.`);
   }

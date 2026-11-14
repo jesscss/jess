@@ -2362,9 +2362,10 @@ conversion, and finally invokes either `_internal` or a Context-bound function.
 That contract is the bridge deletion target, not a public runtime model.
 
 The replacement is the existing AST-v2 value seam. A canonical `Fn` is called
-with `(List, FnCtx)` by `buildEvaluator`/`value-dispatch`; `ParamSpec.type`,
-defaults, rest, and explicit lazy thunks provide typed binding, while direct
-Sass/Jess embeddings may use named records. `FnCtx` carries only resolved modes,
+one way, `fn(args, ctx)`: the call's arguments as an array, keyword arguments
+already in parameter order. `ParamSpec.type`, defaults, rest, and explicit lazy
+thunks provide typed binding; a caller holding arguments by name uses
+`callNamed` (`@jesscss/core/call-named`). `FnCtx` carries only resolved modes,
 the value-to-string hook, and optional IO; it does not expose `Context`, legacy
 nodes, callers, or source re-evaluation. Unknown function names remain authored
 calls without a warning; failures from a function that actually resolved are

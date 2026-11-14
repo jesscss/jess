@@ -65,7 +65,7 @@ const ANCHOR = fileURLToPath(import.meta.url);
  * an asset (Rollup) or imported (Vite). A stylesheet that exposes variables
  * (`@expose brand;`) also exports `vars(values)` and `set(values,
  * target?)`: over `@jesscss/patch-css` when nothing is computed from an export,
- * else from `@jesscss/fns/runtime`, which recomputes what depends on them
+ * else `vars` from `@jesscss/fns/runtime`, which recomputes what depends on them
  * (docs/architecture/core/spec/R8-browser-runtime.md).
  */
 export default function jessRollupPlugin(options: JessRollupPluginOptions = {}): Plugin & { enforce: 'pre'; configResolved(config: { readonly root: string }): void; handleHotUpdate<M>(context: HotUpdate<M>): M[] } {
@@ -206,19 +206,28 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
     const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
     if (derived.length === 0) {
-      /* Two exports, so a page that imports only `vars` drops the writer. */
+      /*
+       * Two exports, so a page that imports only `vars` drops the writer, and the
+       * least check the exports need: none when no CSS form reads one.
+       */
+      const hold = runtime.ratios.length > 0 ? 'holdRatio' : Object.keys(runtime.units).length > 0 ? 'checkUnit' : undefined;
+      const spec = hold === undefined ? { keys: runtime.keys } : hold === 'checkUnit' ? { keys: runtime.keys, units: runtime.units } : { keys: runtime.keys, units: runtime.units, ratios: runtime.ratios };
+      const held = hold === undefined ? '' : `, ${hold}`;
       lines.push(
-        `import { exposedVars, writeVars } from '@jesscss/patch-css';`,
-        `const spec = { keys: ${JSON.stringify(runtime.keys)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)} };`,
-        `export const vars = (values) => exposedVars(spec, values);`,
-        `export const set = (values, target) => writeVars(exposedVars(spec, values), target);`
+        `import { exposedVars${held}, writeVars } from '@jesscss/patch-css';`,
+        `const spec = ${JSON.stringify(spec)};`,
+        `export const vars = (values) => exposedVars(spec, values${held});`,
+        `export const set = (values, target) => writeVars(exposedVars(spec, values${held}), target);`
       );
     } else {
-      lines.push(`import { createRuntime } from '@jesscss/fns/runtime';`);
+      lines.push(`import { createVars } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
       for (const [module, names] of imports) {
         lines.push(`import { ${names.join(', ')} } from ${JSON.stringify(module)};`);
       }
-      lines.push(`export const { vars, set } = createRuntime({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}, derived: { ${derived.join(', ')} } });`);
+      lines.push(
+        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}, derived: { ${derived.join(', ')} } });`,
+        `export const set = (values, target) => writeVars(vars(values), target);`
+      );
     }
   }
   if (!modules) {

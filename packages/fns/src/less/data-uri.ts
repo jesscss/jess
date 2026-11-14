@@ -1,4 +1,4 @@
-import { groupItems, makeKeyword, defineFunction } from '@jesscss/core/value';
+import { makeKeyword, defineFunction } from '@jesscss/core/value';
 import type { Fn, Value } from '@jesscss/core/value';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { lookupMime } from '../util/mime.js';
@@ -12,8 +12,7 @@ import { lookupMime } from '../util/mime.js';
 const dataUri: Fn = /* @__PURE__ */ defineFunction('data-uri', {
   params: [{ type: 'any' }, { type: 'any', optional: true }],
   variadic: true,
-  body: (value, ctx): MaybePromise<Value> => {
-    const items = groupItems(value);
+  body: (items, ctx): MaybePromise<Value> => {
     if (items.length === 0) {
       throw new TypeError('data-uri() requires a path');
     }

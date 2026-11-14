@@ -1,5 +1,5 @@
 import type { Fn, FnCtx, ValueGroup, Value } from '@jesscss/core/value';
-import { defineFunction, emitValue, groupItems } from '@jesscss/core/value';
+import { defineFunction, emitValue } from '@jesscss/core/value';
 import { sameStringKind } from './string-result.js';
 
 /** The selected token's Less string or CSS form, with uppercase URL encoding. */
@@ -16,8 +16,7 @@ const FORMAT_PARAMS: Fn['params'] = [
   { type: 'any', optional: true }
 ];
 
-function formatKernel(list: ValueGroup, ctx: FnCtx): Value {
-  const items = groupItems(list);
+function formatKernel(items: readonly ValueGroup[], ctx: FnCtx): Value {
   const template = items[0]!;
   let result = ctx.stringify(template);
 

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { Fn } from '@jesscss/core';
 import { invoke, node } from '../../__tests__/harness.js';
 import {
   colorRawRgb,
@@ -22,7 +23,7 @@ import { hsvvalue } from '../hsvvalue.js';
 import { toHsv } from '../color-helper.js';
 
 /** A channel reader's direct call on `color`, as the synchronous Dimension it returns. */
-const dimension = (fn: unknown, color: Color) => node(invoke(fn, color), 'Dimension');
+const dimension = (fn: Fn, color: Color) => node(invoke(fn, color), 'Dimension');
 
 function legacyLuminanceOracle(color: Color): { number: number; bytes: string } {
   const [r, g, b] = colorRgbRounded(color);
