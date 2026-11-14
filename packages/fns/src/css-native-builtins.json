@@ -324,8 +324,8 @@
       "class": "exact-if",
       "css": "calc(sign(N) * round(abs(N), 10^-P))",
       "spec": "css-values-4 §10.3, §10.6",
-      "deferred": "calc(sign(N) * round(abs(N), pow(10, -1 * P)))",
-      "notes": "Less P is decimal places, CSS B is a step; CSS nearest breaks ties toward +infinity, Less (V8) away from zero, hence sign/abs. N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question). A known N with a unit and a deferred P multiplies the step by 1 in that unit"
+      "deferred": "calc(sign(N) * round(abs(N), pow(10, -1 * clamp(0, round(to-zero, P, 1), 292))))",
+      "notes": "Less P is decimal places, CSS B is a step; CSS nearest breaks ties toward +infinity, Less (V8) away from zero, hence sign/abs. N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question). A known N with a unit and a deferred P multiplies the step by 1 in that unit. A deferred P is read as the compile reads a known one: its fraction dropped, clamped to 0-292"
     },
     {
       "dialect": "less",

@@ -33,8 +33,8 @@ const FORMS: ReadonlyArray<readonly [source: string, form: string]> = [
   ['floor(var(--x))', 'round(down, var(--x), 1)'],
   ['round(var(--x))', 'calc(sign(var(--x)) * round(abs(var(--x)), 1))'],
   ['round(var(--x), 2)', 'calc(sign(var(--x)) * round(abs(var(--x)), 0.01))'],
-  ['round(var(--x), var(--p))', 'calc(sign(var(--x)) * round(abs(var(--x)), pow(10, -1 * var(--p))))'],
-  ['round(1.5px, var(--p))', 'calc(sign(1.5px) * round(abs(1.5px), pow(10, -1 * var(--p)) * 1px))'],
+  ['round(var(--x), var(--p))', 'calc(sign(var(--x)) * round(abs(var(--x)), pow(10, -1 * clamp(0, round(to-zero, var(--p), 1), 292))))'],
+  ['round(1.5px, var(--p))', 'calc(sign(1.5px) * round(abs(1.5px), pow(10, -1 * clamp(0, round(to-zero, var(--p), 1), 292)) * 1px))'],
   ['mod(var(--x), 3)', 'rem(var(--x), 3)'],
   ['mod(5px, var(--x))', 'rem(5px, var(--x))'],
   ['darken(#c00, var(--a))', 'hsl(from #c00 h s clamp(0, l - var(--a) / 1%, 100))'],
@@ -294,8 +294,8 @@ describe('other dialects', () => {
 
 describe('what only the browser knows, whatever its shape', () => {
   it('an unknown precision behaves as `var()` does', async () => {
-    await expect(value('round(1.5, (var(--p) + 1))')).resolves.toBe('calc(sign(1.5) * round(abs(1.5), pow(10, -1 * (var(--p) + 1))))');
-    await expect(value('round(1.5, var(--p))')).resolves.toBe('calc(sign(1.5) * round(abs(1.5), pow(10, -1 * var(--p))))');
+    await expect(value('round(1.5, (var(--p) + 1))')).resolves.toBe('calc(sign(1.5) * round(abs(1.5), pow(10, -1 * clamp(0, round(to-zero, (var(--p) + 1), 1), 292))))');
+    await expect(value('round(1.5, var(--p))')).resolves.toBe('calc(sign(1.5) * round(abs(1.5), pow(10, -1 * clamp(0, round(to-zero, var(--p), 1), 292))))');
   });
 
   it('`%` is `rem()`, as `mod()` is, and never `calc(... % ...)`', async () => {

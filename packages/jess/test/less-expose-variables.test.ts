@@ -172,7 +172,7 @@ describe('Less @expose variables (A4)', () => {
     ['a number', '@use "#less";\n@expose a;\n@a: 0.5;\n.b { v: @less.percentage(@a); }', 'v: calc(var(--a, 0.5) * 100%);'],
     ['a divisor in the dividend\'s unit', '@use "#less";\n@expose a;\n@a: 2px;\n.b { v: @less.mod(5px, @a); }', 'v: rem(5px, var(--a, 2px));'],
     ['a divisor in the dividend\'s unit, in any case', '@use "#less";\n@expose a;\n@a: 2px;\n.b { v: @less.mod(5PX, @a); }', 'v: rem(5PX, var(--a, 2px));'],
-    ['decimal places on a length', '@use "#less";\n@expose a;\n@a: 2;\n.b { v: @less.round(1px, @a); }', 'v: calc(sign(1px) * round(abs(1px), pow(10, -1 * var(--a, 2)) * 1px));']
+    ['decimal places on a length', '@use "#less";\n@expose a;\n@a: 2;\n.b { v: @less.round(1px, @a); }', 'v: calc(sign(1px) * round(abs(1px), pow(10, -1 * clamp(0, round(to-zero, var(--a, 2), 1), 292)) * 1px));']
   ])('takes the exposed variable in a form that holds its value: %s', async (_what, source, expected) => {
     await expect(render(source)).resolves.toContain(expected);
   });
