@@ -141,6 +141,23 @@ describe('vite-plugin-jess', () => {
     });
   });
 
+  /* The page still may not pass a name where the runtime reads names for another reason (R8 spec, colour names, the open cases). */
+  it.each([
+    ['a recipe argument that is a name', '@less.lightness(@less.multiply(@brand, gray))'],
+    ['an export passed through extract()', '@less.lightness(@less.multiply(@brand, #888)); w: @less.luma(@less.extract(@l, 1))']
+  ])('rejects a colour name for @brand when the runtime reads names for %s', async (_, value) => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose brand, l;\n@brand: #c00;\n@l: #f00 #00f;\n.a { v: ${value}; }\n`]
+    ], async (root) => {
+      const { js } = await built(root, {});
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(() => isRuntime(module) && module.vars({ brand: 'blue' })).toThrow('`brand` received `blue`, which is not a hex colour');
+    });
+  });
+
   it('bundles no evaluator for rgb() over an exposed channel', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],

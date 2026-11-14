@@ -406,3 +406,17 @@ It shows in output only through a sign-reading function, e.g. SCSS
 `math.atan2(0, -0 * 0.5)` is `180deg`, was `0deg`. A zero divisor in `%` gives `NaN` as float does, where `big.js`
 threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
 `packages/fns/src/less/__tests__/alpha-precision.test.ts`.
+
+## V13
+
+- 2026-11-13 — implementation note (agent), on perf/runtime-names-gated. The
+  binder is still where a named colour passed to a `Color`-checked parameter
+  becomes a `Color` (`validateValue`, `value-dispatch.ts`). It now takes that
+  reading from the call's context, `FnCtx.colorName`, instead of importing
+  `coerceNamedColorKeyword` itself. The compile's evaluator (`evaluator.ts`)
+  passes `coerceNamedColorKeyword`, so every compiled point of use is unchanged.
+  The browser runtime passes none, so its bundle carries no name table (R8-13,
+  `docs/architecture/core/spec/R8-browser-runtime.md`): a name the runtime reads
+  is already a `Color`, because `sniffLiteral` reads it, or it is rejected
+  before any call. A JavaScript caller that builds its own `FnCtx` (through
+  `callNamed`, say) passes `colorName` to get the same reading.

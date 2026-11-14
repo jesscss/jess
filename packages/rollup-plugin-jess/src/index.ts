@@ -237,7 +237,9 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
       for (const [module, members] of imports) {
         lines.push(`import { ${members.join(', ')} } from ${JSON.stringify(module)};`);
       }
-      const hex = names
+
+      /* The hex check stays the ruling's: off only when asked, or when a colour export's own value is a name (an identifier: a colour export's value is a colour). */
+      const hex = colorNames || runtime.colors.some(name => /^[a-z]/i.test(runtime.defaults[name] ?? ''))
         ? ''
         : `, hex: ${JSON.stringify(Object.fromEntries(Object.entries(runtime.keys).filter(([, name]) => runtime.colors.includes(name)).map(([key, name]) => [name, key])))}`;
       lines.push(
