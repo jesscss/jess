@@ -58,8 +58,14 @@ The binder still reads a colour name passed to a parameter checked as a
 colour as that colour, but takes the reading from the call's context
 (`FnCtx.colorName`): the compile passes `coerceNamedColorKeyword`, so compiled
 output is unchanged, and the browser runtime passes none. The runtime's own
-value reader is the one the generated module picks: `sniffLiteral`, with the
-table, when names are on, and `sniffUnnamed` otherwise. So the table reaches
+value reader is the one the generated module picks (`RuntimeSpec.read`):
+`readHex` when no recipe holds text and every export a recipe reads goes
+straight to a parameter checked as a colour (`ExportRuntimeData.direct`) and
+has a hex as its compile-time CSS; an export passed through another function
+may be a list (`luma(extract(@list, 1))`), so that page keeps a text reader; otherwise `readNamed`, with the table,
+when names are on, and `readUnnamed`. `readHex` reads one hex colour and no
+other text, so such a page bundles no text splitter and no literal reader
+(`lightness(@brand)`: 11,115 B, from 14,571 B). So the table reaches
 the bundle only when names are on, or when a function's own body reads names
 (`iscolor`).
 

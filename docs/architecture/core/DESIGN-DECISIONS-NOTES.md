@@ -452,3 +452,23 @@ threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
   on: the stylesheet writes them, not the page. Pinned in
   `packages/jess/test/less-expose-variables.test.ts` and
   `packages/vite-plugin-jess/test/index.test.ts`.
+
+## Function parameter binding (proposed OPEN row)
+
+- 2026-11-13 — agent note, on perf/runtime-binder-loop, implementing the
+  owner's ruling "one `define` as a plain loop over checks, with rest, lazy,
+  optional and default as check wrappers (design §2.3). No separate lean
+  definer". The ledger has no row on how a function binds its parameters;
+  proposed as OPEN for the orchestrator to add:
+  - `optional`, `withDefault`, `lazy` and `rest` (`define.ts`) are wrappers
+    over a parameter's check; `define` refuses, where the function is defined, a
+    parameter that sets one of those flags without its wrapper.
+    `defineFunction` wraps such a parameter itself. The wrapper's mark is a
+    registered symbol, so a second copy of core reads it.
+  - An argument is absent when it is not passed or is core's implicit `null` (a
+    keyword call that skips the slot); an explicit `null` is a value. That holds
+    for a lazy parameter too, which before this branch received a thunk of the
+    implicit `null`.
+  - `rest` is the last parameter; one array given at its slot is taken as its
+    arguments.
+  Pinned in `packages/core/src/ast/__tests__/define-binding.test.ts`.

@@ -7,7 +7,7 @@
  * map.has-key((a: 1), a) // true
  * map.has-key((a: 1), b) // false
  */
-import { collectionKeyIndex, makeBool, define, checkCollection, checkAny } from '@jesscss/core/value';
+import { collectionKeyIndex, makeBool, define, checkCollection, checkAny, rest } from '@jesscss/core/value';
 import { nestedCollection } from './util.js';
 
 const hasKey = define(
@@ -16,7 +16,7 @@ const hasKey = define(
     params: [
       { name: 'map', type: 'Collection', check: checkCollection },
       { name: 'key', type: 'any', check: checkAny },
-      { name: 'keys', type: 'any', check: checkAny, rest: true }
+      /* @__PURE__ */ rest({ name: 'keys', type: 'any', check: checkAny })
     ] as const,
     body: (map, key, keys) => {
       const path = [key, ...keys];

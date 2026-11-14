@@ -26,7 +26,7 @@
  */
 import { asNumber, channelForm, defineForm, knownUnit, type FormCall, type FormSlot } from '@jesscss/core/form';
 import type { Color, Dimension, Fn, FunctionCall, ValueGroup } from '@jesscss/core/value';
-import { colorHsl, colorRawRgb, isUnknownNumber, isValueGroupArray, makeDimension, TOLERANCE, checkAny } from '@jesscss/core/value';
+import { colorHsl, colorRawRgb, isUnknownNumber, isValueGroupArray, makeDimension, TOLERANCE, checkAny, optional } from '@jesscss/core/value';
 import * as forms from '../../less/css-forms.generated.js';
 import { percentOf } from '../../shared/color/kernels.js';
 import { COLOR } from './color-form.js';
@@ -78,17 +78,17 @@ const MODERN_COLORS = new Set(['lab', 'lch', 'oklab', 'oklch', 'color']);
 /** The parameters, in declared order. `excess` catches a second positional argument. */
 const PARAMS = [
   COLOR,
-  { name: 'excess', type: 'any', check: checkAny, optional: true },
-  { name: 'red', type: 'any', check: checkAny, optional: true },
-  { name: 'green', type: 'any', check: checkAny, optional: true },
-  { name: 'blue', type: 'any', check: checkAny, optional: true },
-  { name: 'hue', type: 'any', check: checkAny, optional: true },
-  { name: 'saturation', type: 'any', check: checkAny, optional: true },
-  { name: 'lightness', type: 'any', check: checkAny, optional: true },
-  { name: 'whiteness', type: 'any', check: checkAny, optional: true },
-  { name: 'blackness', type: 'any', check: checkAny, optional: true },
-  { name: 'alpha', type: 'any', check: checkAny, optional: true },
-  { name: 'space', type: 'any', check: checkAny, optional: true }
+  /* @__PURE__ */ optional({ name: 'excess', type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ name: 'red', type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ name: 'green', type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ name: 'blue', type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ name: 'hue', type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ name: 'saturation', type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ name: 'lightness', type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ name: 'whiteness', type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ name: 'blackness', type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ name: 'alpha', type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ name: 'space', type: 'any', check: checkAny })
 ] as const;
 
 const describe = (v: ValueGroup): string =>

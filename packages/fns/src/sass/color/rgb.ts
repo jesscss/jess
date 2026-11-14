@@ -1,5 +1,5 @@
 import type { Fn, FnCtx, ValueGroup } from '@jesscss/core/value';
-import { isValueGroupArray, define, checkAny } from '@jesscss/core/value';
+import { isValueGroupArray, define, checkAny, optional } from '@jesscss/core/value';
 import { colorWithAlpha } from '../../less/rgb.js';
 import { isColor, makeRgb } from './kernels.js';
 
@@ -26,9 +26,9 @@ export const rgbBody = (args: readonly ValueGroup[], ctx: FnCtx): ReturnType<Fn>
 export const rgb: Fn = define('rgb', {
   params: [
     { name: 'red', type: 'any', check: checkAny },
-    { name: 'green', type: 'any', check: checkAny, optional: true },
-    { name: 'blue', type: 'any', check: checkAny, optional: true },
-    { name: 'alpha', type: 'any', check: checkAny, optional: true }
+    /* @__PURE__ */ optional({ name: 'green', type: 'any', check: checkAny }),
+    /* @__PURE__ */ optional({ name: 'blue', type: 'any', check: checkAny }),
+    /* @__PURE__ */ optional({ name: 'alpha', type: 'any', check: checkAny })
   ],
   variadic: true,
   body: rgbBody
