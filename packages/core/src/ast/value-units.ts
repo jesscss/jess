@@ -14,10 +14,12 @@ export const enum UnitGroup { Length = 0, Duration = 1, Angle = 2, Frequency = 3
  * Per-group conversion factors: unit → factor relative to the group base. Keys
  * are lowercase; every lookup goes through {@link foldUnit}.
  */
+const PX = 0.0254 / 96;
+const RAD = 1 / (2 * Math.PI);
 const GROUP_FACTORS: readonly Readonly<Record<string, number>>[] = [
-  { m: 1, cm: 0.01, mm: 0.001, q: 0.001 / 4, in: 0.0254, px: 0.0254 / 96, pt: 0.0254 / 72, pc: (0.0254 / 72) * 12 },
+  { m: 1, cm: 0.01, mm: 0.001, q: 0.001 / 4, in: 0.0254, px: PX, pt: 0.0254 / 72, pc: (0.0254 / 72) * 12 },
   { s: 1, ms: 0.001 },
-  { rad: 1 / (2 * Math.PI), deg: 1 / 360, grad: 1 / 400, turn: 1 },
+  { rad: RAD, deg: 1 / 360, grad: 1 / 400, turn: 1 },
   { hz: 1, khz: 1000 },
   { dppx: 1, x: 1, dpi: 1 / 96, dpcm: 2.54 / 96 }
 ];
@@ -28,15 +30,14 @@ const GROUP_FACTORS: readonly Readonly<Record<string, number>>[] = [
  */
 const GROUP_CANONICAL = ['px', 's', 'rad', 'hz', 'dppx'] as const;
 
-/*
- * Built when first read, so a bundle that never converts or checks a unit
- * drops them: the published core is minified, which strips purity marks.
- */
-let canonicalFactors: readonly number[] | undefined;
-let cssUnits: ReadonlySet<string> | undefined;
+/** Each group's canonical-unit factor, so `unify` needn't re-look-it-up per call; a literal, so a bundle that never unifies drops it. */
+const GROUP_CANONICAL_FACTOR: readonly number[] = [PX, 1, RAD, 1, 1];
 
-/** Each group's canonical-unit factor, so `unify` needn't re-look-it-up per call. */
-const groupCanonicalFactor = (): readonly number[] => canonicalFactors ??= GROUP_FACTORS.map((f, g) => f[GROUP_CANONICAL[g]!]!);
+/*
+ * Built when first read, so a bundle that never checks a unit drops it: the
+ * published core is minified, which strips purity marks.
+ */
+let cssUnits: ReadonlySet<string> | undefined;
 
 /** Every unit CSS defines (css-values-4 §6, §7; css-contain-3 §9; css-grid-1 §7.2.3), keys lowercase. */
 const cssUnitSet = (): ReadonlySet<string> => cssUnits ??= new Set([
@@ -102,7 +103,7 @@ export function unify(number: number, unit: string): { number: number; unit: str
   if (g === undefined) {
     return { number, unit: key };
   }
-  return { number: number * (GROUP_FACTORS[g]![key]! / groupCanonicalFactor()[g]!), unit: GROUP_CANONICAL[g] };
+  return { number: number * (GROUP_FACTORS[g]![key]! / GROUP_CANONICAL_FACTOR[g]!), unit: GROUP_CANONICAL[g] };
 }
 
 /**

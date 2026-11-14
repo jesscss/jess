@@ -99,6 +99,7 @@ describe('vite-plugin-jess', () => {
       /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 14,719 B measured (5,289 B gzip), with no unit check and unit tables built when first read; 15,717 B with them; 19,126 B with the binder's general check, and no colour-name table (R8-13); 22,359 B when it came with every value reader and the binder, 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
       expect(js.length).toBeLessThan(15_460);
       expect(js).not.toContain('is read by a CSS form');
+      expect(js).not.toContain('dvmin');
     });
   });
 
