@@ -10,7 +10,7 @@
     },
     {
       "name": "cst",
-      "aggregate": "99483bbeec73b1839dadb4d95496fb6c409bcde2c1be96749e4167c06d2e621a",
+      "aggregate": "5c3abc048e3ceb797da2f935b385e395daf4fbfc76d9420feb5c740b4688ac53",
       "threw": 0
     }
   ],
@@ -925,7 +925,7 @@
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-media-no-block-2.less": {
       "ast": "05875765c152f691",
-      "cst": "f0defa65fb0ebd7b"
+      "cst": "b08b86943f911dfd"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-media-no-block-3.less": {
       "ast": "6d04afbf30e8ab5f",
@@ -3309,11 +3309,11 @@
     },
     "packages/syntax/css/css-parser/test/css/errors/media-decl.css": {
       "ast": "05875765c152f691",
-      "cst": "c0ef21c1dc410804"
+      "cst": "c6360e38563d9ff4"
     },
     "packages/syntax/css/css-parser/test/css/errors/media-empty.css": {
       "ast": "05875765c152f691",
-      "cst": "c0ef21c1dc410804"
+      "cst": "c6360e38563d9ff4"
     },
     "packages/syntax/css/css-parser/test/css/errors/media-no-selector.css": {
       "ast": "e7a88288e927f03e",
