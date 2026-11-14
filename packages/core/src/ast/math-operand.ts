@@ -173,15 +173,6 @@ export function isNegatable(name: string): boolean {
   return lower === 'var' || lower === 'env' || lower === 'attr' || isMathFunctionName(lower);
 }
 
-/** A call inside a CSS colour call Less keeps as written: a glued minus on what only the browser knows is the value negated there too (CSS-NATIVE-BUILTINS §3.4). */
-export function writtenCall(name: string, inner: string): string {
-  const callee = name.slice(1);
-  if (name.charCodeAt(0) !== 45 || !isNegatable(callee)) {
-    return `${name}(${inner})`;
-  }
-  return callee.toLowerCase() === 'calc' ? `calc(-1 * (${inner}))` : `calc(-1 * ${callee}(${inner}))`;
-}
-
 export const negatedMath = (v: Value): Value => mathOnDeferred('*', MINUS_ONE, v);
 
 /**

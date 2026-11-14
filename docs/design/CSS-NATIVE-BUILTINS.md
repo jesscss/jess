@@ -265,15 +265,16 @@ compared ignoring ASCII case), in a value the compile evaluates, is the value
 times -1: `-var(--x)` is `calc(-1 * var(--x))`, `abs(-var(--x))` is
 `abs(-1 * var(--x))` (a math function's argument is math),
 `translate(-var(--x), 0)` is `translate(calc(-1 * var(--x)), 0)`,
-`-sqrt(var(--x))` is `calc(-1 * sqrt(var(--x)))`, and a CSS colour call Less
-keeps as written negates its channel too, `rgb(-var(--r), 0, 0)` being
-`rgb(calc(-1 * var(--r)), 0, 0)`. A built-in with a glued minus over known
+and `-sqrt(var(--x))` is `calc(-1 * sqrt(var(--x)))`. A built-in with a glued minus over known
 numbers is the number times -1: `-sqrt(4)` is `-2` and `-percentage(0.5)` is
 `-50%`. A custom property's value and escaped text are tokens, so
 `--y: -var(--x)` stays as written, and a `.css` document is not evaluated, so it
-keeps `-var(--x)` too. Open for the owner (DESIGN-DECISIONS-NOTES V38,
-2026-11-14): a declaration inside `@supports`, a `var()` fallback in `.scss` and
-`.jess`, and Less's `0 -var(--x)`, which Less reads as subtraction.
+keeps `-var(--x)` too. A CSS colour call Less keeps as written keeps its
+authored bytes (F5), so `rgb(-var(--r), 0, 0)` stays as written in `.less`, where
+`.scss` and `.jess` write `rgb(calc(-1 * var(--r)), 0, 0)`. Open for the owner
+(DESIGN-DECISIONS-NOTES V38, 2026-11-14): that colour call, a declaration inside
+`@supports`, a `var()` fallback in `.scss` and `.jess`, and
+Less's `0 -var(--x)`, which Less reads as subtraction.
 
 ### 3.4a Choosing the form: the representation ladder
 
