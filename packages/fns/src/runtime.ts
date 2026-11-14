@@ -2,10 +2,7 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import { exposedVars, writeVars, type ExportValues, type ExposedSpec, type Hold, type StyleTarget } from '@jesscss/patch-css';
 import type { Fn, ValueGroup } from '@jesscss/core/value';
 import type { Value } from '@jesscss/core/value';
-import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, spelledColor } from '@jesscss/core/value';
-
-/** The two literal readers a generated module picks from: with the colour-name table, or without it. */
-export { sniffLiteral, sniffUnnamed } from '@jesscss/core/value';
+import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, parseHex, sniffLiteral, sniffUnnamed, spelledColor } from '@jesscss/core/value';
 
 /**
  * The browser runtime for a stylesheet's exported variables (ledger A4,
@@ -48,12 +45,17 @@ export interface RuntimeSpec extends ExposedSpec {
   readonly hex?: Readonly<Record<string, string>>;
 
   /**
-   * How a word of a value is read: `sniffLiteral` when the page takes colour
-   * names, `sniffUnnamed` otherwise, so the name table ships only when names
-   * can arrive (R8 spec, colour names).
+   * How a value's text is read, the generated module's pick: {@link readHex}
+   * when every export a recipe reads is a hex colour and no recipe holds text,
+   * {@link readNamed} when the page takes colour names, {@link readUnnamed}
+   * otherwise. So a page bundles only the reader it needs, and the name table
+   * only when names can arrive (R8 spec, colour names).
    */
-  readonly literal: (word: string) => Value;
+  readonly read: Reader;
 }
+
+/** A reader of a value's text; `hexKey`, the export's key, when the value is given for an export that takes the hex check. */
+export type Reader = (text: string, hexKey?: string) => ValueGroup;
 
 export type { ExportValues, StyleTarget };
 
@@ -81,18 +83,7 @@ export function createVars(spec: RuntimeSpec): Runtime['vars'] {
       let value = parsed.get(name);
       if (value === undefined) {
         const given = values[name];
-        const key = spec.hex?.[name];
-
-        /* Each word the reader reads, so a name anywhere in a list is refused; a function word fails in the reader first. */
-        const literal = key === undefined || given === undefined
-          ? spec.literal
-          : (word: string): Value => {
-              if (/^[a-z]/i.test(word)) {
-                throw new TypeError(`\`${key}\` received \`${given.trim()}\`, which is not a hex colour; set \`colorNames: true\` in the Jess plugin options to accept colour names.`);
-              }
-              return spec.literal(word);
-            };
-        value = parseValue(given ?? spec.defaults[name] ?? '', literal);
+        value = given === undefined ? spec.read(spec.defaults[name] ?? '') : spec.read(given, spec.hex?.[name]);
         parsed.set(name, value);
       }
       return value;
@@ -100,7 +91,7 @@ export function createVars(spec: RuntimeSpec): Runtime['vars'] {
     for (const property of Object.keys(spec.derived)) {
       const recipe = spec.derived[property]!;
       if (reads(recipe, values)) {
-        out[property] = emitValue(run(recipe, read, spec.literal));
+        out[property] = emitValue(run(recipe, read, spec.read));
       }
     }
     return out;
@@ -124,21 +115,51 @@ function isCall(recipe: Exclude<RuntimeRecipe, string>): recipe is readonly [Fn,
   return Array.isArray(recipe);
 }
 
-/** `read` is an export's value, given or compile-time, parsed once per {@link Runtime.vars}; `literal` reads a recipe's own argument. */
-function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup, literal: RuntimeSpec['literal']): ValueGroup {
+/** `read` is an export's value, given or compile-time, parsed once per {@link Runtime.vars}; `text` reads a recipe's own argument. */
+function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup, text: Reader): ValueGroup {
   if (typeof recipe === 'string') {
-    return parseValue(recipe, literal);
+    return text(recipe);
   }
   if (!isCall(recipe)) {
     return read(recipe.export);
   }
   const [fn, args] = recipe;
-  const result = fn(args.map(arg => run(arg, read, literal)), CTX);
+  const result = fn(args.map(arg => run(arg, read, text)), CTX);
   if (isThenable(result)) {
     throw new TypeError(`${fn.name}() computes asynchronously, which the runtime cannot do.`);
   }
   return result;
 }
+
+/** The hex check's error; `named` when what was given reads as a colour name, so the option that takes names would help. */
+const notHex = (key: string, given: string, named: boolean): TypeError =>
+  new TypeError(`\`${key}\` received \`${given.trim()}\`, which is not a hex colour${named ? '; set `colorNames: true` in the Jess plugin options to accept colour names' : ''}.`);
+
+/** A hex colour, `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`, and nothing else: the reader of a page whose recipes read only colour exports. */
+export function readHex(text: string, hexKey?: string): ValueGroup {
+  const src = text.trim();
+  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(src)) {
+    const { rgb, alpha } = parseHex(src);
+    return spelledColor(src, rgb, alpha);
+  }
+  throw notHex(hexKey ?? 'a colour export', text, /^\s*[a-z]+(?:[\s,]|$)/i.test(text));
+}
+
+/** A value with colour names read as colours. */
+export const readNamed: Reader = (text, hexKey) => parseValue(text, gated(sniffLiteral, text, hexKey));
+
+/** A value with a colour name read as the keyword it spells. */
+export const readUnnamed: Reader = (text, hexKey) => parseValue(text, gated(sniffUnnamed, text, hexKey));
+
+/** `literal`, refusing each word a colour name could be for an export that takes the hex check: a name anywhere in a list is refused, and a function word fails in the reader first. */
+const gated = (literal: (word: string) => Value, given: string, hexKey: string | undefined) => hexKey === undefined
+  ? literal
+  : (word: string): Value => {
+      if (/^[a-z]/i.test(word)) {
+        throw notHex(hexKey, given, true);
+      }
+      return literal(word);
+    };
 
 /**
  * A value as the runtime is given it: a comma list of space lists of
@@ -146,7 +167,7 @@ function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup, literal:
  * type="color">` gives hex; parse with the dialect's colour functions if
  * authors need more.
  */
-function parseValue(text: string, literal: RuntimeSpec['literal']): ValueGroup {
+function parseValue(text: string, literal: (word: string) => Value): ValueGroup {
   const items = split(text, ',').map((item) => {
     const words = split(item, ' ').map(word => readWord(word, literal));
     return words.length === 1 ? words[0]! : words;
@@ -154,7 +175,7 @@ function parseValue(text: string, literal: RuntimeSpec['literal']): ValueGroup {
   return items.length === 1 ? items[0]! : makeList(items, ',');
 }
 
-function readWord(word: string, literal: RuntimeSpec['literal']): ValueGroup {
+function readWord(word: string, literal: (word: string) => Value): ValueGroup {
   if (word.includes('(') && word[0] !== '"' && word[0] !== '\'') {
     throw new TypeError(`The runtime computes from CSS literals (#c00, 8px, red); "${word}" is a function.`);
   }

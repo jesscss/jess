@@ -212,12 +212,15 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
       }
       return id;
     };
+    let text = false;
     const write = (recipe: ExportRecipe | ExportColor | string): string =>
-      typeof recipe === 'string' || 'export' in recipe
-        ? JSON.stringify(recipe)
-        : 'color' in recipe
-          ? `[${local('@jesscss/fns/runtime', 'color')}(${JSON.stringify(recipe.color)}, ${JSON.stringify(recipe.rgb)}, ${recipe.alpha}), []]`
-          : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
+      typeof recipe === 'string'
+        ? (text = true, JSON.stringify(recipe))
+        : 'export' in recipe
+          ? JSON.stringify(recipe)
+          : 'color' in recipe
+            ? `[${local('@jesscss/fns/runtime', 'color')}(${JSON.stringify(recipe.color)}, ${JSON.stringify(recipe.rgb)}, ${recipe.alpha}), []]`
+            : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
     const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
 
     /* The least check the exports need: none when no CSS form reads one. */
@@ -236,7 +239,14 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
       /* Names are read when asked for, or when the stylesheet itself writes one the runtime reads: a colour export's value, or a recipe's own argument. */
       const names = colorNames || runtime.names;
       const held = hold === undefined ? '' : `, hold: ${local('@jesscss/patch-css', hold)}`;
-      lines.push(`import { createVars, ${names ? 'sniffLiteral' : 'sniffUnnamed'} as literal } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
+
+      /*
+       * The reader is the least the page needs: hex only when no recipe holds
+       * text and every export a recipe reads is a colour export whose
+       * compile-time CSS, which the reader also reads, is a hex.
+       */
+      const hexOnly = !names && !text && Object.entries(runtime.defaults).every(([name, css]) => runtime.colors.includes(name) && /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(css));
+      lines.push(`import { createVars, ${hexOnly ? 'readHex' : names ? 'readNamed' : 'readUnnamed'} as read } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
       for (const [module, members] of imports) {
         lines.push(`import { ${members.join(', ')} } from ${JSON.stringify(module)};`);
       }
@@ -246,7 +256,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         ? ''
         : `, hex: ${JSON.stringify(Object.fromEntries(Object.entries(runtime.keys).filter(([, name]) => runtime.colors.includes(name)).map(([key, name]) => [name, key])))}`;
       lines.push(
-        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}${held}${runtime.colors.length > 0 ? hex : ''}, literal, derived: { ${derived.join(', ')} } });`,
+        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}${held}${runtime.colors.length > 0 ? hex : ''}, read, derived: { ${derived.join(', ')} } });`,
         `export const set = (values, target) => writeVars(vars(values), target);`
       );
     }
