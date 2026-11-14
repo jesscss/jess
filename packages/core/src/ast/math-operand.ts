@@ -18,7 +18,9 @@
  * HARD MODULE BOUNDARY: the value domain and the operand rule only.
  */
 import { isMathFunctionName } from './math-functions.js';
-import type { Operation } from './nodes.js';
+import type { FunctionCall as CallNode, Operation, ValueSlot } from './nodes.js';
+import { isIfTestCall } from './guard-node.js';
+import { isValueSlotArray } from './css-grammar-helpers.js';
 import { DivisionByZeroError, InvalidOperandError, emitValue, isValueGroupArray, joinGroup, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { arithmeticOperand, makeDimension, makeKeyword, makeWrittenMath, withFields } from './value-factory.js';
 import { convertible } from './value-units.js';
@@ -171,6 +173,39 @@ export function negated(v: Value): Value {
 export function isNegatable(name: string): boolean {
   const lower = name.toLowerCase();
   return lower === 'var' || lower === 'env' || lower === 'attr' || isMathFunctionName(lower);
+}
+
+/**
+ * Whether a value as written holds a glued minus that would be negated. A
+ * feature query tests a declaration as written, so there it stays (`@supports
+ * (margin-left: -var(--x))`, CSS-NATIVE-BUILTINS §3.4).
+ */
+export function hasGluedMinus(slot: ValueSlot): boolean {
+  if (isValueSlotArray(slot)) {
+    return slot.some(hasGluedMinus);
+  }
+  const node = slot;
+  switch (node.type) {
+    case 'FunctionCall':
+      return (node.name.charCodeAt(0) === 45 && isNegatable(node.name.slice(1))) || node.args.some(arg => hasGluedMinus(arg.value));
+    case 'Sequence':
+      return node.parts.some(hasGluedMinus);
+    case 'List':
+      return node.value.some(hasGluedMinus);
+    case 'Operation':
+      return hasGluedMinus(node.left) || hasGluedMinus(node.right);
+    case 'Block':
+      return hasGluedMinus(node.value);
+    default:
+      return false;
+  }
+}
+
+/** A feature test holding a glued minus (`supports(margin-left: -var(--x))`), which is written as it is: `media`, `supports` or `style` by its first letter and length before its name is read. */
+export function isGluedFeatureTest(node: CallNode): boolean {
+  const { name } = node;
+  const first = name.charCodeAt(0) | 32;
+  return (first === 109 || first === 115) && (name.length === 5 || name.length === 8) && isIfTestCall(node) && hasGluedMinus(node);
 }
 
 export const negatedMath = (v: Value): Value => mathOnDeferred('*', MINUS_ONE, v);

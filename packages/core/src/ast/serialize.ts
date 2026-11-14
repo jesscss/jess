@@ -227,7 +227,7 @@ import { cssFilterCall, mayBeFilter } from './filter-position.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, moduleReferenceCallNode, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
-import { mathOperand, negatedCall, slashOperated, writtenMath, writtenPercent } from './math-operand.js';
+import { hasGluedMinus, isGluedFeatureTest, mathOperand, negatedCall, slashOperated, writtenMath, writtenPercent } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type FnOrigin, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -8985,7 +8985,9 @@ function evalCall(
   if (e.ev && node.args.length === 1 && node.name.toLowerCase() === 'calc') {
     return evalCalc(node, frame, e);
   }
-  if (!e.ev) {
+
+  /* A feature test (`supports(margin-left: -var(--x))`) is the declaration as written, a glued minus included (CSS-NATIVE-BUILTINS §3.4). */
+  if (!e.ev || isGluedFeatureTest(node)) {
     return preserveCall(node, frame, e);
   }
   const lname = node.name.toLowerCase();
@@ -21703,7 +21705,7 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: Lane): May
       return concatPreludeParts([
         evalSupportsPrelude(node.left, frame, e),
         plain(node.operator === ':' ? ': ' : ` ${node.operator} `),
-        evalSupportsPrelude(node.right, frame, e)
+        evalSupportsPrelude(node.right, frame, node.operator === ':' && hasGluedMinus(node.right) ? deriveLane(e, 'written') : e)
       ]);
     case 'Sequence': {
       const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];

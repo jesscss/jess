@@ -670,4 +670,12 @@ describe('a glued minus in a call written out', () => {
   it('a custom property keeps its tokens', async () => {
     await expect(css('.a { --y: -var(--x); }')).resolves.toContain('--y: -var(--x);');
   });
+
+  it.each(['.css', '.less', '.scss', '.jess'])('a feature query tests the declaration as written in %s', async (extension) => {
+    const source = '@supports (margin-left: -var(--x)) { .a { b: 1; } }\n@supports not (width: abs(-var(--x))) { .a { b: 1; } }\n.c { d: if(supports(margin-left: -var(--x)): 1px; else: 2px); }';
+    const out = String(await new Compiler({}).renderString(source, { filePath: `entry${extension}`, extension, suppressWarnings: true }));
+    expect(out).toContain('@supports (margin-left: -var(--x))');
+    expect(out).toContain('@supports not (width: abs(-var(--x)))');
+    expect(out).toContain('d: if(supports(margin-left: -var(--x)): 1px; else: 2px);');
+  });
 });
