@@ -123,8 +123,18 @@ const isAbsent = (input: unknown): boolean =>
  * outermost: `optional(lazy(param))`.
  */
 
+/** The checks the wrappers below made, so a flag written without its wrapper is caught where the function is defined. */
+const WRAPPERS = new WeakSet<Check>();
+
 /** `param` with `flags` and the check that binds it: a new object, so the spec passed in is left as it is. */
-const wrapped = <P extends ParamSpec, F extends object>(param: P, flags: F, check: Check): P & F => ({ ...param, ...flags, check });
+const wrapped = <P extends ParamSpec, F extends object>(param: P, flags: F, check: Check): P & F => {
+  WRAPPERS.add(check);
+  return { ...param, ...flags, check };
+};
+
+/** Whether `param` sets a binding flag (`optional`, `default`, `lazy`, `rest`) its check does not bind, because no wrapper made it. */
+export const unwrapped = (param: ParamSpec): boolean =>
+  !!(param.optional || param.rest || param.lazy || param.default) && !WRAPPERS.has(param.check!);
 
 /** A parameter that may be left out; the body receives `undefined`. */
 export const optional = <const P extends ParamSpec>(param: P): P & { readonly optional: true } => {
@@ -243,6 +253,9 @@ export function define(
   /* Each closure reads only constants captured here, never the caller's spec literal, whose key set varies by caller. */
   let callable: VariadicBody;
   const { params, afterBind } = spec;
+  if (params.some(unwrapped)) {
+    throw new TypeError(`${name}: a flag needs its wrapper`);
+  }
   if (isVariadic(spec)) {
     const { body } = spec;
     callable = (args, ctx) => body(args, ctx);

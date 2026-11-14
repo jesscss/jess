@@ -12,7 +12,7 @@ import { isValueGroup, isValueGroupArray, type ArgumentKeyword, type EvalModes, 
 import { calcOperand, numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { NULL } from './value-factory.js';
-import { checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl, define, emptyCollection, isListShaped, lazy, mismatch, optional, readWritten, rest, valueNode, withDefault } from './define.js';
+import { checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl, define, emptyCollection, isListShaped, lazy, mismatch, optional, readWritten, rest, unwrapped, valueNode, withDefault } from './define.js';
 import type {
   Check,
   DefinedFunction,
@@ -287,7 +287,7 @@ const CHECKS: Readonly<Partial<Record<string, Check>>> = {
 /** A parameter as {@link define} binds it: its own check, or the check of its type. */
 export function withCheck(param: ParamSpec): ParamSpec {
   if (param.check !== undefined) {
-    return param;
+    return unwrapped(param) ? bound(param) : param;
   }
   const type = paramType(param);
   return bound({ ...param, kinds: undefined, type: param.type ?? type, check: (typeof param.type === 'string' ? CHECKS[param.type] : undefined) ?? checkKinds });
