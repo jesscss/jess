@@ -185,17 +185,23 @@ describe('the export runtime', () => {
 
   /* A colour name the recipe itself writes is read at compile time, so the runtime runs it with no name table. */
   it.each([
-    ['@less.lightness(@less.multiply(@a, gray))', '#08f'],
-    ['@less.luma(@less.screen(@a, gray))', '#fff'],
-    ['@less.hue(@less.difference(@a, rebeccapurple))', '#123']
-  ])('runs %s for @a: %s as the compile of that value does, reading no names', async (expression, value) => {
+    ['@less.lightness(@less.multiply(@a, gray))', '#c00', '#08f'],
+    ['@less.lightness(@less.multiply(@a, GRAY))', '#c00', '#08f'],
+    ['@less.luma(@less.screen(@a, gray))', '#c00', '#fff'],
+    ['@less.hue(@less.difference(@a, rebeccapurple))', '#c00', '#123'],
+    ['@less.contrast(@less.multiply(@a, white), Gray, White, 50%)', '#000', '#fff'],
+    ['@less.contrast(@less.multiply(@a, white), Gray, White, 50%)', '#fff', '#000'],
+    ['@less.alpha(@less.mix(@a, Transparent, 50%))', '#c00', '#08f']
+  ])('runs %s for @a: %s then %s as the compile of that value does, reading no names', async (expression, initial, value) => {
     const source = (a: string): string => `@use "#less";\n@expose a;\n@a: ${a};\n.x { v: ${expression}; }`;
-    const exported = await compile(source('#c00'));
+    const exported = await compile(source(initial));
     expect(exported.runtime!.names).toBe(false);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, literal: sniffUnnamed, derived }).vars({ a: value });
-    const [name, computed] = Object.entries(vars).find(([key]) => key !== '--a')!;
-    expect((await compile(source(value))).css).toContain(`v: var(${name}, ${computed});`);
+    const { css } = await compile(source(value));
+    const written = Object.entries(vars).filter(([key]) => css.includes(`v: var(${key},`));
+    expect(written).toHaveLength(1);
+    expect(css).toContain(`v: var(${written[0]![0]}, ${written[0]![1]});`);
   });
 
   it('runs rgb() as a recipe inside a function with no CSS form', async () => {
