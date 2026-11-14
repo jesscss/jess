@@ -79,6 +79,8 @@ Pass a different `startRule` (any capitalized grammar rule, e.g. `'SelectorList'
 | `@jesscss/less-parser/cst` | `LessCstNode`, `LessCstLeaf`, `LessCstError`, `LessCstChild`, `LessCstParseResult`, `LessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
 | `@jesscss/less-parser` (`.`) | `parse` | Parse Less directly to canonical AST v2 `Stylesheet`. It does not load the CST grammar. |
+| `@jesscss/less-parser` (`.`) | `createLessParseState` | Build the run state `parse()` builds, from the same options, for a raw run of a `grammar/*` table. Returns an opaque `LessRunState`. See [Extending with your own builders](#extending-with-your-own-builders). |
+| `@jesscss/less-parser` (`.`) | `recoveredProblemsOf` | Given a `LessRunState` and what the raw `run()` returned, the recovered problems `safeParse()` reports for a completed stylesheet run. It is empty for a run that stopped short, so check `result.ok`, `unconsumedFrom` and `errors` first. |
 
 ### Line-aware entries
 
@@ -191,16 +193,34 @@ The grammar is decoupled from the tree it builds. Every capitalized rule is a pa
 ```js
 import { run } from 'parseman'
 import { lessGrammar } from '@jesscss/less-parser/grammar'
+import { createLessParseState } from '@jesscss/less-parser'
 
+const source = '@c: red; .foo { color: @c; }'
 const myHost = (type, children, fields, span) => ({ type, span, rules: children.filter(Boolean) })
 
-const result = run(lessGrammar.Stylesheet, '@c: red; .foo { color: @c; }', {
+const result = run(lessGrammar.Stylesheet, source, {
   build: myHost,
-  trivia: lessGrammar.rw   // Less trivia = whitespace + block + line comments
+  trivia: lessGrammar.rw,   // Less trivia = whitespace + block + line comments
+  state: createLessParseState(source, { mathMode: 'parens-division' })
 })
 
 result.value   // the root node your host returned
 ```
+
+`createLessParseState(input, options)` builds the run state `parse()` and
+`safeParse()` build, from the same `LessParseOptions`, and it is the only
+supported way to build a state for a raw run of the `grammar/*` tables. It
+checks the options once: `undefined` or `null` reads the default, and any other
+value outside the documented modes throws a `TypeError`. The grammar trusts the
+state after that, so a hand-built state is unchecked: an invalid mode in it is
+undefined behaviour. The returned `LessRunState` is opaque; pass it as `state`
+and read it back only through `recoveredProblemsOf(state, result)`, passing what
+`run()` returned. It lists exactly the recovered problems `safeParse()` reports
+for a completed stylesheet run, where `parse()` would have thrown the first: each
+problem that reaches its tree, once, in source order. For a run that stopped
+short (it failed, left input unconsumed, or hit a parseman recovery error) the
+list is empty, so an empty list does not mean the run succeeded: check
+`result.ok`, `result.unconsumedFrom` and `result.errors` yourself.
 
 The `BuildHost` signature (from parseman):
 

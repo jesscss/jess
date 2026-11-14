@@ -9,6 +9,7 @@ export * from './ast/nodes.js';
 export * from './ast/traversal.js';
 export * from './ast/at-rule.js';
 export * from './ast/math-functions.js';
+export { MATH_MODES, MODULE_MODES } from './types/modes.js';
 export { delimiterClose, delimiterOpen, sepGlue } from './ast/value-eval.js';
 export {
   NO_SPAN,
