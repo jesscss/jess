@@ -17,7 +17,17 @@ import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, parseHex, sniffL
  * How a derived value is computed, as the generated module writes it: an
  * export, an argument's compile-time CSS, or a computation and its arguments.
  */
-export type RuntimeRecipe = { readonly export: string } | string | readonly [Compute, readonly RuntimeRecipe[]];
+export type RuntimeRecipe = { readonly export: string } | string | Call<ValueGroup>;
+
+/** A computation and the recipes of its arguments. */
+type Call<T> = readonly [(args: ValueGroup[]) => T, readonly RuntimeRecipe[]];
+
+/**
+ * A derived property's recipe: a {@link RuntimeRecipe}, or the call of a body
+ * whose declared result is one node that is not `Any`, written as its text
+ * (`(a) => body(...a).bytes`), so the page needs no value writer for it.
+ */
+export type Derived = RuntimeRecipe | Call<string>;
 
 /** What a recipe calls with its computed arguments: a built-in's body, {@link call} over a defined function, or {@link color}. */
 export type Compute = (args: ValueGroup[]) => ValueGroup;
@@ -52,7 +62,10 @@ export interface RuntimeSpec extends ExposedSpec {
   readonly defaults: Readonly<Record<string, string>>;
 
   /** Each generated custom property, by name, with how it is computed. */
-  readonly derived: Readonly<Record<string, RuntimeRecipe>>;
+  readonly derived: Readonly<Record<string, Derived>>;
+
+  /** Writes a derived value that is not already text: `emitValue`, which the generated module passes only when a recipe's result needs it. */
+  readonly emit?: (value: ValueGroup) => string;
 
   /** The check a given export's value takes: `checkUnit` when a CSS form reads an export, `holdRatio` for a `%` export, none otherwise, so a page bundles only what its exports need. */
   readonly hold?: Hold<ExposedSpec>;
@@ -74,6 +87,9 @@ export interface RuntimeSpec extends ExposedSpec {
 export type Reader = (text: string, hexKey?: string) => ValueGroup;
 
 export type { ExportValues, StyleTarget };
+
+/** The value writer, for a generated module whose recipes' results need it ({@link RuntimeSpec.emit}). */
+export { emitValue } from '@jesscss/core/value';
 
 export interface Runtime {
   /**
@@ -105,7 +121,8 @@ export function createVars(spec: RuntimeSpec): Runtime['vars'] {
     for (const property of Object.keys(spec.derived)) {
       const recipe = spec.derived[property]!;
       if (reads(recipe, values)) {
-        out[property] = emitValue(run(recipe, read, spec.read));
+        const value = isCall(recipe) ? apply<ValueGroup | string>(recipe, read, spec.read) : run(recipe, read, spec.read);
+        out[property] = typeof value === 'string' ? value : spec.emit!(value);
       }
     }
     return out;
@@ -117,7 +134,7 @@ export function createRuntime(spec: RuntimeSpec): Runtime {
   return { vars, set: (values, target) => writeVars(vars(values), target) };
 }
 
-function reads(recipe: RuntimeRecipe, values: ExportValues): boolean {
+function reads(recipe: Derived, values: ExportValues): boolean {
   return typeof recipe === 'string'
     ? false
     : isCall(recipe)
@@ -125,7 +142,7 @@ function reads(recipe: RuntimeRecipe, values: ExportValues): boolean {
       : Object.hasOwn(values, recipe.export);
 }
 
-function isCall(recipe: Exclude<RuntimeRecipe, string>): recipe is readonly [Compute, readonly RuntimeRecipe[]] {
+function isCall<R extends Derived>(recipe: R): recipe is Extract<R, readonly unknown[]> {
   return Array.isArray(recipe);
 }
 
@@ -134,10 +151,10 @@ function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup, text: Re
   if (typeof recipe === 'string') {
     return text(recipe);
   }
-  if (!isCall(recipe)) {
-    return read(recipe.export);
-  }
-  const [compute, args] = recipe;
+  return isCall(recipe) ? apply(recipe, read, text) : read(recipe.export);
+}
+
+function apply<T>([compute, args]: Call<T>, read: (name: string) => ValueGroup, text: Reader): T {
   return compute(args.map(arg => run(arg, read, text)));
 }
 

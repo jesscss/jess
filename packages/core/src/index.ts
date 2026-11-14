@@ -42,6 +42,7 @@ export { prepareStaticImports, serialize } from './ast/serialize.js';
 export type { PreparedImports, PrepareStaticImportsOptions, SerializeOptions, Position } from './ast/serialize.js';
 export type { ExportColor, ExportRecipe, ExportRuntimeData } from './ast/export-reads.js';
 export type { FnOrigin } from './ast/module-values.js';
+export type { BodyOrigin } from './ast/functions/types.js';
 
 /** Print a parsed stylesheet as `.jess` source (no evaluation). */
 export { emitJess, NoJessSpelling } from './ast/emit-jess.js';

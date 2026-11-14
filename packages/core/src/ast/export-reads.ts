@@ -7,6 +7,7 @@ import { isValueSlotArray } from './css-grammar-helpers.js';
 import { isDimension, knownUnit } from './css-math.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
+import type { BodyOrigin } from './functions/types.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { calcOperand } from './math-operand.js';
@@ -35,7 +36,7 @@ import { cancelPercent, exposedOperand, insideParens, keepAsWritten, mathOnDefer
  * one colour for each parameter that takes only a colour, so a page whose reader
  * reads each export as a colour may call the body directly (DESIGN-DECISIONS-NOTES.md, "Direct body calls").
  */
-export type ExportRecipe = { readonly export: string } | { readonly fn: FnOrigin; readonly args: ReadonlyArray<ExportRecipe | ExportColor | string>; readonly body?: FnOrigin };
+export type ExportRecipe = { readonly export: string } | { readonly fn: FnOrigin; readonly args: ReadonlyArray<ExportRecipe | ExportColor | string>; readonly body?: BodyOrigin };
 
 /**
  * A colour name a recipe's own argument writes for a parameter checked as a
