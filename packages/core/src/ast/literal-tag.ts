@@ -21,8 +21,10 @@
  */
 import type { Color, Value } from './value-eval.js';
 import { HEX } from './color.js';
-import { makeBool, makeColorRgb, makeKeyword } from './value-factory.js';
-import { DimensionValueNode, QuotedValueNode } from './node-ctors.js';
+import { makeBool, makeKeyword } from './value-factory.js';
+import { ColorValueNode, DimensionValueNode, QuotedValueNode } from './node-ctors.js';
+
+type Mutable<T> = { -readonly [P in keyof T]: T[P] };
 import { namedColor } from './color-names.js';
 
 /*
@@ -97,8 +99,18 @@ export function colorFromSrc(src: string): Value {
   return makeKeyword(src);
 }
 
-/** A colour as its author spelled it, a hex or a name, with its channels; the browser runtime builds a recipe's colour name with it too (R8 spec). */
-export const spelledColor = (src: string, rgb: readonly [number, number, number], alpha: number): Color => makeColorRgb(rgb, alpha, HEX, { src });
+/**
+ * A colour as its author spelled it, a hex or a name, with its channels; the
+ * browser runtime builds a recipe's colour name with it too (R8 spec). Its
+ * bytes are its spelling, as `serializeColor` writes a colour with a `src`, so
+ * it is built without the serializer: a runtime page that reads a hex bundles
+ * no colour writer.
+ */
+export function spelledColor(src: string, rgb: readonly [number, number, number], alpha: number): Color {
+  const c: Mutable<Color> = new ColorValueNode(rgb, alpha, HEX, src);
+  c.src = src;
+  return c;
+}
 
 /**
  * Coerce a named-color `Keyword` VALUE to its `Color` at a POINT OF USE
@@ -161,7 +173,7 @@ function sniffBuild(text: string, named?: typeof namedColor): Value {
   const c0 = text.charCodeAt(0);
   if (c0 === 35 /* # */ && HEX_RE.test(text)) {
     const { rgb, alpha } = parseHex(text);
-    return makeColorRgb(rgb, alpha, HEX, { src: text });
+    return spelledColor(text, rgb, alpha);
   }
 
   // Numeric: ONE family (united or unitless — no split).
@@ -178,7 +190,7 @@ function sniffBuild(text: string, named?: typeof namedColor): Value {
   if (named !== undefined && /^[a-zA-Z][a-zA-Z0-9]*$/.test(text)) {
     const color = named(text);
     if (color) {
-      return makeColorRgb(color.rgb, color.alpha, HEX, { src: text });
+      return spelledColor(text, color.rgb, color.alpha);
     }
   }
   return isQuotedBytes(text) ? quotedFromBytes(text) : makeKeyword(text);
