@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { colorHslClamped, makeDimension, define, checkColor, checkAny, optional } from '@jesscss/core/value';
+import { colorLightness, makeDimension, define, checkColor, checkAny, optional } from '@jesscss/core/value';
 import { noExcess, requireColor } from './kernels.js';
 
 /**
@@ -12,7 +12,7 @@ export const lightness: Fn = define('lightness', {
   params: [{ name: 'color', type: 'Color', check: checkColor }, /* @__PURE__ */ optional({ name: 'excess', type: 'any', check: checkAny })],
   body: (c, excess) => {
     noExcess(excess, 1);
-    return makeDimension(colorHslClamped(requireColor(c))[2] * 100, '%');
+    return makeDimension(colorLightness(requireColor(c)) * 100, '%');
   }
 });
 

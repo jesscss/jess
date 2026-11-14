@@ -59,6 +59,7 @@ export {
   textOf,
   colorHsl,
   colorHslClamped,
+  colorLightness,
   colorRawRgb,
   colorRgbRounded,
   withFields
