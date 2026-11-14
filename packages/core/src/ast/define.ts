@@ -108,10 +108,12 @@ export function checkCollection(name: string, index: number, input: unknown): Va
   throw mismatch(name, index, 'Collection', bound);
 }
 
-function checkedLazy(name: string, index: number, check: Check, type: ParamSpec['type'], thunk: unknown, colorName: FnCtx['colorName']): LazyValue<ValueGroup> {
+function checkedLazy(name: string, index: number, param: ParamSpec, thunk: unknown, colorName: FnCtx['colorName']): LazyValue<ValueGroup> {
   if (typeof thunk !== 'function') {
     throw new TypeError(`${name}: lazy argument ${index} must be a thunk`);
   }
+  const check = checkOf(name, param);
+  const { type } = param;
   return () => {
     const value: unknown = thunk();
     if (value instanceof Promise) {
@@ -150,7 +152,7 @@ export function bindDirect(name: string, params: readonly ParamSpec[], inputs: r
         : inputs.slice(offset);
       const check = checkOf(name, param);
       out.push(param.lazy
-        ? rest.map(value => checkedLazy(name, index, check, param.type, value, colorName))
+        ? rest.map(value => checkedLazy(name, index, param, value, colorName))
         : rest.map(value => check(name, index, value, colorName, param.type)));
       offset = inputs.length;
       continue;
@@ -169,7 +171,7 @@ export function bindDirect(name: string, params: readonly ParamSpec[], inputs: r
     }
     const check = checkOf(name, param);
     out.push(param.lazy
-      ? checkedLazy(name, index, check, param.type, input, colorName)
+      ? checkedLazy(name, index, param, input, colorName)
       : check(name, index, input, colorName, param.type));
   }
   if (offset < inputs.length) {
