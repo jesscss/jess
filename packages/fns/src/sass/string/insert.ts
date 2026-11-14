@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core/value';
+import { define, checkKinds, checkDimension } from '@jesscss/core/value';
 import type { Dimension } from '@jesscss/core/value';
 import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString, stringText, type SassString } from './util.js';
 
@@ -18,11 +18,11 @@ import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString,
  * str-insert(Hello,X,3)      → HeXllo     str-insert("Hello","X",-100) → "XHello"
  * ```
  */
-const insert = defineFunction('insert', {
+const insert = define('insert', {
   params: [
-    { name: 'string', type: STRING_KINDS },
-    { name: 'insert', type: STRING_KINDS },
-    { name: 'index', type: 'Dimension' }
+    { type: STRING_KINDS, check: checkKinds, name: 'string' },
+    { type: STRING_KINDS, check: checkKinds, name: 'insert' },
+    { name: 'index', type: 'Dimension', check: checkDimension }
   ] as const,
   body: (string: SassString, insertValue: SassString, index: Dimension) => {
     const chars = codePoints(stringText(string));

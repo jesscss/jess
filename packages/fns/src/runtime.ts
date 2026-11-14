@@ -1,7 +1,11 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { exposedVars, holdRatio, writeVars, type ExportValues, type ExposedSpec, type StyleTarget } from '@jesscss/patch-css';
+import { exposedVars, writeVars, type ExportValues, type ExposedSpec, type Hold, type StyleTarget } from '@jesscss/patch-css';
 import type { Fn, ValueGroup } from '@jesscss/core/value';
-import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, sniffLiteral } from '@jesscss/core/value';
+import type { Value } from '@jesscss/core/value';
+import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, spelledColor } from '@jesscss/core/value';
+
+/** The two literal readers a generated module picks from: with the colour-name table, or without it. */
+export { sniffLiteral, sniffUnnamed } from '@jesscss/core/value';
 
 /**
  * The browser runtime for a stylesheet's exported variables (ledger A4,
@@ -18,6 +22,17 @@ import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, sniffLiteral } f
  */
 export type RuntimeRecipe = { readonly export: string } | string | readonly [Fn, readonly RuntimeRecipe[]];
 
+/**
+ * A colour name a recipe's own argument writes for a colour parameter, read at
+ * compile time: the colour the compile's binder makes of that name
+ * ({@link spelledColor}), as a call of no arguments, so a page that writes none
+ * bundles nothing for it.
+ */
+export function color(src: string, rgb: readonly [number, number, number], alpha: number): Fn {
+  const value = spelledColor(src, rgb, alpha);
+  return Object.assign(() => value, { params: [] });
+}
+
 /** What a compiled stylesheet's module hands {@link createRuntime}. */
 export interface RuntimeSpec extends ExposedSpec {
   /** The compile-time CSS of each export a derived value reads. */
@@ -25,6 +40,19 @@ export interface RuntimeSpec extends ExposedSpec {
 
   /** Each generated custom property, by name, with how it is computed. */
   readonly derived: Readonly<Record<string, RuntimeRecipe>>;
+
+  /** The check a given export's value takes: `checkUnit` when a CSS form reads an export, `holdRatio` for a `%` export, none otherwise, so a page bundles only what its exports need. */
+  readonly hold?: Hold<ExposedSpec>;
+
+  /** By export, the key of each one a computed value reads as a colour, when the page takes no colour names for them (R8 spec, colour names). */
+  readonly hex?: Readonly<Record<string, string>>;
+
+  /**
+   * How a word of a value is read: `sniffLiteral` when the page takes colour
+   * names, `sniffUnnamed` otherwise, so the name table ships only when names
+   * can arrive (R8 spec, colour names).
+   */
+  readonly literal: (word: string) => Value;
 }
 
 export type { ExportValues, StyleTarget };
@@ -47,12 +75,24 @@ const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !i
 export function createVars(spec: RuntimeSpec): Runtime['vars'] {
   return (given: ExportValues): Record<string, string> => {
     const values: Record<string, string> = {};
-    const out = exposedVars(spec, given, holdRatio, values);
+    const out = exposedVars(spec, given, spec.hold, values);
     const parsed = new Map<string, ValueGroup>();
     const read = (name: string): ValueGroup => {
       let value = parsed.get(name);
       if (value === undefined) {
-        value = parseValue(values[name] ?? spec.defaults[name] ?? '');
+        const given = values[name];
+        const key = spec.hex?.[name];
+
+        /* Each word the reader reads, so a name anywhere in a list is refused; a function word fails in the reader first. */
+        const literal = key === undefined || given === undefined
+          ? spec.literal
+          : (word: string): Value => {
+              if (/^[a-z]/i.test(word)) {
+                throw new TypeError(`\`${key}\` received \`${given.trim()}\`, which is not a hex colour; set \`colorNames: true\` in the Jess plugin options to accept colour names.`);
+              }
+              return spec.literal(word);
+            };
+        value = parseValue(given ?? spec.defaults[name] ?? '', literal);
         parsed.set(name, value);
       }
       return value;
@@ -60,7 +100,7 @@ export function createVars(spec: RuntimeSpec): Runtime['vars'] {
     for (const property of Object.keys(spec.derived)) {
       const recipe = spec.derived[property]!;
       if (reads(recipe, values)) {
-        out[property] = emitValue(run(recipe, read));
+        out[property] = emitValue(run(recipe, read, spec.literal));
       }
     }
     return out;
@@ -84,16 +124,16 @@ function isCall(recipe: Exclude<RuntimeRecipe, string>): recipe is readonly [Fn,
   return Array.isArray(recipe);
 }
 
-/** `read` is an export's value, given or compile-time, parsed once per {@link Runtime.vars}. */
-function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup): ValueGroup {
+/** `read` is an export's value, given or compile-time, parsed once per {@link Runtime.vars}; `literal` reads a recipe's own argument. */
+function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup, literal: RuntimeSpec['literal']): ValueGroup {
   if (typeof recipe === 'string') {
-    return parseValue(recipe);
+    return parseValue(recipe, literal);
   }
   if (!isCall(recipe)) {
     return read(recipe.export);
   }
   const [fn, args] = recipe;
-  const result = fn(args.map(arg => run(arg, read)), CTX);
+  const result = fn(args.map(arg => run(arg, read, literal)), CTX);
   if (isThenable(result)) {
     throw new TypeError(`${fn.name}() computes asynchronously, which the runtime cannot do.`);
   }
@@ -106,19 +146,19 @@ function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup): ValueGr
  * type="color">` gives hex; parse with the dialect's colour functions if
  * authors need more.
  */
-function parseValue(text: string): ValueGroup {
+function parseValue(text: string, literal: RuntimeSpec['literal']): ValueGroup {
   const items = split(text, ',').map((item) => {
-    const words = split(item, ' ').map(literal);
+    const words = split(item, ' ').map(word => readWord(word, literal));
     return words.length === 1 ? words[0]! : words;
   });
   return items.length === 1 ? items[0]! : makeList(items, ',');
 }
 
-function literal(word: string): ValueGroup {
+function readWord(word: string, literal: RuntimeSpec['literal']): ValueGroup {
   if (word.includes('(') && word[0] !== '"' && word[0] !== '\'') {
     throw new TypeError(`The runtime computes from CSS literals (#c00, 8px, red); "${word}" is a function.`);
   }
-  return sniffLiteral(word);
+  return literal(word);
 }
 
 /** `text` split at each `separator` outside parentheses and quotes; `' '` splits at any whitespace run. */

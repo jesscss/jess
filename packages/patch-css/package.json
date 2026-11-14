@@ -16,7 +16,7 @@
   "scripts": {
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts --minify && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsc -p tsconfig.build.json -w",
     "prepublishOnly": "pnpm build",
     "test": "vitest run",

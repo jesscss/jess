@@ -7,6 +7,7 @@ import type { Plugin, PluginContext, RollupLog } from 'rollup';
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
 type ExportRuntimeData = NonNullable<RenderResult['runtime']>;
 type ExportRecipe = ExportRuntimeData['derived'][string];
+type ExportColor = Extract<Extract<ExportRecipe, { args: unknown }>['args'][number], { color: string }>;
 type Diagnostic = RenderResult['errors'][number] | RenderResult['warnings'][number];
 
 export type JessRollupPluginOptions = {
@@ -27,6 +28,17 @@ export type JessRollupPluginOptions = {
    * Emit file name for the CSS asset. Defaults to `<basename>.css`.
    */
   cssFileName?: (id: string) => string;
+
+  /**
+   * Accept a colour name (`red`) from `vars()` for an export that a computed
+   * value reads as a colour. Without it the name table ships only when the
+   * stylesheet itself writes a name the runtime reads (such an export's own
+   * value, or an argument of a computed call); otherwise `vars()`
+   * takes a hex colour there and throws a `TypeError` on a name
+   * (docs/architecture/core/spec/R8-browser-runtime.md, colour names).
+   * Default: false
+   */
+  colorNames?: boolean;
 };
 
 /** The part of Vite's hot-update context this plugin reads. */
@@ -136,7 +148,7 @@ export default function jessRollupPlugin(options: JessRollupPluginOptions = {}):
       } else if (emitCss) {
         this.emitFile({ type: 'asset', fileName: cssFileName(file), source: result.css });
       }
-      return { code: moduleCode(result.css, result.runtime, cssImport), map: { mappings: '' } };
+      return { code: moduleCode(result.css, result.runtime, cssImport, options.colorNames === true), map: { mappings: '' } };
     }
   };
 }
@@ -184,7 +196,7 @@ function log(diagnostic: Diagnostic, file: string): RollupLog {
 }
 
 /** The stylesheet's JS module: its CSS, and the runtime when it exposes variables. */
-export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, cssImport?: string): string {
+export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, cssImport?: string, colorNames = false): string {
   const modules = cssImport?.endsWith('.module.css') === true;
   const lines = cssImport === undefined ? [] : modules ? [`export * from ${JSON.stringify(cssImport)};`, `export { default } from ${JSON.stringify(cssImport)};`] : [`import ${JSON.stringify(cssImport)};`];
   if (runtime !== undefined) {
@@ -200,17 +212,18 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
       }
       return id;
     };
-    const write = (recipe: ExportRecipe | string): string =>
+    const write = (recipe: ExportRecipe | ExportColor | string): string =>
       typeof recipe === 'string' || 'export' in recipe
         ? JSON.stringify(recipe)
-        : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
+        : 'color' in recipe
+          ? `[${local('@jesscss/fns/runtime', 'color')}(${JSON.stringify(recipe.color)}, ${JSON.stringify(recipe.rgb)}, ${recipe.alpha}), []]`
+          : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
     const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
+
+    /* The least check the exports need: none when no CSS form reads one. */
+    const hold = runtime.ratios.length > 0 ? 'holdRatio' : Object.keys(runtime.units).length > 0 ? 'checkUnit' : undefined;
     if (derived.length === 0) {
-      /*
-       * Two exports, so a page that imports only `vars` drops the writer, and the
-       * least check the exports need: none when no CSS form reads one.
-       */
-      const hold = runtime.ratios.length > 0 ? 'holdRatio' : Object.keys(runtime.units).length > 0 ? 'checkUnit' : undefined;
+      /* Two exports, so a page that imports only `vars` drops the writer. */
       const spec = hold === undefined ? { keys: runtime.keys } : hold === 'checkUnit' ? { keys: runtime.keys, units: runtime.units } : { keys: runtime.keys, units: runtime.units, ratios: runtime.ratios };
       const held = hold === undefined ? '' : `, ${hold}`;
       lines.push(
@@ -220,12 +233,20 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         `export const set = (values, target) => writeVars(exposedVars(spec, values${held}), target);`
       );
     } else {
-      lines.push(`import { createVars } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
-      for (const [module, names] of imports) {
-        lines.push(`import { ${names.join(', ')} } from ${JSON.stringify(module)};`);
+      /* Names are read when asked for, or when the stylesheet itself writes one the runtime reads: a colour export's value, or a recipe's own argument. */
+      const names = colorNames || runtime.names;
+      const held = hold === undefined ? '' : `, hold: ${local('@jesscss/patch-css', hold)}`;
+      lines.push(`import { createVars, ${names ? 'sniffLiteral' : 'sniffUnnamed'} as literal } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
+      for (const [module, members] of imports) {
+        lines.push(`import { ${members.join(', ')} } from ${JSON.stringify(module)};`);
       }
+
+      /* The hex check stays the ruling's: off only when asked, or when a colour export's own value is a name. */
+      const hex = colorNames || runtime.ownNames
+        ? ''
+        : `, hex: ${JSON.stringify(Object.fromEntries(Object.entries(runtime.keys).filter(([, name]) => runtime.colors.includes(name)).map(([key, name]) => [name, key])))}`;
       lines.push(
-        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}, derived: { ${derived.join(', ')} } });`,
+        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}${held}${runtime.colors.length > 0 ? hex : ''}, literal, derived: { ${derived.join(', ')} } });`,
         `export const set = (values, target) => writeVars(vars(values), target);`
       );
     }

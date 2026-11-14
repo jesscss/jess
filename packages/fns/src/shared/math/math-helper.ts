@@ -11,7 +11,7 @@
  *
  * HARD MODULE BOUNDARY: value domain + factory only.
  */
-import { foldUnit, isValueGroupArray, makeDimension, type Dimension, type FnSpec, type ParamSpec, type ValueGroup } from '@jesscss/core/value';
+import { foldUnit, isValueGroupArray, makeDimension, checkDimension, type Dimension, type FnSpec, type ParamSpec, type ValueGroup } from '@jesscss/core/value';
 
 /**
  * Angle → radians normalization (`deg`/`grad`/`turn`, any ASCII case), else the raw number.
@@ -57,6 +57,6 @@ export function requireDimension(value: ValueGroup | undefined): Dimension {
 /** Spec builder for a unary `dimension → dimension` math fn. Centralizes the bind-guaranteed cast. */
 export const unaryMath = (fn: (n: number) => number, outUnit: string | null | undefined, fits: NonNullable<ParamSpec['fits']>): FnSpec => ({
   cssFunction: true,
-  params: [{ name: 'value', type: 'Dimension', fits }],
+  params: [{ name: 'value', type: 'Dimension', check: checkDimension, fits }],
   body: v => applyMath(fn, outUnit, [requireDimension(v)])
 });

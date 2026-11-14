@@ -1,8 +1,8 @@
-import { defineFunction, makeKeyword } from '@jesscss/core/value';
+import { makeKeyword, define, checkAny } from '@jesscss/core/value';
 import { getSassListInfo } from './util.js';
 
-const separator = defineFunction('separator', {
-  params: [{ name: 'list', type: 'any' }] as const,
+const separator = define('separator', {
+  params: [{ name: 'list', type: 'any', check: checkAny }] as const,
   body: (list) => {
     const sep = getSassListInfo(list).sep;
     return makeKeyword(sep === ',' ? 'comma' : sep === '/' ? 'slash' : 'space');

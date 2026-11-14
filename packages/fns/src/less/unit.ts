@@ -1,5 +1,5 @@
 import { asNumber, defineForm, formNumber, type FormCall } from '@jesscss/core/form';
-import { isCssUnit, textOf, type Fn, type FunctionCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
+import { isCssUnit, textOf, checkKinds, type Fn, type FunctionCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 import { isDimension, NUMBER_ARG } from './css-math-args.js';
 import { unit as form } from './css-forms.generated.js';
 
@@ -11,7 +11,7 @@ import { unit as form } from './css-forms.generated.js';
 export const unit: Fn = /* @__PURE__ */ defineForm('unit', {
   params: [
     NUMBER_ARG,
-    { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }
+    { type: ['Keyword', 'Quoted', 'FunctionCall'], check: checkKinds, optional: true }
   ],
   form: (value: ValueGroup, to?: Keyword | Quoted | FunctionCall): FormCall => {
     if (to?.type === 'FunctionCall') {

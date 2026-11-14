@@ -1,4 +1,4 @@
-import { makeAny, defineFunction } from '@jesscss/core/value';
+import { makeAny, define, checkAny } from '@jesscss/core/value';
 import type { Fn } from '@jesscss/core/value';
 
 /**
@@ -9,8 +9,8 @@ import type { Fn } from '@jesscss/core/value';
  * Validated against Less 4.x (the adapter mishandles the reconstructed Quoted
  * and encodes its quotes).
  */
-export const escape: Fn = /* @__PURE__ */ defineFunction('escape', {
-  params: [{ type: 'any' }],
+export const escape: Fn = /* @__PURE__ */ define('escape', {
+  params: [{ type: 'any', check: checkAny }],
   variadic: true,
   body: (args, ctx) => {
     const raw = ctx.stringify(args[0]!);

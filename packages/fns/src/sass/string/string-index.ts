@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { makeDimension, define, checkKinds } from '@jesscss/core/value';
 import { NULL, STRING_KINDS, codePoints, stringText, type SassString } from './util.js';
 
 /**
@@ -15,10 +15,10 @@ import { NULL, STRING_KINDS, codePoints, stringText, type SassString } from './u
  * The filename avoids clashing with this folder's `index.ts` barrel, exactly as
  * `sass/list/list-index.ts` does.
  */
-const stringIndex = defineFunction('index', {
+const stringIndex = define('index', {
   params: [
-    { name: 'string', type: STRING_KINDS },
-    { name: 'substring', type: STRING_KINDS }
+    { type: STRING_KINDS, check: checkKinds, name: 'string' },
+    { type: STRING_KINDS, check: checkKinds, name: 'substring' }
   ] as const,
   body: (string: SassString, substring: SassString) => {
     const text = stringText(string);

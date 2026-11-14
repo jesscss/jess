@@ -38,6 +38,62 @@
 | R8-11 | The runtime keys an exposed variable by its name with dash-case turned to camelCase, letter case otherwise kept; two names with one key, or two bindings exposed under one name, are an error naming both sites. | *"exports, like our CSS module’s implementation, should turn dash-case into lowerCamelCase… so that should flag conflicts"*, then *"we don't force lowerCamelCase --- i was just talking about dash-case conversion"*; owner picked the option “Error naming both” (2026-11-02) |
 | R8-12 | Two `@compose`d libraries that expose one name, and two files that each declare and expose one name (two `@import`ed files, or an importer and a file it imports), are an error naming both sites. | asked of each case, 2026-11-02: *"error"* |
 
+## Owner ruling, 2026-11-12 (colour names)
+
+| # | Ruling | Verbatim |
+| --- | --- | --- |
+| R8-13 | A colour name given to `vars()` reaches a computed value only when names are on. The name table ships only when the stylesheet's own value for an export that a computed value reads as a colour is a name, or when the plugin option `colorNames: true` is set. Otherwise `vars()` takes a hex colour for such an export, and a name throws a `TypeError` naming the export and the option. | *"Yes, gate it"*, to the proposal in the stage-4 value-walker design (§2.5, option ii) |
+
+As built: the compile lists each colour export (`ExportRuntimeData.colors`,
+defined below). The generated module passes that list
+to `createVars` as `hex` unless names are on, and `vars()` throws on a given
+value there with a bare word in any item, which needs no name table. That
+covers `none` and `currentcolor` too, which the runtime cannot tell from a name
+without the table; function text (`rgb(…)`, `var(…)`) falls through to the
+reader's own error. The message:
+`` `brand` received `blue`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names. ``
+Pinned in `packages/vite-plugin-jess/test/index.test.ts`.
+
+The binder still reads a colour name passed to a parameter checked as a
+colour as that colour, but takes the reading from the call's context
+(`FnCtx.colorName`): the compile passes `coerceNamedColorKeyword`, so compiled
+output is unchanged, and the browser runtime passes none. The runtime's own
+value reader is the one the generated module picks: `sniffLiteral`, with the
+table, when names are on, and `sniffUnnamed` otherwise. So the table reaches
+the bundle only when names are on, or when a function's own body reads names
+(`iscolor`).
+
+As built, names are on when `colorNames: true` is set, or when the compile's
+`ExportRuntimeData.names` is set (`readsNames` in `export-reads.ts`). It is set
+in two cases:
+- a colour export's own value is a name (the ruling). The compile records this
+  from the value itself (`ExportRuntimeData.ownNames`), not from its CSS text,
+  so `@brand: rgb(0 0 255)` keeps the check. Only this case turns the check off;
+- a recipe's own argument spells a name that the compile does not read as a
+  colour: one passed to a parameter not checked as a colour, or one inside a
+  list. The stylesheet writes that name itself, so the runtime reads it as the
+  compile does.
+
+A colour export is one whose compile-time value holds a colour and that reaches
+a parameter checked as a colour, directly or through another function
+(`luma(extract(@list, 1))` with `@list: #f00 #00f`). Each takes the hex check.
+An export no colour parameter reads (`length(@c)`) is none, whatever its value,
+so its value does not turn names on either.
+**Resolved** (owner, 2026-11-13), asked "Should a colour export that reaches a
+colour function via extract() accept colour names in vars()?", with the
+recommendation to gate it too: *"I agree with the reco"*. An export whose value
+holds no colour takes no check and does not turn names on.
+
+A colour name a recipe's own argument writes for a parameter checked as a
+colour (`gray` in `lightness(multiply(@brand, gray))`) is known when the
+stylesheet compiles, so the compile reads it as that colour there and does not
+set `names` for it (orchestrator ruling, 2026-11-13). The recipe carries the
+name and its channels (`ExportColor`), and the runtime builds the colour from
+them as the compile's binder builds it from the name.
+
+Pinned in `packages/jess/test/less-expose-variables.test.ts` and
+`packages/jess/test/export-runtime.test.ts`.
+
 Split off on 2026-11-01 as its own task: built-in functions that have a CSS
 counterpart are represented internally as that counterpart (`darken()` as
 relative color syntax), resolved when inputs are known and written as CSS when

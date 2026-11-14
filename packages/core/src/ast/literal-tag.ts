@@ -19,7 +19,7 @@
  * `LiteralTag` enum / `LitFields` / packed-tag contract are gone — the node type
  * IS the classification.
  */
-import type { Value } from './value-eval.js';
+import type { Color, Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { makeBool, makeColorRgb, makeKeyword } from './value-factory.js';
 import { DimensionValueNode, QuotedValueNode } from './node-ctors.js';
@@ -88,14 +88,17 @@ function quotedFromBytes(str: string): Value {
 export function colorFromSrc(src: string): Value {
   if (src.charCodeAt(0) === 35 /* # */) {
     const { rgb, alpha } = parseHex(src);
-    return makeColorRgb(rgb, alpha, HEX, { src });
+    return spelledColor(src, rgb, alpha);
   }
   const named = namedColor(src);
   if (named) {
-    return makeColorRgb(named.rgb, named.alpha, HEX, { src });
+    return spelledColor(src, named.rgb, named.alpha);
   }
   return makeKeyword(src);
 }
+
+/** A colour as its author spelled it, a hex or a name, with its channels; the browser runtime builds a recipe's colour name with it too (R8 spec). */
+export const spelledColor = (src: string, rgb: readonly [number, number, number], alpha: number): Color => makeColorRgb(rgb, alpha, HEX, { src });
 
 /**
  * Coerce a named-color `Keyword` VALUE to its `Color` at a POINT OF USE
@@ -151,9 +154,10 @@ export function quotedFromFields(value: string, quote: string, escaped: boolean,
  * Classify + build a string the parser never typed by sniffing its bytes. A
  * quoted-looking string materializes as a quoted value; `true`/`false` as a
  * value-domain `Bool` (guard booleanness — no AST `Bool` node exists); a numeric /
- * hex / named-color shape as its typed value; else a keyword.
+ * hex shape as its typed value, a colour name too when `named` is given; else
+ * a keyword.
  */
-function sniffBuild(text: string): Value {
+function sniffBuild(text: string, named?: typeof namedColor): Value {
   const c0 = text.charCodeAt(0);
   if (c0 === 35 /* # */ && HEX_RE.test(text)) {
     const { rgb, alpha } = parseHex(text);
@@ -171,10 +175,10 @@ function sniffBuild(text: string): Value {
   }
 
   // A bare identifier that names a CSS color materializes as a Color.
-  if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(text)) {
-    const named = namedColor(text);
-    if (named) {
-      return makeColorRgb(named.rgb, named.alpha, HEX, { src: text });
+  if (named !== undefined && /^[a-zA-Z][a-zA-Z0-9]*$/.test(text)) {
+    const color = named(text);
+    if (color) {
+      return makeColorRgb(color.rgb, color.alpha, HEX, { src: text });
     }
   }
   return isQuotedBytes(text) ? quotedFromBytes(text) : makeKeyword(text);
@@ -186,5 +190,10 @@ function sniffBuild(text: string): Value {
  * sniff.
  */
 export function sniffLiteral(str: string): Value {
+  return sniffBuild(str.trim(), namedColor);
+}
+
+/** {@link sniffLiteral} without the colour-name table: a name stays the keyword it spells, as the compile reads one. */
+export function sniffUnnamed(str: string): Value {
   return sniffBuild(str.trim());
 }

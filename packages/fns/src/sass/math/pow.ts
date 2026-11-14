@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core/value';
+import { defineFunction, checkDimension } from '@jesscss/core/value';
 import { applyMath } from '../../shared/math/math-helper.js';
 import { assertNoUnits } from './units.js';
 
@@ -17,8 +17,8 @@ import { assertNoUnits } from './units.js';
 const pow = defineFunction('pow', {
   cssFunction: true,
   params: [
-    { name: 'base', type: 'Dimension' },
-    { name: 'exponent', type: 'Dimension' }
+    { name: 'base', type: 'Dimension', check: checkDimension },
+    { name: 'exponent', type: 'Dimension', check: checkDimension }
   ] as const,
   body: (base, exponent) => applyMath(Math.pow, null, [assertNoUnits(base, 'base'), assertNoUnits(exponent, 'exponent')])
 });

@@ -26,7 +26,7 @@
  */
 import { asNumber, channelForm, defineForm, knownUnit, type FormCall, type FormSlot } from '@jesscss/core/form';
 import type { Color, Dimension, Fn, FunctionCall, ValueGroup } from '@jesscss/core/value';
-import { colorHsl, colorRawRgb, isUnknownNumber, isValueGroupArray, makeDimension, TOLERANCE } from '@jesscss/core/value';
+import { colorHsl, colorRawRgb, isUnknownNumber, isValueGroupArray, makeDimension, TOLERANCE, checkAny } from '@jesscss/core/value';
 import * as forms from '../../less/css-forms.generated.js';
 import { percentOf } from '../../shared/color/kernels.js';
 import { COLOR } from './color-form.js';
@@ -78,17 +78,17 @@ const MODERN_COLORS = new Set(['lab', 'lch', 'oklab', 'oklch', 'color']);
 /** The parameters, in declared order. `excess` catches a second positional argument. */
 const PARAMS = [
   COLOR,
-  { name: 'excess', type: 'any', optional: true },
-  { name: 'red', type: 'any', optional: true },
-  { name: 'green', type: 'any', optional: true },
-  { name: 'blue', type: 'any', optional: true },
-  { name: 'hue', type: 'any', optional: true },
-  { name: 'saturation', type: 'any', optional: true },
-  { name: 'lightness', type: 'any', optional: true },
-  { name: 'whiteness', type: 'any', optional: true },
-  { name: 'blackness', type: 'any', optional: true },
-  { name: 'alpha', type: 'any', optional: true },
-  { name: 'space', type: 'any', optional: true }
+  { name: 'excess', type: 'any', check: checkAny, optional: true },
+  { name: 'red', type: 'any', check: checkAny, optional: true },
+  { name: 'green', type: 'any', check: checkAny, optional: true },
+  { name: 'blue', type: 'any', check: checkAny, optional: true },
+  { name: 'hue', type: 'any', check: checkAny, optional: true },
+  { name: 'saturation', type: 'any', check: checkAny, optional: true },
+  { name: 'lightness', type: 'any', check: checkAny, optional: true },
+  { name: 'whiteness', type: 'any', check: checkAny, optional: true },
+  { name: 'blackness', type: 'any', check: checkAny, optional: true },
+  { name: 'alpha', type: 'any', check: checkAny, optional: true },
+  { name: 'space', type: 'any', check: checkAny, optional: true }
 ] as const;
 
 const describe = (v: ValueGroup): string =>

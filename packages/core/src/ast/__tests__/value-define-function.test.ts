@@ -58,7 +58,7 @@ describe('value-domain defineFunction', () => {
     expect(Object.prototype.hasOwnProperty.call(twice, 'body')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(twice, 'options')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(twice, '_internal')).toBe(false);
-    expect(twice.params).toEqual([{ name: 'value', type: 'Dimension' }]);
+    expect(twice.params).toMatchObject([{ name: 'value', type: 'Dimension' }]);
     expect(twice([makeDimension(2, 'px')], ctx)).toEqual({ type: 'Dimension', number: 4, unit: 'px', bytes: '4px' });
     const registry = createFnRegistry();
     registry.register(twice);

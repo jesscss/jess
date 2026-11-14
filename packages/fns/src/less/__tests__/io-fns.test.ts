@@ -103,7 +103,7 @@ describe('image-size / image-width / image-height', () => {
     for (const fn of [imageSize, imageWidth, imageHeight]) {
       expect(typeof fn).toBe('function');
       expect(fn.variadic).toBe(true);
-      expect(fn.params).toEqual([{ type: 'any' }]);
+      expect(fn.params).toMatchObject([{ type: 'any' }]);
     }
   });
 

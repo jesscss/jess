@@ -28,6 +28,6 @@ function packageRecipe(recipe: ExportRecipe, plugins: readonly PluginInterface[]
   }
   return {
     fn: { module: provided ?? module, name },
-    args: recipe.args.map(arg => typeof arg === 'string' ? arg : packageRecipe(arg, plugins))
+    args: recipe.args.map(arg => typeof arg === 'string' || 'color' in arg ? arg : packageRecipe(arg, plugins))
   };
 }

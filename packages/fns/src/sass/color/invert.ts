@@ -1,3 +1,4 @@
+import { checkKinds } from '@jesscss/core/value';
 import { defineForm, type FormCall } from '@jesscss/core/form';
 import type { Dimension, Fn, FunctionCall, ValueGroup } from '@jesscss/core/value';
 import * as forms from '../../less/css-forms.generated.js';
@@ -21,7 +22,7 @@ import { noExcess, percentAmount } from './kernels.js';
  * the filter (Q13).
  */
 export const invert: Fn = /* @__PURE__ */ defineForm('invert', {
-  params: [COLOR, { name: 'weight', type: ['Dimension', 'FunctionCall'], optional: true }, EXCESS],
+  params: [COLOR, { type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'weight', optional: true }, EXCESS],
   filter: true,
   form: (color: ValueGroup, weight?: Dimension | FunctionCall, excess?: ValueGroup): FormCall => {
     noExcess(excess, 2);

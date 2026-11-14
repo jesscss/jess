@@ -6,16 +6,16 @@
  * @example
  * map.set((a: 1), b, 2) // (a: 1, b: 2)
  */
-import { defineFunction, makeCollection } from '@jesscss/core/value';
+import { makeCollection, define, checkCollection, checkAny } from '@jesscss/core/value';
 import { entryIndex } from './util.js';
 
-const set = defineFunction(
+const set = define(
   'set',
   {
     params: [
-      { name: 'map', type: 'Collection' },
-      { name: 'key', type: 'any' },
-      { name: 'value', type: 'any' }
+      { name: 'map', type: 'Collection', check: checkCollection },
+      { name: 'key', type: 'any', check: checkAny },
+      { name: 'value', type: 'any', check: checkAny }
     ] as const,
     body: (map, key, value) => {
       const entries = [...map.entries];

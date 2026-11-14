@@ -10,7 +10,7 @@ import type { FnOrigin } from './module-values.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { calcOperand } from './math-operand.js';
-import { isBrowserColor } from './value-dispatch.js';
+import { isBrowserColor, takesColor } from './value-dispatch.js';
 import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
 import { groupItems } from './value-list.js';
@@ -29,7 +29,19 @@ import { cancelPercent, exposedOperand, insideParens, keepAsWritten, mathOnDefer
  * How the runtime computes a value derived from exports: an export's value, an
  * argument's compile-time CSS, or an imported function of those.
  */
-export type ExportRecipe = { readonly export: string } | { readonly fn: FnOrigin; readonly args: ReadonlyArray<ExportRecipe | string> };
+export type ExportRecipe = { readonly export: string } | { readonly fn: FnOrigin; readonly args: ReadonlyArray<ExportRecipe | ExportColor | string> };
+
+/**
+ * A colour name a recipe's own argument writes for a parameter checked as a
+ * colour (`gray` in `lightness(multiply(@brand, gray))`), read as that colour
+ * at compile time, as the compile's binder reads it, so the runtime needs no
+ * name table for it: the name as written, and its channels.
+ */
+export interface ExportColor {
+  readonly color: string;
+  readonly rgb: readonly [number, number, number];
+  readonly alpha: number;
+}
 
 /** What the runtime module is generated from ({@link ExportState.runtime}). */
 export interface ExportRuntime {
@@ -50,6 +62,15 @@ export interface ExportRuntime {
 
   /** Each generated custom property, by its name, with how the runtime computes it. */
   readonly derived: Map<string, ExportRecipe>;
+
+  /** Each colour export: one whose value holds a colour and that reaches a parameter checked as a colour, directly or through another function ({@link markColors}). A colour name given for one at runtime takes the hex check (R8 §colour names). */
+  readonly colors: Set<string>;
+
+  /** Whether a recipe's own argument spells a colour name (`mix(@brand, red)`), which the runtime then reads ({@link spellsColorName}). */
+  literalNames: boolean;
+
+  /** Whether a colour export's own value spells a colour name (`@brand: red`), so the runtime takes names for it ({@link spellsColorName}). */
+  ownNames: boolean;
 
   /** Each generated custom property's name, by its recipe as JSON: one name per recipe, however the call is spelled. */
   readonly named: Map<string, string>;
@@ -76,7 +97,25 @@ export interface ExportRuntimeData {
   readonly units: Readonly<Record<string, string>>;
   readonly ratios: readonly string[];
   readonly derived: Readonly<Record<string, ExportRecipe>>;
+
+  /** Each export a recipe passes to a parameter checked as a colour. */
+  readonly colors: readonly string[];
+
+  /** Whether the runtime reads colour names even when the page does not opt in ({@link readsNames}). */
+  readonly names: boolean;
+
+  /** Whether a colour export's own value spells a colour name, so a name given for a colour export is read rather than refused. */
+  readonly ownNames: boolean;
 }
+
+/**
+ * Whether the runtime has to read colour names (R8-13). It does when the
+ * stylesheet itself writes one it reads: a colour export's own value or a
+ * recipe's own argument. A colour export a recipe passes through another function
+ * (`luma(extract(@list, 1))`) takes the hex check like any other (owner,
+ * 2026-11-13: *"I agree with the reco"*).
+ */
+const readsNames = (runtime: ExportRuntime): boolean => runtime.literalNames || runtime.ownNames;
 
 /** A render's `runtime` result field: none when nothing is exported. */
 export function runtimeData(x: ExportState<unknown>): { runtime?: ExportRuntimeData } {
@@ -84,7 +123,7 @@ export function runtimeData(x: ExportState<unknown>): { runtime?: ExportRuntimeD
   const runtime = x.runtime;
   return runtime === undefined
     ? {}
-    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), units: Object.fromEntries(runtime.units), ratios: [...runtime.ratios], derived: Object.fromEntries(runtime.derived) } };
+    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), units: Object.fromEntries(runtime.units), ratios: [...runtime.ratios], derived: Object.fromEntries(runtime.derived), colors: [...runtime.colors], names: readsNames(runtime), ownNames: runtime.ownNames } };
 }
 
 /** A mixin argument as written, in the caller's frame. */
@@ -319,7 +358,7 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), named: new Map(), properties: new Map(), slots: new Map() };
+  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), literalNames: false, ownNames: false, named: new Map(), properties: new Map(), slots: new Map() };
 }
 
 /**
@@ -697,7 +736,7 @@ export function exportCall<F>(
             outer.push({ recipe, value: result, reads });
             return result;
           }
-          recordDefaults(x.runtime.defaults, reads);
+          recordDefaults(x.runtime, reads);
           if (typeof checks !== 'object' && checks !== 'argument') {
             exportNotWritten(node, `@${recipeExport(recipe)}`, recipeExport(recipe), e,
               'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
@@ -821,14 +860,40 @@ function slotUnit(name: string, args: ValueGroup): string | undefined {
   return undefined;
 }
 
-/** The compile-time value of each export a recipe reads, the first read standing. */
-function recordDefaults(defaults: Map<string, string>, reads: ReadonlyArray<{ name: string; value: ValueGroup }>): void {
+/**
+ * The compile-time value of each export a recipe reads, the first read
+ * standing.
+ */
+function recordDefaults(runtime: ExportRuntime, reads: ReadonlyArray<{ name: string; value: ValueGroup }>): void {
   for (const read of reads) {
-    if (!defaults.has(read.name)) {
-      defaults.set(read.name, emitValue(read.value));
+    if (!runtime.defaults.has(read.name)) {
+      runtime.defaults.set(read.name, emitValue(read.value));
     }
   }
 }
+
+/**
+ * Each export that reaches a colour parameter, directly or through another
+ * function (`luma(extract(@list, 1))`), and whose value holds a colour, is a
+ * colour export; one whose own value spells a name turns names on (R8-13;
+ * owner, 2026-11-13).
+ */
+function markColors(runtime: ExportRuntime, reads: ReadonlyArray<{ name: string; value: ValueGroup }>): void {
+  for (const read of reads) {
+    if (holdsColor(read.value)) {
+      runtime.colors.add(read.name);
+      runtime.ownNames ||= spellsColorName(read.value);
+    }
+  }
+}
+
+/** Whether a value is or lists a colour: a hex, a function's colour, or a name. */
+const holdsColor = (v: ValueGroup): boolean =>
+  isValueGroupArray(v)
+    ? v.some(holdsColor)
+    : v.type === 'List'
+      ? holdsColor(v.value)
+      : v.type === 'Color' || (v.type === 'Keyword' && namedColor(v.text) !== undefined);
 
 /** A value no form holds over what only the browser knows runs on the runtime (§3.4a, rung 4). */
 const onNoForm = (recorded: () => EvalValue) => (error: unknown): EvalValue => {
@@ -1045,6 +1110,16 @@ function mixedSum(v: EvalValue): boolean {
     || ((v.op === '+' || v.op === '-') && knownUnit(v.left) !== undefined && knownUnit(v.right) !== undefined && knownUnit(v) === undefined));
 }
 
+/** Whether a value spells a colour name in any of its items: what the runtime would have to read back as a colour. */
+const spellsColorName = (v: ValueGroup): boolean =>
+  isValueGroupArray(v)
+    ? v.some(spellsColorName)
+    : v.type === 'List'
+      ? spellsColorName(v.value)
+      : v.type === 'Keyword'
+        ? namedColor(v.text) !== undefined
+        : v.type === 'Color' && namedColor(emitValue(v)) !== undefined;
+
 /** The recipe of a call whose arguments read exports; each argument either is one of `inputs` or holds none. */
 function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly ValueGroup[], inputs: NonNullable<ExportState<F>['inputs']>, e: ExportLane<F>): ExportRecipe {
   const origin = fn?.origin;
@@ -1056,8 +1131,29 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
   if (stray !== undefined) {
     exportNotWritten(node, `@${recipeExport(stray.recipe)}`, recipeExport(stray.recipe), e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
   }
-  const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
-  return { fn: origin, args: vals.map(v => recipes.get(lone(v)) ?? emitValue(v)) };
+  const byValue = new Map<object, ExportInput>(inputs.map(input => [input.value, input]));
+  const rest = fn?.params.find(param => param.rest === true);
+  const runtime = e.s.exports.runtime;
+  const args = vals.map((v, index): ExportRecipe | ExportColor | string => {
+    const input = byValue.get(lone(v));
+    const color = takesColor(fn?.params[index] ?? rest);
+    if (input !== undefined) {
+      if (color && runtime !== undefined) {
+        markColors(runtime, readsOf([input]));
+      }
+      return input.recipe;
+    }
+    const keyword = color && !isValueGroupArray(v) && v.type === 'Keyword' ? v : undefined;
+    const named = keyword === undefined ? undefined : namedColor(keyword.text);
+    if (keyword !== undefined && named !== undefined) {
+      return { color: keyword.text, rgb: named.rgb, alpha: named.alpha };
+    }
+    if (runtime !== undefined && !runtime.literalNames && spellsColorName(v)) {
+      runtime.literalNames = true;
+    }
+    return emitValue(v);
+  });
+  return { fn: origin, args };
 }
 
 /** The first export a recipe reads. */
@@ -1066,7 +1162,7 @@ function recipeExport(recipe: ExportRecipe): string {
     return recipe.export;
   }
   for (const arg of recipe.args) {
-    if (typeof arg !== 'string') {
+    if (typeof arg !== 'string' && !('color' in arg)) {
       return recipeExport(arg);
     }
   }

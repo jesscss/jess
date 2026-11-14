@@ -6,8 +6,14 @@ node, no re-parse, no `render()` walk).
 ## Layout
 
 - **`<fn>.ts`** — one module per fn, each exporting a self-describing callable
-  `Fn` via `defineFunction(name, spec)`. One module per fn so a browser bundle
-  tree-shakes: a stylesheet that never calls `pow` must not ship `pow`.
+  `Fn` via `define(name, spec)`. One module per fn so a browser bundle
+  tree-shakes: a stylesheet that never calls `pow` must not ship `pow`. Each
+  parameter names its check, `{ type: 'Color', check: checkColor }`, or
+  `check: checkKinds` for several types, so a bundle carries only the checks
+  its functions name. A parameter is a plain object literal, never a spread or
+  a call, so a bundler can drop it. A function whose CSS counterpart takes what
+  only the browser knows (`cssFunction: true`) uses `defineFunction`, which adds
+  that case.
 - **`index.ts`** — the Less dialect index: this folder's fns PLUS the `shared/`
   entries Less actually has. **This index is the registration unit.** There is
   no separate assembly array; `less/registry.ts` derives `lessFns` from the
@@ -34,7 +40,8 @@ node, no re-parse, no `render()` walk).
 
 ## Adding a function
 
-1. Create `<fn>.ts` exporting `defineFunction('<fn>', { … })`.
+1. Create `<fn>.ts` exporting `define('<fn>', { … })`, each parameter with its
+   check (`src/__tests__/param-checks.test.ts` pins that it matches the type).
 2. Export it from `index.ts`.
 
 That registers it. There is no third place to update.

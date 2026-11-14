@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
+import { define, checkAny } from '@jesscss/core/value';
 import { sameStringKind } from './string-result.js';
 
 /**
@@ -11,12 +11,12 @@ import { sameStringKind } from './string-result.js';
  * @param flags optional regex flags (e.g. `g`, `i`)
  * @returns the transformed string
  */
-export const replace: Fn = /* @__PURE__ */ defineFunction('replace', {
+export const replace: Fn = /* @__PURE__ */ define('replace', {
   params: [
-    { type: 'any' },
-    { type: 'any' },
-    { type: 'any' },
-    { type: 'any', optional: true }
+    { type: 'any', check: checkAny },
+    { type: 'any', check: checkAny },
+    { type: 'any', check: checkAny },
+    { type: 'any', check: checkAny, optional: true }
   ],
   variadic: true,
   body: (items, ctx) => {

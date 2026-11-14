@@ -1,3 +1,4 @@
+import { checkKinds } from '@jesscss/core/value';
 import { defineForm, formNumber, isDimension, type FormCall } from '@jesscss/core/form';
 import type { Fn, ValueGroup } from '@jesscss/core/value';
 import { round as form } from '../../less/css-forms.generated.js';
@@ -16,8 +17,8 @@ import { unitBeside } from '../../less/css-math-args.js';
  */
 const round: Fn = /* @__PURE__ */ defineForm('round', {
   params: [
-    { name: 'number', type: ['Dimension', 'FunctionCall'] },
-    { name: 'step', type: ['Dimension', 'FunctionCall'], optional: true }
+    { type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'number' },
+    { type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'step', optional: true }
   ],
   form: (number: ValueGroup, step?: ValueGroup): FormCall => {
     const unit = unitBeside(number) || (step === undefined ? '' : unitBeside(step));

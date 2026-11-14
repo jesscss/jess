@@ -62,12 +62,12 @@ describe('vite-plugin-jess', () => {
   }
 
   /** The CSS and JS of a build of `main.js` in `root`. */
-  async function built(root: string): Promise<{ css: string; js: string }> {
+  async function built(root: string, options: Parameters<typeof jess>[0] = {}): Promise<{ css: string; js: string }> {
     const result = await build({
       root,
       configFile: false,
       logLevel: 'silent',
-      plugins: [jess()],
+      plugins: [jess(options)],
       build: { write: false, lib: { entry: path.join(root, 'main.js'), formats: ['es'], fileName: 'main' } }
     });
     const first = [result].flat()[0];
@@ -96,8 +96,10 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { js } = await built(root);
 
-      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 30,613 B measured (10,904 B gzip), 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
-      expect(js.length).toBeLessThan(32_150);
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 14,514 B measured (5,281 B gzip), with patch-css minified; 14,737 B before; 15,717 B with the unit check and unit tables; 19,126 B with the binder's general check, and no colour-name table (R8-13); 22,359 B when it came with every value reader and the binder, 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
+      expect(js.length).toBeLessThan(15_130);
+      expect(js).not.toContain('is read by a CSS form');
+      expect(js).not.toContain('dvmin');
     });
   });
 
@@ -114,6 +116,95 @@ describe('vite-plugin-jess', () => {
 
       /* Only `@jesscss/patch-css`'s key map, as nothing is computed and no CSS form reads the export (Vite's built module, unminified): 381 B measured for each (300 B minified, 234 B gzip), 2,195 B when it carried the unit check and the number formatter. */
       expect(js.length).toBeLessThan(400);
+    });
+  });
+
+  /* Owner ruling 2026-11-12 ("Yes, gate it"): a colour name reaches a computed value only when the stylesheet's own value is a name or the page opts in (R8 spec, colour names). */
+  it.each([
+    ['#c00', {}, false],
+    ['#c00', { colorNames: true }, true],
+    ['red', {}, true],
+    ['rgb(0 0 255)', {}, false]
+  ] as const)('takes a colour name for @brand: %s with %o only when names are on', async (own, options, names) => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose brand;\n@brand: ${own};\n.a { opacity: @less.lightness(@brand); }\n`]
+    ], async (root) => {
+      const { js } = await built(root, options);
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(isRuntime(module) && module.vars({ brand: '#08f' })['--brand-lightness']).toBe('50%');
+      const named = (): unknown => isRuntime(module) && module.vars({ brand: 'blue' })['--brand-lightness'];
+      if (names) {
+        expect(named()).toBe('50%');
+      } else {
+        expect(named).toThrow(new TypeError('`brand` received `blue`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names.'));
+      }
+    });
+  });
+
+  /* A colour name the recipe itself writes is read at compile time (R8 spec, colour names), so it brings no name table. */
+  it('bundles no colour-name table for a name a recipe argument writes', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lightness(@less.multiply(@brand, gray)); }\n`]
+    ], async (root) => {
+      const { js } = await built(root, {});
+      expect(js).not.toContain('aliceblue');
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(isRuntime(module) && module.vars({ brand: '#08f' })['--brand-lightness']).toBe('25.098039216%');
+    });
+  });
+
+  /* A colour export passed through extract() takes the hex check too (owner, 2026-11-13: "I agree with the reco"). */
+  it('rejects a colour name for an export passed through extract(), and bundles no name table', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose brand, l;\n@brand: #c00;\n@l: #f00 #00f;\n.a { v: @less.lightness(@less.multiply(@brand, #888)); w: @less.luma(@less.extract(@l, 1)); }\n`]
+    ], async (root) => {
+      const { js } = await built(root, {});
+      expect(js).not.toContain('aliceblue');
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(() => isRuntime(module) && module.vars({ brand: 'blue' })).toThrow('`brand` received `blue`, which is not a hex colour');
+      expect(() => isRuntime(module) && module.vars({ l: 'red #00f' })).toThrow('`l` received `red #00f`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names.');
+      expect(isRuntime(module) && module.vars({ l: '#000 #00f' })['--l-luma']).toBe('0%');
+    });
+  });
+
+  it('rejects a colour name in any item of a hex-checked export, though the page reads its own names', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose b;\n@b: #f00 #00f;\n.a { v: @less.luma(@less.extract(@b, 2)); w: @less.isunit(@b, red); }\n`]
+    ], async (root) => {
+      const { js } = await built(root, {});
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      for (const given of ['#00f red', '#00f, red', 'blue,#00f']) {
+        expect(() => isRuntime(module) && module.vars({ b: given })).toThrow(`\`b\` received \`${given}\`, which is not a hex colour`);
+      }
+      expect(isRuntime(module) && module.vars({ b: '#fff #000' })['--b-luma']).toBe('0%');
+    });
+  });
+
+  it('holds a percentage a computed value reads as its ratio, and checks its unit', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose a;\n@a: 50%;\n.x { v: @less.ispercentage(@a); }\n`]
+    ], async (root) => {
+      const { js } = await built(root);
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      const vars = isRuntime(module) ? module.vars({ a: '20%' }) : {};
+      expect(vars['--a']).toBe('0.2');
+      expect(vars['--a-ispercentage']).toBe('true');
+      expect(() => isRuntime(module) && module.vars({ a: '.2' })).toThrow('a is read by a CSS form in %');
     });
   });
 

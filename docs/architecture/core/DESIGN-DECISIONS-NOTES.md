@@ -410,3 +410,45 @@ It shows in output only through a sign-reading function, e.g. SCSS
 `math.atan2(0, -0 * 0.5)` is `180deg`, was `0deg`. A zero divisor in `%` gives `NaN` as float does, where `big.js`
 threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
 `packages/fns/src/less/__tests__/alpha-precision.test.ts`.
+
+## V13
+
+- 2026-11-13 — implementation note (agent), on perf/runtime-names-gated. The
+  binder is still where a named colour passed to a `Color`-checked parameter
+  becomes a `Color` (`validateValue`, `value-dispatch.ts`). It now takes that
+  reading from the call's context, `FnCtx.colorName`, instead of importing
+  `coerceNamedColorKeyword` itself. The compile's evaluator (`evaluator.ts`)
+  passes `coerceNamedColorKeyword`, so every compiled point of use is unchanged.
+  The browser runtime passes none, so its bundle carries no name table (R8-13,
+  `docs/architecture/core/spec/R8-browser-runtime.md`): a name the runtime reads
+  is already a `Color`, because `sniffLiteral` reads it, or it is rejected
+  before any call. A JavaScript caller that builds its own `FnCtx` (through
+  `callNamed`, say) passes `colorName` to get the same reading.
+
+## R8-13
+
+- 2026-11-13 — orchestrator ruling (not the owner's), applying R8-13, on
+  perf/runtime-literal-colours. A colour name a recipe's own argument writes for
+  a parameter checked as a colour (`gray` in `lightness(multiply(@brand, gray))`)
+  is known when the stylesheet compiles, so the compile reads it as that colour
+  and the runtime ships no name table for it. The recipe carries the name and
+  its channels, and both sides build the colour with `spelledColor`
+  (`literal-tag.ts`), keeping the name as written (`Gray` prints `Gray`). A name
+  at a parameter not checked as a colour, or inside a list, still turns names
+  on, and so does an export passed through `extract()`; the last stays open for
+  the owner in the R8 spec. Pinned in `packages/jess/test/export-runtime.test.ts`.
+- 2026-11-13 — owner ruling, verbatim, on the case left open above. Asked
+  "Should a colour export that reaches a colour function via extract() accept
+  colour names in vars()?", with the orchestrator's recommendation "No, gate it
+  too: it throws unless `colorNames: true` is set, the same as the rest of your
+  ruling, and those pages stay small": *"I agree with the reco"*. Implementation
+  note (agent): an export a recipe reads whose compile-time value holds a colour
+  (a hex, a colour function's value or a name, alone or in a list) is a colour
+  export however the recipe passes it on (`export-reads.ts` `recordDefaults`),
+  so it takes the hex check, and `readsNames` no longer turns names on for an
+  export a recipe does not pass straight to a colour parameter. An export whose
+  value holds no colour (`@l: 1px 2px`) takes no check. Names written in a
+  recipe's own argument at a parameter not checked as a colour still turn names
+  on: the stylesheet writes them, not the page. Pinned in
+  `packages/jess/test/less-expose-variables.test.ts` and
+  `packages/vite-plugin-jess/test/index.test.ts`.

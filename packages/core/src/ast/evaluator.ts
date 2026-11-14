@@ -24,6 +24,7 @@ import { writtenCallValue } from './math-operand.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry, FunctionDeclined } from './value-dispatch.js';
 import { numberArguments } from './value-dispatch.js';
+import { coerceNamedColorKeyword } from './literal-tag.js';
 import { makeFunctionCall, makeList, withFields } from './value-factory.js';
 import { emitCompressed } from './compress.js';
 
@@ -199,7 +200,7 @@ export function buildEvaluator(
       try {
         /* `args` is the call's comma list, or the items of a modern colour call ({@link FnCtx.modern}). */
         const modern = isValueGroupArray(args);
-        const result = fn(numberArguments(fn, modern ? args : groupItems(args), evaluator, modes), { modes, stringify, io, parseSelector, modern });
+        const result = fn(numberArguments(fn, modern ? args : groupItems(args), evaluator, modes), { modes, stringify, colorName: coerceNamedColorKeyword, io, parseSelector, modern });
         return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty, params: fn.params }) : result;
       } catch (err) {
         return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty, params: fn.params });

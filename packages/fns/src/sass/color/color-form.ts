@@ -4,13 +4,13 @@
  * arity, and an amount of alpha on 0–1).
  */
 import { asNumber, defineForm, knownUnit, type FormCall } from '@jesscss/core/form';
-import { makeDimension, type Dimension, type Fn, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
+import { makeDimension, checkKinds, checkAny, type Dimension, type Fn, type FunctionCall, type ValueGroup } from '@jesscss/core/value';
 import { channelAmount } from '../../less/color-form.js';
 import { fractionAmount, noExcess, percentAmount } from './kernels.js';
 
-export const COLOR = { name: 'color', type: ['Color', 'FunctionCall'] } as const;
-export const AMOUNT = { name: 'amount', type: ['Dimension', 'FunctionCall'] } as const;
-export const EXCESS = { name: 'excess', type: 'any', optional: true } as const;
+export const COLOR = { type: ['Color', 'FunctionCall'], check: checkKinds, name: 'color' } as const;
+export const AMOUNT = { type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'amount' } as const;
+export const EXCESS = { name: 'excess', type: 'any', check: checkAny, optional: true } as const;
 
 /** `name(color, amount)` on a channel's 0–100 scale, an amount only the browser knows taken to hold a percentage (Q2). */
 /* @__NO_SIDE_EFFECTS__ */

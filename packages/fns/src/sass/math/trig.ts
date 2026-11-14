@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { defineFunction, makeDimension, checkDimension } from '@jesscss/core/value';
 import { applyMath } from '../../shared/math/math-helper.js';
 import { assertAngle, assertNoUnits, convertToMatch } from './units.js';
 
@@ -28,7 +28,7 @@ import { assertAngle, assertNoUnits, convertToMatch } from './units.js';
 /** Dart Sass's radians-to-degrees factor (`180 / pi`). */
 const DEGREES = 180 / Math.PI;
 
-const params = [{ name: 'number', type: 'Dimension' }] as const;
+const params = [{ name: 'number', type: 'Dimension', check: checkDimension }] as const;
 
 const sin = defineFunction('sin', { cssFunction: true, params, body: number => applyMath(Math.sin, '', [assertAngle(number, 'number')]) });
 const cos = defineFunction('cos', { cssFunction: true, params, body: number => applyMath(Math.cos, '', [assertAngle(number, 'number')]) });
@@ -53,8 +53,8 @@ const atan = defineFunction('atan', {
 const atan2 = defineFunction('atan2', {
   cssFunction: true,
   params: [
-    { name: 'y', type: 'Dimension' },
-    { name: 'x', type: 'Dimension' }
+    { name: 'y', type: 'Dimension', check: checkDimension },
+    { name: 'x', type: 'Dimension', check: checkDimension }
   ] as const,
   body: (y, x) => makeDimension(Math.atan2(y.number, convertToMatch(x, y, '$x', '$y')) * DEGREES, 'deg')
 });

@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { makeDimension, define, checkAny } from '@jesscss/core/value';
 import type { Fn, ValueGroup } from '@jesscss/core/value';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { readImageDimensions } from './image-helper.js';
@@ -8,8 +8,8 @@ import { readImageDimensions } from './image-helper.js';
  * Receives the raw typed argument group and injected file-read capability from
  * the canonical evaluator; it never evaluates or resolves a tree node itself.
  */
-const imageSize: Fn = /* @__PURE__ */ defineFunction('image-size', {
-  params: [{ type: 'any' }],
+const imageSize: Fn = /* @__PURE__ */ define('image-size', {
+  params: [{ type: 'any', check: checkAny }],
   variadic: true,
   body: (value, ctx): MaybePromise<ValueGroup> => {
     const dimensions = readImageDimensions(value, ctx);

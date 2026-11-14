@@ -11,18 +11,18 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { isValueGroup, isValueGroupArray, type ArgumentKeyword, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { calcOperand, numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
-import { coerceNamedColorKeyword } from './literal-tag.js';
-import { callKeyword, makeCollection, NULL } from './value-factory.js';
-import { keepAsWritten } from './value-operate.js';
+import { NULL } from './value-factory.js';
+import { checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl, define, emptyCollection, isListShaped, mismatch, readWritten, valueNode } from './define.js';
 import type {
+  Check,
   DefinedFunction,
   Fn,
   FnCtx,
   FnSpec,
   FunctionBodyArgs,
   Kind,
-  LazyValue,
-  ParamSpec
+  ParamSpec,
+  ParamType
 } from './functions/types.js';
 
 /**
@@ -40,7 +40,6 @@ export class FunctionDeclined extends Error {
   }
 }
 
-type DirectInput = ValueGroup | LazyValue;
 const VALUE_TYPES: ReadonlySet<string> = new Set([
   'Dimension',
   'Color',
@@ -90,6 +89,12 @@ function paramType(param: ParamSpec): NormalizedParamType {
 
 const isRest = (param: ParamSpec): boolean => param.rest === true;
 
+/** Whether a parameter is checked as a colour, so a colour name passed to it is read as one. */
+export function takesColor(param: ParamSpec | undefined): boolean {
+  const type: unknown = param?.type ?? param?.kinds;
+  return type === 'Color' || (Array.isArray(type) && type.includes('Color'));
+}
+
 /**
  * A parameter typed as a number (it accepts a `Dimension` and not a `List`)
  * expects a number, so a slash list passed to it is its quotient
@@ -138,16 +143,6 @@ function isFnSpec(value: unknown): value is FnSpec {
     && 'body' in value
     && typeof value.body === 'function';
 }
-
-/*
- * The empty list is also the empty map, so it satisfies a `Collection` slot as
- * that map at the bind point, as Sass reads it: `map.get((), a)` is `null` and
- * `map.merge((), (z: 9))` is `(z: 9)` (Sass's empty `()` is the empty curly
- * list, owner 2026-10-23: *"so that Sass functions still work"*).
- */
-const EMPTY_COLLECTION = makeCollection([]);
-const isListShaped = (value: ValueGroup): boolean =>
-  isValueGroupArray(value) || value.type === 'List' || value.type === 'Block';
 
 /** css-color-4 §4.4 `currentcolor` and the §6.2 system colours: colours whose value only the browser knows. */
 const BROWSER_COLORS: ReadonlySet<string> = new Set(['currentcolor', 'accentcolor', 'accentcolortext', 'activetext', 'buttonborder', 'buttonface', 'buttontext', 'canvas', 'canvastext', 'field', 'fieldtext', 'graytext', 'highlight', 'highlighttext', 'linktext', 'mark', 'marktext', 'selecteditem', 'selecteditemtext', 'visitedtext']);
@@ -219,12 +214,13 @@ const isPassed = (value: unknown): value is ValueGroup =>
 /** A parameter of a `cssFunction`, which also takes what only the browser knows. */
 function cssFunctionParam(param: ParamSpec): ParamSpec {
   const type = paramType(param);
-  return type === 'any' ? param : { ...param, kinds: undefined, type: [...type, 'FunctionCall'] };
+  return type === 'any' ? param : { ...param, kinds: undefined, type: [...type, 'FunctionCall'], check: checkKinds };
 }
 
-function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown): ValueGroup {
-  if (!isValueGroup(value)) {
-    throw new TypeError(`${name}: each argument must be a value node`);
+function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown, colorName: FnCtx['colorName']): ValueGroup {
+  const node = valueNode(name, value);
+  if (type === 'any') {
+    return node;
   }
 
   /*
@@ -232,95 +228,56 @@ function validateValue(name: string, index: number, type: NormalizedParamType, v
    * `Color`-typed parameter by materializing to its `Color` at the bind point —
    * the point of USE — without the un-operated literal ever being reclassified.
    * `lighten(red, 10%)` binds `#ff0000`; a keyword that is not a named color
-   * still fails the `Color` slot as before. A call written out as-is is read
+   * still fails the `Color` slot as before. The call's context supplies the
+   * reading ({@link FnCtx.colorName}), so only a caller that reads names bundles
+   * the table (R8 spec, colour names). A call written out as-is is read
    * as the keyword that spells it, unless the slot asks for the call.
    */
-  const single = isValueGroupArray(value) ? undefined : value;
-  if (single !== undefined && type !== 'any' && type.includes('FunctionCall') && isDeferred(single, type)) {
+  const single = isValueGroupArray(node) ? undefined : node;
+  if (single !== undefined && type.includes('FunctionCall') && isDeferred(single, type)) {
     return single;
   }
-  const bound = type === 'any'
-    ? value
-    : single?.type === 'FunctionCall' || single?.type === 'Arithmetic'
-      ? keepAsWritten(callKeyword(single))
-      : single?.type === 'Keyword' && type.includes('Color')
-        ? coerceNamedColorKeyword(single)
-        : type.includes('Collection') && groupItems(value).length === 0 && isListShaped(value)
-          ? EMPTY_COLLECTION
-          : value;
+  const read = single === undefined ? node : readWritten(single);
+  const bound = read !== node
+    ? read
+    : single?.type === 'Keyword' && type.includes('Color')
+      ? colorName?.(single) ?? single
+      : type.includes('Collection') && groupItems(node).length === 0 && isListShaped(node)
+        ? emptyCollection()
+        : node;
   if (!isValueForType(bound, type)) {
-    const expected = type === 'any' ? 'any' : type.filter(kind => kind !== 'FunctionCall').join('|');
-    throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${isValueGroupArray(bound) ? 'sequence' : bound.type}`);
+    throw mismatch(name, index, type.filter(kind => kind !== 'FunctionCall').join('|'), bound);
   }
   return bound;
 }
 
-function checkedLazy(
-  name: string,
-  index: number,
-  type: NormalizedParamType,
-  thunk: unknown
-): LazyValue<ValueGroup> {
-  if (typeof thunk !== 'function') {
-    throw new TypeError(`${name}: lazy argument ${index} must be a thunk`);
-  }
-  return () => {
-    const value = thunk();
-    if (value instanceof Promise) {
-      return value.then(result => validateValue(name, index, type, result));
-    }
-    return validateValue(name, index, type, value);
-  };
+/** The general check: a value of the types the parameter's `type` lists, or of `'any'`. */
+export function checkKinds(name: string, index: number, value: unknown, colorName: FnCtx['colorName'], type: ParamType | undefined): ValueGroup {
+  return validateValue(name, index, type === undefined || type === 'any' ? 'any' : typeof type === 'string' ? [type] : type, value, colorName);
 }
 
-/**
- * Whether `input` is core's absent value: an implicit `null`, never one the
- * author wrote. A call that names a later parameter by keyword fills each
- * parameter it skipped with it (`orderKeywordArgs`), so an optional parameter
- * reads it as an argument that was not passed. Checked by shape, not identity:
- * a provided module may run on a second copy of core.
- */
-const isAbsent = (input: DirectInput): boolean =>
-  typeof input !== 'function' && !isValueGroupArray(input) && input.type === 'Null' && !input.explicit;
+/** The check of a parameter of one value type, which {@link withCheck} names for a spec that gives none. */
+const CHECKS: Readonly<Partial<Record<string, Check>>> = {
+  any: checkAny,
+  Dimension: checkDimension,
+  Color: checkColor,
+  Keyword: checkKeyword,
+  Quoted: checkQuoted,
+  Bool: checkBool,
+  Null: checkNull,
+  List: checkList,
+  Url: checkUrl,
+  Block: checkBlock,
+  Collection: checkCollection
+};
 
-export function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly (DirectInput | undefined)[]): unknown[] {
-  const out: unknown[] = [];
-  let offset = 0;
-  for (let index = 0; index < params.length; index++) {
-    const param = params[index]!;
-    if (param.rest) {
-      const supplied = inputs[offset];
-      const rest = inputs.length === offset + 1 && Array.isArray(supplied)
-        ? supplied
-        : inputs.slice(offset);
-      const type = paramType(param);
-      out.push(param.lazy
-        ? rest.map(value => checkedLazy(name, index, type, value))
-        : rest.map(value => validateValue(name, index, type, value)));
-      offset = inputs.length;
-      continue;
-    }
-    const input = inputs[offset++];
-    if (input === undefined || ((param.optional || param.default !== undefined) && isAbsent(input))) {
-      if (param.default !== undefined) {
-        out.push(param.default);
-        continue;
-      }
-      if (param.optional) {
-        out.push(undefined);
-        continue;
-      }
-      throw new TypeError(`${name}: missing required argument ${param.name ?? index}`);
-    }
-    const type = paramType(param);
-    out.push(param.lazy
-      ? checkedLazy(name, index, type, input)
-      : validateValue(name, index, type, input));
+/** A parameter as {@link define} binds it: its own check, or the check of its type. */
+export function withCheck(param: ParamSpec): ParamSpec {
+  if (param.check !== undefined) {
+    return param;
   }
-  if (offset < inputs.length) {
-    throw new TypeError(`${name}: too many arguments`);
-  }
-  return out;
+  const type = paramType(param);
+  return { ...param, kinds: undefined, type: param.type ?? type, check: (typeof param.type === 'string' ? CHECKS[param.type] : undefined) ?? checkKinds };
 }
 
 /**
@@ -355,37 +312,22 @@ export function defineFunction(
     throw new TypeError(`${name}: function definition must contain params and a callable body`);
   }
 
-  /* Each closure reads only constants captured here, never the caller's spec literal, whose key set varies by caller. */
-  let callable: (args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<ValueGroup>;
-  if (spec.variadic === true) {
-    const { body } = spec;
-    callable = (args, ctx) => body(args, ctx);
-  } else {
-    const { params, body } = spec;
-    const slots = spec.cssFunction === true ? params.map(cssFunctionParam) : params;
-    const cssFunction = spec.cssFunction === true;
-    const restParam = params.find(isRest);
-
-    /*
-     * Each argument is governed by its own parameter, or by the `rest` parameter
-     * once the declared slots run out, so `lazy` is honoured for rest items too.
-     * The array is built from the SUPPLIED arguments, never from `params`, so
-     * `bindDirect`'s `too many arguments` stays reachable.
-     */
-    const lazy = params.some(param => param.lazy === true);
-    callable = (args) => {
-      const bound = bindDirect(name, slots, lazy ? args.map((item, index) => (params[index] ?? restParam)?.lazy ? () => item : item) : args);
-      if (cssFunction) {
-        /* What the call passed, in parameter order, is what the CSS function takes: no name, no `null` (a declared optional's). */
-        const passed = bound.flat().filter(isPassed);
-        declineOverUnknown(passed, passed);
-      }
-      return Reflect.apply(body, undefined, bound);
-    };
+  const params = spec.params.map(withCheck);
+  if (spec.cssFunction !== true || spec.variadic === true) {
+    return define(name, { params, body: spec.body, variadic: spec.variadic, filter: spec.filter });
   }
-  const fn = Object.assign(callable, { params: spec.params, variadic: spec.variadic, filter: spec.filter });
-  Object.defineProperty(fn, 'name', { value: name, configurable: true });
-  return fn;
+
+  /* A CSS function binds what only the browser knows too, and declines over it; what the call passed, in parameter order, is what the CSS function takes: no name, no `null` (a declared optional's). */
+  const fn = define(name, {
+    params: params.map(cssFunctionParam),
+    body: spec.body,
+    filter: spec.filter,
+    afterBind: (bound: readonly unknown[]) => {
+      const passed = bound.flat().filter(isPassed);
+      declineOverUnknown(passed, passed);
+    }
+  });
+  return Object.assign(fn, { params });
 }
 
 /**

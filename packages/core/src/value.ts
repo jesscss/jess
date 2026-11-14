@@ -92,7 +92,7 @@ export { operated as operatedOnUnknown } from './ast/math-operand.js';
 export { convertValue, foldUnit, groupOf, isCssUnit, unify, unitFactor } from './ast/value-units.js';
 
 // --- literal materialize / sniff ---
-export { parseHex, sniffLiteral, coerceNamedColorKeyword } from './ast/literal-tag.js';
+export { parseHex, sniffLiteral, sniffUnnamed, spelledColor, coerceNamedColorKeyword } from './ast/literal-tag.js';
 
 // --- selector values (`&`, `selector.parse()`) ---
 export { selectorValue } from './ast/selector-text.js';
@@ -106,6 +106,7 @@ export type {
   Fn,
   FnSpec,
   ParamSpec,
+  Check,
   FnCtx,
   FnIo,
   SelectorParse,
@@ -120,6 +121,7 @@ export type {
 export { TOLERANCE } from './ast/format-number.js';
 
 // --- registry seam ---
-export { createFnRegistry, declineOverUnknown, defineFunction, FunctionDeclined, isUnknownNumber } from './ast/value-dispatch.js';
+export { checkKinds, createFnRegistry, declineOverUnknown, defineFunction, FunctionDeclined, isUnknownNumber } from './ast/value-dispatch.js';
+export { define, checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl } from './ast/define.js';
 export { NoCssForm } from './ast/value-eval.js';
 export type { FnRegistry } from './ast/value-dispatch.js';
