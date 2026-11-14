@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { HEX, colorRawRgb, makeColorRgb, define, checkColor, checkAny } from '@jesscss/core/value';
+import { HEX, colorRawRgb, makeColorRgb, define, checkColor, checkAny, optional } from '@jesscss/core/value';
 import { ieHexString, noExcess, requireColor } from './kernels.js';
 
 /**
@@ -14,7 +14,7 @@ import { ieHexString, noExcess, requireColor } from './kernels.js';
  * this output boundary — that IS the boundary).
  */
 export const ieHexStr: Fn = define('ie-hex-str', {
-  params: [{ name: 'color', type: 'Color', check: checkColor }, { name: 'excess', type: 'any', check: checkAny, optional: true }],
+  params: [{ name: 'color', type: 'Color', check: checkColor }, /* @__PURE__ */ optional({ name: 'excess', type: 'any', check: checkAny })],
   body: (c, excess) => {
     noExcess(excess, 1);
     const color = requireColor(c);

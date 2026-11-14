@@ -53,8 +53,15 @@ interface ParamSpecBase {
   readonly check?: Check;
 }
 
-/** A parameter's check of one argument: the function's name and the slot, the value, the call's colour-name reading ({@link FnCtx.colorName}), and the parameter's `type`. */
-export type Check = (name: string, index: number, value: unknown, colorName: FnCtx['colorName'], type: ParamType | undefined) => ValueGroup;
+/**
+ * A parameter's check of one argument: the function's name and the slot, the
+ * value, the call's colour-name reading ({@link FnCtx.colorName}), the
+ * parameter's `type`, and every argument of the call, which a `rest` check
+ * reads from its slot on. It returns the value as the body receives it: a
+ * wrapper's check (`optional`, `withDefault`, `lazy`, `rest` in `define.ts`)
+ * returns `undefined`, the default, a thunk or an array.
+ */
+export type Check = (name: string, index: number, value: unknown, colorName: FnCtx['colorName'], type: ParamType | undefined, inputs: readonly unknown[]) => unknown;
 
 type ParamTypeSpec = ParamSpecBase & {
   /**

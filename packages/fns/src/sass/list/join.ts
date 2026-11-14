@@ -1,4 +1,4 @@
-import { define, checkAny, checkKinds } from '@jesscss/core/value';
+import { define, checkAny, checkKinds, optional } from '@jesscss/core/value';
 import { createSassListResult, getSassListInfo, resolveSassBracketed, resolveSassSeparator } from './util.js';
 
 /*
@@ -12,8 +12,8 @@ const join = define('join', {
   params: [
     { name: 'list1', type: 'any', check: checkAny },
     { name: 'list2', type: 'any', check: checkAny },
-    { type: ['Quoted', 'Keyword'], check: checkKinds, name: 'separator', optional: true },
-    { type: ['Bool', 'Quoted', 'Keyword'], check: checkKinds, name: 'bracketed', optional: true }
+    /* @__PURE__ */ optional({ type: ['Quoted', 'Keyword'], check: checkKinds, name: 'separator' }),
+    /* @__PURE__ */ optional({ type: ['Bool', 'Quoted', 'Keyword'], check: checkKinds, name: 'bracketed' })
   ] as const,
   body: (list1, list2, separator, bracketed) => {
     const left = getSassListInfo(list1);

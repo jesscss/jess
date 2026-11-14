@@ -1,5 +1,5 @@
 import { defineForm, type FormCall } from '@jesscss/core/form';
-import { NoCssForm, RGB, colorRawRgb, isValueGroupArray, makeColorRgb, makeDimension, subExact, checkColor, checkDimension, type Color, type Dimension, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { NoCssForm, RGB, colorRawRgb, isValueGroupArray, makeColorRgb, makeDimension, subExact, checkColor, checkDimension, type Color, type Dimension, type Fn, type ValueGroup, optional } from '@jesscss/core/value';
 import { getLuma, reformatColor } from './color-helper.js';
 import { COLOR_ARG } from './color-form.js';
 import * as forms from './css-forms.generated.js';
@@ -26,7 +26,7 @@ function between(color: ValueGroup, dark: Color, light: Color): FormCall {
   ];
 }
 
-const PARAMS = [COLOR_ARG, { type: 'Color', check: checkColor, optional: true }, { type: 'Color', check: checkColor, optional: true }, { type: 'Dimension', check: checkDimension, optional: true }] as const;
+const PARAMS = [COLOR_ARG, /* @__PURE__ */ optional({ type: 'Color', check: checkColor }), /* @__PURE__ */ optional({ type: 'Color', check: checkColor }), /* @__PURE__ */ optional({ type: 'Dimension', check: checkDimension })] as const;
 
 function picked(color: ValueGroup, givenDark?: Color, givenLight?: Color, threshold?: Dimension): FormCall | Color {
   const first = givenDark ?? BLACK;

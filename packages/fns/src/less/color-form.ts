@@ -2,7 +2,7 @@ import { asNumber, channelForm, defineForm, formMath, formNumber, isDimension, k
 import { clamp01, fitsAny, inUnits, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { hsvBlack, hsvWhite, hsvWhiteKnown } from './css-forms.generated.js';
 import { requireDimension } from '../shared/math/math-helper.js';
-import { FunctionDeclined, isValueGroupArray, makeDimension, mulExact, percentToFraction, subExact, textOf, checkKinds, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
+import { FunctionDeclined, isValueGroupArray, makeDimension, mulExact, percentToFraction, subExact, textOf, checkKinds, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup, optional } from '@jesscss/core/value';
 
 /** A colour a form's relative colour reads as its origin, or what only the browser knows of one. */
 export const COLOR_ARG = { type: ['Color', 'FunctionCall'], check: checkKinds, fits: (value: ValueGroup): boolean => inUnits(value, []) } as const;
@@ -148,7 +148,7 @@ function relativeMethod(name: string, method: Keyword | Quoted | WrittenCall | u
 /* @__NO_SIDE_EFFECTS__ */
 export function defineAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0]): Fn {
   return defineForm(name, {
-    params: [COLOR_ARG, PERCENT_ARG, { type: ['Keyword', 'Quoted', 'FunctionCall'], check: checkKinds, optional: true }],
+    params: [COLOR_ARG, PERCENT_ARG, /* @__PURE__ */ optional({ type: ['Keyword', 'Quoted', 'FunctionCall'], check: checkKinds })],
     form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall =>
       [relativeMethod(name, method) ? relative : absolute, color, amount.type === 'Dimension' ? channelAmount(amount) : asNumber(amount, knownUnit(amount) ?? '%')]
   });
@@ -158,7 +158,7 @@ export function defineAdjuster(name: string, absolute: FormCall[0], relative: Fo
 /* @__NO_SIDE_EFFECTS__ */
 export function defineAlphaAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0]): Fn {
   return defineForm(name, {
-    params: [COLOR_ARG, PERCENT_ARG, { type: ['Keyword', 'Quoted', 'FunctionCall'], check: checkKinds, optional: true }],
+    params: [COLOR_ARG, PERCENT_ARG, /* @__PURE__ */ optional({ type: ['Keyword', 'Quoted', 'FunctionCall'], check: checkKinds })],
     form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall =>
       [relativeMethod(name, method) ? relative : absolute, color, amount.type === 'Dimension' ? alphaAmount(amount) : shareOf(amount)]
   });

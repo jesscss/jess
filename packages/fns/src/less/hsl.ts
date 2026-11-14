@@ -1,5 +1,5 @@
 import type { Color, ValueGroup, Fn } from '@jesscss/core/value';
-import { colorHsl, makeColorHsl, HSL, define, checkAny } from '@jesscss/core/value';
+import { colorHsl, makeColorHsl, HSL, define, checkAny, optional } from '@jesscss/core/value';
 import { clamp01, fitsAny, isColor, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { ALPHA_ARG, channelSlot, declineSlots, HUE_UNITS, hueSlot, isDeferredSlot, percentSlot } from './color-form.js';
 import { requireDimension } from '../shared/math/math-helper.js';
@@ -59,9 +59,9 @@ const fitsAfterHue = (value: ValueGroup, vals: readonly ValueGroup[]): boolean =
 /** The slots of `hsl()` and `hsla()`, by what an export in each means over its `var()`: a colour there has no form. */
 export const HSL_PARAMS = [
   { type: 'any', check: checkAny, fits: (value: ValueGroup): boolean => fitsAny(value) && !isColor(value) },
-  { type: 'any', check: checkAny, optional: true, fits: fitsAfterHue },
-  { type: 'any', check: checkAny, optional: true, fits: fitsAfterHue },
-  { type: 'any', check: checkAny, optional: true, fits: ALPHA_ARG.fits }
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny, fits: fitsAfterHue }),
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny, fits: fitsAfterHue }),
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny, fits: ALPHA_ARG.fits })
 ] as const;
 
 export const hsl: Fn = /* @__PURE__ */ define('hsl', {

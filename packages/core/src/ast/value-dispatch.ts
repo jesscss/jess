@@ -12,7 +12,7 @@ import { isValueGroup, isValueGroupArray, type ArgumentKeyword, type EvalModes, 
 import { calcOperand, numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { NULL } from './value-factory.js';
-import { checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl, define, emptyCollection, isListShaped, mismatch, readWritten, valueNode } from './define.js';
+import { checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl, define, emptyCollection, isListShaped, lazy, mismatch, optional, readWritten, rest, valueNode, withDefault } from './define.js';
 import type {
   Check,
   DefinedFunction,
@@ -214,7 +214,14 @@ const isPassed = (value: unknown): value is ValueGroup =>
 /** A parameter of a `cssFunction`, which also takes what only the browser knows. */
 function cssFunctionParam(param: ParamSpec): ParamSpec {
   const type = paramType(param);
-  return type === 'any' ? param : { ...param, kinds: undefined, type: [...type, 'FunctionCall'], check: checkKinds };
+  return type === 'any' ? param : bound({ ...param, kinds: undefined, type: [...type, 'FunctionCall'], check: checkKinds });
+}
+
+/** A parameter of a plain check, with the wrappers its flags name (`define.ts`): what `define` binds. */
+function bound(param: ParamSpec): ParamSpec {
+  const each = param.lazy === true ? lazy(param) : param;
+  const all = each.rest === true ? rest(each) : each;
+  return all.default !== undefined ? withDefault(all, all.default) : all.optional === true ? optional(all) : all;
 }
 
 function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown, colorName: FnCtx['colorName']): ValueGroup {
@@ -277,7 +284,7 @@ export function withCheck(param: ParamSpec): ParamSpec {
     return param;
   }
   const type = paramType(param);
-  return { ...param, kinds: undefined, type: param.type ?? type, check: (typeof param.type === 'string' ? CHECKS[param.type] : undefined) ?? checkKinds };
+  return bound({ ...param, kinds: undefined, type: param.type ?? type, check: (typeof param.type === 'string' ? CHECKS[param.type] : undefined) ?? checkKinds });
 }
 
 /**
