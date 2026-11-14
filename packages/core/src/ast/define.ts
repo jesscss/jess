@@ -214,13 +214,25 @@ export function define<const P extends readonly ParamSpec[]>(
   name: string,
   spec: {
     readonly params: P;
-    readonly body: (...args: FunctionBodyArgs<NoInfer<P>>) => MaybePromise<ValueGroup>;
+
+    /** Computes synchronously: a generated runtime module calls it directly, past the defined function's refusal of a promise. */
+    readonly body: (...args: FunctionBodyArgs<NoInfer<P>>) => ValueGroup;
     readonly variadic?: false;
     readonly filter?: boolean;
     readonly cssFunction?: never;
 
     /** Where `body` is exported, for a generated runtime module's direct call ({@link Fn.bodyExport}). */
-    readonly bodyExport?: FnOrigin;
+    readonly bodyExport: FnOrigin;
+  },
+): DefinedFunction<P>;
+export function define<const P extends readonly ParamSpec[]>(
+  name: string,
+  spec: {
+    readonly params: P;
+    readonly body: (...args: FunctionBodyArgs<NoInfer<P>>) => MaybePromise<ValueGroup>;
+    readonly variadic?: false;
+    readonly filter?: boolean;
+    readonly cssFunction?: never;
   },
 ): DefinedFunction<P>;
 export function define(

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ExportColor, ExportRecipe, Fn } from '@jesscss/core';
+import { define, makeDimension } from '@jesscss/core/value';
 import * as less from '@jesscss/fns/less';
 import { holdRatio } from '@jesscss/patch-css';
 import { call, color, createRuntime, readNamed, readUnnamed, type RuntimeRecipe } from '@jesscss/fns/runtime';
@@ -581,6 +582,11 @@ describe('the export runtime', () => {
   it('rejects a value given as a function', () => {
     const runtime = createRuntime({ keys: { brand: 'brand' }, defaults: { brand: '#c00' }, units: {}, read: readNamed, derived: { '--brand-lightness': [call(less.lightness), [{ export: 'brand' }]] } });
     expect(() => runtime.vars({ brand: 'hsl(10, 50%, 50%)' })).toThrow('"hsl(10, 50%, 50%)" is a function');
+  });
+
+  it('refuses a defined function that computes asynchronously', () => {
+    const later = define('later', { params: [], variadic: true, body: async () => makeDimension(1) });
+    expect(() => call(later)([])).toThrow('later() computes asynchronously, which the runtime cannot do.');
   });
 
   it('sets the properties on the target it is given', async () => {
