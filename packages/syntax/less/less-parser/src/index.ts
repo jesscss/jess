@@ -3,6 +3,7 @@ import type { Stylesheet } from '@jesscss/core/ast';
 import { lessGrammar } from './grammar/ast.js';
 import { parseWith, safeParseWith, type LessParseOptions } from './parse-with.js';
 
+export { createLessParseState, recoveredProblemsOf, type LessRunState } from './parse-with.js';
 export type { LessParseOptions } from './parse-with.js';
 
 export {
