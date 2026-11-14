@@ -632,3 +632,42 @@ describe('a glued minus on what only the browser knows', () => {
     await expect(value(source)).resolves.toBe(form);
   });
 });
+
+/*
+ * `-var(--x)` is one function token to CSS, `-var`, which no browser reads: a
+ * glued minus written out is the value negated (§4 known gaps, now closed).
+ */
+describe('a glued minus in a call written out', () => {
+  it.each([
+    ['-var(--gutter)', 'calc(-1 * var(--gutter))'],
+    ['abs(-var(--x))', 'abs(-1 * var(--x))'],
+    ['min(-var(--gap), 0px)', 'min(-1 * var(--gap), 0px)'],
+    ['translate(-var(--x), 0)', 'translate(calc(-1 * var(--x)), 0)'],
+    ['translate((-var(--x)), 0)', 'translate(calc(-1 * var(--x)), 0)'],
+    ['-sqrt(var(--x))', 'calc(-1 * sqrt(var(--x)))'],
+    ['-calc(var(--x) * 2)', 'calc(-1 * (var(--x) * 2))'],
+    ['-env(safe-area-inset-top)', 'calc(-1 * env(safe-area-inset-top))'],
+    ['-VAR(--x)', 'calc(-1 * VAR(--x))']
+  ])('%s', async (source, form) => {
+    await expect(value(source)).resolves.toBe(form);
+  });
+
+  it.each([
+    ['-sqrt(4)', '-2'],
+    ['-percentage(0.5)', '-50%'],
+    ['-abs(-2px)', '-2px'],
+    ['-abs(0)', '0']
+  ])('over a known number, %s is the number negated', async (source, out) => {
+    await expect(value(source)).resolves.toBe(out);
+  });
+
+  it.each(['.scss', '.jess'])('in %s too', async (extension) => {
+    const out = String(await new Compiler({}).renderString('.a { b: -var(--x); c: abs(-var(--x)); }', { filePath: `entry${extension}`, extension, suppressWarnings: true }));
+    expect(out).toContain('b: calc(-1 * var(--x));');
+    expect(out).toContain('c: abs(-1 * var(--x));');
+  });
+
+  it('a custom property keeps its tokens', async () => {
+    await expect(css('.a { --y: -var(--x); }')).resolves.toContain('--y: -var(--x);');
+  });
+});
