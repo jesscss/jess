@@ -15,7 +15,7 @@
  * HARD MODULE BOUNDARY: value domain only — no `../tree`, no legacy nodes.
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { EvalModes, Value, ValueGroup } from '../value-eval.js';
+import type { Any, EvalModes, Value, ValueGroup } from '../value-eval.js';
 
 export type Kind = Value['type'];
 export type ParamType = Kind | readonly Kind[] | 'any';
@@ -252,8 +252,21 @@ export type Fn = ((args: readonly ValueGroup[], ctx: FnCtx) => MaybePromise<Valu
    * reader's parse is the check (DESIGN-DECISIONS-NOTES.md,
    * "Direct body calls"). The defined function is `define` over that same body.
    */
-  readonly bodyExport?: FnOrigin;
+  readonly bodyExport?: BodyOrigin;
 };
+
+/**
+ * Where a built-in's body is exported. `bytes` when the body's declared result
+ * is one node that is not `Any`, whose text is its `bytes` (what `emitValue`
+ * writes for it), so a generated runtime module writes that text without the
+ * value writer (DESIGN-DECISIONS-NOTES.md, "Direct body calls").
+ */
+export interface BodyOrigin extends FnOrigin {
+  readonly bytes?: true;
+}
+
+/** A body's {@link BodyOrigin}, which may say `bytes` only when the body's declared result `R` is one node that is not `Any`. */
+export type BodyExport<R> = FnOrigin & { readonly bytes?: [R] extends [Exclude<Value, Any>] ? true : never };
 
 /** Where an imported function comes from: the module as the stylesheet names it, and the export. */
 export interface FnOrigin {

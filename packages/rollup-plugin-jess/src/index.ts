@@ -235,16 +235,28 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
      * reads each export as a colour, calls the function's body directly, so the
      * page bundles no definer or binder: the reader's parse is the check (DESIGN-DECISIONS-NOTES.md, "Direct body calls").
      * Any other call runs the defined function, which checks its arguments.
+     * A derived property whose recipe is such a call, of a body whose declared
+     * result is one node that is not `Any`, is written as that node's text, so
+     * a page whose properties all are bundles no value writer.
      */
-    const write = (recipe: ExportRecipe | ExportColor | string): string =>
+    const bodyOf = (recipe: ExportRecipe) => hexOnly && 'fn' in recipe ? recipe.body : undefined;
+    const asText = (recipe: ExportRecipe): boolean => bodyOf(recipe)?.bytes === true;
+    const call = (recipe: Extract<ExportRecipe, { fn: unknown }>, top: boolean): string => {
+      const body = bodyOf(recipe);
+      return body === undefined
+        ? `${local('@jesscss/fns/runtime', 'call')}(${local(recipe.fn.module, recipe.fn.name)})`
+        : `(a) => ${local(body.module, body.name)}(...a)${top && body.bytes === true ? '.bytes' : ''}`;
+    };
+    const write = (recipe: ExportRecipe | ExportColor | string, top = false): string =>
       typeof recipe === 'string'
         ? JSON.stringify(recipe)
         : 'export' in recipe
           ? JSON.stringify(recipe)
           : 'color' in recipe
             ? `[${local('@jesscss/fns/runtime', 'color')}(${JSON.stringify(recipe.color)}, ${JSON.stringify(recipe.rgb)}, ${recipe.alpha}), []]`
-            : `[${hexOnly && recipe.body !== undefined ? `(a) => ${local(recipe.body.module, recipe.body.name)}(...a)` : `${local('@jesscss/fns/runtime', 'call')}(${local(recipe.fn.module, recipe.fn.name)})`}, [${recipe.args.map(write).join(', ')}]]`;
-    const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
+            : `[${call(recipe, top)}, [${recipe.args.map(arg => write(arg)).join(', ')}]]`;
+    const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe, true)}`);
+    const emit = Object.values(runtime.derived).every(asText) ? '' : `, emit: ${local('@jesscss/fns/runtime', 'emitValue')}`;
 
     /* The least check the exports need: none when no CSS form reads one. */
     const hold = runtime.ratios.length > 0 ? 'holdRatio' : Object.keys(runtime.units).length > 0 ? 'checkUnit' : undefined;
@@ -270,7 +282,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         ? ''
         : `, hex: ${JSON.stringify(Object.fromEntries(Object.entries(runtime.keys).filter(([, name]) => runtime.colors.includes(name)).map(([key, name]) => [name, key])))}`;
       lines.push(
-        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}${held}${runtime.colors.length > 0 ? hex : ''}, read, derived: { ${derived.join(', ')} } });`,
+        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}${hold === undefined ? '' : `, units: ${JSON.stringify(runtime.units)}`}${hold === 'holdRatio' ? `, ratios: ${JSON.stringify(runtime.ratios)}` : ''}${held}${runtime.colors.length > 0 ? hex : ''}, read${emit}, derived: { ${derived.join(', ')} } });`,
         `export const set = (values, target) => writeVars(vars(values), target);`
       );
     }

@@ -13,5 +13,5 @@ export const lightnessOf = (c: Color): Dimension => makeDimension(colorLightness
 export const lightness: Fn = /* @__PURE__ */ define('lightness', {
   params: [{ type: 'Color', check: checkColor }],
   body: lightnessOf,
-  bodyExport: { module: '@jesscss/fns/less/bodies', name: 'lightnessOf' }
+  bodyExport: { module: '@jesscss/fns/less/bodies', name: 'lightnessOf', bytes: true }
 });

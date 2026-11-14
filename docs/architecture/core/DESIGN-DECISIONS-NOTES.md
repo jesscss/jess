@@ -505,3 +505,17 @@ threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
   `packages/fns/src/__tests__/lightness-body.test.ts`,
   `packages/rollup-plugin-jess/test/index.test.ts` and
   `packages/vite-plugin-jess/test/index.test.ts`.
+- 2026-11-14 — orchestrator ruling, relayed, on the same row: the generated
+  module may write a directly called body's result as its `bytes`, without the
+  value writer, *"This isn't a change in meaning. For a single node that isn't
+  `Any`, `emitValue` returns exactly `.bytes`, so the output is the same by
+  construction."* Conditions: the choice is per recipe, when the module is
+  generated, and only for a body whose declared result type is one node other
+  than `Any`, enforced by its type; a test checks that `.bytes` equals
+  `emitValue(result)` for each such body. Implementation note (agent): the body's
+  `bodyExport` says `bytes: true`, which `define` accepts only when the body's
+  declared result is `Exclude<Value, Any>` (`BodyExport`, `functions/types.ts`).
+  The generated module passes `emitValue` as `createVars`'s `emit` only when a
+  derived property's result is not written as text. Pinned in
+  `packages/fns/src/__tests__/lightness-body.test.ts` and
+  `packages/rollup-plugin-jess/test/index.test.ts`.
