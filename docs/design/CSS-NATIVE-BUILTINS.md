@@ -362,6 +362,14 @@ the call's other arguments; a slot without it has no form): `@r: 10` in
 `@less.rgb(@r, 0, 0)` prints the form. A known channel of a unit CSS does not
 take is converted to what the compile reads there (§2): `@less.rgb(var(--r), 1px, 0)`
 is `rgb(var(--r), 1, 0)`, and `@r: 2px` is `rgb(calc(var(--r, 2px) / 1px), 0, 0)`.
+The comma syntax takes three numbers or three percentages (css-color-4 §5.1), so
+there a percentage beside a number channel is the number of 255 it is: `@r: 10%`
+in `@less.rgb(@r, 0, 0)` is `rgb(calc(var(--r, 0.1) * 100 * 2.55), 0, 0)`, and in
+`@less.rgb(@r, 0%, 0%)` it stays a percentage (Chrome 156: with `--r: 0.1` the
+first is `rgb(26, 0, 0)`, and the percentage spelling beside numbers is invalid).
+A hue keeps an angle unit; a `%` hue, which CSS has no unit for, is in degrees, so
+`@less.hsl(50%, 50%, 50%)` is `hsl(180, 50%, 50%)`, as its form over an export
+`@h: 50%` is `hsl(calc(var(--h, 0.5) * 100 * 3.6), 50%, 50%)`.
 An exposed variable holds its unit, and the runtime then takes only that unit for
 it, as the form divides by it. A percentage is held as its ratio, `@a: 50%` as
 `--a: 0.5`, which every read multiplies back (`calc(var(--a, 0.5) * 100%)`), so a
