@@ -58,4 +58,13 @@ describe('color serialization: hsl clamp', () => {
   it('a normal in-gamut hsl stays verbatim', () => {
     expect(buildHsl(20, 50, 50).bytes).toBe('hsl(20, 50%, 50%)');
   });
+
+  /* Chrome 156: `hsl(180%, 50%, 50%)` is invalid; `hsl(180, 50%, 50%)` and `hsl(0.5turn, 50%, 50%)` are rgb(64, 191, 191). */
+  it('keeps an angle unit on the hue, and prints any other in degrees', () => {
+    const hue = (h: Dimension): string => call(hsl, h, pct(50), pct(50)).bytes;
+    expect(hue(pct(50))).toBe('hsl(180, 50%, 50%)');
+    expect(hue(makeDimension(50, 'px'))).toBe('hsl(50, 50%, 50%)');
+    expect(hue(makeDimension(0.5, 'turn'))).toBe('hsl(0.5turn, 50%, 50%)');
+    expect(hue(makeDimension(90, 'deg'))).toBe('hsl(90deg, 50%, 50%)');
+  });
 });

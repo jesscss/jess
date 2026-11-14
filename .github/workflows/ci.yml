@@ -395,7 +395,7 @@ jobs:
         run: pnpm -r --filter '@jesscss/css-parser...' --filter '@jesscss/less-parser...' --filter '@jesscss/scss-parser...' --filter '@jesscss/jess-parser...' build
 
       - name: Install Valgrind
-        run: sudo apt-get install -y -qq valgrind > /dev/null && valgrind --version
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq valgrind > /dev/null && valgrind --version
 
       - name: Gate — grammar speed (marginal instructions per parse)
         run: node scripts/grammar-speed-gate.mjs --require-env

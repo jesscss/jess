@@ -2,7 +2,7 @@ import { defineForm, type FormCall } from '@jesscss/core/form';
 import type { Color, Dimension, FnCtx, FunctionCall, ValueGroup, Fn } from '@jesscss/core/value';
 import { colorRawRgb, isValueGroupArray, makeColorRgb, RGB, define, checkKinds } from '@jesscss/core/value';
 import { fitsAny, isColor, percentOf } from './color-ctor-helper.js';
-import { ALPHA_ARG, alphaOf, channelSlot, COLOR_ARG, declineSlots, isDeferredSlot } from './color-form.js';
+import { ALPHA_ARG, alphaOf, COLOR_ARG, declineSlots, isDeferredSlot, rgbSlot } from './color-form.js';
 import { fade as form } from './css-forms.generated.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
@@ -27,7 +27,7 @@ export function makeRgb(items: readonly ValueGroup[], modernSyntax: boolean): Co
   if (items.length >= 3 && !isColor(first)) {
     /* `rgb(var(--r), 0, 0)` is CSS as written. */
     if (items.some(isDeferredSlot)) {
-      declineSlots(items, channelSlot);
+      declineSlots(items, rgbSlot(items, modernSyntax));
     }
     const r = percentOf(requireDimension(items[0]), 255);
     const g = percentOf(requireDimension(items[1]), 255);
