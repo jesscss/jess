@@ -654,6 +654,9 @@ if (!rulings.lock) {
  */
 const PARSER_SOURCE = /^packages\/(?:syntax\/[^/]+\/[^/]+-parser|parser-shared)\/src\/.+(?<!\.d)\.ts$/;
 const THROW_SITE = /\bthrow\s+(?:new\s+)?([A-Za-z_$][\w$]*)\s*\(/;
+
+// A rejection built and handed back to a caller that throws it (`return new LessParseError(…)`).
+const RETURNED_REJECTION = /\breturn\s+new\s+([A-Za-z_$][\w$]*Error)\s*\(/;
 const INVARIANT_THROW = new Set(['TypeError', 'Error', 'RangeError']);
 const NOT_WELL_FORMED = /NOT-WELL-FORMED:/;
 const PARSER_REJECTION_BASELINE = 'scripts/check-guardrails.parser-rejections.json';
@@ -662,7 +665,7 @@ const rejectionHits = [];
 for (const rel of gitFiles.filter(f => PARSER_SOURCE.test(f) && existsSync(join(root, f)))) {
   const lines = readFileSync(join(root, rel), 'utf8').split('\n');
   lines.forEach((line, i) => {
-    const m = THROW_SITE.exec(line);
+    const m = THROW_SITE.exec(line) ?? RETURNED_REJECTION.exec(line);
     if (!m || INVARIANT_THROW.has(m[1]) || /^\s*(?:\*|\/\/)/.test(line)
       || NOT_WELL_FORMED.test(line) || NOT_WELL_FORMED.test(lines[i - 1] ?? '')) {
       return;

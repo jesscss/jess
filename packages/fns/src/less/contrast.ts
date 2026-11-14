@@ -1,9 +1,8 @@
 import { defineForm, type FormCall } from '@jesscss/core/form';
-import { NoCssForm, RGB, colorRawRgb, isValueGroupArray, makeColorRgb, makeDimension, type Color, type Dimension, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { NoCssForm, RGB, colorRawRgb, isValueGroupArray, makeColorRgb, makeDimension, subExact, type Color, type Dimension, type Fn, type ValueGroup } from '@jesscss/core/value';
 import { getLuma, reformatColor } from './color-helper.js';
 import { COLOR_ARG } from './color-form.js';
 import * as forms from './css-forms.generated.js';
-import { subExact } from '../util/decimal.js';
 
 const BLACK = /* @__PURE__ */ makeColorRgb([0, 0, 0], 1, RGB);
 const WHITE = /* @__PURE__ */ makeColorRgb([255, 255, 255], 1, RGB);
