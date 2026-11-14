@@ -120,6 +120,9 @@ describe('one relative colour, each channel a slot', () => {
     ['color.scale(var(--c), $red: 20%, $blue: -20%)', 'rgb(from var(--c) calc(r + (255 - r) * 0.2) g calc(b + b * -0.2))'],
     ['color.scale(var(--c), $lightness: 45%, $alpha: -40%)', 'hsl(from var(--c) h s calc(l + (100 - l) * 0.45) / calc(alpha + alpha * -0.4))'],
     ['color.scale(var(--c), $whiteness: 30%)', 'hwb(from var(--c) h calc(w + (100 - w) * 0.3) b)'],
+    ['color.scale(#0d6efd, $red: var(--x))', 'rgb(from #0d6efd calc(r + (255 - r) * clamp(0, var(--x) / 100%, 1) + r * clamp(-1, var(--x) / 100%, 0)) g b)'],
+    ['color.scale(var(--c), $lightness: var(--x), $alpha: var(--a))', 'hsl(from var(--c) h s calc(l + (100 - l) * clamp(0, var(--x) / 100%, 1) + l * clamp(-1, var(--x) / 100%, 0)) / calc(alpha + (1 - alpha) * clamp(0, var(--a) / 100%, 1) + alpha * clamp(-1, var(--a) / 100%, 0)))'],
+    ['color.scale(var(--c), $whiteness: var(--x))', 'hwb(from var(--c) h calc(w + (100 - w) * clamp(0, var(--x) / 100%, 1) + w * clamp(-1, var(--x) / 100%, 0)) b)'],
     ['color.change(var(--c), $lightness: 50%)', 'hsl(from var(--c) h s 50)'],
     ['color.change(var(--c), $red: 10%, $blue: 3)', 'rgb(from var(--c) 25.5 g 3)'],
     ['color.change(var(--c), $blackness: 20%, $alpha: 50%)', 'hwb(from var(--c) h w 20 / 0.5)'],
@@ -166,8 +169,8 @@ describe('one relative colour, each channel a slot', () => {
   });
 
   it.each([
-    ['a percentage only the browser knows, whose sign picks the formula', 'color.scale(#0d6efd, $red: var(--x))', 'its sign picks how a channel scales'],
-    ['the same for alpha', 'color.scale(var(--c), $alpha: var(--x))', 'its sign picks how a channel scales'],
+    ['a hue scaled by an amount only the browser knows', 'color.scale(#0d6efd, $hue: var(--x))', 'Channel isn\'t scalable'],
+    ['a scale by an amount only the browser knows with a unit other than %', 'color.scale(#0d6efd, $red: (var(--x) * 1px))', 'to have unit "%"'],
     ['a colour in a space it has no channels for', 'color.adjust(lab(50% 30 -50), $lightness: 3%)', '$color: The lab color space is not supported yet.'],
     ['a channel of another space, over an unknown colour', 'color.adjust(var(--c), $red: 1, $lightness: 1%)', '$lightness: Color space rgb doesn\'t have a channel with this name.'],
     ['an amount that is a colour', 'color.adjust(var(--c), $red: rgb(from var(--d) r g b))', 'is not a number']
@@ -176,7 +179,7 @@ describe('one relative colour, each channel a slot', () => {
   });
 
   it('writes a global call that fails', async () => {
-    await expect(value('scale-color(#0d6efd, $red: var(--x))')).resolves.toBe('scale-color(#0d6efd, $red: var(--x))');
+    await expect(value('scale-color(#0d6efd, $hue: var(--x))')).resolves.toBe('scale-color(#0d6efd, $hue: var(--x))');
   });
 });
 
