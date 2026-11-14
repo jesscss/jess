@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { colorRawRgb, colorRgbRounded, makeColorRgb, defineFunction, HEX } from '@jesscss/core/value';
+import { colorRawRgb, colorRgbRounded, makeColorRgb, HEX, define, checkColor } from '@jesscss/core/value';
 import { requireColor } from './color-helper.js';
 
 const hex2 = (v: number): string => {
@@ -12,8 +12,8 @@ const hex2 = (v: number): string => {
  * `Math.round(alpha * 255)` then the rounded rgb channels. Carried as a verbatim
  * `node` so the color emits that exact hex.
  */
-export const argb: Fn = /* @__PURE__ */ defineFunction('argb', {
-  params: [{ type: 'Color' }],
+export const argb: Fn = /* @__PURE__ */ define('argb', {
+  params: [{ type: 'Color', check: checkColor }],
   body: (c) => {
     const color = requireColor(c);
     const [r, g, b] = colorRgbRounded(color);

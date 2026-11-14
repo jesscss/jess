@@ -43,7 +43,18 @@ interface ParamSpecBase {
    * field, which has no form.
    */
   readonly fits?: (value: ValueGroup, vals: readonly ValueGroup[]) => boolean;
+
+  /**
+   * Checks one argument for this slot and returns it as the body receives it,
+   * or throws. An imported function (`check: checkColor`, `check: checkKinds`
+   * for several types), so a function bundles only the checks it names;
+   * `defineFunction` fills it from `type`.
+   */
+  readonly check?: Check;
 }
+
+/** A parameter's check of one argument: the function's name and the slot, the value, the call's colour-name reading ({@link FnCtx.colorName}), and the parameter's `type`. */
+export type Check = (name: string, index: number, value: unknown, colorName: FnCtx['colorName'], type: ParamType | undefined) => ValueGroup;
 
 type ParamTypeSpec = ParamSpecBase & {
   /**

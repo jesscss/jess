@@ -1,9 +1,9 @@
-import { defineFunction, emitValue, groupItems, makeDimension, NULL } from '@jesscss/core/value';
+import { emitValue, groupItems, makeDimension, NULL, define, checkAny } from '@jesscss/core/value';
 
-const index = defineFunction('index', {
+const index = define('index', {
   params: [
-    { name: 'list', type: 'any' },
-    { name: 'value', type: 'any' }
+    { name: 'list', type: 'any', check: checkAny },
+    { name: 'value', type: 'any', check: checkAny }
   ] as const,
   body: (list, value) => {
     const items = groupItems(list);

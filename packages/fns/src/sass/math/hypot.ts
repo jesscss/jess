@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension, type Dimension } from '@jesscss/core/value';
+import { defineFunction, makeDimension, checkDimension, type Dimension } from '@jesscss/core/value';
 import { convertToMatch } from './units.js';
 
 /**
@@ -14,7 +14,7 @@ import { convertToMatch } from './units.js';
  */
 const hypot = defineFunction('hypot', {
   cssFunction: true,
-  params: [{ name: 'numbers', type: 'Dimension', rest: true }] as const,
+  params: [{ name: 'numbers', type: 'Dimension', check: checkDimension, rest: true }] as const,
   body: (numbers: readonly Dimension[]) => {
     const first = numbers[0];
     if (first === undefined) {

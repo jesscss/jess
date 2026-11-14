@@ -2,10 +2,10 @@ import { asNumber, channelForm, defineForm, formMath, formNumber, isDimension, k
 import { clamp01, fitsAny, inUnits, normalizeHue } from './color-ctor-helper.js';
 import { hsvBlack, hsvWhite, hsvWhiteKnown } from './css-forms.generated.js';
 import { requireDimension } from '../shared/math/math-helper.js';
-import { FunctionDeclined, isValueGroupArray, makeDimension, mulExact, percentToFraction, subExact, textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
+import { FunctionDeclined, isValueGroupArray, makeDimension, mulExact, percentToFraction, subExact, textOf, checkKinds, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
 
 /** A colour a form's relative colour reads as its origin, or what only the browser knows of one. */
-export const COLOR_ARG = { type: ['Color', 'FunctionCall'], fits: (value: ValueGroup): boolean => inUnits(value, []) } as const;
+export const COLOR_ARG = { type: ['Color', 'FunctionCall'], check: checkKinds, fits: (value: ValueGroup): boolean => inUnits(value, []) } as const;
 
 /** An amount in a channel, written as a number on that channel's scale, whatever its unit (css-color-5 §4.4). */
 export const channelAmount = (amount: Dimension): Dimension => formNumber(amount.number);
@@ -24,7 +24,7 @@ export function shareOf(amount: ValueGroup): ValueGroup {
 export const HUE_UNITS: readonly string[] = ['', 'deg', 'grad', 'rad', 'turn'];
 
 /** An amount or an S or V: whatever the known path reads there (§2). */
-export const PERCENT_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsAny } as const;
+export const PERCENT_ARG = { type: ['Dimension', 'FunctionCall'], check: checkKinds, fits: fitsAny } as const;
 
 /** A slot only the browser knows: a call of no known type, or of a number. */
 export const isDeferredSlot = (value: ValueGroup): boolean =>
@@ -34,7 +34,7 @@ export const isDeferredSlot = (value: ValueGroup): boolean =>
 const CHANNEL_UNITS: readonly string[] = ['', '%'];
 
 /** An alpha: whatever the known path reads there (§2). */
-export const ALPHA_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsAny } as const;
+export const ALPHA_ARG = { type: ['Dimension', 'FunctionCall'], check: checkKinds, fits: fitsAny } as const;
 
 /** A channel or an alpha as CSS holds it: a number in any other unit is that number. */
 export function channelSlot(value: ValueGroup): ValueGroup {
@@ -57,7 +57,7 @@ export function percentSlot(value: ValueGroup): ValueGroup {
 }
 
 /** A hue, known or only the browser's; written as a call or in degrees. */
-export const HUE_ARG = { type: ['Dimension', 'FunctionCall'], fits: fitsAny } as const;
+export const HUE_ARG = { type: ['Dimension', 'FunctionCall'], check: checkKinds, fits: fitsAny } as const;
 
 /** A hue as CSS holds it: a percentage of a turn, and a number in any unit that is no angle. */
 export function hueSlot(hue: ValueGroup): ValueGroup {
@@ -127,7 +127,7 @@ function relativeMethod(name: string, method: Keyword | Quoted | WrittenCall | u
 /* @__NO_SIDE_EFFECTS__ */
 export function defineAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0]): Fn {
   return defineForm(name, {
-    params: [COLOR_ARG, PERCENT_ARG, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
+    params: [COLOR_ARG, PERCENT_ARG, { type: ['Keyword', 'Quoted', 'FunctionCall'], check: checkKinds, optional: true }],
     form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall =>
       [relativeMethod(name, method) ? relative : absolute, color, amount.type === 'Dimension' ? channelAmount(amount) : asNumber(amount, knownUnit(amount) ?? '%')]
   });
@@ -137,7 +137,7 @@ export function defineAdjuster(name: string, absolute: FormCall[0], relative: Fo
 /* @__NO_SIDE_EFFECTS__ */
 export function defineAlphaAdjuster(name: string, absolute: FormCall[0], relative: FormCall[0]): Fn {
   return defineForm(name, {
-    params: [COLOR_ARG, PERCENT_ARG, { type: ['Keyword', 'Quoted', 'FunctionCall'], optional: true }],
+    params: [COLOR_ARG, PERCENT_ARG, { type: ['Keyword', 'Quoted', 'FunctionCall'], check: checkKinds, optional: true }],
     form: (color: ValueGroup, amount: Dimension | WrittenCall, method?: Keyword | Quoted | WrittenCall): FormCall =>
       [relativeMethod(name, method) ? relative : absolute, color, amount.type === 'Dimension' ? alphaAmount(amount) : shareOf(amount)]
   });

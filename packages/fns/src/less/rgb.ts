@@ -1,6 +1,6 @@
 import { defineForm, type FormCall } from '@jesscss/core/form';
 import type { Color, Dimension, FnCtx, FunctionCall, ValueGroup, Fn } from '@jesscss/core/value';
-import { colorRawRgb, defineFunction, isValueGroupArray, makeColorRgb, RGB } from '@jesscss/core/value';
+import { colorRawRgb, isValueGroupArray, makeColorRgb, RGB, define, checkKinds } from '@jesscss/core/value';
 import { fitsAny, isColor, percentOf } from './color-ctor-helper.js';
 import { ALPHA_ARG, alphaOf, channelSlot, COLOR_ARG, declineSlots, isDeferredSlot } from './color-form.js';
 import { fade as form } from './css-forms.generated.js';
@@ -74,13 +74,13 @@ export const rgbBody = (args: readonly ValueGroup[], ctx: FnCtx): ReturnType<Fn>
 /** What a slot of `rgb()` takes: a list stays a list, and a call is what only the browser knows. */
 const SLOT_TYPES = ['List', 'Color', 'Dimension', 'FunctionCall'] as const;
 
-const RGB_SLOT = { type: SLOT_TYPES, fits: fitsAny } as const;
-const RGB_OPTIONAL_SLOT = { type: SLOT_TYPES, fits: fitsAny, optional: true } as const;
+const RGB_SLOT = { type: SLOT_TYPES, check: checkKinds, fits: fitsAny } as const;
+const RGB_OPTIONAL_SLOT = { type: SLOT_TYPES, check: checkKinds, fits: fitsAny, optional: true } as const;
 
 /** The slots of `rgb()` and `rgba()`. */
 export const RGB_PARAMS = [RGB_SLOT, RGB_OPTIONAL_SLOT, RGB_OPTIONAL_SLOT, RGB_OPTIONAL_SLOT] as const;
 
-export const rgb: Fn = /* @__PURE__ */ defineFunction('rgb', {
+export const rgb: Fn = /* @__PURE__ */ define('rgb', {
   params: RGB_PARAMS,
   variadic: true,
   body: rgbBody

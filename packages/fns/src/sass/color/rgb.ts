@@ -1,5 +1,5 @@
 import type { Fn, FnCtx, ValueGroup } from '@jesscss/core/value';
-import { defineFunction, isValueGroupArray } from '@jesscss/core/value';
+import { isValueGroupArray, define, checkAny } from '@jesscss/core/value';
 import { colorWithAlpha } from '../../less/rgb.js';
 import { isColor, makeRgb } from './kernels.js';
 
@@ -23,12 +23,12 @@ export const rgbBody = (args: readonly ValueGroup[], ctx: FnCtx): ReturnType<Fn>
  * Overloads covered: three/four positional channels, the space/slash modern form
  * (`rgb(1 2 3 / 0.5)`), and the colour + alpha form (`rgb(#f00, 0.5)`).
  */
-export const rgb: Fn = defineFunction('rgb', {
+export const rgb: Fn = define('rgb', {
   params: [
-    { name: 'red', type: 'any' },
-    { name: 'green', type: 'any', optional: true },
-    { name: 'blue', type: 'any', optional: true },
-    { name: 'alpha', type: 'any', optional: true }
+    { name: 'red', type: 'any', check: checkAny },
+    { name: 'green', type: 'any', check: checkAny, optional: true },
+    { name: 'blue', type: 'any', check: checkAny, optional: true },
+    { name: 'alpha', type: 'any', check: checkAny, optional: true }
   ],
   variadic: true,
   body: rgbBody

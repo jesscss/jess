@@ -1,4 +1,4 @@
-import { defineFunction } from '@jesscss/core/value';
+import { define, checkColor } from '@jesscss/core/value';
 import type { Fn } from '@jesscss/core/value';
 import { colorBlend, requireColor } from './color-helper.js';
 
@@ -6,7 +6,7 @@ import { colorBlend, requireColor } from './color-helper.js';
 export const exclusionBase = (cb: number, cs: number): number => cb + cs - 2 * cb * cs;
 
 /** `exclusion(color1, color2)` — Photoshop exclusion blend. Byte-faithful to `less/exclusion`. */
-export const exclusion: Fn = /* @__PURE__ */ defineFunction('exclusion', {
-  params: [{ type: 'Color' }, { type: 'Color' }],
+export const exclusion: Fn = /* @__PURE__ */ define('exclusion', {
+  params: [{ type: 'Color', check: checkColor }, { type: 'Color', check: checkColor }],
   body: (c1, c2) => colorBlend(exclusionBase, requireColor(c1), requireColor(c2))
 });

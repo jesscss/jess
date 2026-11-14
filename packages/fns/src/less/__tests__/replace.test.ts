@@ -34,7 +34,7 @@ describe('replace()', () => {
     expect(typeof replace).toBe('function');
     expect(replace.name).toBe('replace');
     expect(replace.variadic).toBe(true);
-    expect(replace.params).toEqual([
+    expect(replace.params).toMatchObject([
       { type: 'any' },
       { type: 'any' },
       { type: 'any' },

@@ -1,10 +1,10 @@
-import { defineFunction, groupItems, listValueAt } from '@jesscss/core/value';
+import { groupItems, listValueAt, define, checkAny, checkDimension } from '@jesscss/core/value';
 import { resolveSassListIndex } from './util.js';
 
-const nth = defineFunction('nth', {
+const nth = define('nth', {
   params: [
-    { name: 'list', type: 'any' },
-    { name: 'index', type: 'Dimension' }
+    { name: 'list', type: 'any', check: checkAny },
+    { name: 'index', type: 'Dimension', check: checkDimension }
   ] as const,
   body: (list, index) => {
     if (!Number.isInteger(index.number)) {

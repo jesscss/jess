@@ -1,5 +1,5 @@
 import type { FnCtx, ValueGroup } from '@jesscss/core/value';
-import { defineFunction, isValueGroupArray, selectorValue } from '@jesscss/core/value';
+import { isValueGroupArray, selectorValue, define, checkAny } from '@jesscss/core/value';
 
 /**
  * The text Sass reads a `$selector` argument as: a string, a space list of
@@ -63,8 +63,8 @@ export function parseSelectorValue(items: readonly ValueGroup[], ctx: FnCtx): Va
   return selectorValue(ctx.parseSelector(text));
 }
 
-const parse = defineFunction('parse', {
-  params: [{ name: 'selector', type: 'any' }] as const,
+const parse = define('parse', {
+  params: [{ name: 'selector', type: 'any', check: checkAny }] as const,
   variadic: true,
   body: parseSelectorValue
 });

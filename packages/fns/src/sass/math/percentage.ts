@@ -1,5 +1,5 @@
 import { defineForm, formNumber, isDimension, knownUnit, type FormCall } from '@jesscss/core/form';
-import { emitValue, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { emitValue, checkKinds, type Fn, type ValueGroup } from '@jesscss/core/value';
 import { percentage as form } from '../../less/css-forms.generated.js';
 import { assertNoUnits } from './units.js';
 
@@ -20,7 +20,7 @@ import { assertNoUnits } from './units.js';
  * the number is known to have a unit.
  */
 const percentage: Fn = /* @__PURE__ */ defineForm('percentage', {
-  params: [{ name: 'number', type: ['Dimension', 'FunctionCall'] }],
+  params: [{ type: ['Dimension', 'FunctionCall'], check: checkKinds, name: 'number' }],
   form: (number: ValueGroup): FormCall => {
     if (isDimension(number)) {
       return [form, formNumber(assertNoUnits(number, 'number').number)];
