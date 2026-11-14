@@ -213,7 +213,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { channelFunction, channelMath, channelOf, formChannels, isComputedColorCall, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
-import { argumentStatementKind, declareExpose, excluding, exposedWritten, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, declareExpose, excluding, exposedWritten, readsExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedAtRuleName, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation, laneSiteLocation } from './call-site-location.js';
@@ -5602,15 +5602,18 @@ const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | Keyword
  */
 const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => groupText(v);
 
-/** Whether math on an operand a rule rejects is kept as written instead: it is CSS's, or not reached as math (V36, J16, V31). */
-const keepsOperation = (node: Operation, e: Lane): boolean =>
-  e.keepsMath || (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right);
+/**
+ * Whether math on an operand a rule rejects is kept as written instead: it is CSS's, or not reached as math (V36, J16, V31).
+ * Math on an export's `var()` in a call written out is the compile's, as at the top level ({@link readsExport}).
+ */
+const keepsOperation = (node: Operation, e: Lane, left: ValueGroup, right: ValueGroup): boolean =>
+  (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right) || (e.keepsMath && !readsExport(e, left, right));
 
 /** An operation over its operands: two known numbers are the operation's, anything else may be CSS's math ({@link operatedOn}). */
 const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
-  (left.type === 'Dimension' && right.type === 'Dimension') || (ev.sassCalculations === true && keepsOperation(node, e))
+  (left.type === 'Dimension' && right.type === 'Dimension') || (ev.sassCalculations === true && keepsOperation(node, e, left, right))
     ? ev.operate(node.operator, left, right, e.modes)
-    : slashOperated(node, left, right, e.modes, keepsOperation(node, e));
+    : slashOperated(node, left, right, e.modes, keepsOperation(node, e, left, right));
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
@@ -6283,7 +6286,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * function's and a written-out call's arguments keep such math as
            * written rather than reject it ({@link Lane.keepsMath}).
            */
-          return checkedOperation(node.operator, values[0]!, values[1]!, ev, keepsOperation(node, e) || (node.operator === '/' && node.mathOutsideParens))
+          return checkedOperation(node.operator, values[0]!, values[1]!, ev, keepsOperation(node, e, values[0]!, values[1]!) || (node.operator === '/' && node.mathOutsideParens))
             ?? (e.channels !== undefined && !channelMath(node.operator, values[0]!, values[1]!) ? rejectChannelMath(node.operator) : undefined)
             ?? rememberUnitOwner(operated(
               node,
