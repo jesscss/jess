@@ -123,18 +123,22 @@ const isAbsent = (input: unknown): boolean =>
  * outermost: `optional(lazy(param))`.
  */
 
-/** The checks the wrappers below made, so a flag written without its wrapper is caught where the function is defined. */
-const WRAPPERS = new WeakSet<Check>();
+/**
+ * The mark on a check a wrapper below made, so a flag written without its
+ * wrapper is caught where the function is defined. A registered symbol, so a
+ * second copy of core (a provided module run through `require`) reads it too.
+ */
+const WRAPPER = Symbol.for('jess.wrapper');
 
 /** `param` with `flags` and the check that binds it: a new object, so the spec passed in is left as it is. */
 const wrapped = <P extends ParamSpec, F extends object>(param: P, flags: F, check: Check): P & F => {
-  WRAPPERS.add(check);
+  Reflect.set(check, WRAPPER, true);
   return { ...param, ...flags, check };
 };
 
 /** Whether `param` sets a binding flag (`optional`, `default`, `lazy`, `rest`) its check does not bind, because no wrapper made it. */
 export const unwrapped = (param: ParamSpec): boolean =>
-  !!(param.optional || param.rest || param.lazy || param.default) && !WRAPPERS.has(param.check!);
+  !!(param.optional || param.rest || param.lazy || param.default) && !(param.check && Reflect.get(param.check, WRAPPER));
 
 /** A parameter that may be left out; the body receives `undefined`. */
 export const optional = <const P extends ParamSpec>(param: P): P & { readonly optional: true } => {

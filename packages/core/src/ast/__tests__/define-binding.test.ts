@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { NULL, NULL_LITERAL, checkDimension, define, defineFunction, emitValue, lazy, makeDimension, optional, rest, type FnCtx, type ValueGroup } from '../../value.js';
 
 const ctx: FnCtx = { modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve' }, stringify: emitValue };
@@ -56,5 +56,18 @@ describe('binding a parameter through its wrapper', () => {
     call(f, [px(1), px(2)]);
     const thunks: unknown = last[0];
     expect(Array.isArray(thunks) && thunks.map(run)).toEqual([px(1), px(2)]);
+  });
+
+  it('reads a wrapper made by a second copy of core', async () => {
+    vi.resetModules();
+    const second = await import('../../value.js');
+    expect(second.define).not.toBe(define);
+    const made = second.rest({ name: 'n', type: 'Dimension', check: second.checkDimension });
+    const f = define('f', { params: [made], body: seen });
+    call(f, px(1), px(2));
+    expect(last).toEqual([[px(1), px(2)]]);
+    const g = second.defineFunction('g', { params: [rest({ name: 'n', type: 'Dimension', check: checkDimension })], body: seen });
+    call(g, px(1), px(2));
+    expect(last).toEqual([[px(1), px(2)]]);
   });
 });

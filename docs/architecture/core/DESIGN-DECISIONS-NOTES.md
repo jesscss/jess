@@ -463,7 +463,8 @@ threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
   - `optional`, `withDefault`, `lazy` and `rest` (`define.ts`) are wrappers
     over a parameter's check; `define` refuses, where the function is defined, a
     parameter that sets one of those flags without its wrapper.
-    `defineFunction` wraps such a parameter itself.
+    `defineFunction` wraps such a parameter itself. The wrapper's mark is a
+    registered symbol, so a second copy of core reads it.
   - An argument is absent when it is not passed or is core's implicit `null` (a
     keyword call that skips the slot); an explicit `null` is a value. That holds
     for a lazy parameter too, which before this branch received a thunk of the
