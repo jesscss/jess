@@ -20,7 +20,7 @@ import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { keepAsWritten, keptMathOf, mathText, operate } from './value-operate.js';
 import { isMathFunctionName } from './math-functions.js';
-import { writtenCallValue } from './math-operand.js';
+import { isNegatable, negatedMath, writtenCallValue } from './math-operand.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry, FunctionDeclined } from './value-dispatch.js';
 import { numberArguments } from './value-dispatch.js';
@@ -83,7 +83,12 @@ function fallbackCall(name: string, args: ValueGroup, modes: EvalModes | undefin
     throw new EmptyListValueError(`An empty list is an argument of \`${name}()\`, a call written out as-is; an empty list has no CSS spelling.`);
   }
   const written = call.written?.args ?? args;
-  return keepAsWritten(makeFunctionCall(name, written, `${name}(${verbatimArgs(written, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name), name.charCodeAt(0) !== 45)})`));
+
+  /* A glued minus on what only the browser knows is one function token to CSS (`-var(--x)`, `-abs(…)`): the value negated. */
+  const negative = name.charCodeAt(0) === 45 && isNegatable(name.slice(1));
+  const callee = negative ? name.slice(1) : name;
+  const out = keepAsWritten(makeFunctionCall(callee, written, `${callee}(${verbatimArgs(written, modes, call.written?.keywords ?? call.authored, isMathFunctionName(callee), callee.charCodeAt(0) !== 45)})`));
+  return negative ? negatedMath(out) : out;
 }
 
 /** `name(args)` written out as-is, as a call with no callable is. */

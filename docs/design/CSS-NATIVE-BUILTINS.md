@@ -257,6 +257,18 @@ Where the browser's definition and Jess's earlier kernel differ, the
 browser's definition wins. Section 2 lists each case; under E9 the confusing
 old behaviour is dropped, not kept behind an option.
 
+A glued minus is a negation. CSS reads `-var(--x)` as one function token, `-var`,
+which is no function, so Chrome 156 rejects `margin-left: -var(--x)` and
+`abs(-var(--x))` at parse (css-syntax-3 §4.3.4, css-variables-1 §3). A glued
+minus on `var()`, `env()`, `attr()` or a CSS math function, written out in any
+dialect, is the value times -1, the one call for it being `fallbackCall`:
+`-var(--x)` is `calc(-1 * var(--x))`, `abs(-var(--x))` is `abs(-1 * var(--x))`
+(a math function's argument is math), `translate(-var(--x), 0)` is
+`translate(calc(-1 * var(--x)), 0)`, and `-sqrt(var(--x))` is
+`calc(-1 * sqrt(var(--x)))`. A built-in with a glued minus over known numbers is
+the number negated: `-sqrt(4)` is `-2` and `-percentage(0.5)` is `-50%`. A
+custom property's value is tokens, so `--y: -var(--x)` stays as written.
+
 ### 3.4a Choosing the form: the representation ladder
 
 Owner, 2026-11-01, verbatim: *"if the value is known, or the weight is in a
@@ -465,7 +477,6 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 - `round(1.005, 0.01)` is `1.01` at compile time, in base 10 (V8), and `1` in the browser over `var(--x)`, as Less's decimal places are. A step that is no power of ten at or below 1 rounds in floats, as the browser does.
 - A Sass form over an unknown that holds a length takes a unitless step (Q3): `ceil(var(--x))` is `round(up, var(--x), 1)`, invalid at computed-value time with `--x: 1.5px`, where `ceil(1.5px)` is `2px`. `rem(var(--x), 3)` with a length is the same.
 - A declining member reads only the unknown, so a known argument's Sass failure does not run beside one: `math.pow(16px, var(--x))` prints `pow(16px, var(--x))`, where `math.pow(16px, 2)` fails. A wrong type still fails (`math.pow(foo, var(--x))`).
-- A glued minus on a member that declines stays as written outside math: `-sqrt(var(--x))`. In math it is negated (`(-abs(var(--x)) * 2)` is `calc(-1 * abs(var(--x)) * 2)`).
 - A `/` in `.scss` is lower than `+` in a bare value, known numbers or not: `1 + $x / 2` is `calc(1 + var(--x)) / 2` as `1 + 4 / 2` is `5 / 2`, and `$x / 2 + 1` is `var(--x) / 3`.
 - `math.div(var(--x), 0)` and `(var(--x) / 0)` print `calc(var(--x) / 0)`: V7 fails only a division it knows of.
 - Conversion to `.jess` reports a gap for a call as an operand of `.scss` math (`var(--x) * 2`, `env(a) * 2`, `calc($x * 2) * 3`), because `$( … )` takes no call, and for `($x / 2)`, as it does for `(1 / 2)`. `$x * 2`, `-$x`, `$x % 3` and the rest over a reference convert and render the same.
