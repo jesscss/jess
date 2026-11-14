@@ -34,30 +34,16 @@ type Mutable<T> = { -readonly [P in keyof T]: T[P] };
 const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
 const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
-/** Byte-identical port of the legacy engine's `parseHexString`. */
+/**
+ * The rgb and alpha a hex colour spells: `#` and 3, 4, 6 or 8 hex digits, as the
+ * grammar's colour token and {@link HEX_RE} take them. A short digit `d` is the
+ * byte `dd`, `d * 17`; the alpha, given by four or eight digits, is its byte over 255.
+ */
 export function parseHex(hex: string): { rgb: [number, number, number]; alpha: number } {
-  const hexValue = hex.slice(1);
-  const rgba: number[] = [];
-  if (hexValue.length >= 6) {
-    const chunks = hexValue.match(/.{2}/g) ?? [];
-    chunks.forEach((c, i) => {
-      if (i < 3) {
-        rgba.push(parseInt(c, 16));
-      } else {
-        rgba.push(parseInt(c, 16) / 255);
-      }
-    });
-  } else {
-    hexValue.split('').forEach((c, i) => {
-      if (i < 3) {
-        rgba.push(parseInt(c + c, 16));
-      } else {
-        rgba.push(parseInt(c + c, 16) / 255);
-      }
-    });
-  }
-  const [r = 0, g = 0, b = 0, a = 1] = rgba;
-  return { rgb: [r, g, b], alpha: a };
+  const short = hex.length < 6;
+  const width = short ? 1 : 2;
+  const channel = (i: number): number => parseInt(hex.slice(1 + i * width, 1 + width + i * width), 16) * (short ? 17 : 1);
+  return { rgb: [channel(0), channel(1), channel(2)], alpha: hex.length % 4 === 1 ? channel(3) / 255 : 1 };
 }
 
 /** Synthetic-only numeric split (no pre-parsed fields): a computed numeric string. */
