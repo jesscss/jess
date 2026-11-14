@@ -79,7 +79,14 @@ export function collapseChildrenAlias(value) {
     active.add(v);
 
     let out = v;
-    if (Array.isArray(v)) {
+    if (ArrayBuffer.isView(v) && !(v instanceof DataView)) {
+      /*
+       * A typed array is its numbers. parseman 0.62.0 hands `rootTrivia.rows` back as
+       * an `Int32Array` where 0.61 gave a `number[]`; digesting the container would
+       * report every file as moved when no row did.
+       */
+      out = Array.from(v);
+    } else if (Array.isArray(v)) {
       const copy = new Array(v.length);
       let changed = false;
       for (let n = 0; n < v.length; n++) {
