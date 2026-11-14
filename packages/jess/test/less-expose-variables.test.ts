@@ -105,6 +105,9 @@ describe('Less @expose variables (A4)', () => {
     ['translate(max(@a * 2, 1px), 0)', 'translate(max(var(--a, 2px) * 2, 1px), 0)'],
     ['translate(calc(@a * 2), 0)', 'translate(calc(var(--a, 2px) * 2), 0)'],
     ['translate(var(--q) * 2, 0)', 'translate(var(--q) * 2, 0)'],
+    ['foo(@a + bar)', 'foo(var(--a, 2px) + bar)'],
+    ['translate(@a - auto, 0)', 'translate(var(--a, 2px) - auto, 0)'],
+    ['rotate(@a / 2)', 'rotate(var(--a, 2px) / 2)'],
     ['translate(@b * 2, 0)', 'translate(6px, 0)']
   ])('writes math on an exposed variable in a call written out as the top level does: %s', async (written, expected) => {
     await expect(render(`@expose a;\n@a: 2px;\n@b: 3px;\n.x { transform: ${written}; }`)).resolves.toContain(`transform: ${expected};`);

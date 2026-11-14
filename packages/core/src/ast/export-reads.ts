@@ -608,13 +608,16 @@ export function exposedWritten<F>(e: ExportLane<F>, operand: EvalValue): EvalVal
 /**
  * Whether math a call written out keeps as written reads an export's `var()`
  * (`translate(@a * 2, 0)`): the math is the compile's, on its stand-in, so it is
- * a `calc()` there as it is at the top level, `translate(calc(var(--a, 2px) * 2), 0)`.
- * Math on an authored `var()` stays as written.
+ * a `calc()` there as it is at the top level, `translate(calc(var(--a, 2px) * 2), 0)`,
+ * when the other operand is a number or a function, which a `calc()` can hold. Math
+ * on an authored `var()`, or beside a keyword or a string (`foo(@a + bar)`), stays as written.
  */
 export function readsExport<F>(e: ExportLane<F>, left: ValueGroup, right: ValueGroup): boolean {
   const x = exporting(e.s.exports);
-  return x !== undefined && (isExportVar(x.runtime, left) || isExportVar(x.runtime, right));
+  return x !== undefined && ((isExportVar(x.runtime, left) && isCalcOperand(right)) || (isExportVar(x.runtime, right) && isCalcOperand(left)));
 }
+
+const isCalcOperand = (v: ValueGroup): boolean => !isValueGroupArray(v) && (v.type === 'Dimension' || v.type === 'FunctionCall');
 
 const isExportVar = (runtime: ExportRuntime, v: ValueGroup): boolean => {
   const name = !isValueGroupArray(v) && v.type === 'FunctionCall' && v.name === 'var' ? varName(v) : undefined;

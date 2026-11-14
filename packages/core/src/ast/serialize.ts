@@ -5607,7 +5607,7 @@ const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => gr
  * Math on an export's `var()` in a call written out is the compile's, as at the top level ({@link readsExport}).
  */
 const keepsOperation = (node: Operation, e: Lane, left: ValueGroup, right: ValueGroup): boolean =>
-  (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right) || (e.keepsMath && !readsExport(e, left, right));
+  (e.keepsMath && !readsExport(e, left, right)) || (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right);
 
 /** An operation over its operands: two known numbers are the operation's, anything else may be CSS's math ({@link operatedOn}). */
 const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
