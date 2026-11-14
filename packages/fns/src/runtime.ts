@@ -82,7 +82,7 @@ export function createVars(spec: RuntimeSpec): Runtime['vars'] {
       if (value === undefined) {
         const given = values[name];
         const key = spec.hex?.[name];
-        if (key !== undefined && given !== undefined && /^\s*[a-z]/i.test(given)) {
+        if (key !== undefined && given !== undefined && /^\s*[a-z]+(\s|$)/i.test(given)) {
           throw new TypeError(`\`${key}\` received \`${given.trim()}\`, which is not a hex colour; set \`colorNames: true\` in the Jess plugin options to accept colour names.`);
         }
         value = parseValue(given ?? spec.defaults[name] ?? '', spec.literal);

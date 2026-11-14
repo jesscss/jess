@@ -47,7 +47,10 @@
 As built: the compile lists each export a recipe passes to a parameter checked
 as a colour (`ExportRuntimeData.colors`). The generated module passes that list
 to `createVars` as `hex` unless names are on, and `vars()` throws on a given
-value there that starts with a letter, which needs no name table:
+value there whose first item is a bare word, which needs no name table. That
+covers `none` and `currentcolor` too, which the runtime cannot tell from a name
+without the table; function text (`rgb(…)`, `var(…)`) falls through to the
+reader's own error. The message:
 `` `brand` received `blue`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names. ``
 Pinned in `packages/vite-plugin-jess/test/index.test.ts`.
 
@@ -62,17 +65,22 @@ the bundle only when names are on, or when a function's own body reads names
 
 As built, names are on when `colorNames: true` is set, or when the compile's
 `ExportRuntimeData.names` is set (`readsNames` in `export-reads.ts`). It is set
-in three cases. The first is the ruling's. The other two keep the runtime's
-behaviour from before the gate:
-- a colour export's own value is a name (the ruling);
+in two cases:
+- a colour export's own value is a name (the ruling). The compile records this
+  from the value itself (`ExportRuntimeData.ownNames`), not from its CSS text,
+  so `@brand: rgb(0 0 255)` keeps the check. Only this case turns the check off;
 - a recipe's own argument spells a name that the compile does not read as a
   colour: one passed to a parameter not checked as a colour, or one inside a
-  list;
-- a recipe reads an export it does not pass straight to a colour parameter
-  (`luma(extract(@list, 1))`). The value can still reach a colour parameter,
-  but the hex check covers only exports the compile sees reach one. **Open:**
-  should such an export count as a colour export, take the hex check, and drop
-  the names?
+  list. The stylesheet writes that name itself, so the runtime reads it as the
+  compile does.
+
+A colour export is one a recipe passes to a parameter checked as a colour, or
+one whose compile-time value holds a colour, however the recipe passes it on
+(`luma(extract(@list, 1))` with `@list: #f00 #00f`). Each takes the hex check.
+**Resolved** (owner, 2026-11-13), asked "Should a colour export that reaches a
+colour function via extract() accept colour names in vars()?", with the
+recommendation to gate it too: *"I agree with the reco"*. An export whose value
+holds no colour takes no check and does not turn names on.
 
 A colour name a recipe's own argument writes for a parameter checked as a
 colour (`gray` in `lightness(multiply(@brand, gray))`) is known when the

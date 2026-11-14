@@ -91,8 +91,8 @@ const isRest = (param: ParamSpec): boolean => param.rest === true;
 
 /** Whether a parameter is checked as a colour, so a colour name passed to it is read as one. */
 export function takesColor(param: ParamSpec | undefined): boolean {
-  const type = param === undefined ? null : normalizeParamType(param.type ?? param.kinds);
-  return type !== null && type !== 'any' && type.includes('Color');
+  const type: unknown = param?.type ?? param?.kinds;
+  return type === 'Color' || (Array.isArray(type) && type.includes('Color'));
 }
 
 /**

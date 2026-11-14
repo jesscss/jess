@@ -285,7 +285,8 @@ describe('Less @expose variables (A4)', () => {
         }
       },
       colors: ['brand'],
-      names: false
+      names: false,
+      ownNames: false
     });
   });
 
@@ -305,8 +306,13 @@ describe('Less @expose variables (A4)', () => {
     });
   });
 
-  it('reads colour names at runtime for an export a recipe does not pass straight to a colour parameter', async () => {
-    await expect(runtime('@use "#less";\n@expose l;\n@l: #f00 #00f;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: [], names: true });
+  /* Owner, 2026-11-13: "I agree with the reco" (gate a colour export passed through extract() too). */
+  it('counts an export a recipe passes through another function as a colour export when its value holds a colour', async () => {
+    await expect(runtime('@use "#less";\n@expose l;\n@l: #f00 #00f;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: ['l'], names: false });
+    await expect(runtime('@use "#less";\n@expose l;\n@l: red #00f;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: ['l'], names: true });
+    await expect(runtime('@use "#less";\n@expose b;\n@b: rgb(0 0 255);\n.a { v: @less.luma(@b); }')).resolves.toMatchObject({ colors: ['b'], names: false, ownNames: false });
+    await expect(runtime('@use "#less";\n@expose b;\n@b: blue;\n.a { v: @less.luma(@b); }')).resolves.toMatchObject({ colors: ['b'], names: true, ownNames: true });
+    await expect(runtime('@use "#less";\n@expose l;\n@l: 1px 2px;\n.a { v: @less.unit(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: [], names: false });
   });
 
   it('returns no runtime for a document that exposes nothing', async () => {
