@@ -273,7 +273,10 @@ keeps `-var(--x)` too. A feature query tests a declaration as written, so in
 `@supports (margin-left: -var(--x))` and `if(supports(margin-left: -var(--x)): …)`
 it stays, in every dialect. Only the call stays as written: what is around it
 evaluates as before, math on it included (`.less` `-var(--x) percentage(0.5)` is
-`-var(--x) 50%`, and `-var(--x) + 1px` is `calc(-var(--x) + 1px)`). A CSS colour call Less keeps as written keeps its
+`-var(--x) 50%`, and `-var(--x) + 1px` is `calc(-var(--x) + 1px)`). A variable read in the test is read
+there, so it keeps a glued minus it holds (`@m: -var(--x)` in
+`@supports (margin-left: @m)`), its other reads negating it; a mixin argument is
+evaluated where the mixin is called, and is negated (open for the owner, V38 notes). A CSS colour call Less keeps as written keeps its
 authored bytes (F5), so `rgb(-var(--r), 0, 0)` stays as written in `.less`, where
 `.scss` and `.jess` write `rgb(calc(-1 * var(--r)), 0, 0)`. A `var()` fallback
 follows its dialect: kept in `.css` and `.less`, evaluated in `.scss` and `.jess`.
