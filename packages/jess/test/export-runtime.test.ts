@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ExportRecipe, Fn } from '@jesscss/core';
+import type { ExportColor, ExportRecipe, Fn } from '@jesscss/core';
 import * as less from '@jesscss/fns/less';
-import { createRuntime, sniffLiteral, type RuntimeRecipe } from '@jesscss/fns/runtime';
+import { color, createRuntime, sniffLiteral, sniffUnnamed, type RuntimeRecipe } from '@jesscss/fns/runtime';
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../src/index.js';
 
@@ -16,9 +16,12 @@ import { Compiler } from '../src/index.js';
  */
 const modules: Readonly<Record<string, Readonly<Record<string, unknown>>>> = { '@jesscss/fns/less': less };
 
-function toRuntime(recipe: ExportRecipe | string): RuntimeRecipe {
+function toRuntime(recipe: ExportRecipe | ExportColor | string): RuntimeRecipe {
   if (typeof recipe === 'string' || 'export' in recipe) {
     return recipe;
+  }
+  if ('color' in recipe) {
+    return [color(recipe.color, recipe.rgb, recipe.alpha), []];
   }
   const fn = modules[recipe.fn.module]?.[recipe.fn.name];
   if (typeof fn !== 'function') {
@@ -178,6 +181,21 @@ describe('the export runtime', () => {
     expect(exported.css).toContain('v: var(--a-mix, #0099e6);');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, literal: sniffLiteral, derived }).vars({ a: '#000', b: '#fff' })['--a-mix']).toBe('#000000');
+  });
+
+  /* A colour name the recipe itself writes is read at compile time, so the runtime runs it with no name table. */
+  it.each([
+    ['@less.lightness(@less.multiply(@a, gray))', '#08f'],
+    ['@less.luma(@less.screen(@a, gray))', '#fff'],
+    ['@less.hue(@less.difference(@a, rebeccapurple))', '#123']
+  ])('runs %s for @a: %s as the compile of that value does, reading no names', async (expression, value) => {
+    const source = (a: string): string => `@use "#less";\n@expose a;\n@a: ${a};\n.x { v: ${expression}; }`;
+    const exported = await compile(source('#c00'));
+    expect(exported.runtime!.names).toBe(false);
+    const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
+    const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, literal: sniffUnnamed, derived }).vars({ a: value });
+    const [name, computed] = Object.entries(vars).find(([key]) => key !== '--a')!;
+    expect((await compile(source(value))).css).toContain(`v: var(${name}, ${computed});`);
   });
 
   it('runs rgb() as a recipe inside a function with no CSS form', async () => {

@@ -141,16 +141,29 @@ describe('vite-plugin-jess', () => {
     });
   });
 
-  /* The page still may not pass a name where the runtime reads names for another reason (R8 spec, colour names, the open cases). */
-  it.each([
-    ['a recipe argument that is a name', '@less.lightness(@less.multiply(@brand, gray))'],
-    ['an export passed through extract()', '@less.lightness(@less.multiply(@brand, #888)); w: @less.luma(@less.extract(@l, 1))']
-  ])('rejects a colour name for @brand when the runtime reads names for %s', async (_, value) => {
+  /* A colour name the recipe itself writes is read at compile time (R8 spec, colour names), so it brings no name table. */
+  it('bundles no colour-name table for a name a recipe argument writes', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose brand, l;\n@brand: #c00;\n@l: #f00 #00f;\n.a { v: ${value}; }\n`]
+      ['theme.less', `@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lightness(@less.multiply(@brand, gray)); }\n`]
     ], async (root) => {
       const { js } = await built(root, {});
+      expect(js).not.toContain('aliceblue');
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(isRuntime(module) && module.vars({ brand: '#08f' })['--brand-lightness']).toBe('25.098039216%');
+    });
+  });
+
+  /* The page still may not pass a name where the runtime reads names for another reason (R8 spec, colour names, the open case). */
+  it('rejects a colour name for @brand when the runtime reads names for an export passed through extract()', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose brand, l;\n@brand: #c00;\n@l: #f00 #00f;\n.a { v: @less.lightness(@less.multiply(@brand, #888)); w: @less.luma(@less.extract(@l, 1)); }\n`]
+    ], async (root) => {
+      const { js } = await built(root, {});
+      expect(js).toContain('aliceblue');
       const file = path.join(root, 'main.mjs');
       fs.writeFileSync(file, js);
       const module: unknown = await import(file);

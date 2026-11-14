@@ -2,7 +2,7 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import { exposedVars, holdRatio, writeVars, type ExportValues, type ExposedSpec, type StyleTarget } from '@jesscss/patch-css';
 import type { Fn, ValueGroup } from '@jesscss/core/value';
 import type { Value } from '@jesscss/core/value';
-import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList } from '@jesscss/core/value';
+import { DEFAULT_MODES, HEX, emitValue, isValueGroupArray, makeColorRgb, makeList } from '@jesscss/core/value';
 
 /** The two literal readers a generated module picks from: with the colour-name table, or without it. */
 export { sniffLiteral, sniffUnnamed } from '@jesscss/core/value';
@@ -21,6 +21,17 @@ export { sniffLiteral, sniffUnnamed } from '@jesscss/core/value';
  * export, an argument's compile-time CSS, or a function and its arguments.
  */
 export type RuntimeRecipe = { readonly export: string } | string | readonly [Fn, readonly RuntimeRecipe[]];
+
+/**
+ * A colour name a recipe's own argument writes for a colour parameter, read at
+ * compile time: the colour the compile's binder makes of that name
+ * (`colorFromSrc`), as a call of no arguments, so a page that writes none
+ * bundles nothing for it.
+ */
+export function color(src: string, rgb: readonly [number, number, number], alpha: number): Fn {
+  const value = makeColorRgb(rgb, alpha, HEX, { src });
+  return Object.assign(() => value, { params: [] });
+}
 
 /** What a compiled stylesheet's module hands {@link createRuntime}. */
 export interface RuntimeSpec extends ExposedSpec {
