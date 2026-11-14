@@ -23,9 +23,9 @@ import type { Color, Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { makeBool, makeKeyword } from './value-factory.js';
 import { ColorValueNode, DimensionValueNode, QuotedValueNode } from './node-ctors.js';
+import { namedColor } from './color-names.js';
 
 type Mutable<T> = { -readonly [P in keyof T]: T[P] };
-import { namedColor } from './color-names.js';
 
 /*
  * SYNTHETIC-ONLY classifiers, used solely by the sniff below. A PARSED literal is
