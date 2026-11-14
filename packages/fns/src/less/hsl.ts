@@ -1,7 +1,7 @@
 import type { Color, ValueGroup, Fn } from '@jesscss/core/value';
 import { colorHsl, defineFunction, makeColorHsl, HSL } from '@jesscss/core/value';
 import { clamp01, fitsAny, isColor, normalizeHue, percentOf } from './color-ctor-helper.js';
-import { ALPHA_ARG, channelSlot, declineSlots, hueSlot, isDeferredSlot, percentSlot } from './color-form.js';
+import { ALPHA_ARG, channelSlot, declineSlots, HUE_UNITS, hueSlot, isDeferredSlot, percentSlot } from './color-form.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 
 /** A slot of `hsl()` as CSS holds it; the comma syntax has no number for saturation and lightness (css-color-4 §7). */
@@ -36,11 +36,13 @@ export function makeHsl(items: readonly ValueGroup[], modernSyntax: boolean): Co
     const alphaPct = alphaD?.unit === '%' ? alphaD.number : undefined;
 
     /*
-     * The authored hue unit (`0deg` → `deg`) and a `%` alpha spelling are kept
+     * The authored angle unit of the hue (`0deg` → `deg`; a `%` hue, which CSS
+     * has no unit for, prints in degrees) and a `%` alpha spelling are kept
      * (verbatim rule), a grey's, black's and white's as any other's; an operated
      * result drops them.
      */
-    const hueUnit = requireDimension(items[0]).unit || undefined;
+    const unit = requireDimension(items[0]).unit;
+    const hueUnit = unit !== '' && HUE_UNITS.includes(unit.toLowerCase()) ? unit : undefined;
     return makeColorHsl([h, s, l], a, HSL, modernSyntax, { ...(hueUnit ? { hueUnit } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) });
   }
   if (isColor(first)) {

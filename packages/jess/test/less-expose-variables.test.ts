@@ -24,9 +24,12 @@ async function runtime(source: string): Promise<unknown> {
 }
 
 describe('Less @expose variables (A4)', () => {
+  /* Chrome 156: a percentage beside number channels is invalid in the comma syntax; `--r: 0.1` is rgb(26, 0, 0). */
   it.each([
     ['@r: 10; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(var(--r, 10), 0, 0);'],
-    ['@r: 10%; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(calc(var(--r, 0.1) * 100%), 0, 0);'],
+    ['@r: 10%; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(calc(var(--r, 0.1) * 100 * 2.55), 0, 0);'],
+    ['@r: 10%; .x { v: @less.rgba(@r, 128, 0, .5); }', 'v: rgba(calc(var(--r, 0.1) * 100 * 2.55), 128, 0, 0.5);'],
+    ['@r: 10%; .x { v: @less.rgb(@r, 0%, 0%); }', 'v: rgb(calc(var(--r, 0.1) * 100%), 0%, 0%);'],
     ['@r: 2px; .x { v: @less.rgb(@r, 0, 0); }', 'v: rgb(calc(var(--r, 2px) / 1px), 0, 0);'],
     ['@h: 30; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30) 37.5% 25%);'],
     ['@h: 30deg; .x { v: @less.hsv(@h, 50%, 75%); }', 'v: hwb(var(--h, 30deg) 37.5% 25%);'],
@@ -56,6 +59,16 @@ describe('Less @expose variables (A4)', () => {
 
   it('a colour written as CSS reads an export of an exposed percentage as its ratio', async () => {
     await expect(render('@use "#less";\n@expose a, b;\n@a: 10%;\n@b: @a;\n.x { v: rgb(@b, 0%, 0%); }')).resolves.toContain('v: rgb(calc(var(--b, var(--a, 0.1)) * 100%), 0%, 0%);');
+  });
+
+  it.each([
+    ['@less.rgb(var(--r), 10%, 0)', 'rgb(var(--r), 25.5, 0)'],
+    ['@less.rgb(10%, 0, var(--b))', 'rgb(25.5, 0, var(--b))'],
+    ['@less.rgb(var(--r), 10%, 0%)', 'rgb(var(--r), 10%, 0%)'],
+    ['@less.rgb(10%, 0, 0, var(--a))', 'rgb(25.5, 0, 0, var(--a))'],
+    ['@less.rgb(var(--r), 0, 0, 50%)', 'rgb(var(--r), 0, 0, 50%)']
+  ])('a percentage channel beside a number is a number in the comma syntax, the alpha aside: %s', async (call, printed) => {
+    await expect(render(`@use "#less";\n.x { v: ${call}; }`)).resolves.toContain(`v: ${printed};`);
   });
 
   it('a built-in reading an exposed slash list keeps its recipe', async () => {

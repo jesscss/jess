@@ -1,5 +1,5 @@
 import { asNumber, channelForm, defineForm, formMath, formNumber, isDimension, knownUnit, type FormCall, type FormSlot } from '@jesscss/core/form';
-import { clamp01, fitsAny, inUnits, normalizeHue } from './color-ctor-helper.js';
+import { clamp01, fitsAny, inUnits, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { hsvBlack, hsvWhite, hsvWhiteKnown } from './css-forms.generated.js';
 import { requireDimension } from '../shared/math/math-helper.js';
 import { FunctionDeclined, isValueGroupArray, makeDimension, mulExact, percentToFraction, subExact, textOf, type Dimension, type Fn, type FunctionCall as WrittenCall, type Keyword, type Quoted, type ValueGroup } from '@jesscss/core/value';
@@ -42,6 +42,27 @@ export function channelSlot(value: ValueGroup): ValueGroup {
   return unit === undefined || CHANNEL_UNITS.includes(unit)
     ? value
     : isDimension(value) ? makeDimension(value.number) : asNumber(value, unit);
+}
+
+/** A percentage channel as the number of 255 it is, as the compile reads it. */
+const channelOf255 = (value: ValueGroup): ValueGroup =>
+  isDimension(value) ? makeDimension(percentOf(value, 255)) : formMath('*', asNumber(value, '%'), makeDimension(2.55));
+
+/**
+ * A slot of `rgb()` as CSS holds it. The comma syntax takes three numbers or three
+ * percentages (css-color-4 §5.1), so there a percentage beside a number is a number.
+ */
+export function rgbSlot(items: readonly ValueGroup[], modern: boolean): (value: ValueGroup, index: number) => ValueGroup {
+  let number = false;
+  let percent = false;
+  for (let index = 0; index < 3; index++) {
+    const unit = knownUnit(items[index]!);
+    percent ||= unit === '%';
+    number ||= unit !== undefined && unit !== '%';
+  }
+  return modern || !number || !percent
+    ? channelSlot
+    : (value, index) => index < 3 && knownUnit(value) === '%' ? channelOf255(value) : channelSlot(value);
 }
 
 /** An alpha on 0–1 while known; what only the browser knows goes in the slot as CSS holds it. */
