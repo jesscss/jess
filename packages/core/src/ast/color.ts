@@ -73,6 +73,9 @@ export function hwbToRgb(h: number, w: number, b: number): [number, number, numb
   return [r * scale + w * 255, g * scale + w * 255, bl * scale + w * 255];
 }
 
+/** The hsl lightness, 0-1, of RGB 0-255: {@link rgbToHsl}'s `l` without the hue and saturation, for a reader of lightness alone. */
+export const rgbLightness = (r: number, g: number, b: number): number => (Math.max(r / 255, g / 255, b / 255) + Math.min(r / 255, g / 255, b / 255)) / 2;
+
 /** RGB 0-255 -> HSL(h deg, s 0-1, l 0-1), byte-identical to Color._hsl RGB branch. */
 export function rgbToHsl(r0: number, g0: number, b0: number): [number, number, number] {
   const r = r0 / 255, g = g0 / 255, b = b0 / 255;
