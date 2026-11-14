@@ -15,9 +15,22 @@ import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, parseHex, sniffL
 
 /**
  * How a derived value is computed, as the generated module writes it: an
- * export, an argument's compile-time CSS, or a function and its arguments.
+ * export, an argument's compile-time CSS, or a computation and its arguments.
  */
-export type RuntimeRecipe = { readonly export: string } | string | readonly [Fn, readonly RuntimeRecipe[]];
+export type RuntimeRecipe = { readonly export: string } | string | Call<ValueGroup>;
+
+/** A computation and the recipes of its arguments. */
+type Call<T> = readonly [(args: ValueGroup[]) => T, readonly RuntimeRecipe[]];
+
+/**
+ * A derived property's recipe: a {@link RuntimeRecipe}, or the call of a body
+ * whose declared result is one node that is not `Any`, written as its text
+ * (`(a) => body(...a).bytes`), so the page needs no value writer for it.
+ */
+export type Derived = RuntimeRecipe | Call<string>;
+
+/** What a recipe calls with its computed arguments: a built-in's body, {@link call} over a defined function, or {@link color}. */
+export type Compute = (args: ValueGroup[]) => ValueGroup;
 
 /**
  * A colour name a recipe's own argument writes for a colour parameter, read at
@@ -25,9 +38,22 @@ export type RuntimeRecipe = { readonly export: string } | string | readonly [Fn,
  * ({@link spelledColor}), as a call of no arguments, so a page that writes none
  * bundles nothing for it.
  */
-export function color(src: string, rgb: readonly [number, number, number], alpha: number): Fn {
+export function color(src: string, rgb: readonly [number, number, number], alpha: number): Compute {
   const value = spelledColor(src, rgb, alpha);
-  return Object.assign(() => value, { params: [] });
+  return () => value;
+}
+
+const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value) };
+
+/** A defined function as a recipe calls it, with the runtime's context, so a page whose recipes all call bodies bundles neither the context nor the async refusal. */
+export function call(fn: Fn): Compute {
+  return (args) => {
+    const result = fn(args, CTX);
+    if (isThenable(result)) {
+      throw new TypeError(`${fn.name}() computes asynchronously, which the runtime cannot do.`);
+    }
+    return result;
+  };
 }
 
 /** What a compiled stylesheet's module hands {@link createRuntime}. */
@@ -36,7 +62,10 @@ export interface RuntimeSpec extends ExposedSpec {
   readonly defaults: Readonly<Record<string, string>>;
 
   /** Each generated custom property, by name, with how it is computed. */
-  readonly derived: Readonly<Record<string, RuntimeRecipe>>;
+  readonly derived: Readonly<Record<string, Derived>>;
+
+  /** Writes a derived value that is not already text: `emitValue`, which the generated module passes only when a recipe's result needs it. */
+  readonly emit?: (value: ValueGroup) => string;
 
   /** The check a given export's value takes: `checkUnit` when a CSS form reads an export, `holdRatio` for a `%` export, none otherwise, so a page bundles only what its exports need. */
   readonly hold?: Hold<ExposedSpec>;
@@ -59,6 +88,9 @@ export type Reader = (text: string, hexKey?: string) => ValueGroup;
 
 export type { ExportValues, StyleTarget };
 
+/** The value writer, for a generated module whose recipes' results need it ({@link RuntimeSpec.emit}). */
+export { emitValue } from '@jesscss/core/value';
+
 export interface Runtime {
   /**
    * The custom properties `values` set: each export given, and each derived
@@ -70,8 +102,6 @@ export interface Runtime {
   /** Write {@link Runtime.vars} on `target`'s inline style, the document root by default. */
   set(values: ExportValues, target?: StyleTarget): void;
 }
-
-const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value) };
 
 /** {@link Runtime.vars} alone, so a page that never calls `set` bundles no writer. */
 export function createVars(spec: RuntimeSpec): Runtime['vars'] {
@@ -91,19 +121,21 @@ export function createVars(spec: RuntimeSpec): Runtime['vars'] {
     for (const property of Object.keys(spec.derived)) {
       const recipe = spec.derived[property]!;
       if (reads(recipe, values)) {
-        out[property] = emitValue(run(recipe, read, spec.read));
+        const value = run(recipe, read, spec.read);
+        out[property] = typeof value === 'string' ? value : spec.emit!(value);
       }
     }
     return out;
   };
 }
 
+/** {@link Runtime.vars} and {@link Runtime.set}, writing each derived value with `emitValue` unless `spec` says otherwise. */
 export function createRuntime(spec: RuntimeSpec): Runtime {
-  const vars = createVars(spec);
+  const vars = createVars({ emit: emitValue, ...spec });
   return { vars, set: (values, target) => writeVars(vars(values), target) };
 }
 
-function reads(recipe: RuntimeRecipe, values: ExportValues): boolean {
+function reads(recipe: Derived, values: ExportValues): boolean {
   return typeof recipe === 'string'
     ? false
     : isCall(recipe)
@@ -111,24 +143,22 @@ function reads(recipe: RuntimeRecipe, values: ExportValues): boolean {
       : Object.hasOwn(values, recipe.export);
 }
 
-function isCall(recipe: Exclude<RuntimeRecipe, string>): recipe is readonly [Fn, readonly RuntimeRecipe[]] {
+function isCall<R extends Derived>(recipe: R): recipe is Extract<R, readonly unknown[]> {
   return Array.isArray(recipe);
 }
 
-/** `read` is an export's value, given or compile-time, parsed once per {@link Runtime.vars}; `text` reads a recipe's own argument. */
-function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup, text: Reader): ValueGroup {
+/** `read` is an export's value, given or compile-time, parsed once per {@link Runtime.vars}; `text` reads a recipe's own argument. A derived property's call may give its result as text. */
+function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup, text: Reader): ValueGroup;
+function run(recipe: Derived, read: (name: string) => ValueGroup, text: Reader): ValueGroup | string;
+function run(recipe: Derived, read: (name: string) => ValueGroup, text: Reader): ValueGroup | string {
   if (typeof recipe === 'string') {
     return text(recipe);
   }
   if (!isCall(recipe)) {
     return read(recipe.export);
   }
-  const [fn, args] = recipe;
-  const result = fn(args.map(arg => run(arg, read, text)), CTX);
-  if (isThenable(result)) {
-    throw new TypeError(`${fn.name}() computes asynchronously, which the runtime cannot do.`);
-  }
-  return result;
+  const [compute, args] = recipe;
+  return compute(args.map(arg => run(arg, read, text)));
 }
 
 /** The hex check's error; `named` when what was given reads as a colour name, so the option that takes names would help. */

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Compiler } from 'jess';
-import jess from '../src/index.js';
+import jess, { moduleCode } from '../src/index.js';
 import commonJs from '@rollup/plugin-commonjs';
 import nodeResolve from '@rollup/plugin-node-resolve';
 
@@ -25,6 +25,37 @@ const buildFile = async (filePath: string) => {
 };
 
 describe('rollup-plugin-jess', () => {
+  it('calls a body directly only for a recipe whose arguments the page proves colours', () => {
+    const fn = { module: '@jesscss/fns/less', name: 'lightness' };
+    const body = { module: '@jesscss/fns/less/bodies', name: 'lightnessOf', bytes: true as const };
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+    const runtime = { exports: ['brand'], keys: { brand: 'brand' }, defaults: { brand: '#c00' }, units: {}, ratios: [], colors: ['brand'], names: false, ownNames: false, direct: true, derived: { '--brand-lightness': { fn, args: [{ export: 'brand' }], body } } };
+    const hex = moduleCode('', runtime);
+    expect(hex).toContain('import { lightnessOf as f0 } from "@jesscss/fns/less/bodies";');
+    expect(hex).toContain('[(a) => f0(...a).bytes, [{"export":"brand"}]]');
+    expect(hex).not.toContain('emitValue');
+
+    /* A body whose result is not marked as one node keeps the value writer. */
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+    const unmarked = moduleCode('', { ...runtime, derived: { '--brand-lightness': { fn, args: [{ export: 'brand' }], body: { module: body.module, name: body.name } } } });
+    expect(unmarked).toContain('[(a) => f0(...a), [{"export":"brand"}]]');
+    expect(unmarked).toContain('emitValue as f1');
+
+    /* Only a derived property's own call is written as text; a call in its arguments stays a node. */
+    const outer = { module: '@jesscss/fns/less', name: 'luma' };
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+    const nested = moduleCode('', { ...runtime, derived: { '--brand-luma': { fn: outer, args: [{ export: 'brand' }, { fn, args: [{ export: 'brand' }], body }] } } });
+    expect(nested).toContain('(a) => f2(...a), [{"export":"brand"}]]');
+    expect(nested).not.toContain('.bytes');
+
+    /* A page that reads colour names may be given a keyword, so its call keeps the defined function, which checks it. */
+    const names = moduleCode('', { ...runtime, names: true });
+    expect(names).toContain('import { lightness as f1 } from "@jesscss/fns/less";');
+    expect(names).toContain('[f0(f1), [{"export":"brand"}]]');
+    expect(names).toContain('import { call as f0, emitValue as f2 } from "@jesscss/fns/runtime";');
+    expect(names).not.toContain('lightnessOf');
+  });
+
   it('exports the runtime of a stylesheet that exposes variables', async () => {
     const bundle = await rollup.rollup({ input: path.resolve(__dirname, './runtime.less'), plugins: [nodeResolve(), commonJs(), jess()] });
     const { output } = await bundle.generate({ format: 'es' });

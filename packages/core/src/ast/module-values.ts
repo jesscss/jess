@@ -48,7 +48,8 @@ function moduleFunctionResult(value: unknown, name: string): ValueGroup {
 export type { FnOrigin };
 
 export function bindModuleFunction(value: ModuleCallable | Fn, name: string, origin: FnOrigin): Fn {
-  const fn = isModuleFn(value)
+  const defined = isModuleFn(value);
+  const fn = defined
     ? defineFunction(name, {
         params: value.params,
         variadic: true,
@@ -56,7 +57,7 @@ export function bindModuleFunction(value: ModuleCallable | Fn, name: string, ori
         body: (args, context) => value(args, context)
       })
     : moduleCallable(value, name);
-  return Object.assign(fn, { origin });
+  return Object.assign(fn, { origin, bodyExport: defined ? value.bodyExport : undefined });
 }
 
 function moduleCallable(value: ModuleCallable, name: string): Fn {

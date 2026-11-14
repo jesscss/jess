@@ -212,16 +212,51 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
       }
       return id;
     };
-    let text = false;
-    const write = (recipe: ExportRecipe | ExportColor | string): string =>
+
+    /* A recipe's own argument as text, which only a text reader reads. */
+    const holdsText = (recipe: ExportRecipe | ExportColor | string): boolean =>
+      typeof recipe === 'string' || ('fn' in recipe && recipe.args.some(holdsText));
+    const text = Object.values(runtime.derived).some(holdsText);
+
+    /* Names are read when asked for, or when the stylesheet itself writes one the runtime reads: a colour export's value, or a recipe's own argument. */
+    const names = colorNames || runtime.names;
+
+    /*
+     * The reader is the least the page needs: hex only when no recipe holds
+     * text and every export a recipe reads goes straight to a colour
+     * parameter, so it is one colour, and its compile-time CSS, which the
+     * reader also reads, is a hex. An export passed through another function
+     * may be a list (`luma(extract(@list, 1))`).
+     */
+    const hexOnly = !names && !text && runtime.direct && Object.values(runtime.defaults).every(css => /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(css));
+
+    /*
+     * A call whose arguments the page proves one colour each, on a page that
+     * reads each export as a colour, calls the function's body directly, so the
+     * page bundles no definer or binder: the reader's parse is the check (DESIGN-DECISIONS-NOTES.md, "Direct body calls").
+     * Any other call runs the defined function, which checks its arguments.
+     * A derived property whose recipe is such a call, of a body whose declared
+     * result is one node that is not `Any`, is written as that node's text, so
+     * a page whose properties all are bundles no value writer.
+     */
+    const bodyOf = (recipe: ExportRecipe) => hexOnly && 'fn' in recipe ? recipe.body : undefined;
+    const asText = (recipe: ExportRecipe): boolean => bodyOf(recipe)?.bytes === true;
+    const call = (recipe: Extract<ExportRecipe, { fn: unknown }>, top: boolean): string => {
+      const body = bodyOf(recipe);
+      return body === undefined
+        ? `${local('@jesscss/fns/runtime', 'call')}(${local(recipe.fn.module, recipe.fn.name)})`
+        : `(a) => ${local(body.module, body.name)}(...a)${top && body.bytes === true ? '.bytes' : ''}`;
+    };
+    const write = (recipe: ExportRecipe | ExportColor | string, top = false): string =>
       typeof recipe === 'string'
-        ? (text = true, JSON.stringify(recipe))
+        ? JSON.stringify(recipe)
         : 'export' in recipe
           ? JSON.stringify(recipe)
           : 'color' in recipe
             ? `[${local('@jesscss/fns/runtime', 'color')}(${JSON.stringify(recipe.color)}, ${JSON.stringify(recipe.rgb)}, ${recipe.alpha}), []]`
-            : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
-    const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
+            : `[${call(recipe, top)}, [${recipe.args.map(arg => write(arg)).join(', ')}]]`;
+    const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe, true)}`);
+    const emit = Object.values(runtime.derived).every(asText) ? '' : `, emit: ${local('@jesscss/fns/runtime', 'emitValue')}`;
 
     /* The least check the exports need: none when no CSS form reads one. */
     const hold = runtime.ratios.length > 0 ? 'holdRatio' : Object.keys(runtime.units).length > 0 ? 'checkUnit' : undefined;
@@ -236,18 +271,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         `export const set = (values, target) => writeVars(exposedVars(spec, values${held}), target);`
       );
     } else {
-      /* Names are read when asked for, or when the stylesheet itself writes one the runtime reads: a colour export's value, or a recipe's own argument. */
-      const names = colorNames || runtime.names;
       const held = hold === undefined ? '' : `, hold: ${local('@jesscss/patch-css', hold)}`;
-
-      /*
-       * The reader is the least the page needs: hex only when no recipe holds
-       * text and every export a recipe reads goes straight to a colour
-       * parameter, so it is one colour, and its compile-time CSS, which the
-       * reader also reads, is a hex. An export passed through another function
-       * may be a list (`luma(extract(@list, 1))`).
-       */
-      const hexOnly = !names && !text && runtime.direct && Object.values(runtime.defaults).every(css => /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(css));
       lines.push(`import { createVars, ${hexOnly ? 'readHex' : names ? 'readNamed' : 'readUnnamed'} as read } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
       for (const [module, members] of imports) {
         lines.push(`import { ${members.join(', ')} } from ${JSON.stringify(module)};`);
@@ -258,7 +282,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         ? ''
         : `, hex: ${JSON.stringify(Object.fromEntries(Object.entries(runtime.keys).filter(([, name]) => runtime.colors.includes(name)).map(([key, name]) => [name, key])))}`;
       lines.push(
-        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}${held}${runtime.colors.length > 0 ? hex : ''}, read, derived: { ${derived.join(', ')} } });`,
+        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}${hold === undefined ? '' : `, units: ${JSON.stringify(runtime.units)}`}${hold === 'holdRatio' ? `, ratios: ${JSON.stringify(runtime.ratios)}` : ''}${held}${runtime.colors.length > 0 ? hex : ''}, read${emit}, derived: { ${derived.join(', ')} } });`,
         `export const set = (values, target) => writeVars(vars(values), target);`
       );
     }

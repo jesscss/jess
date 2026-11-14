@@ -269,8 +269,15 @@ or needs JS) to decide what ships in the bundle.
   JavaScript key (`brandColor` for `@brand-color`); a key the stylesheet does
   not expose raises. A derived recipe is an
   export (`{ export }`), an argument's compile-time CSS (a string) or
-  `[fn, args]` with the imported function itself, as the generated module
-  writes it.
+  `[compute, args]`, as the generated module writes it. `compute` takes the
+  computed arguments alone: `call(fn)` over an imported defined function, which
+  passes the runtime's context and refuses a promise; a built-in's body called
+  directly (DESIGN-DECISIONS-NOTES.md, "Direct body calls"); or `color(…)` for
+  a literal colour. A derived property whose own call is a body marked `bytes`
+  is written `(a) => body(...a).bytes`, giving its text; `emit` writes any other
+  result, and `createRuntime` defaults it to `emitValue`. The generated module
+  calls `createVars`, passes `emit` only when some property needs it, and
+  passes `units` and `ratios` only when its check reads them.
 - **`vars(values)`** is pure: `--<name>` for each export given, and each
   derived property that reads one of them, computed with the function the
   compile ran on the given values and the compile-time value of every export

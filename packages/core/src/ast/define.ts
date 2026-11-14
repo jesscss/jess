@@ -13,7 +13,7 @@ import { isValueGroup, isValueGroupArray, type Collection, type Value, type Valu
 import { groupItems } from './value-list.js';
 import { callKeyword, makeCollection } from './value-factory.js';
 import { keepAsWritten } from './value-operate.js';
-import type { Check, DefinedFunction, Fn, FnCtx, FunctionBodyArgs, Kind, LazyValue, ParamSpec } from './functions/types.js';
+import type { BodyExport, BodyOrigin, Check, DefinedFunction, Fn, FnCtx, FunctionBodyArgs, Kind, LazyValue, ParamSpec } from './functions/types.js';
 
 export function valueNode(name: string, value: unknown): ValueGroup {
   if (!isValueGroup(value)) {
@@ -210,6 +210,21 @@ const isVariadic = <S extends { readonly variadic?: boolean }>(spec: S): spec is
  * thunk, a `rest` one as an array; a variadic body receives the arguments and
  * the {@link FnCtx}.
  */
+export function define<const P extends readonly ParamSpec[], R extends ValueGroup>(
+  name: string,
+  spec: {
+    readonly params: P;
+
+    /** Computes synchronously: a generated runtime module calls it directly, past the defined function's refusal of a promise. */
+    readonly body: (...args: FunctionBodyArgs<NoInfer<P>>) => R;
+    readonly variadic?: false;
+    readonly filter?: boolean;
+    readonly cssFunction?: never;
+
+    /** Where `body` is exported, for a generated runtime module's direct call ({@link Fn.bodyExport}). */
+    readonly bodyExport: BodyExport<NoInfer<R>>;
+  },
+): DefinedFunction<P>;
 export function define<const P extends readonly ParamSpec[]>(
   name: string,
   spec: {
@@ -251,6 +266,9 @@ export function define(
     readonly variadic?: boolean;
     readonly filter?: boolean;
     readonly cssFunction?: never;
+
+    /** Where `body` is exported, for a generated runtime module's direct call ({@link Fn.bodyExport}). */
+    readonly bodyExport?: BodyOrigin;
     readonly afterBind?: (bound: readonly unknown[]) => void;
   }
 ): unknown {
@@ -271,7 +289,7 @@ export function define(
       return Reflect.apply(body, undefined, bound);
     };
   }
-  const fn = Object.assign(callable, { params, variadic: spec.variadic, filter: spec.filter });
+  const fn = Object.assign(callable, { params, variadic: spec.variadic, filter: spec.filter, bodyExport: spec.bodyExport });
   Object.defineProperty(fn, 'name', { value: name, configurable: true });
   return fn;
 }

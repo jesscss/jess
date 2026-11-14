@@ -7,6 +7,7 @@ import { isValueSlotArray } from './css-grammar-helpers.js';
 import { isDimension, knownUnit } from './css-math.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
+import type { BodyOrigin } from './functions/types.js';
 import { namedColor } from './color-names.js';
 import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { calcOperand } from './math-operand.js';
@@ -29,7 +30,13 @@ import { cancelPercent, exposedOperand, insideParens, keepAsWritten, mathOnDefer
  * How the runtime computes a value derived from exports: an export's value, an
  * argument's compile-time CSS, or an imported function of those.
  */
-export type ExportRecipe = { readonly export: string } | { readonly fn: FnOrigin; readonly args: ReadonlyArray<ExportRecipe | ExportColor | string> };
+/**
+ * How the runtime computes a value: an export, or a call of `fn` over its
+ * arguments. `body` is set when each argument's kind is proven at build time,
+ * one colour for each parameter that takes only a colour, so a page whose reader
+ * reads each export as a colour may call the body directly (DESIGN-DECISIONS-NOTES.md, "Direct body calls").
+ */
+export type ExportRecipe = { readonly export: string } | { readonly fn: FnOrigin; readonly args: ReadonlyArray<ExportRecipe | ExportColor | string>; readonly body?: BodyOrigin };
 
 /**
  * A colour name a recipe's own argument writes for a parameter checked as a
@@ -1165,8 +1172,14 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
     }
     return emitValue(v);
   });
-  return { fn: origin, args };
+  return fn?.bodyExport !== undefined && provesColors(fn.params, args) ? { fn: origin, args, body: fn.bodyExport } : { fn: origin, args };
 }
+
+/** Whether each argument is one colour for a parameter that takes only one: an export the runtime reads as a colour, or a colour the recipe writes. */
+const provesColors = (params: readonly ParamSpec[], args: ReadonlyArray<ExportRecipe | ExportColor | string>): boolean =>
+  params.length === args.length
+  && params.every(param => takesOnlyColor(param) && param.optional !== true && param.rest !== true && param.lazy !== true && param.default === undefined)
+  && args.every(arg => typeof arg !== 'string' && ('export' in arg || 'color' in arg));
 
 /** The first export a recipe reads. */
 function recipeExport(recipe: ExportRecipe): string {
