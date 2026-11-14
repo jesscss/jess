@@ -180,7 +180,7 @@ export function isNegatable(name: string): boolean {
 /** A glued minus on what only the browser knows (`-var(--x)`, `-abs(…)`), which a feature query tests as written (CSS-NATIVE-BUILTINS §3.4). */
 export const isGluedCall = (node: CallNode): boolean => node.name.charCodeAt(0) === 45 && isNegatable(node.name.slice(1));
 
-/** A glued-minus call a feature query tests, written as it is (`written`): a call, which math around it reads without negating it ({@link operated}'s `tested`). */
+/** A glued-minus call a feature query tests, written as it is (`written`): a call, which math around it reads without negating it ({@link operatedIn}'s `tested`). */
 export const testedCall = (node: CallNode, written: EvalValue): EvalValue =>
   typeof written === 'string' ? makeFunctionCall(node.name, makeKeyword(written.slice(node.name.length + 1, -1)), written) : written;
 
@@ -222,7 +222,7 @@ const isSlashMath = (v: Value): boolean =>
 export function slashOperated(node: Pick<Operation, 'operator' | 'left' | 'mathOutsideParens'>, left: Value, right: Value, e: OperandLane, keeps: boolean): Value {
   const separates = node.operator === '/' && node.mathOutsideParens && !(isSlashMath(left) && isSlashMath(right));
   const inner = separates && node.left.type === 'Operation' && node.left.operator === '/' && node.left.mathOutsideParens ? writtenCalcInner(left) : null;
-  return operated(node.operator, inner === null ? left : makeKeyword(inner), right, e, keeps || separates);
+  return operatedIn(node.operator, inner === null ? left : makeKeyword(inner), right, e, keeps || separates);
 }
 
 /**
@@ -253,7 +253,12 @@ const keptSpelling = (v: Value, modes: EvalModes, tested = false): Value => {
  * writes its numbers compressed (§3.5). `keeps`: the math is CSS's or not reached
  * as math ({@link Lane.keepsMath}), so a written operation stays as written.
  */
-export function operated(op: string, left: Value, right: Value, { modes, tested }: Pick<OperandLane, 'modes' | 'tested'>, keeps: boolean): Value {
+export function operated(op: string, left: Value, right: Value, modes: EvalModes, keeps: boolean): Value {
+  return operatedIn(op, left, right, { modes, tested: false }, keeps);
+}
+
+/** {@link operated} in a lane: inside a feature query (`tested`) a glued minus stays as written. */
+function operatedIn(op: string, left: Value, right: Value, { modes, tested }: Pick<OperandLane, 'modes' | 'tested'>, keeps: boolean): Value {
   const deferred = isMathOnDeferred(left, right);
   if (!deferred && keptMathOf(left) === undefined && keptMathOf(right) === undefined && (op !== '%' || (writtenCalcInner(left) === null && writtenCalcInner(right) === null))) {
     return operate(op, left, right, modes);
