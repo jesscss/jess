@@ -86,9 +86,12 @@ Values are CSS literals (`#08f`, `8px`, `red`). The runtime recomputes each
 derived value with the same function the compile ran.
 
 A value that a computed value reads as a colour is a hex colour (`#08f`). A
-colour name (`red`) throws a `TypeError`, unless the stylesheet's own value for
-that variable is a name or the plugin option `colorNames: true` is set; this
-keeps the colour-name table out of the bundle (R8 runtime spec, colour names).
+colour name (`red`) throws a `TypeError`, unless the stylesheet itself writes a
+name the runtime reads (the variable's own value, or an argument of a computed
+call, as in `lightness(mix(@brand, red))`) or the plugin option
+`colorNames: true` is set; this keeps the colour-name table out of the bundle
+(R8 runtime spec, colour names). A variable a computed value reads in any other
+way (through `extract()`, say) still takes colour names, and the table ships.
 
 The module imports the runtime from `@jesscss/fns`, so a Rollup build of such a
 stylesheet needs [`@rollup/plugin-node-resolve`](https://github.com/rollup/plugins/tree/master/packages/node-resolve)

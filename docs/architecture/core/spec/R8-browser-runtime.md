@@ -49,9 +49,32 @@ as a colour (`ExportRuntimeData.colors`). The generated module passes that list
 to `createVars` as `hex` unless names are on, and `vars()` throws on a given
 value there that starts with a letter, which needs no name table:
 `` `brand` received `blue`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names. ``
-Pinned in `packages/vite-plugin-jess/test/index.test.ts`. The table still
-reaches the bundle through the value reader and the colour parameter check;
-it leaves when those stop importing it (stage 4, steps 1b and 3).
+Pinned in `packages/vite-plugin-jess/test/index.test.ts`.
+
+The binder still reads a colour name passed to a parameter checked as a
+colour as that colour, but takes the reading from the call's context
+(`FnCtx.colorName`): the compile passes `coerceNamedColorKeyword`, so compiled
+output is unchanged, and the browser runtime passes none. The runtime's own
+value reader is the one the generated module picks: `sniffLiteral`, with the
+table, when names are on, and `sniffUnnamed` otherwise. So the table reaches
+the bundle only when names are on, or when a function's own body reads names
+(`iscolor`).
+
+As built, names are on when `colorNames: true` is set, or when the compile's
+`ExportRuntimeData.names` is set (`readsNames` in `export-reads.ts`). It is set
+in three cases. The first is the ruling's. The other two keep the runtime's
+behaviour from before the gate, pending the owner:
+- a colour export's own value is a name (the ruling);
+- a recipe's own argument spells a name (`lightness(multiply(@brand, gray))`).
+  The stylesheet writes that name and the runtime has to read it back as a
+  colour. **Open:** is this the stylesheet's own value in the ruling's sense?
+- a recipe reads an export it does not pass straight to a colour parameter
+  (`luma(extract(@list, 1))`). The value can still reach a colour parameter,
+  but the hex check covers only exports the compile sees reach one. **Open:**
+  should such an export count as a colour export, take the hex check, and drop
+  the names?
+
+Pinned in `packages/jess/test/less-expose-variables.test.ts`.
 
 Split off on 2026-11-01 as its own task: built-in functions that have a CSS
 counterpart are represented internally as that counterpart (`darken()` as

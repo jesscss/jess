@@ -31,7 +31,8 @@ export type JessRollupPluginOptions = {
   /**
    * Accept a colour name (`red`) from `vars()` for an export that a computed
    * value reads as a colour. Without it the name table ships only when the
-   * stylesheet's own value for such an export is a name; otherwise `vars()`
+   * stylesheet itself writes a name the runtime reads (such an export's own
+   * value, or an argument of a computed call); otherwise `vars()`
    * takes a hex colour there and throws a `TypeError` on a name
    * (docs/architecture/core/spec/R8-browser-runtime.md, colour names).
    * Default: false
@@ -230,17 +231,19 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         `export const set = (values, target) => writeVars(exposedVars(spec, values${held}), target);`
       );
     } else {
-      lines.push(`import { createVars } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
-      for (const [module, names] of imports) {
-        lines.push(`import { ${names.join(', ')} } from ${JSON.stringify(module)};`);
+      /* Names are read when asked for, or when the stylesheet itself writes one the runtime reads: a colour export's value, or a recipe's own argument. */
+      const names = colorNames || runtime.names;
+      lines.push(`import { createVars, ${names ? 'sniffLiteral' : 'sniffUnnamed'} as literal } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
+      for (const [module, members] of imports) {
+        lines.push(`import { ${members.join(', ')} } from ${JSON.stringify(module)};`);
       }
 
-      /* Names are taken when asked for, or when the stylesheet's own value for a colour export is one (an identifier: a colour export's value is a colour). */
+      /* The hex check stays the ruling's: off only when asked, or when a colour export's own value is a name (an identifier: a colour export's value is a colour). */
       const hex = colorNames || runtime.colors.some(name => /^[a-z]/i.test(runtime.defaults[name] ?? ''))
         ? ''
         : `, hex: ${JSON.stringify(Object.fromEntries(Object.entries(runtime.keys).filter(([, name]) => runtime.colors.includes(name)).map(([key, name]) => [name, key])))}`;
       lines.push(
-        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}${runtime.colors.length > 0 ? hex : ''}, derived: { ${derived.join(', ')} } });`,
+        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}${runtime.colors.length > 0 ? hex : ''}, literal, derived: { ${derived.join(', ')} } });`,
         `export const set = (values, target) => writeVars(vars(values), target);`
       );
     }

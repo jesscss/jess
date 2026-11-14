@@ -90,6 +90,15 @@ export interface FnCtx {
   /** The call wrote CSS modern colour syntax (`rgb(0 128 255 / 50%)`), space and slash separated. */
   readonly modern?: boolean;
   readonly stringify: (v: ValueGroup) => string;
+
+  /**
+   * Reads a colour name passed to a parameter checked as a colour as that
+   * colour (`lighten(red, 10%)`); a keyword that names no colour comes back as
+   * given. The compile passes `coerceNamedColorKeyword`. The browser runtime
+   * passes none, so it bundles no name table: a name it reads is already a
+   * colour (R8 spec, colour names). Absent, a name stays the keyword it spells.
+   */
+  readonly colorName?: (keyword: Value) => Value;
   readonly io?: FnIo;
   readonly parseSelector?: SelectorParse;
 }

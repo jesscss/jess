@@ -96,8 +96,8 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { js } = await built(root);
 
-      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 30,965 B measured (11,042 B gzip), of which 352 B is the colour-name check (R8-13); 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
-      expect(js.length).toBeLessThan(32_150);
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 19,126 B measured (6,670 B gzip), with no colour-name table (R8-13); 22,359 B when it came with every value reader and the binder, 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
+      expect(js.length).toBeLessThan(20_080);
     });
   });
 
@@ -138,6 +138,23 @@ describe('vite-plugin-jess', () => {
       } else {
         expect(named).toThrow(new TypeError('`brand` received `blue`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names.'));
       }
+    });
+  });
+
+  /* The page still may not pass a name where the runtime reads names for another reason (R8 spec, colour names, the open cases). */
+  it.each([
+    ['a recipe argument that is a name', '@less.lightness(@less.multiply(@brand, gray))'],
+    ['an export passed through extract()', '@less.lightness(@less.multiply(@brand, #888)); w: @less.luma(@less.extract(@l, 1))']
+  ])('rejects a colour name for @brand when the runtime reads names for %s', async (_, value) => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose brand, l;\n@brand: #c00;\n@l: #f00 #00f;\n.a { v: ${value}; }\n`]
+    ], async (root) => {
+      const { js } = await built(root, {});
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(() => isRuntime(module) && module.vars({ brand: 'blue' })).toThrow('`brand` received `blue`, which is not a hex colour');
     });
   });
 
