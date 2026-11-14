@@ -307,12 +307,14 @@ describe('Less @expose variables (A4)', () => {
   });
 
   /* Owner, 2026-11-13: "I agree with the reco" (gate a colour export passed through extract() too). */
-  it('counts an export a recipe passes through another function as a colour export when its value holds a colour', async () => {
+  it('counts an export as a colour export when it reaches a colour parameter, through another function too, and its value holds a colour', async () => {
     await expect(runtime('@use "#less";\n@expose l;\n@l: #f00 #00f;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: ['l'], names: false });
     await expect(runtime('@use "#less";\n@expose l;\n@l: red #00f;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: ['l'], names: true });
     await expect(runtime('@use "#less";\n@expose b;\n@b: rgb(0 0 255);\n.a { v: @less.luma(@b); }')).resolves.toMatchObject({ colors: ['b'], names: false, ownNames: false });
     await expect(runtime('@use "#less";\n@expose b;\n@b: blue;\n.a { v: @less.luma(@b); }')).resolves.toMatchObject({ colors: ['b'], names: true, ownNames: true });
     await expect(runtime('@use "#less";\n@expose l;\n@l: 1px 2px;\n.a { v: @less.unit(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: [], names: false });
+    await expect(runtime('@use "#less";\n@expose b;\n@b: #00f;\n.a { v: @less.length(@b); }')).resolves.toMatchObject({ colors: [], names: false });
+    await expect(runtime('@use "#less";\n@expose b, c;\n@b: #00f;\n@c: red;\n.a { v: @less.luma(@b); w: @less.length(@c); }')).resolves.toMatchObject({ colors: ['b'], names: false, ownNames: false });
   });
 
   it('returns no runtime for a document that exposes nothing', async () => {

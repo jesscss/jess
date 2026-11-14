@@ -44,10 +44,10 @@
 | --- | --- | --- |
 | R8-13 | A colour name given to `vars()` reaches a computed value only when names are on. The name table ships only when the stylesheet's own value for an export that a computed value reads as a colour is a name, or when the plugin option `colorNames: true` is set. Otherwise `vars()` takes a hex colour for such an export, and a name throws a `TypeError` naming the export and the option. | *"Yes, gate it"*, to the proposal in the stage-4 value-walker design (§2.5, option ii) |
 
-As built: the compile lists each export a recipe passes to a parameter checked
-as a colour (`ExportRuntimeData.colors`). The generated module passes that list
+As built: the compile lists each colour export (`ExportRuntimeData.colors`,
+defined below). The generated module passes that list
 to `createVars` as `hex` unless names are on, and `vars()` throws on a given
-value there whose first item is a bare word, which needs no name table. That
+value there with a bare word in any item, which needs no name table. That
 covers `none` and `currentcolor` too, which the runtime cannot tell from a name
 without the table; function text (`rgb(…)`, `var(…)`) falls through to the
 reader's own error. The message:
@@ -74,9 +74,11 @@ in two cases:
   list. The stylesheet writes that name itself, so the runtime reads it as the
   compile does.
 
-A colour export is one a recipe passes to a parameter checked as a colour, or
-one whose compile-time value holds a colour, however the recipe passes it on
+A colour export is one whose compile-time value holds a colour and that reaches
+a parameter checked as a colour, directly or through another function
 (`luma(extract(@list, 1))` with `@list: #f00 #00f`). Each takes the hex check.
+An export no colour parameter reads (`length(@c)`) is none, whatever its value,
+so its value does not turn names on either.
 **Resolved** (owner, 2026-11-13), asked "Should a colour export that reaches a
 colour function via extract() accept colour names in vars()?", with the
 recommendation to gate it too: *"I agree with the reco"*. An export whose value

@@ -82,10 +82,17 @@ export function createVars(spec: RuntimeSpec): Runtime['vars'] {
       if (value === undefined) {
         const given = values[name];
         const key = spec.hex?.[name];
-        if (key !== undefined && given !== undefined && /^\s*[a-z]+(\s|$)/i.test(given)) {
-          throw new TypeError(`\`${key}\` received \`${given.trim()}\`, which is not a hex colour; set \`colorNames: true\` in the Jess plugin options to accept colour names.`);
-        }
-        value = parseValue(given ?? spec.defaults[name] ?? '', spec.literal);
+
+        /* Each word the reader reads, so a name anywhere in a list is refused; a function word fails in the reader first. */
+        const literal = key === undefined || given === undefined
+          ? spec.literal
+          : (word: string): Value => {
+              if (/^[a-z]/i.test(word)) {
+                throw new TypeError(`\`${key}\` received \`${given.trim()}\`, which is not a hex colour; set \`colorNames: true\` in the Jess plugin options to accept colour names.`);
+              }
+              return spec.literal(word);
+            };
+        value = parseValue(given ?? spec.defaults[name] ?? '', literal);
         parsed.set(name, value);
       }
       return value;

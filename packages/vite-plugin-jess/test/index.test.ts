@@ -176,6 +176,22 @@ describe('vite-plugin-jess', () => {
     });
   });
 
+  it('rejects a colour name in any item of a hex-checked export, though the page reads its own names', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose b;\n@b: #f00 #00f;\n.a { v: @less.luma(@less.extract(@b, 2)); w: @less.isunit(@b, red); }\n`]
+    ], async (root) => {
+      const { js } = await built(root, {});
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      for (const given of ['#00f red', '#00f, red', 'blue,#00f']) {
+        expect(() => isRuntime(module) && module.vars({ b: given })).toThrow(`\`b\` received \`${given}\`, which is not a hex colour`);
+      }
+      expect(isRuntime(module) && module.vars({ b: '#fff #000' })['--b-luma']).toBe('0%');
+    });
+  });
+
   it('holds a percentage a computed value reads as its ratio, and checks its unit', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],

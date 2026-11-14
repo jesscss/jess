@@ -63,7 +63,7 @@ export interface ExportRuntime {
   /** Each generated custom property, by its name, with how the runtime computes it. */
   readonly derived: Map<string, ExportRecipe>;
 
-  /** Each colour export a recipe reads: one it passes to a parameter checked as a colour, or one whose value holds a colour. A colour name given for one at runtime takes the hex check (R8 §colour names). */
+  /** Each colour export: one whose value holds a colour and that reaches a parameter checked as a colour, directly or through another function ({@link markColors}). A colour name given for one at runtime takes the hex check (R8 §colour names). */
   readonly colors: Set<string>;
 
   /** Whether a recipe's own argument spells a colour name (`mix(@brand, red)`), which the runtime then reads ({@link spellsColorName}). */
@@ -862,17 +862,27 @@ function slotUnit(name: string, args: ValueGroup): string | undefined {
 
 /**
  * The compile-time value of each export a recipe reads, the first read
- * standing; and each one whose value holds a colour, as a colour export,
- * however the recipe passes it on (R8 spec, colour names).
+ * standing.
  */
 function recordDefaults(runtime: ExportRuntime, reads: ReadonlyArray<{ name: string; value: ValueGroup }>): void {
   for (const read of reads) {
     if (!runtime.defaults.has(read.name)) {
       runtime.defaults.set(read.name, emitValue(read.value));
-      if (holdsColor(read.value)) {
-        runtime.colors.add(read.name);
-        runtime.ownNames ||= spellsColorName(read.value);
-      }
+    }
+  }
+}
+
+/**
+ * Each export that reaches a colour parameter, directly or through another
+ * function (`luma(extract(@list, 1))`), and whose value holds a colour, is a
+ * colour export; one whose own value spells a name turns names on (R8-13;
+ * owner, 2026-11-13).
+ */
+function markColors(runtime: ExportRuntime, reads: ReadonlyArray<{ name: string; value: ValueGroup }>): void {
+  for (const read of reads) {
+    if (holdsColor(read.value)) {
+      runtime.colors.add(read.name);
+      runtime.ownNames ||= spellsColorName(read.value);
     }
   }
 }
@@ -1121,17 +1131,17 @@ function callRecipe<F>(node: FunctionCall, fn: Fn | undefined, vals: readonly Va
   if (stray !== undefined) {
     exportNotWritten(node, `@${recipeExport(stray.recipe)}`, recipeExport(stray.recipe), e, 'inside a larger argument of a function Jess computes, which the runtime cannot follow');
   }
-  const recipes = new Map<object, ExportRecipe>(inputs.map(input => [input.value, input.recipe]));
+  const byValue = new Map<object, ExportInput>(inputs.map(input => [input.value, input]));
   const rest = fn?.params.find(param => param.rest === true);
   const runtime = e.s.exports.runtime;
   const args = vals.map((v, index): ExportRecipe | ExportColor | string => {
-    const recipe = recipes.get(lone(v));
+    const input = byValue.get(lone(v));
     const color = takesColor(fn?.params[index] ?? rest);
-    if (recipe !== undefined) {
-      if (color && 'export' in recipe) {
-        runtime?.colors.add(recipe.export);
+    if (input !== undefined) {
+      if (color && runtime !== undefined) {
+        markColors(runtime, readsOf([input]));
       }
-      return recipe;
+      return input.recipe;
     }
     const keyword = color && !isValueGroupArray(v) && v.type === 'Keyword' ? v : undefined;
     const named = keyword === undefined ? undefined : namedColor(keyword.text);
