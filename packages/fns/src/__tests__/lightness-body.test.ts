@@ -30,6 +30,7 @@ describe('lightness body', () => {
   it('writes, for each body whose result is marked as its bytes, what the value writer writes', () => {
     const marked = new Set(Object.values(less).flatMap(fn => typeof fn === 'function' && 'bodyExport' in fn && fn.bodyExport?.bytes === true ? [fn.bodyExport.name] : []));
     expect(marked.size).toBeGreaterThan(0);
+    expect(Object.keys(bodies)).toEqual(expect.arrayContaining([...marked]));
     for (const [name, body] of Object.entries(bodies).filter(([name]) => marked.has(name))) {
       for (const c of colors) {
         const result = body(c);

@@ -121,7 +121,7 @@ export function createVars(spec: RuntimeSpec): Runtime['vars'] {
     for (const property of Object.keys(spec.derived)) {
       const recipe = spec.derived[property]!;
       if (reads(recipe, values)) {
-        const value = isCall(recipe) ? apply<ValueGroup | string>(recipe, read, spec.read) : run(recipe, read, spec.read);
+        const value = run(recipe, read, spec.read);
         out[property] = typeof value === 'string' ? value : spec.emit!(value);
       }
     }
@@ -129,8 +129,9 @@ export function createVars(spec: RuntimeSpec): Runtime['vars'] {
   };
 }
 
+/** {@link Runtime.vars} and {@link Runtime.set}, writing each derived value with `emitValue` unless `spec` says otherwise. */
 export function createRuntime(spec: RuntimeSpec): Runtime {
-  const vars = createVars(spec);
+  const vars = createVars({ emit: emitValue, ...spec });
   return { vars, set: (values, target) => writeVars(vars(values), target) };
 }
 
@@ -146,15 +147,17 @@ function isCall<R extends Derived>(recipe: R): recipe is Extract<R, readonly unk
   return Array.isArray(recipe);
 }
 
-/** `read` is an export's value, given or compile-time, parsed once per {@link Runtime.vars}; `text` reads a recipe's own argument. */
-function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup, text: Reader): ValueGroup {
+/** `read` is an export's value, given or compile-time, parsed once per {@link Runtime.vars}; `text` reads a recipe's own argument. A derived property's call may give its result as text. */
+function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup, text: Reader): ValueGroup;
+function run(recipe: Derived, read: (name: string) => ValueGroup, text: Reader): ValueGroup | string;
+function run(recipe: Derived, read: (name: string) => ValueGroup, text: Reader): ValueGroup | string {
   if (typeof recipe === 'string') {
     return text(recipe);
   }
-  return isCall(recipe) ? apply(recipe, read, text) : read(recipe.export);
-}
-
-function apply<T>([compute, args]: Call<T>, read: (name: string) => ValueGroup, text: Reader): T {
+  if (!isCall(recipe)) {
+    return read(recipe.export);
+  }
+  const [compute, args] = recipe;
   return compute(args.map(arg => run(arg, read, text)));
 }
 

@@ -41,6 +41,13 @@ describe('rollup-plugin-jess', () => {
     expect(unmarked).toContain('[(a) => f0(...a), [{"export":"brand"}]]');
     expect(unmarked).toContain('emitValue as f1');
 
+    /* Only a derived property's own call is written as text; a call in its arguments stays a node. */
+    const outer = { module: '@jesscss/fns/less', name: 'luma' };
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+    const nested = moduleCode('', { ...runtime, derived: { '--brand-luma': { fn: outer, args: [{ export: 'brand' }, { fn, args: [{ export: 'brand' }], body }] } } });
+    expect(nested).toContain('(a) => f2(...a), [{"export":"brand"}]]');
+    expect(nested).not.toContain('.bytes');
+
     /* A page that reads colour names may be given a keyword, so its call keeps the defined function, which checks it. */
     const names = moduleCode('', { ...runtime, names: true });
     expect(names).toContain('import { lightness as f1 } from "@jesscss/fns/less";');
