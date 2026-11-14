@@ -14,10 +14,12 @@ export const enum UnitGroup { Length = 0, Duration = 1, Angle = 2, Frequency = 3
  * Per-group conversion factors: unit → factor relative to the group base. Keys
  * are lowercase; every lookup goes through {@link foldUnit}.
  */
+const PX = 0.0254 / 96;
+const RAD = 1 / (2 * Math.PI);
 const GROUP_FACTORS: readonly Readonly<Record<string, number>>[] = [
-  { m: 1, cm: 0.01, mm: 0.001, q: 0.001 / 4, in: 0.0254, px: 0.0254 / 96, pt: 0.0254 / 72, pc: (0.0254 / 72) * 12 },
+  { m: 1, cm: 0.01, mm: 0.001, q: 0.001 / 4, in: 0.0254, px: PX, pt: 0.0254 / 72, pc: (0.0254 / 72) * 12 },
   { s: 1, ms: 0.001 },
-  { rad: 1 / (2 * Math.PI), deg: 1 / 360, grad: 1 / 400, turn: 1 },
+  { rad: RAD, deg: 1 / 360, grad: 1 / 400, turn: 1 },
   { hz: 1, khz: 1000 },
   { dppx: 1, x: 1, dpi: 1 / 96, dpcm: 2.54 / 96 }
 ];
@@ -28,11 +30,17 @@ const GROUP_FACTORS: readonly Readonly<Record<string, number>>[] = [
  */
 const GROUP_CANONICAL = ['px', 's', 'rad', 'hz', 'dppx'] as const;
 
-/** Each group's canonical-unit factor, so `unify` needn't re-look-it-up per call. */
-const GROUP_CANONICAL_FACTOR = GROUP_FACTORS.map((f, g) => f[GROUP_CANONICAL[g]!]!);
+/** Each group's canonical-unit factor, so `unify` needn't re-look-it-up per call; a literal, so a bundle that never unifies drops it. */
+const GROUP_CANONICAL_FACTOR: readonly number[] = [PX, 1, RAD, 1, 1];
+
+/*
+ * Built when first read, so a bundle that never checks a unit drops it: the
+ * published core is minified, which strips purity marks.
+ */
+let cssUnits: ReadonlySet<string> | undefined;
 
 /** Every unit CSS defines (css-values-4 §6, §7; css-contain-3 §9; css-grid-1 §7.2.3), keys lowercase. */
-const CSS_UNITS: ReadonlySet<string> = /* @__PURE__ */ new Set([
+const cssUnitSet = (): ReadonlySet<string> => cssUnits ??= new Set([
   '%', 'fr',
   'cm', 'mm', 'q', 'in', 'pc', 'pt', 'px',
   'cap', 'ch', 'em', 'ex', 'ic', 'lh', 'rcap', 'rch', 'rem', 'rex', 'ric', 'rlh',
@@ -48,7 +56,7 @@ const CSS_UNITS: ReadonlySet<string> = /* @__PURE__ */ new Set([
 ]);
 
 /** Whether CSS defines `unit`; a number's empty unit is one. */
-export const isCssUnit = (unit: string): boolean => unit === '' || CSS_UNITS.has(foldUnit(unit));
+export const isCssUnit = (unit: string): boolean => unit === '' || cssUnitSet().has(foldUnit(unit));
 
 const UNIT_TO_GROUP = new Map<string, UnitGroup>();
 for (let g = 0; g < GROUP_FACTORS.length; g++) {

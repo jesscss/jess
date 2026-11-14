@@ -219,12 +219,11 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
           ? `[${local('@jesscss/fns/runtime', 'color')}(${JSON.stringify(recipe.color)}, ${JSON.stringify(recipe.rgb)}, ${recipe.alpha}), []]`
           : `[${local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
     const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
+
+    /* The least check the exports need: none when no CSS form reads one. */
+    const hold = runtime.ratios.length > 0 ? 'holdRatio' : Object.keys(runtime.units).length > 0 ? 'checkUnit' : undefined;
     if (derived.length === 0) {
-      /*
-       * Two exports, so a page that imports only `vars` drops the writer, and the
-       * least check the exports need: none when no CSS form reads one.
-       */
-      const hold = runtime.ratios.length > 0 ? 'holdRatio' : Object.keys(runtime.units).length > 0 ? 'checkUnit' : undefined;
+      /* Two exports, so a page that imports only `vars` drops the writer. */
       const spec = hold === undefined ? { keys: runtime.keys } : hold === 'checkUnit' ? { keys: runtime.keys, units: runtime.units } : { keys: runtime.keys, units: runtime.units, ratios: runtime.ratios };
       const held = hold === undefined ? '' : `, ${hold}`;
       lines.push(
@@ -236,6 +235,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
     } else {
       /* Names are read when asked for, or when the stylesheet itself writes one the runtime reads: a colour export's value, or a recipe's own argument. */
       const names = colorNames || runtime.names;
+      const held = hold === undefined ? '' : `, hold: ${local('@jesscss/patch-css', hold)}`;
       lines.push(`import { createVars, ${names ? 'sniffLiteral' : 'sniffUnnamed'} as literal } from '@jesscss/fns/runtime';`, `import { writeVars } from '@jesscss/patch-css';`);
       for (const [module, members] of imports) {
         lines.push(`import { ${members.join(', ')} } from ${JSON.stringify(module)};`);
@@ -246,7 +246,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
         ? ''
         : `, hex: ${JSON.stringify(Object.fromEntries(Object.entries(runtime.keys).filter(([, name]) => runtime.colors.includes(name)).map(([key, name]) => [name, key])))}`;
       lines.push(
-        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}${runtime.colors.length > 0 ? hex : ''}, literal, derived: { ${derived.join(', ')} } });`,
+        `export const vars = createVars({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, units: ${JSON.stringify(runtime.units)}, ratios: ${JSON.stringify(runtime.ratios)}${held}${runtime.colors.length > 0 ? hex : ''}, literal, derived: { ${derived.join(', ')} } });`,
         `export const set = (values, target) => writeVars(vars(values), target);`
       );
     }

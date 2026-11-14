@@ -1,5 +1,5 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { exposedVars, holdRatio, writeVars, type ExportValues, type ExposedSpec, type StyleTarget } from '@jesscss/patch-css';
+import { exposedVars, writeVars, type ExportValues, type ExposedSpec, type Hold, type StyleTarget } from '@jesscss/patch-css';
 import type { Fn, ValueGroup } from '@jesscss/core/value';
 import type { Value } from '@jesscss/core/value';
 import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, spelledColor } from '@jesscss/core/value';
@@ -41,6 +41,9 @@ export interface RuntimeSpec extends ExposedSpec {
   /** Each generated custom property, by name, with how it is computed. */
   readonly derived: Readonly<Record<string, RuntimeRecipe>>;
 
+  /** The check a given export's value takes: `checkUnit` when a CSS form reads an export, `holdRatio` for a `%` export, none otherwise, so a page bundles only what its exports need. */
+  readonly hold?: Hold<ExposedSpec>;
+
   /** By export, the key of each one a computed value reads as a colour, when the page takes no colour names for them (R8 spec, colour names). */
   readonly hex?: Readonly<Record<string, string>>;
 
@@ -72,7 +75,7 @@ const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !i
 export function createVars(spec: RuntimeSpec): Runtime['vars'] {
   return (given: ExportValues): Record<string, string> => {
     const values: Record<string, string> = {};
-    const out = exposedVars(spec, given, holdRatio, values);
+    const out = exposedVars(spec, given, spec.hold, values);
     const parsed = new Map<string, ValueGroup>();
     const read = (name: string): ValueGroup => {
       let value = parsed.get(name);

@@ -96,8 +96,10 @@ describe('vite-plugin-jess', () => {
     ], async (root) => {
       const { js } = await built(root);
 
-      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 15,602 B measured (5,710 B gzip), with each parameter's check imported; 19,126 B with the binder's general check, and no colour-name table (R8-13); 22,359 B when it came with every value reader and the binder, 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
-      expect(js.length).toBeLessThan(16_380);
+      /* ponytail: a size ceiling is the cheap check that no form reached it; with the evaluator it is over 500 KB. Each ceiling is its measured size plus about 5% and is only ever lowered (docs/perf/BENCHMARKS.md §10). 14,719 B measured (5,289 B gzip), with no unit check and unit tables built when first read; 15,717 B with them; 19,126 B with the binder's general check, and no colour-name table (R8-13); 22,359 B when it came with every value reader and the binder, 31,736 B before functions had one calling convention, 43,976 B when every node constructor and the color-name object came with it. */
+      expect(js.length).toBeLessThan(15_460);
+      expect(js).not.toContain('is read by a CSS form');
+      expect(js).not.toContain('dvmin');
     });
   });
 
@@ -168,6 +170,22 @@ describe('vite-plugin-jess', () => {
       fs.writeFileSync(file, js);
       const module: unknown = await import(file);
       expect(() => isRuntime(module) && module.vars({ brand: 'blue' })).toThrow('`brand` received `blue`, which is not a hex colour');
+    });
+  });
+
+  it('holds a percentage a computed value reads as its ratio, and checks its unit', async () => {
+    await inProject([
+      ['main.js', `export { vars } from './theme.less';\n`],
+      ['theme.less', `@use "#less";\n@expose a;\n@a: 50%;\n.x { v: @less.ispercentage(@a); }\n`]
+    ], async (root) => {
+      const { js } = await built(root);
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      const vars = isRuntime(module) ? module.vars({ a: '20%' }) : {};
+      expect(vars['--a']).toBe('0.2');
+      expect(vars['--a-ispercentage']).toBe('true');
+      expect(() => isRuntime(module) && module.vars({ a: '.2' })).toThrow('a is read by a CSS form in %');
     });
   });
 
