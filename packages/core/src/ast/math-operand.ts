@@ -164,14 +164,32 @@ export function negated(v: Value): Value {
     return v;
   }
   const name = v.name.slice(1);
-  return name === 'var' || name === 'env' || name === 'attr' || isMathFunctionName(name) ? negatedMath(withFields(v, { name, bytes: v.bytes.slice(1) })) : v;
+  return isNegatable(name) ? negatedMath(withFields(v, { name, bytes: v.bytes.slice(1) })) : v;
 }
 
-const negatedMath = (v: Value): Value => mathOnDeferred('*', MINUS_ONE, v);
+/** Whether a glued minus on a call of `name` (`-var(--x)`, `-abs(…)`) is a number only the browser knows, negated. */
+export function isNegatable(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower === 'var' || lower === 'env' || lower === 'attr' || isMathFunctionName(lower);
+}
 
-/** The result of a built-in written with a glued minus (`-percentage(var(--x))`), negated when it is a form of a number only the browser knows; otherwise `undefined`, and the call is written out as before. */
-export const negatedCall = (value: EvalValue): Value | undefined =>
-  typeof value === 'object' && !isValueGroupArray(value) && value.type === 'FunctionCall' && value.computed && value.result === 'numeric' ? negatedMath(value) : undefined;
+export const negatedMath = (v: Value): Value => mathOnDeferred('*', MINUS_ONE, v);
+
+/**
+ * The result of a built-in written with a glued minus (`-sqrt(4)`, `-percentage(var(--x))`,
+ * `-abs(var(--x))`), negated when it is a number, a form of a number only the browser
+ * knows, or the CSS math function a built-in declined to; otherwise `undefined`, and the
+ * call is written out as before.
+ */
+export function negatedCall(value: EvalValue): Value | undefined {
+  if (typeof value !== 'object' || isValueGroupArray(value)) {
+    return undefined;
+  }
+  if (value.type === 'Dimension') {
+    return operate('*', MINUS_ONE, value, CSS_UNITS);
+  }
+  return value.type === 'FunctionCall' && (value.computed ? value.result === 'numeric' : isMathFunctionName(value.name)) ? negatedMath(value) : undefined;
+}
 
 /** What only the browser knows by name, whatever it holds; a glued minus is the same value negated. */
 const RUNTIME_VALUE: ReadonlySet<string> = new Set(['var', '-var', 'env', '-env', 'attr', '-attr']);
