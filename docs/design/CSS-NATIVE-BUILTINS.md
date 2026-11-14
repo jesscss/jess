@@ -271,7 +271,9 @@ numbers is the number times -1: `-sqrt(4)` is `-2` and `-percentage(0.5)` is
 `--y: -var(--x)` stays as written, and a `.css` document is not evaluated, so it
 keeps `-var(--x)` too. A feature query tests a declaration as written, so in
 `@supports (margin-left: -var(--x))` and `if(supports(margin-left: -var(--x)): …)`
-it stays, in every dialect. A CSS colour call Less keeps as written keeps its
+it stays, in every dialect. Only the call stays as written: what is around it
+evaluates as before (`.less` `-var(--x) percentage(0.5)` is `-var(--x) 50%`), and
+math on it, which has no form that keeps it, is written as written. A CSS colour call Less keeps as written keeps its
 authored bytes (F5), so `rgb(-var(--r), 0, 0)` stays as written in `.less`, where
 `.scss` and `.jess` write `rgb(calc(-1 * var(--r)), 0, 0)`. A `var()` fallback
 follows its dialect: kept in `.css` and `.less`, evaluated in `.scss` and `.jess`.

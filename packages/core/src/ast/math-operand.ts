@@ -19,7 +19,6 @@
  */
 import { isMathFunctionName } from './math-functions.js';
 import type { FunctionCall as CallNode, Operation, ValueSlot } from './nodes.js';
-import { isIfTestCall } from './guard-node.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import { DivisionByZeroError, InvalidOperandError, emitValue, isValueGroupArray, joinGroup, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { arithmeticOperand, makeDimension, makeKeyword, makeWrittenMath, withFields } from './value-factory.js';
@@ -175,37 +174,56 @@ export function isNegatable(name: string): boolean {
   return lower === 'var' || lower === 'env' || lower === 'attr' || isMathFunctionName(lower);
 }
 
-/**
- * Whether a value as written holds a glued minus that would be negated. A
- * feature query tests a declaration as written, so there it stays (`@supports
- * (margin-left: -var(--x))`, CSS-NATIVE-BUILTINS §3.4).
- */
-export function hasGluedMinus(slot: ValueSlot): boolean {
+/** The glued-minus calls a feature query tests, which it tests as written (CSS-NATIVE-BUILTINS §3.4). */
+const testedAsWritten = new WeakSet<CallNode>();
+
+/** What {@link markTested} found: no glued minus, one or more, or one an operation reads, which no math can keep. */
+export const enum Tested { None = 0, Marked = 1, Operated = 2 }
+
+/** Marks each glued-minus call `slot` holds (`-var(--x)`, `-abs(…)`) as tested as written; what is around it evaluates as before. */
+export function markTested(slot: ValueSlot): Tested {
   if (isValueSlotArray(slot)) {
-    return slot.some(hasGluedMinus);
+    return markEach(slot);
   }
-  const node = slot;
-  switch (node.type) {
+  switch (slot.type) {
     case 'FunctionCall':
-      return (node.name.charCodeAt(0) === 45 && isNegatable(node.name.slice(1))) || node.args.some(arg => hasGluedMinus(arg.value));
+      if (slot.name.charCodeAt(0) === 45 && isNegatable(slot.name.slice(1))) {
+        testedAsWritten.add(slot);
+        return Tested.Marked;
+      }
+      return markEach(slot.args.map(arg => arg.value));
     case 'Sequence':
-      return node.parts.some(hasGluedMinus);
+      return markEach(slot.parts);
     case 'List':
-      return node.value.some(hasGluedMinus);
+      return markEach(slot.value);
     case 'Operation':
-      return hasGluedMinus(node.left) || hasGluedMinus(node.right);
+      if (slot.operator === ':') {
+        return markTested(slot.right);
+      }
+      return markEach([slot.left, slot.right]) === Tested.None ? Tested.None : Tested.Operated;
     case 'Block':
-      return hasGluedMinus(node.value);
+    case 'Expression':
+      return markTested(slot.value);
     default:
-      return false;
+      return Tested.None;
   }
 }
 
-/** A feature test holding a glued minus (`supports(margin-left: -var(--x))`), which is written as it is: `media`, `supports` or `style` by its first letter and length before its name is read. */
-export function isGluedFeatureTest(node: CallNode): boolean {
+function markEach(slots: readonly ValueSlot[]): Tested {
+  let found = Tested.None;
+  for (const slot of slots) {
+    found = Math.max(found, markTested(slot));
+  }
+  return found;
+}
+
+/** Whether `node` is a glued-minus call a feature query tests as written ({@link markTested}). */
+export const isTestedAsWritten = (node: CallNode): boolean => node.name.charCodeAt(0) === 45 && testedAsWritten.has(node);
+
+/** A `supports()` test written out as a call (`.less` `if(supports(…): …)`) marks what it tests as written ({@link markTested}): its length and first letter are read before its name. */
+export function markSupportsTest(node: CallNode): Tested {
   const { name } = node;
-  const first = name.charCodeAt(0) | 32;
-  return (first === 109 || first === 115) && (name.length === 5 || name.length === 8) && isIfTestCall(node) && hasGluedMinus(node);
+  return name.length === 8 && (name.charCodeAt(0) | 32) === 115 && name.toLowerCase() === 'supports' ? markTested(node.args.map(arg => arg.value)) : Tested.None;
 }
 
 export const negatedMath = (v: Value): Value => mathOnDeferred('*', MINUS_ONE, v);

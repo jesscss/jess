@@ -678,4 +678,13 @@ describe('a glued minus in a call written out', () => {
     expect(out).toContain('@supports not (width: abs(-var(--x)))');
     expect(out).toContain('d: if(supports(margin-left: -var(--x)): 1px; else: 2px);');
   });
+
+  it.each([
+    ['@supports (width: -var(--x) percentage(0.5)) { .a { b: 1; } }', '@supports (width: -var(--x) 50%)'],
+    ['@supports (margin: -var(--x) + 1px) { .a { b: 1; } }', '@supports (margin: -var(--x) + 1px)'],
+    ['.c { d: if(supports(width: -var(--x) percentage(0.5)): 1px; else: 2px); }', 'd: if(supports(width: -var(--x) 50%): 1px; else: 2px);'],
+    ['.c { d: if(media(min-width: -var(--x)): 1px; else: 2px); }', 'd: if(media(min-width: calc(-1 * var(--x))): 1px; else: 2px);']
+  ])('a feature query keeps only the glued minus as written: %s', async (source, expected) => {
+    await expect(css(source)).resolves.toContain(expected);
+  });
 });
