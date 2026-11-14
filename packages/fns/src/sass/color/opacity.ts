@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { makeDimension, define, checkColor, checkAny } from '@jesscss/core/value';
+import { makeDimension, define, checkColor, checkAny, optional } from '@jesscss/core/value';
 import { clamp01, noExcess, requireColor } from './kernels.js';
 
 /**
@@ -13,7 +13,7 @@ import { clamp01, noExcess, requireColor } from './kernels.js';
  * — the same observable result, with no hand-rolled passthrough branch.
  */
 export const opacity: Fn = define('opacity', {
-  params: [{ name: 'color', type: 'Color', check: checkColor }, { name: 'excess', type: 'any', check: checkAny, optional: true }],
+  params: [{ name: 'color', type: 'Color', check: checkColor }, /* @__PURE__ */ optional({ name: 'excess', type: 'any', check: checkAny })],
   body: (c, excess) => {
     noExcess(excess, 1);
     return makeDimension(clamp01(requireColor(c).alpha));

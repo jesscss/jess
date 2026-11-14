@@ -1,5 +1,5 @@
 import type { Fn } from '@jesscss/core/value';
-import { define, checkAny } from '@jesscss/core/value';
+import { define, checkAny, optional } from '@jesscss/core/value';
 import { sameStringKind } from './string-result.js';
 
 /**
@@ -16,7 +16,7 @@ export const replace: Fn = /* @__PURE__ */ define('replace', {
     { type: 'any', check: checkAny },
     { type: 'any', check: checkAny },
     { type: 'any', check: checkAny },
-    { type: 'any', check: checkAny, optional: true }
+    /* @__PURE__ */ optional({ type: 'any', check: checkAny })
   ],
   variadic: true,
   body: (items, ctx) => {

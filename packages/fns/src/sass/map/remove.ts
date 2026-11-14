@@ -6,7 +6,7 @@
  * @example
  * map.remove((a: 1, b: 2), a) // (b: 2)
  */
-import { makeCollection, define, checkCollection, checkAny } from '@jesscss/core/value';
+import { makeCollection, define, checkCollection, checkAny, rest } from '@jesscss/core/value';
 import { entryIndex } from './util.js';
 
 const remove = define(
@@ -14,7 +14,7 @@ const remove = define(
   {
     params: [
       { name: 'map', type: 'Collection', check: checkCollection },
-      { name: 'keys', type: 'any', check: checkAny, rest: true }
+      /* @__PURE__ */ rest({ name: 'keys', type: 'any', check: checkAny })
     ] as const,
     body: (map, keys) => {
       if (keys.length === 0) {

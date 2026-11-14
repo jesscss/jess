@@ -122,6 +122,6 @@ export { TOLERANCE } from './ast/format-number.js';
 
 // --- registry seam ---
 export { checkKinds, createFnRegistry, declineOverUnknown, defineFunction, FunctionDeclined, isUnknownNumber } from './ast/value-dispatch.js';
-export { define, checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl } from './ast/define.js';
+export { define, lazy, optional, rest, withDefault, checkAny, checkBlock, checkBool, checkCollection, checkColor, checkDimension, checkKeyword, checkList, checkNull, checkQuoted, checkUrl } from './ast/define.js';
 export { NoCssForm } from './ast/value-eval.js';
 export type { FnRegistry } from './ast/value-dispatch.js';

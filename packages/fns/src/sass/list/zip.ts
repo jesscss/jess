@@ -1,7 +1,7 @@
-import { groupItems, makeList, define, checkAny, type ValueGroup } from '@jesscss/core/value';
+import { groupItems, makeList, define, checkAny, type ValueGroup, rest } from '@jesscss/core/value';
 
 const zip = define('zip', {
-  params: [{ name: 'lists', type: 'any', check: checkAny, rest: true }] as const,
+  params: [/* @__PURE__ */rest({ name: 'lists', type: 'any', check: checkAny })] as const,
   variadic: true,
   body: (args) => {
     const itemLists = args.map(groupItems);

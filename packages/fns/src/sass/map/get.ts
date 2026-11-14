@@ -7,7 +7,7 @@
  * map.get((a: 1, b: 2), a) // 1
  * map.get((a: (b: 2)), a, b) // 2
  */
-import { NULL, define, checkCollection, checkAny } from '@jesscss/core/value';
+import { NULL, define, checkCollection, checkAny, rest } from '@jesscss/core/value';
 import { collectionValueAt, nestedCollection } from './util.js';
 
 const get = define(
@@ -16,7 +16,7 @@ const get = define(
     params: [
       { name: 'map', type: 'Collection', check: checkCollection },
       { name: 'key', type: 'any', check: checkAny },
-      { name: 'keys', type: 'any', check: checkAny, rest: true }
+      /* @__PURE__ */ rest({ name: 'keys', type: 'any', check: checkAny })
     ] as const,
     body: (map, key, keys) => {
       const path = [key, ...keys];

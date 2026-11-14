@@ -1,6 +1,6 @@
 import { defineForm, type FormCall } from '@jesscss/core/form';
 import type { Color, Dimension, FnCtx, FunctionCall, ValueGroup, Fn } from '@jesscss/core/value';
-import { colorRawRgb, isValueGroupArray, makeColorRgb, RGB, define, checkKinds } from '@jesscss/core/value';
+import { colorRawRgb, isValueGroupArray, makeColorRgb, RGB, define, checkKinds, optional } from '@jesscss/core/value';
 import { fitsAny, isColor, percentOf } from './color-ctor-helper.js';
 import { ALPHA_ARG, alphaOf, COLOR_ARG, declineSlots, isDeferredSlot, rgbSlot } from './color-form.js';
 import { fade as form } from './css-forms.generated.js';
@@ -75,7 +75,7 @@ export const rgbBody = (args: readonly ValueGroup[], ctx: FnCtx): ReturnType<Fn>
 const SLOT_TYPES = ['List', 'Color', 'Dimension', 'FunctionCall'] as const;
 
 const RGB_SLOT = { type: SLOT_TYPES, check: checkKinds, fits: fitsAny } as const;
-const RGB_OPTIONAL_SLOT = { type: SLOT_TYPES, check: checkKinds, fits: fitsAny, optional: true } as const;
+const RGB_OPTIONAL_SLOT = /* @__PURE__ */ optional({ type: SLOT_TYPES, check: checkKinds, fits: fitsAny });
 
 /** The slots of `rgb()` and `rgba()`. */
 export const RGB_PARAMS = [RGB_SLOT, RGB_OPTIONAL_SLOT, RGB_OPTIONAL_SLOT, RGB_OPTIONAL_SLOT] as const;

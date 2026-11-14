@@ -1,5 +1,5 @@
 import type { Fn, FnCtx, ValueGroup, Value } from '@jesscss/core/value';
-import { emitValue, define, checkAny } from '@jesscss/core/value';
+import { emitValue, define, checkAny, optional } from '@jesscss/core/value';
 import { sameStringKind } from './string-result.js';
 
 /** The selected token's Less string or CSS form, with uppercase URL encoding. */
@@ -10,10 +10,10 @@ function tokenValue(token: string, value: ValueGroup, ctx: FnCtx): string {
 
 const FORMAT_PARAMS: Fn['params'] = [
   { type: 'any', check: checkAny },
-  { type: 'any', check: checkAny, optional: true },
-  { type: 'any', check: checkAny, optional: true },
-  { type: 'any', check: checkAny, optional: true },
-  { type: 'any', check: checkAny, optional: true }
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny }),
+  /* @__PURE__ */ optional({ type: 'any', check: checkAny })
 ];
 
 function formatKernel(items: readonly ValueGroup[], ctx: FnCtx): Value {

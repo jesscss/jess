@@ -1,4 +1,4 @@
-import { makeKeyword, define, checkAny } from '@jesscss/core/value';
+import { makeKeyword, define, checkAny, optional } from '@jesscss/core/value';
 import type { Fn, Value } from '@jesscss/core/value';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { lookupMime } from '../util/mime.js';
@@ -10,7 +10,7 @@ import { lookupMime } from '../util/mime.js';
  * the authored `url()` call as a value-domain keyword.
  */
 const dataUri: Fn = /* @__PURE__ */ define('data-uri', {
-  params: [{ type: 'any', check: checkAny }, { type: 'any', check: checkAny, optional: true }],
+  params: [{ type: 'any', check: checkAny }, /* @__PURE__ */ optional({ type: 'any', check: checkAny })],
   variadic: true,
   body: (items, ctx): MaybePromise<Value> => {
     if (items.length === 0) {

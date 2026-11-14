@@ -1,4 +1,4 @@
-import { NoCssForm, colorRawRgb, groupItems, holdsNone, isValueGroupArray, makeDimension, mulExact, percentToFraction, subExact, checkKinds, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup } from '@jesscss/core/value';
+import { NoCssForm, colorRawRgb, groupItems, holdsNone, isValueGroupArray, makeDimension, mulExact, percentToFraction, subExact, checkKinds, type Color, type Dimension, type FunctionCall as WrittenCall, type ValueGroup, optional } from '@jesscss/core/value';
 import { asNumber, formMath, isDimension, knownUnit, type FormCall } from '@jesscss/core/form';
 import { fitsAny } from './color-ctor-helper.js';
 import { shareOf } from './color-form.js';
@@ -8,7 +8,7 @@ import * as forms from './css-forms.generated.js';
 const inRange = (weight: number): boolean => weight >= 0 && weight <= 100;
 
 /** A mix's weight: a number in any unit is a percentage, and what only the browser knows is taken to hold one (§3.4a). */
-export const WEIGHT_ARG = { type: ['Dimension', 'FunctionCall'], check: checkKinds, optional: true, fits: fitsAny } as const;
+export const WEIGHT_ARG = /* @__PURE__ */ optional({ type: ['Dimension', 'FunctionCall'], check: checkKinds, fits: fitsAny });
 
 export type Weight = Dimension | WrittenCall;
 
