@@ -34,18 +34,41 @@ const outermostNodeModules = (realPath: string): string | undefined => {
   return found;
 };
 
-/** The packages a `node_modules` folder lists: its entries, and the entries of each `@scope` folder. */
-const packageEntries = async (nodeModules: string): Promise<string[]> => {
-  const names = await fs.promises.readdir(nodeModules).catch((): string[] => []);
-  const lists = await Promise.all(names.filter(name => !name.startsWith('.')).map(async (name) => {
-    const full = path.join(nodeModules, name);
-    if (!name.startsWith('@')) {
-      return [full];
+const entriesOf = (dir: string): fs.Dirent[] => {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * The real paths of the entries of `dir`, whose real path is `realDir`: only a
+ * link needs resolving, since any other entry's real path is `realDir` joined
+ * with its name. A link that resolves nowhere is left out.
+ */
+const realEntries = (dir: string, realDir: string, entries: readonly fs.Dirent[]): string[] =>
+  entries.flatMap((entry) => {
+    const real = entry.isSymbolicLink() ? realpath(path.join(dir, entry.name)) : path.join(realDir, entry.name);
+    return real === undefined ? [] : [real];
+  });
+
+/** The real paths of the packages a `node_modules` folder lists: its entries, and the entries of each `@scope` folder. */
+const packageRealPaths = (nodeModules: string): string[] => {
+  const realNodeModules = realpath(nodeModules);
+  if (realNodeModules === undefined) {
+    return [];
+  }
+  const entries = entriesOf(nodeModules).filter(entry => !entry.name.startsWith('.'));
+  const reals = realEntries(nodeModules, realNodeModules, entries.filter(entry => !entry.name.startsWith('@')));
+  for (const scope of entries.filter(entry => entry.name.startsWith('@'))) {
+    const scopeDir = path.join(nodeModules, scope.name);
+    const realScope = scope.isSymbolicLink() ? realpath(scopeDir) : path.join(realNodeModules, scope.name);
+    if (realScope !== undefined) {
+      reals.push(...realEntries(scopeDir, realScope, entriesOf(scopeDir)));
     }
-    const scoped = await fs.promises.readdir(full).catch((): string[] => []);
-    return scoped.map(entry => path.join(full, entry));
-  }));
-  return lists.flat();
+  }
+  return reals;
 };
 
 /**
@@ -57,12 +80,11 @@ const packageEntries = async (nodeModules: string): Promise<string[]> => {
  * package whose real path is in no `node_modules` (a `link:` or `file:`
  * dependency) gives nothing (ledger A19).
  */
-export const governingPackageRoots = async (entryDir: string): Promise<string[]> => {
+export const governingPackageRoots = (entryDir: string): string[] => {
   for (let dir = path.resolve(entryDir); ; dir = path.dirname(dir)) {
     const nodeModules = path.join(dir, 'node_modules');
     if (fs.existsSync(nodeModules)) {
-      const reals = await Promise.all((await packageEntries(nodeModules)).map(realpathAsync));
-      const outers = reals.map(real => (real === undefined ? undefined : outermostNodeModules(real)));
+      const outers = packageRealPaths(nodeModules).map(outermostNodeModules);
       return [...new Set(outers.filter((outer): outer is string => outer !== undefined).map(outer => path.dirname(outer)))];
     }
     if (path.dirname(dir) === dir) {
@@ -71,7 +93,7 @@ export const governingPackageRoots = async (entryDir: string): Promise<string[]>
   }
 };
 
-const readRootCache = new Map<string, Promise<string[]>>();
+const readRootCache = new Map<string, string[]>();
 
 /**
  * The read roots of a sandboxed render (ledger A19): of the folders that hold
@@ -81,17 +103,19 @@ const readRootCache = new Map<string, Promise<string[]>>();
  * When the candidates lie on one ancestor chain that is one folder; a
  * candidate on no chain with the others (an entry beside, not inside, the
  * folder its packages live in) is kept as its own root.
+ *
+ * Computed with synchronous file reads: an engine started ahead of a render
+ * (`prewarmEngine`) starts on this set, and the reads finish sooner than as
+ * asynchronous ones queued behind the render's own.
  */
-export const readRootsOf = (entryDir: string, jsReadRoot: string): Promise<string[]> => {
+export const readRootsOf = (entryDir: string, jsReadRoot: string): string[] => {
   const key = `${entryDir}\u0000${jsReadRoot}`;
   let roots = readRootCache.get(key);
   if (roots === undefined) {
-    roots = (async () => {
-      const canonical = async (dir: string) => (await realpathAsync(dir)) ?? path.resolve(dir);
-      const candidates = [await canonical(entryDir), await canonical(jsReadRoot), ...await governingPackageRoots(entryDir)];
-      return candidates.filter((dir, index) =>
-        !candidates.some((other, at) => at !== index && isInside(dir, other) && (dir !== other || at < index)));
-    })();
+    const canonical = (dir: string) => realpath(dir) ?? path.resolve(dir);
+    const candidates = [canonical(entryDir), canonical(jsReadRoot), ...governingPackageRoots(entryDir)];
+    roots = candidates.filter((dir, index) =>
+      !candidates.some((other, at) => at !== index && isInside(dir, other) && (dir !== other || at < index)));
     readRootCache.set(key, roots);
   }
   return roots;
@@ -103,14 +127,14 @@ export const readRootsOf = (entryDir: string, jsReadRoot: string): Promise<strin
  * entry folder or the script root whose real path it is), because Deno
  * matches paths as written; then each code directory not already under one.
  */
-export const readSetFor = async (entryDir: string, jsReadRoot: string, code: readonly string[]): Promise<string[]> => {
-  const all = await readRootSpellings(entryDir, jsReadRoot);
+export const readSetFor = (entryDir: string, jsReadRoot: string, code: readonly string[]): string[] => {
+  const all = readRootSpellings(entryDir, jsReadRoot);
   return [...all, ...code.filter(dir => !all.some(root => isInside(dir, root)))];
 };
 
 /** Each read root in its real spelling and in every written spelling the render uses for it (see {@link readSetFor}). */
-const readRootSpellings = async (entryDir: string, jsReadRoot: string): Promise<string[]> => {
-  const roots = await readRootsOf(entryDir, jsReadRoot);
+const readRootSpellings = (entryDir: string, jsReadRoot: string): string[] => {
+  const roots = readRootsOf(entryDir, jsReadRoot);
   const spellings = new Set(roots);
   for (const written of [path.resolve(entryDir), path.resolve(jsReadRoot)]) {
     const ancestors: string[] = [];
@@ -120,9 +144,8 @@ const readRootSpellings = async (entryDir: string, jsReadRoot: string): Promise<
         break;
       }
     }
-    const reals = await Promise.all(ancestors.map(realpathAsync));
-    ancestors.forEach((dir, at) => {
-      const real = reals[at];
+    ancestors.forEach((dir) => {
+      const real = realpath(dir);
       if (real !== undefined && real !== dir && roots.includes(real)) {
         spellings.add(dir);
       }
@@ -136,8 +159,8 @@ const readRootSpellings = async (entryDir: string, jsReadRoot: string): Promise<
  * cannot read: where a config search from inside a root leaves the read set,
  * so the host runs that part of it (`HostConfigs.above`).
  */
-export const readRootsBelowUnreadableFolders = async (entryDir: string, jsReadRoot: string): Promise<string[]> => {
-  const spellings = await readRootSpellings(entryDir, jsReadRoot);
+export const readRootsBelowUnreadableFolders = (entryDir: string, jsReadRoot: string): string[] => {
+  const spellings = readRootSpellings(entryDir, jsReadRoot);
   return spellings.filter((root) => {
     const parent = path.dirname(root);
     return parent !== root && !spellings.some(other => isInside(parent, other));
@@ -156,14 +179,40 @@ const packageRootOf = (file: string): string | undefined => {
   }
 };
 
-const realpathAsync = (p: string): Promise<string | undefined> =>
-  fs.promises.realpath(p).catch(() => undefined);
+/**
+ * How the code-closure walk reads files: asynchronously, beside a render, or
+ * synchronously, when a Deno start waits on the walk. The walk awaits either;
+ * with synchronous reads every await settles in a microtask, so the walk ends
+ * before any timer or I/O callback in this process runs, unless an
+ * asynchronous walk of the same files is already in flight (see
+ * {@link codeClosure}).
+ */
+type FileReads = {
+  realpath: (p: string) => string | undefined | Promise<string | undefined>;
+  readText: (file: string) => string | undefined | Promise<string | undefined>;
+};
+
+const asyncReads: FileReads = {
+  realpath: p => fs.promises.realpath(p).catch(() => undefined),
+  readText: file => fs.promises.readFile(file, 'utf8').catch(() => undefined)
+};
+
+const syncReads: FileReads = {
+  realpath,
+  readText: (file) => {
+    try {
+      return fs.readFileSync(file, 'utf8');
+    } catch {
+      return undefined;
+    }
+  }
+};
 
 /** Node's package lookup, reduced to the directory: `<ancestor>/node_modules/<name>`, canonicalized. */
-const packageDirFrom = async (name: string, fromDir: string, signal?: AbortSignal): Promise<string | undefined> => {
+const packageDirFrom = async (name: string, fromDir: string, reads: FileReads, signal?: AbortSignal): Promise<string | undefined> => {
   for (let dir = fromDir; ; dir = path.dirname(dir)) {
     signal?.throwIfAborted();
-    const candidate = await realpathAsync(path.join(dir, 'node_modules', name));
+    const candidate = await reads.realpath(path.join(dir, 'node_modules', name));
     if (candidate !== undefined) {
       return candidate;
     }
@@ -179,9 +228,9 @@ type PackageManifest = {
   peerDependencies?: Record<string, string>;
 };
 
-const readManifest = async (dir: string): Promise<PackageManifest> => {
+const readManifest = async (dir: string, reads: FileReads): Promise<PackageManifest> => {
   try {
-    const parsed: unknown = JSON.parse(await fs.promises.readFile(path.join(dir, 'package.json'), 'utf8'));
+    const parsed: unknown = JSON.parse(await reads.readText(path.join(dir, 'package.json')) ?? '');
     return typeof parsed === 'object' && parsed !== null ? parsed : {};
   } catch {
     return {};
@@ -195,14 +244,17 @@ const closures = new Map<string, Promise<string[]>>();
  * every package their dependencies (regular, optional and installed peer)
  * reach, as canonical directories. The engine loads this code as a render
  * needs it, so it is readable wherever it lies. Computed once per process,
- * with asynchronous file reads, so it runs beside a render in this process
- * instead of holding it up.
+ * by default with asynchronous file reads, so it runs beside a render in this
+ * process instead of holding it up; with `reads: 'sync'` it reads synchronously
+ * and settles in microtasks, so it ends before any timer or I/O callback runs.
+ * A walk of the same files already in flight is joined whatever its reads, so
+ * a `'sync'` call that finds an asynchronous walk under way waits on its I/O.
  */
-export const codeClosure = async (entryFiles: readonly string[], signal?: AbortSignal): Promise<string[]> => {
+export const codeClosure = async (entryFiles: readonly string[], signal?: AbortSignal, reads: 'async' | 'sync' = 'async'): Promise<string[]> => {
   const key = entryFiles.join('\u0000');
   let closure = closures.get(key);
   if (closure === undefined) {
-    closure = walkClosure(entryFiles, signal);
+    closure = walkClosure(entryFiles, reads === 'sync' ? syncReads : asyncReads, signal);
     closures.set(key, closure);
   }
   try {
@@ -216,26 +268,26 @@ export const codeClosure = async (entryFiles: readonly string[], signal?: AbortS
       closures.delete(key);
     }
     if (signal?.aborted !== true && err instanceof Error && err.name === 'AbortError') {
-      return codeClosure(entryFiles, signal);
+      return codeClosure(entryFiles, signal, reads);
     }
     throw err;
   }
 };
 
-const walkClosure = async (entryFiles: readonly string[], signal?: AbortSignal): Promise<string[]> => {
+const walkClosure = async (entryFiles: readonly string[], reads: FileReads, signal?: AbortSignal): Promise<string[]> => {
   const roots = new Set<string>();
   let level = entryFiles.map(packageRootOf).filter((dir): dir is string => dir !== undefined);
   while (level.length > 0) {
     const fresh = [...new Set(level)].filter(dir => !roots.has(dir));
     fresh.forEach(dir => roots.add(dir));
     const next = await Promise.all(fresh.map(async (dir) => {
-      const manifest = await readManifest(dir);
+      const manifest = await readManifest(dir, reads);
       const names = new Set([
         ...Object.keys(manifest.dependencies ?? {}),
         ...Object.keys(manifest.optionalDependencies ?? {}),
         ...Object.keys(manifest.peerDependencies ?? {})
       ]);
-      return Promise.all([...names].map(name => packageDirFrom(name, dir, signal)));
+      return Promise.all([...names].map(name => packageDirFrom(name, dir, reads, signal)));
     }));
     level = next.flat().filter((dir): dir is string => dir !== undefined);
   }
@@ -390,8 +442,8 @@ export const engineOwnCode = (compilerModule: string, selfModule: string): strin
   [fileURLToPath(compilerModule), fileURLToPath(selfModule)].map(packageRootOf).filter((dir): dir is string => dir !== undefined);
 
 /** The code directories of a compiler module and this plugin. */
-export const engineCode = (compilerModule: string, selfModule: string, signal?: AbortSignal): Promise<string[]> =>
-  codeClosure([fileURLToPath(compilerModule), fileURLToPath(selfModule)], signal);
+export const engineCode = (compilerModule: string, selfModule: string, signal?: AbortSignal, reads: 'async' | 'sync' = 'async'): Promise<string[]> =>
+  codeClosure([fileURLToPath(compilerModule), fileURLToPath(selfModule)], signal, reads);
 
 /** A failed engine render, rethrown here: a `JessError` as one (so it prints the same frame), else an `Error`. */
 export const engineFailure = (result: {

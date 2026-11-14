@@ -1,5 +1,5 @@
 /**
- * The parseman `ctx.state` the Less grammar reads, and its one validator.
+ * The parseman `ctx.state` the Less grammar reads, and the one place it is typed.
  *
  * It lives in its own module because BOTH ends need it and neither may import
  * the other: `parse-with.ts` constructs the state and names the compiled grammar
@@ -35,22 +35,22 @@ export interface LessParseState extends Partial<BareVariableRejection> {
   /**
    * The input text, the trivia machinery's back-reference for slicing.
    *
-   * OPTIONAL for most of the grammar — `sourceFromState` returns `undefined`
-   * when it is absent and the trivia helpers fall back to structural layout — so
-   * a caller that only wants grammar facts (the AST-grammar tests drive `run()`
-   * directly) may omit it. A `<general-enclosed>` query group is the exception:
-   * it records its source bytes (ledger N14), so an input holding one needs it. `mathMode` remains required on
-   * this resolved internal shape; raw callers are normalized by
-   * `requireLessParseState` below.
+   * `createLessParseState` always sets it. Without it — a run with no state —
+   * `sourceFromState` returns `undefined` and the trivia helpers fall back to
+   * structural layout, so the output can differ from `parse()`'s (jess#671). A
+   * `<general-enclosed>` query group records its source bytes (ledger N14), so
+   * an input holding one needs it.
    */
   readonly source?: string;
 
   /**
    * Less's `math:` policy, a PARSE-TIME input (ledger P1). The grammar resolves
    * it per operation and writes the answer onto `Operation.mathOutsideParens`;
-   * the evaluator never sees the mode.
+   * the evaluator never sees the mode. `parseWith` checks the caller's option
+   * once, before the run, and stores the checked mode here; reducers trust it.
+   * A raw `run()` caller may omit it, and the default applies.
    */
-  readonly mathMode: MathMode;
+  readonly mathMode?: MathMode;
 
   /**
    * What reducers write for the whole document, one shared object: a state
@@ -77,6 +77,23 @@ export interface LessParseState extends Partial<BareVariableRejection> {
    * only on derived states, so the document-level state keeps four members.
    */
   readonly selectorCapture?: SelectorCaptureFacts;
+
+  /**
+   * The grammar context a derived state is read under, for the gates that
+   * read it: `var-fallback` in a `var()` fallback, where a bare `@name` is a
+   * Less variable; `at-rule-javascript` in an at-rule prelude, where a
+   * removed backtick JavaScript body reads to its end. Like
+   * {@link valueStop}, it exists only on derived states.
+   */
+  readonly context?: LessContext;
+}
+
+/** A grammar context ({@link LessParseState.context}). */
+export type LessContext = 'var-fallback' | 'at-rule-javascript';
+
+// The grammar context of the state a gate reads (LessParseState.context).
+export function contextOf(state: unknown): LessContext | undefined {
+  return stateOf(state)?.context;
 }
 
 /** What a selector pseudo inside a capture records for it ({@link LessParseState.selectorCapture}). */
@@ -87,8 +104,7 @@ export interface SelectorCaptureFacts {
 
 /** The capture being read ({@link LessParseState.selectorCapture}), or `undefined` outside one. */
 export function selectorCaptureOfState(state: unknown): SelectorCaptureFacts | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
-  return (state as LessParseState | undefined)?.selectorCapture;
+  return stateOf(state)?.selectorCapture;
 }
 
 /** Where a call argument's value run stops ({@link LessParseState.valueStop}). */
@@ -96,11 +112,7 @@ export type ValueStop = 'condition' | 'comparison';
 
 /** The stop of the value run being read ({@link LessParseState.valueStop}), for the grammar's gates. */
 export function valueStopOf(state: unknown): ValueStop | undefined {
-  if (typeof state !== 'object' || state === null || !('valueStop' in state)) {
-    return undefined;
-  }
-  const stop = state.valueStop;
-  return stop === 'condition' || stop === 'comparison' ? stop : undefined;
+  return stateOf(state)?.valueStop;
 }
 
 /**
@@ -114,50 +126,25 @@ export function rejectBareVariable(start: number, end: number, name: string): ne
 /** The public Less default, shared by wrapper and raw-grammar entry points. */
 export const DEFAULT_LESS_MATH_MODE: MathMode = 'parens-division';
 
-/** Immutable raw-entry state reused by every operation in a state-free parse. */
-const DEFAULT_LESS_PARSE_STATE: LessParseState = Object.freeze({
-  mathMode: DEFAULT_LESS_MATH_MODE
-});
-
-const MATH_MODES = ['always', 'parens-division', 'parens', 'strict'] as const;
-
-const isMathMode = (value: string): value is MathMode =>
-  (MATH_MODES as readonly string[]).includes(value);
-
 /**
- * Recover the typed state parseman hands reducers as `unknown`.
- *
- * Missing state uses the same public default as `parseWith`, so the exported
- * AST/CST grammars remain directly runnable. An explicitly supplied invalid
- * mode still throws instead of hiding a broken threading path.
+ * The state a reducer runs under. `parseWith` builds it from checked options,
+ * and a raw `run()` caller supplies it as a `LessParseState` or not at all;
+ * parseman passes it through as `unknown`, so this is the one place it is
+ * typed. Nothing here re-checks it.
  */
-export function requireLessParseState(state: unknown): LessParseState {
-  if (state === undefined) {
-    return DEFAULT_LESS_PARSE_STATE;
-  }
-  if (typeof state !== 'object' || state === null) {
-    throw new TypeError('Less grammar parse state must be an object when supplied.');
-  }
-  const supplied = state as { readonly source?: unknown; readonly mathMode?: unknown };
-  const suppliedMathMode = supplied.mathMode;
-  if (suppliedMathMode !== undefined && (
-    typeof suppliedMathMode !== 'string' || !isMathMode(suppliedMathMode)
-  )) {
-    throw new TypeError(
-      'Less grammar received an invalid `mathMode` in its parse state.'
-    );
-  }
-  const mathMode = suppliedMathMode ?? DEFAULT_LESS_MATH_MODE;
-  const source = typeof supplied.source === 'string' ? supplied.source : undefined;
-  return source === undefined
-    ? { mathMode }
-    : { source, mathMode };
+function stateOf(state: unknown): LessParseState | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
+  return state as LessParseState | undefined;
+}
+
+/** The `math:` policy of the parse a reducer runs in ({@link LessParseState.mathMode}). */
+export function mathModeOf(state: unknown): MathMode {
+  return stateOf(state)?.mathMode ?? DEFAULT_LESS_MATH_MODE;
 }
 
 /** What the reducers of this parse share ({@link LessParseState.document}), or `undefined` for a raw `run()`. */
 function documentOf(state: unknown): LessDocumentFacts | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
-  return (state as LessParseState | undefined)?.document;
+  return stateOf(state)?.document;
 }
 
 /**

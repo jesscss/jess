@@ -65,6 +65,7 @@ export type JessErrorCode =
   | 'eval/expose-not-declared'
   | 'eval/expose-conflict'
   | 'eval/expose-key-conflict'
+  | 'eval/expose-unit-conflict'
   | 'eval/loop-iteration-limit'
   | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
@@ -459,6 +460,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '@expose ${name} and @expose ${other} at ${at} are both ${key} in JavaScript',
       reason: 'The runtime keys each exposed variable by its name with dash-case turned to camelCase (brand-color is brandColor), so ${name} and ${other} would be one key.',
       fix: 'Rename one of the variables, or expose only one of them.'
+    }
+  ],
+  [
+    'eval/expose-unit-conflict',
+    {
+      summary: 'Exposed variable @${name} read with two units',
+      reason: '@${name} is exposed and its value has no known unit, so the CSS function that reads it sets the unit it is given at run time: ${fn}() reads it as ${unit}, and ${other}() as ${otherUnit}. No value set at run time is both.',
+      fix: 'Read @${name} in one unit, or expose a separate variable for each.'
     }
   ],
   [
