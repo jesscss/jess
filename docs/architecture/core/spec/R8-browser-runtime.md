@@ -51,20 +51,30 @@ value there that starts with a letter, which needs no name table:
 `` `brand` received `blue`, which is not a hex colour; set `colorNames: true` in the Jess plugin options to accept colour names. ``
 Pinned in `packages/vite-plugin-jess/test/index.test.ts`.
 
-The table reaches the bundle only when names are on, and through only one
-path: the value reader, which the generated module picks (`sniffLiteral`, or
-`sniffUnnamed` without the table). The function binder reads no names. A
-colour name passed to a parameter checked as a colour becomes that colour in
-the compile's argument pass (`compileArguments`, `value-dispatch.ts`) and in
-`callNamed`, so compiled output is unchanged. The runtime needs no such step,
-because a name it reads is already a colour. A function whose own body reads
-names (`iscolor`) still bundles the table.
+The binder still reads a colour name passed to a parameter checked as a
+colour as that colour, but takes the reading from the call's context
+(`FnCtx.colorName`): the compile passes `coerceNamedColorKeyword`, so compiled
+output is unchanged, and the browser runtime passes none. The runtime's own
+value reader is the one the generated module picks: `sniffLiteral`, with the
+table, when names are on, and `sniffUnnamed` otherwise. So the table reaches
+the bundle only when names are on, or when a function's own body reads names
+(`iscolor`).
 
-Names also count as "on" when a computed call's own argument spells one
-(`lightness(multiply(@brand, gray))`): the stylesheet writes that name, and the
-runtime has to read it back as a colour (`ExportRuntimeData.names`,
-`spellsColorName` in `export-reads.ts`). Pinned in
-`packages/jess/test/less-expose-variables.test.ts`.
+As built, names are on when `colorNames: true` is set, or when the compile's
+`ExportRuntimeData.names` is set (`readsNames` in `export-reads.ts`). It is set
+in three cases. The first is the ruling's. The other two keep the runtime's
+behaviour from before the gate, pending the owner:
+- a colour export's own value is a name (the ruling);
+- a recipe's own argument spells a name (`lightness(multiply(@brand, gray))`).
+  The stylesheet writes that name and the runtime has to read it back as a
+  colour. **Open:** is this the stylesheet's own value in the ruling's sense?
+- a recipe reads an export it does not pass straight to a colour parameter
+  (`luma(extract(@list, 1))`). The value can still reach a colour parameter,
+  but the hex check covers only exports the compile sees reach one. **Open:**
+  should such an export count as a colour export, take the hex check, and drop
+  the names?
+
+Pinned in `packages/jess/test/less-expose-variables.test.ts`.
 
 Split off on 2026-11-01 as its own task: built-in functions that have a CSS
 counterpart are represented internally as that counterpart (`darken()` as

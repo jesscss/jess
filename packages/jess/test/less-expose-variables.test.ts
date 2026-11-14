@@ -284,6 +284,10 @@ describe('Less @expose variables (A4)', () => {
     await expect(runtime(`@use "#less";\n@expose brand;\n@brand: ${own};\n.a { v: @less.lightness(@less.multiply(@brand, ${other})); }`)).resolves.toMatchObject({ names });
   });
 
+  it('reads colour names at runtime for an export a recipe does not pass straight to a colour parameter', async () => {
+    await expect(runtime('@use "#less";\n@expose l;\n@l: #f00 #00f;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: [], names: true });
+  });
+
   it('returns no runtime for a document that exposes nothing', async () => {
     await expect(runtime('.a { color: red; }')).resolves.toBeUndefined();
   });

@@ -11,7 +11,6 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { isValueGroup, isValueGroupArray, type ArgumentKeyword, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { calcOperand, numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
-import { coerceNamedColorKeyword } from './literal-tag.js';
 import { callKeyword, makeCollection, NULL } from './value-factory.js';
 import { keepAsWritten } from './value-operate.js';
 import type {
@@ -105,29 +104,13 @@ export function takesColor(param: ParamSpec | undefined): boolean {
  * any value, or a list, receives the list (`length(16/17)` is `2`). Each
  * argument is governed by its own parameter, then by the `rest` parameter, or
  * a variadic function's last one.
- *
- * A colour name passed to a parameter checked as a colour is that colour
- * (`lighten(red, 10%)` binds `#ff0000`), read here at the point of use without
- * the un-operated literal ever being reclassified; a keyword that is no colour
- * name still fails the slot. The binder itself reads no names, so the browser
- * runtime, which calls functions without this pass, bundles the name table only
- * when it reads names (R8 spec, colour names).
  */
-export function compileArguments(fn: Fn, items: readonly ValueGroup[], ev: Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>, modes: EvalModes): readonly ValueGroup[] {
+export function numberArguments(fn: Fn, items: readonly ValueGroup[], ev: Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>, modes: EvalModes): readonly ValueGroup[] {
   let out: ValueGroup[] | undefined;
   const tail = fn.variadic === true ? fn.params.at(-1) : fn.params.find(isRest);
   for (let index = 0; index < items.length; index++) {
     const item = items[index]!;
     if (isValueGroupArray(item)) {
-      continue;
-    }
-    if (item.type === 'Keyword') {
-      if (takesColor(fn.params[index] ?? tail)) {
-        const color = coerceNamedColorKeyword(item);
-        if (color !== item) {
-          (out ??= [...items])[index] = color;
-        }
-      }
       continue;
     }
     const isCalc = item.type === 'FunctionCall' && item.name === 'calc' && ev.sassCalculations !== true;
@@ -244,7 +227,7 @@ function cssFunctionParam(param: ParamSpec): ParamSpec {
   return type === 'any' ? param : { ...param, kinds: undefined, type: [...type, 'FunctionCall'] };
 }
 
-function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown): ValueGroup {
+function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown, colorName: FnCtx['colorName']): ValueGroup {
   if (!isValueGroup(value)) {
     throw new TypeError(`${name}: each argument must be a value node`);
   }
@@ -254,7 +237,9 @@ function validateValue(name: string, index: number, type: NormalizedParamType, v
    * `Color`-typed parameter by materializing to its `Color` at the bind point —
    * the point of USE — without the un-operated literal ever being reclassified.
    * `lighten(red, 10%)` binds `#ff0000`; a keyword that is not a named color
-   * still fails the `Color` slot as before. A call written out as-is is read
+   * still fails the `Color` slot as before. The call's context supplies the
+   * reading ({@link FnCtx.colorName}), so only a caller that reads names bundles
+   * the table (R8 spec, colour names). A call written out as-is is read
    * as the keyword that spells it, unless the slot asks for the call.
    */
   const single = isValueGroupArray(value) ? undefined : value;
@@ -265,9 +250,11 @@ function validateValue(name: string, index: number, type: NormalizedParamType, v
     ? value
     : single?.type === 'FunctionCall' || single?.type === 'Arithmetic'
       ? keepAsWritten(callKeyword(single))
-      : type.includes('Collection') && groupItems(value).length === 0 && isListShaped(value)
-        ? EMPTY_COLLECTION
-        : value;
+      : single?.type === 'Keyword' && type.includes('Color')
+        ? colorName?.(single) ?? single
+        : type.includes('Collection') && groupItems(value).length === 0 && isListShaped(value)
+          ? EMPTY_COLLECTION
+          : value;
   if (!isValueForType(bound, type)) {
     const expected = type === 'any' ? 'any' : type.filter(kind => kind !== 'FunctionCall').join('|');
     throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${isValueGroupArray(bound) ? 'sequence' : bound.type}`);
@@ -279,7 +266,8 @@ function checkedLazy(
   name: string,
   index: number,
   type: NormalizedParamType,
-  thunk: unknown
+  thunk: unknown,
+  colorName: FnCtx['colorName']
 ): LazyValue<ValueGroup> {
   if (typeof thunk !== 'function') {
     throw new TypeError(`${name}: lazy argument ${index} must be a thunk`);
@@ -287,9 +275,9 @@ function checkedLazy(
   return () => {
     const value = thunk();
     if (value instanceof Promise) {
-      return value.then(result => validateValue(name, index, type, result));
+      return value.then(result => validateValue(name, index, type, result, colorName));
     }
-    return validateValue(name, index, type, value);
+    return validateValue(name, index, type, value, colorName);
   };
 }
 
@@ -303,7 +291,7 @@ function checkedLazy(
 const isAbsent = (input: DirectInput): boolean =>
   typeof input !== 'function' && !isValueGroupArray(input) && input.type === 'Null' && !input.explicit;
 
-export function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly (DirectInput | undefined)[]): unknown[] {
+export function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly (DirectInput | undefined)[], colorName?: FnCtx['colorName']): unknown[] {
   const out: unknown[] = [];
   let offset = 0;
   for (let index = 0; index < params.length; index++) {
@@ -315,8 +303,8 @@ export function bindDirect(name: string, params: readonly ParamSpec[], inputs: r
         : inputs.slice(offset);
       const type = paramType(param);
       out.push(param.lazy
-        ? rest.map(value => checkedLazy(name, index, type, value))
-        : rest.map(value => validateValue(name, index, type, value)));
+        ? rest.map(value => checkedLazy(name, index, type, value, colorName))
+        : rest.map(value => validateValue(name, index, type, value, colorName)));
       offset = inputs.length;
       continue;
     }
@@ -334,8 +322,8 @@ export function bindDirect(name: string, params: readonly ParamSpec[], inputs: r
     }
     const type = paramType(param);
     out.push(param.lazy
-      ? checkedLazy(name, index, type, input)
-      : validateValue(name, index, type, input));
+      ? checkedLazy(name, index, type, input, colorName)
+      : validateValue(name, index, type, input, colorName));
   }
   if (offset < inputs.length) {
     throw new TypeError(`${name}: too many arguments`);
@@ -393,8 +381,8 @@ export function defineFunction(
      * `bindDirect`'s `too many arguments` stays reachable.
      */
     const lazy = params.some(param => param.lazy === true);
-    callable = (args) => {
-      const bound = bindDirect(name, slots, lazy ? args.map((item, index) => (params[index] ?? restParam)?.lazy ? () => item : item) : args);
+    callable = (args, ctx) => {
+      const bound = bindDirect(name, slots, lazy ? args.map((item, index) => (params[index] ?? restParam)?.lazy ? () => item : item) : args, ctx.colorName);
       if (cssFunction) {
         /* What the call passed, in parameter order, is what the CSS function takes: no name, no `null` (a declared optional's). */
         const passed = bound.flat().filter(isPassed);

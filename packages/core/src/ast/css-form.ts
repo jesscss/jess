@@ -231,7 +231,7 @@ export function defineForm(name: string, spec: { readonly params: readonly Param
       if (spec.filter === true && items.length === 1 && lone !== undefined && !isValueGroupArray(lone) && lone.type === 'FunctionCall' && lone.result === 'numeric') {
         throw new TypeError(`${name}: arg 0 expected Color, got a number`);
       }
-      const call: FormCall | Color = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, items));
+      const call: FormCall | Color = Reflect.apply(spec.form, undefined, bindDirect(name, spec.params, items, ctx.colorName));
       if ('type' in call) {
         return call;
       }

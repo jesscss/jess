@@ -23,7 +23,8 @@ import { isMathFunctionName } from './math-functions.js';
 import { writtenCallValue } from './math-operand.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry, FunctionDeclined } from './value-dispatch.js';
-import { compileArguments } from './value-dispatch.js';
+import { numberArguments } from './value-dispatch.js';
+import { coerceNamedColorKeyword } from './literal-tag.js';
 import { makeFunctionCall, makeList, withFields } from './value-factory.js';
 import { emitCompressed } from './compress.js';
 
@@ -192,14 +193,14 @@ export function buildEvaluator(
      * The same holds for a scoped `@plugin`/`@use` fn. (Only fn-dispatch errors are
      * caught here; variable-resolution / mixin-recursion errors are thrown
      * outside `dispatch` and still propagate.) A slash list passed to a
-     * parameter typed as a number is its quotient ({@link compileArguments}).
+     * parameter typed as a number is its quotient ({@link numberArguments}).
      */
     const fn = scoped ?? (ambient ? registry.get(name) : undefined);
     if (fn) {
       try {
         /* `args` is the call's comma list, or the items of a modern colour call ({@link FnCtx.modern}). */
         const modern = isValueGroupArray(args);
-        const result = fn(compileArguments(fn, modern ? args : groupItems(args), evaluator, modes), { modes, stringify, io, parseSelector, modern });
+        const result = fn(numberArguments(fn, modern ? args : groupItems(args), evaluator, modes), { modes, stringify, colorName: coerceNamedColorKeyword, io, parseSelector, modern });
         return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty, params: fn.params }) : result;
       } catch (err) {
         return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty, params: fn.params });
