@@ -243,7 +243,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
           ? JSON.stringify(recipe)
           : 'color' in recipe
             ? `[${local('@jesscss/fns/runtime', 'color')}(${JSON.stringify(recipe.color)}, ${JSON.stringify(recipe.rgb)}, ${recipe.alpha}), []]`
-            : `[${hexOnly && recipe.body !== undefined ? `(a) => ${local(recipe.body.module, recipe.body.name)}(...a)` : local(recipe.fn.module, recipe.fn.name)}, [${recipe.args.map(write).join(', ')}]]`;
+            : `[${hexOnly && recipe.body !== undefined ? `(a) => ${local(recipe.body.module, recipe.body.name)}(...a)` : `${local('@jesscss/fns/runtime', 'call')}(${local(recipe.fn.module, recipe.fn.name)})`}, [${recipe.args.map(write).join(', ')}]]`;
     const derived = Object.entries(runtime.derived).map(([name, recipe]) => `${JSON.stringify(name)}: ${write(recipe)}`);
 
     /* The least check the exports need: none when no CSS form reads one. */

@@ -15,9 +15,12 @@ import { DEFAULT_MODES, emitValue, isValueGroupArray, makeList, parseHex, sniffL
 
 /**
  * How a derived value is computed, as the generated module writes it: an
- * export, an argument's compile-time CSS, or a function and its arguments.
+ * export, an argument's compile-time CSS, or a computation and its arguments.
  */
-export type RuntimeRecipe = { readonly export: string } | string | readonly [Fn, readonly RuntimeRecipe[]];
+export type RuntimeRecipe = { readonly export: string } | string | readonly [Compute, readonly RuntimeRecipe[]];
+
+/** What a recipe calls with its computed arguments: a built-in's body, {@link call} over a defined function, or {@link color}. */
+export type Compute = (args: ValueGroup[]) => ValueGroup;
 
 /**
  * A colour name a recipe's own argument writes for a colour parameter, read at
@@ -25,9 +28,22 @@ export type RuntimeRecipe = { readonly export: string } | string | readonly [Fn,
  * ({@link spelledColor}), as a call of no arguments, so a page that writes none
  * bundles nothing for it.
  */
-export function color(src: string, rgb: readonly [number, number, number], alpha: number): Fn {
+export function color(src: string, rgb: readonly [number, number, number], alpha: number): Compute {
   const value = spelledColor(src, rgb, alpha);
-  return Object.assign(() => value, { params: [] });
+  return () => value;
+}
+
+const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value) };
+
+/** A defined function as a recipe calls it, with the runtime's context, so a page whose recipes all call bodies bundles neither the context nor the async refusal. */
+export function call(fn: Fn): Compute {
+  return (args) => {
+    const result = fn(args, CTX);
+    if (isThenable(result)) {
+      throw new TypeError(`${fn.name}() computes asynchronously, which the runtime cannot do.`);
+    }
+    return result;
+  };
 }
 
 /** What a compiled stylesheet's module hands {@link createRuntime}. */
@@ -71,8 +87,6 @@ export interface Runtime {
   set(values: ExportValues, target?: StyleTarget): void;
 }
 
-const CTX = { modes: DEFAULT_MODES, stringify: (value: ValueGroup): string => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value) };
-
 /** {@link Runtime.vars} alone, so a page that never calls `set` bundles no writer. */
 export function createVars(spec: RuntimeSpec): Runtime['vars'] {
   return (given: ExportValues): Record<string, string> => {
@@ -111,7 +125,7 @@ function reads(recipe: RuntimeRecipe, values: ExportValues): boolean {
       : Object.hasOwn(values, recipe.export);
 }
 
-function isCall(recipe: Exclude<RuntimeRecipe, string>): recipe is readonly [Fn, readonly RuntimeRecipe[]] {
+function isCall(recipe: Exclude<RuntimeRecipe, string>): recipe is readonly [Compute, readonly RuntimeRecipe[]] {
   return Array.isArray(recipe);
 }
 
@@ -123,12 +137,8 @@ function run(recipe: RuntimeRecipe, read: (name: string) => ValueGroup, text: Re
   if (!isCall(recipe)) {
     return read(recipe.export);
   }
-  const [fn, args] = recipe;
-  const result = fn(args.map(arg => run(arg, read, text)), CTX);
-  if (isThenable(result)) {
-    throw new TypeError(`${fn.name}() computes asynchronously, which the runtime cannot do.`);
-  }
-  return result;
+  const [compute, args] = recipe;
+  return compute(args.map(arg => run(arg, read, text)));
 }
 
 /** The hex check's error; `named` when what was given reads as a colour name, so the option that takes names would help. */
