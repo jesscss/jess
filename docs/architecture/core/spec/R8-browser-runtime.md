@@ -169,8 +169,8 @@ or needs JS) to decide what ships in the bundle.
   `@less.rgb(@brand)`, is `var(--brand, #c00)`. A wrong exposed value fails at the
   compile, as its slot rejects it. A
   stylesheet that prints only forms adds no function: with no exposed variable it
-  adds no JS at all, and with one it adds the runtime that sets it, `createRuntime`
-  with no derived value (measured 2026-11-05 with Vite 6: 34.7 KB minified, 10.6 KB gzip). Every other computed function takes rung 4, and so does one with
+  adds no JS at all, and with one it adds only `exposedVars` and `writeVars` from `@jesscss/patch-css`
+  (measured 2026-11-11 with Vite 6: 2,195 B for the whole built module, 1,839 B minified and 1,010 B gzip, 34.7 KB minified when it bundled the recipe runner). Every other computed function takes rung 4, and so does one with
   an exposed variable in an argument its form does not take yet (`@less.darken(#c00, @a)`,
   that task's slice 5). An input of a function on rung 4 stays computed, as the
   runtime reads it: `@less.lightness(@less.darken(@brand, 10%))` is one recipe
@@ -214,11 +214,18 @@ or needs JS) to decide what ships in the bundle.
   compile ran on the given values and the compile-time value of every export
   not given. It is usable as a React or Vue `style` object.
 - **`set(values, target)`** writes `vars(values)` on `target`'s inline style,
-  `document.documentElement` by default. ponytail: no per-frame batching; a
-  caller setting many values in one frame calls `set` once with all of them.
-- **Values are CSS literals** (`#c00`, `8px`, `red`, lists of them); a value
-  written as a function (`hsl(…)`, `calc(…)`) raises, since the runtime has no
-  CSS parser. `<input type="color">` gives hex.
+  `document.documentElement` by default, and only a value the style does not
+  already hold, read from the style itself (`writeVars` in `@jesscss/patch-css`). It writes
+  at once, without per-frame batching: the browser recomputes style once per
+  frame anyway, so batching gains only when the page reads layout between
+  calls, and such a page passes all its values to one `set()`
+  (`docs/perf/BENCHMARKS.md` §10).
+- **Values are CSS literals** (`#c00`, `8px`, `red`, lists of them). A recipe
+  reads its exports with no CSS parser, so a value it reads that is written as a
+  function (`hsl(…)`, `calc(…)`) raises. An export a CSS form reads must be a CSS
+  `<number>` followed by its default's unit (any unit, `µm` included), with no
+  trailing `.` and no list. An export that neither reads is written as given.
+  `<input type="color">` gives hex.
 - **What `--name` holds.** The exposed value as written, with its unit:
   `@gap: 12px` is `var(--gap, 12px)`, and `vars({ gap: '1em' })` writes
   `--gap: 1em`; a percentage is the one exception (*Percentages*). A form that needs the bare number divides by the default's unit
@@ -274,7 +281,9 @@ or needs JS) to decide what ships in the bundle.
   and `ratios` in the runtime data lists it. An export that is another one's read
   is the same type: `@b: @a` of a `%` `@a` is a ratio too, its fallback that one's
   ratio, `calc(var(--b, var(--a, 0.25)) * 100%)`. `vars({ a: '50%' })` writes
-  `--a: 0.5`; CSS that sets a `%` export itself writes the ratio (`--a: .3`), as
+  `--a: 0.5`, spelled by the compile's output number policy (`formatNumber`, in
+  `@jesscss/patch-css` beside `ratioOf` and re-exported by core), so
+  `vars({ a: '33.333333333333%' })` writes the fallback's `0.3333333333`; CSS that sets a `%` export itself writes the ratio (`--a: .3`), as
   `--a: 30%` would read as `3000%`. An export of any other unit is held as written.
   Owner, 2026-11-11, on a percentage a form turns into a length or a number: *"right,
   it can be represented by a float"*, then *"but even then, if we're parsing units at
@@ -321,14 +330,18 @@ or needs JS) to decide what ships in the bundle.
   stylesheet's directory. The plugin's `handleHotUpdate` adds that id to an
   edit of the stylesheet. `<file>?inline` is the same CSS as a string. A
   `<link>` to a `.less` or `.jess` file is not served in dev.
-- **Resolving the runtime.** The module's `@jesscss/fns` imports resolve from
+- **Resolving the runtime.** The module's `@jesscss/patch-css` and `@jesscss/fns` imports resolve from
   the stylesheet, then from the plugin. Vite resolves bare imports itself; a
   Rollup build needs `@rollup/plugin-node-resolve`.
 - **Module.** `export default` is the CSS. A stylesheet with runtime data also
-  has `export const { vars, set } = createRuntime({ keys, defaults, units, derived })`, each
-  recipe function imported by name from its module (`@jesscss/fns/less`).
-  Imports resolve from the stylesheet, then from the plugin, which depends on
-  `@jesscss/fns`.
+  exports `vars` and `set`. With no derived value they are two exports over
+  `exposedVars(spec, values)` and `writeVars` in `@jesscss/patch-css`, which map
+  keys, check units and write, and nothing else; a page that imports only
+  `vars` drops the writer. Otherwise they come from
+  `createRuntime({ keys, defaults, units, derived })`, which builds on the same
+  `exposedVars`/`writeVars` and imports each recipe function by name from its
+  module (`@jesscss/fns/less`). Imports resolve from the stylesheet, then from
+  the plugin, which depends on `@jesscss/fns` and `@jesscss/patch-css`.
 - **Diagnostics** go through Rollup once: errors as `this.error`, warnings as
   `this.warn`, each with its file, line and column.
 - **Browser-safe functions.** `@jesscss/fns` imports the value barrel
@@ -411,7 +424,7 @@ import styles, { $brand, button } from './card.module.less'
 
 button                            // scoped class (R7.3)
 styles.vars({ brand: '#c00' })    // { '--brand': '#c00', … } — pure
-styles.set({ brand: '#c00' })     // :root, batched per frame
+styles.set({ brand: '#c00' })     // :root, changed values only
 styles.set({ brand: '#c00' }, el) // inline on el: subtree theming
 $brand.value = '#c00'             // per-variable handle
 ```

@@ -78,6 +78,7 @@ which is a harness limitation, not a syntax one.)
 | **real SCSS parse cost**, AST and CST | `pnpm run bench:scss:real` (`--base <checkout>` for a before/after with A/A) | function calls and marginal instructions per pass over vendored Bootstrap and Foundation, with the generated `gen-workload` beside them. See §9. |
 | **per-grammar artifact size + precompiled assembly, CI-gated** | `pnpm run check:grammar-artifacts` | bytes per source byte (parseman's 5× budget) and precompiled-assembly count per `lib/grammar/*.js`. See §6. |
 | **CLI cold start** vs lessc 4.x | `pnpm run measure:cli:cold-start [--fixture bootstrap4] [--base <jess checkout>]` | spawn-to-exit CLI time, module load, first and second compile in a fresh process; every sample a new process, arms interleaved. See §7. |
+| **how the page takes new variable values** (browser) | open `packages/patch-css/bench/write-strategy.html` in a browser; results print on the page and on `window.results` | ms per update for each way of writing custom properties, write plus the style and layout it forces, on 12,000 elements reading them. See §10. |
 | **byte identity of a refactor** (not timing) | `pnpm run compare:less:builds -- --corpus --record .scratch/corpus-baseline.json` before the change, `... --corpus --baseline .scratch/corpus-baseline.json` after rebuilding | every corpus fixture × 6 output modes, compared by name. See §5. |
 
 `measure:less:hotpath` is the canonical jess total-render harness, and with
@@ -228,6 +229,59 @@ How to use it:
 1. **To decide a few percent, use a small fixture of the shape under review**, where the code under review is most of the marginal, with interleaved arms. Run each build as two arms and report that same-build spread beside the result. A change smaller than that spread is not a result.
 2. **Or compare only runs with the same mark-compact count**: record the count per process and take medians per count.
 3. **Do not read a single-digit difference from `benchmark.less` or `k-plain` at K 100 → 300**, in either direction. They still catch a large change.
+
+## 10. patch-css write strategy — how the page takes new variable values
+
+`@jesscss/patch-css` writes a stylesheet's exposed variables (`set()` from a
+`.less`/`.jess` module). The harness is
+`packages/patch-css/bench/write-strategy.html`, a static page: open it in a
+browser and read the table it prints, or `window.results`.
+
+**Method:**
+- The page has 3,000 cards, 12,000 elements, and every card reads ten custom
+  properties, two of which size its layout.
+- Each sample writes one update and then forces style and layout, so it times
+  the write and the recalc that the write causes. No `requestAnimationFrame` is
+  involved, so a background tab times the same.
+- A cell is the median, with the interquartile range in brackets, of 600
+  samples: four rounds of 150.
+- Each round starts the strategy order one place later, so no strategy always
+  runs after another.
+- `inlineAll (A/A)` repeats `inlineAll`; the gap between the two is the noise
+  floor.
+- `performance.now()` is coarsened to 0.1 ms on this page.
+
+Measured 2026-11-11 in Chrome 156 (the Claude desktop browser pane, hidden), in ms per update:
+
+| Scenario | inline, every value | inline, every value (A/A) | inline, a value the style lacks | adopted sheet, `replaceSync` | adopted sheet, one rule's `style` |
+|---|---|---|---|---|---|
+| one variable changes | 6.5 (0–7.8) | 6.5 (0–7.7) | 6.5 (0–7.7) | 7.5 (1–8.6) | 7.5 (0–8.7) |
+| all ten change | 21.7 (20.5–23.9) | 21.8 (20.6–23.9) | 21.7 (20.6–23.9) | 22.7 (21.7–25.3) | 22.8 (21.6–25.4) |
+| nothing changes | 0 | 0 | 0 | 0.9 (0.9–1) | 0 |
+| five calls, written at once | 12.7 (6.8–20.4) | 12.7 (6.8–20.2) | 11.7 (6.8–20) | 13 (7.8–20.9) | 12.8 (7.7–20.8) |
+| five calls merged into one write | 13.5 (6.7–19.9) | 12.8 (6.8–19.8) | 12.1 (6.8–19.9) | 12.9 (7.7–20.9) | 14 (7.8–20.8) |
+| five calls, layout read between each | 66.3 (58–75.1) | 68 (58.3–74.9) | 66.4 (58.5–74.8) | 71.5 (63.6–79.9) | 74.1 (63.9–80.2) |
+
+What it decided:
+
+- **Write on the root's inline style.** An adopted sheet costs 1 ms more per
+  update, against an A/A gap of 0–0.1 ms on those rows. `replaceSync` also
+  re-parses when nothing changed. Each `--name` is declared once, on the root.
+- **Skip a value the style already holds, by reading the style.** In Chrome
+  this ties with writing every value, because Chrome skips a repeated inline
+  value itself. `writeVars` compares against `style.getPropertyValue` rather
+  than a record of its own writes, so a value removed or changed by other code
+  is written again.
+- **`set()` stays synchronous.** Merging five calls into one write is within
+  noise of writing each at once (12.7 to 13.5 against an A/A spread of 0.7),
+  because the browser recomputes style once per frame anyway. Batching pays
+  only when the page reads layout between calls: five calls with a read
+  between each cost 66 ms, against about 13 merged. A deferred `set()` would
+  hide that cost, but `getComputedStyle` right after `set()` would then read
+  the old value. A page that measures between updates should pass all its
+  values to one `set()`.
+
+Rerun the page after any change to how `writeVars` writes.
 
 ## Fixtures (the standard inputs)
 

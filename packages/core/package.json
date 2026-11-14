@@ -64,6 +64,7 @@
   },
   "dependencies": {
     "@jesscss/awaitable-pipe": "workspace:*",
+    "@jesscss/patch-css": "workspace:*",
     "@jridgewell/gen-mapping": "~0.3.12",
     "@ungap/set-methods": "~0.1.1",
     "chalk": "^4.1.2",

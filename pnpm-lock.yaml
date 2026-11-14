@@ -251,6 +251,9 @@ importers:
       '@jesscss/awaitable-pipe':
         specifier: workspace:*
         version: link:../awaitable-pipe
+      '@jesscss/patch-css':
+        specifier: workspace:*
+        version: link:../patch-css
       '@jridgewell/gen-mapping':
         specifier: ~0.3.12
         version: 0.3.13
@@ -499,6 +502,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/patch-css':
+        specifier: workspace:*
+        version: link:../patch-css
       color-name:
         specifier: ~2.0.0
         version: 2.0.2
@@ -715,6 +721,9 @@ importers:
       '@jesscss/fns':
         specifier: workspace:*
         version: link:../fns
+      '@jesscss/patch-css':
+        specifier: workspace:*
+        version: link:../patch-css
       jess:
         specifier: workspace:*
         version: link:../jess

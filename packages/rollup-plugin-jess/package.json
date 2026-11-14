@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@jesscss/fns": "workspace:*",
+    "@jesscss/patch-css": "workspace:*",
     "jess": "workspace:*"
   },
   "peerDependencies": {
