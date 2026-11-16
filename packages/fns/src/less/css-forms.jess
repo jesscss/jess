@@ -49,3 +49,4 @@ $channel-moved-deferred: @($ch, $n) > { result: calc($ch + $n / 1%); }
 $channel-set-deferred: @($n) > { result: calc($n / 1%); }
 $channel-up: @($ch, $max, $f) > { result: calc($ch + ($max - $ch) * $f); }
 $channel-down: @($ch, $f) > { result: calc($ch + $ch * $f); }
+$channel-scaled: @($ch, $max, $f) > { result: calc($ch + ($max - $ch) * clamp(0, $f, 1) + $ch * clamp(-1, $f, 0)); }

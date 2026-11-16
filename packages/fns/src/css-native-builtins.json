@@ -554,7 +554,7 @@
       "class": "exact-if",
       "css": "hsl(from C h s calc(l + (100 - l) * F))",
       "spec": "css-color-5 §4.4",
-      "notes": "built: slice 8, stage 4. One relative colour for the call. F known: its sign picks the formula (positive: calc(l + (100 - l) * F), negative: calc(l + l * F)). F only the browser knows has no form, and fails"
+      "notes": "built: slice 8, stage 4. One relative colour for the call. F known: its sign picks the formula (positive: calc(l + (100 - l) * F), negative: calc(l + l * F)). F only the browser knows (a percentage, Q2): one form for either sign, calc(l + (100 - l) * clamp(0, F, 1) + l * clamp(-1, F, 0)), F held at ±1 past ±100%, where Dart Sass fails"
     },
     {
       "dialect": "scss",
