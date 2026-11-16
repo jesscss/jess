@@ -2,37 +2,59 @@
 <meta charset="utf-8">
 <title>patch-css write strategy</title>
 <!--
-  How a page should take new custom-property values (docs/perf/BENCHMARKS.md,
-  "patch-css write strategy"). Open in a browser; results print below and on
-  window.results. Each sample writes one update and forces style + layout, so
-  it times the write and the recalc it causes on a page where every element
-  reads the variables. Each cell is the median and interquartile range of all
-  samples over four rounds, each round in a rotated strategy order; the A/A
-  column repeats the first strategy, so its gap from that strategy is noise.
-  performance.now() is coarsened to 0.1 ms here, so a 0.1 ms gap means nothing.
+  How a page should take new custom-property values (docs/perf/BENCHMARKS.md
+  §10, "patch-css write strategy"). Serve it cross-origin isolated
+  (bench/serve.mjs) so performance.now() resolves 5 µs, not 0.1 ms; results
+  print below and on window.results. ?suites= picks from strategies, identity,
+  setter, layout (all by default); ?scenarios= picks rows of the strategies
+  table by name, comma-separated (all by default).
+
+  strategies: each sample times BATCH updates, each written and then forced
+  through style and layout, and reports the time per update. A cell is the
+  median and interquartile range over ROUNDS rounds of SAMPLES samples. The
+  strategies take turns sample by sample, in an order that rotates each
+  sample, so a slow spell in the machine lands on all of them; each sample
+  starts from a fresh install and one untimed write of all ten values, and
+  each scenario starts with an untimed sample of every strategy.
+  `current (A/A)` repeats `current`; a row's A/A
+  spread is the largest gap between the two in any round's median, and a
+  difference smaller than it is not a result.
 -->
 <style>
   body { margin: 0; font: 12px system-ui; }
-  .card { display: inline-block; width: 60px; margin: 2px; padding: calc(var(--v3, 2px) * 1); background: var(--v0, #eee); color: var(--v1, #222); border: 1px solid var(--v2, #999); }
-  .card i { display: block; height: var(--v4, 4px); background: var(--v5, #ccc); opacity: var(--v6, 1); }
-  .card b { display: block; outline: 1px solid var(--v7, red); font-weight: var(--v8, 400); letter-spacing: var(--v9, 0); }
-  pre { position: fixed; top: 0; right: 0; background: #fff; margin: 0; padding: 8px; z-index: 1; }
+  pre { position: fixed; top: 0; right: 0; background: #fff; margin: 0; padding: 8px; z-index: 1; max-height: 100vh; overflow: auto; }
 </style>
 <pre id="out">running…</pre>
 <div id="cards"></div>
 <script type="module">
-const CARDS = 3000;
-const NAMES = Array.from({ length: 10 }, (_, i) => `--v${i}`);
-const SAMPLES = 150;
+import { writeVars } from '../lib/index.js';
 
-const html = '<div class="card"><i></i><b>x</b><span>y</span></div>'.repeat(CARDS);
-document.getElementById('cards').innerHTML = html;
-const probe = document.querySelector('#cards > .card:last-child b');
+const params = new URLSearchParams(location.search);
+const SUITES = (params.get('suites') ?? 'strategies,identity,setter,layout').split(',');
+const CARDS = 3000;
+const ROUNDS = Number(params.get('rounds') ?? 6);
+const SAMPLES = Number(params.get('samples') ?? 30);
+const BATCH = 10;
+const N = 10;
+
+/* Each name set is read by the same card rules, so a strategy that writes other names (a registered set) styles the same page. */
+const PREFIXES = { v: 'unregistered', r: "@property, syntax '*', inherits: true", f: "@property, syntax '*', inherits: false (a semantics change: data point only)" };
+const names = (p) => Array.from({ length: N }, (_, i) => `--${p}${i}`);
+const rules = (p) => `
+  .m-${p} .card { display: inline-block; width: 60px; margin: 2px; padding: calc(var(--${p}3, 2px) * 1); background: var(--${p}0, #eee); color: var(--${p}1, #222); border: 1px solid var(--${p}2, #999); }
+  .m-${p} .card i { display: block; height: var(--${p}4, 4px); background: var(--${p}5, #ccc); opacity: var(--${p}6, 1); }
+  .m-${p} .card b { display: block; outline: 1px solid var(--${p}7, red); font-weight: var(--${p}8, 400); letter-spacing: var(--${p}9, 0); }`;
+document.head.append(Object.assign(document.createElement('style'), { textContent: Object.keys(PREFIXES).map(rules).join('\n') }));
+for (const name of names('r')) CSS.registerProperty({ name, syntax: '*', inherits: true });
+for (const name of names('f')) CSS.registerProperty({ name, syntax: '*', inherits: false });
+
+const cards = document.getElementById('cards');
+cards.innerHTML = '<div class="card"><i></i><b>x</b><span>y</span></div>'.repeat(CARDS);
+const probe = cards.querySelector('.card:last-child b');
 const root = document.documentElement;
 
-let tick = 0;
-const value = (name, n) => {
-  const i = Number(name.slice(3));
+/** The value variable `i` takes at step `n`: lengths for the four that size layout, a number for opacity and weight, a colour otherwise. */
+const value = (i, n) => {
   switch (i) {
     case 3: case 4: return `${2 + (n % 5)}px`;
     case 6: return String(0.5 + (n % 5) / 10);
@@ -41,115 +63,215 @@ const value = (name, n) => {
     default: return `hsl(${(n * 37 + i * 20) % 360} 60% 50%)`;
   }
 };
-const update = (count) => {
-  tick++;
+const COLOUR = [0, 1, 2, 5, 7];
+const LAYOUT = [3, 4, 8, 9];
+
+/* A strategy: the name set it writes, where, and how. `install` once before a run; `reset` removes what it wrote. */
+const onStyle = (style) => ({
+  current: (out) => writeVars(out, { style }),
+  all: (out) => { for (const k in out) style.setProperty(k, out[k]); },
+  typed: (out) => { const map = style === root.style ? root.attributeStyleMap : null; for (const k in out) map.set(k, out[k]); }
+});
+const STRATEGIES = {
+  current: { prefix: 'v', target: root, write: onStyle(root.style).current },
+  'current (A/A)': { prefix: 'v', target: root, write: onStyle(root.style).current },
+  'every value, unchecked': { prefix: 'v', target: root, write: onStyle(root.style).all },
+  'Typed OM attributeStyleMap.set': { prefix: 'v', target: root, write: onStyle(root.style).typed },
+  "@property '*', inherits: true": { prefix: 'r', target: root, write: onStyle(root.style).current },
+  'on #cards, not the root': { prefix: 'v', target: cards, write: (out) => writeVars(out, cards) },
+  "@property '*', inherits: false (data point)": { prefix: 'f', target: root, write: onStyle(root.style).current }
+};
+const install = (s) => { cards.className = `m-${s.prefix}`; };
+const reset = () => { for (const p of Object.keys(PREFIXES)) for (const k of names(p)) { root.style.removeProperty(k); cards.style.removeProperty(k); } cards.className = ''; };
+
+/* An update writes `count` names at step `n`, rotating through the ten, in the strategy's name set. */
+const update = (prefix, count, n, only) => {
   const out = {};
-  for (let i = 0; i < count; i++) out[NAMES[(tick + i) % NAMES.length]] = value(NAMES[(tick + i) % NAMES.length], tick);
+  for (let j = 0; j < count; j++) {
+    const i = only === undefined ? (n + j) % N : only[(n + j) % only.length];
+    out[`--${prefix}${i}`] = value(i, n);
+  }
   return out;
 };
-
-function inlineAll() {
-  return { write(out) { for (const k in out) root.style.setProperty(k, out[k]); }, reset() { for (const k of NAMES) root.style.removeProperty(k); } };
-}
-/** What `writeVars` does: skip a value the style already holds, read from the style. */
-function inlineChanged() {
-  return {
-    write(out) { for (const k in out) { if (root.style.getPropertyValue(k) !== out[k]) root.style.setProperty(k, out[k]); } },
-    reset() { for (const k of NAMES) root.style.removeProperty(k); }
-  };
-}
-function sheetReplace() {
-  const sheet = new CSSStyleSheet();
-  const all = new Map();
-  return {
-    install() { document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]; },
-    write(out) { for (const k in out) all.set(k, out[k]); let text = ':root{'; for (const [k, v] of all) text += `${k}:${v};`; sheet.replaceSync(`${text}}`); },
-    reset() { all.clear(); sheet.replaceSync(''); document.adoptedStyleSheets = document.adoptedStyleSheets.filter(s => s !== sheet); }
-  };
-}
-function sheetRuleChanged() {
-  const sheet = new CSSStyleSheet();
-  sheet.replaceSync(':root{}');
-  const style = sheet.cssRules[0].style;
-  const last = new Map();
-  return {
-    install() { document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]; },
-    write(out) { for (const k in out) { if (last.get(k) !== out[k]) { last.set(k, out[k]); style.setProperty(k, out[k]); } } },
-    reset() { last.clear(); for (const k of NAMES) style.removeProperty(k); document.adoptedStyleSheets = document.adoptedStyleSheets.filter(s => s !== sheet); }
-  };
-}
-
-/** `inlineAll (A/A)` repeats `inlineAll`: the gap between the two is the noise floor. */
-const STRATEGIES = { inlineAll, 'inlineAll (A/A)': inlineAll, inlineChanged, sheetReplace, sheetRuleChanged };
-
-const flush = () => { void probe.offsetHeight; return getComputedStyle(probe).outlineColor; };
+const flushStyle = () => getComputedStyle(probe).outlineColor;
+const flush = () => { void probe.offsetHeight; return flushStyle(); };
+const median = (xs) => quantile(xs, 0.5);
 const quantile = (xs, q) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor((s.length - 1) * q)]; };
+const round3 = (x) => Number(x.toFixed(3));
+const us = (ms) => Number((ms * 1000).toFixed(2));
+/* A yield to the event loop that a hidden page does not throttle, as it does timers. */
+const channel = new MessageChannel();
+const pause = () => new Promise(r => { channel.port1.onmessage = () => r(); channel.port2.postMessage(0); });
 
-/**
- * One update per sample, `calls` vars() calls per update, `count` names per
- * call; `same` re-sends the last values. `frame` merges the calls into one
- * write, as batching them into an animation frame would; `readBetween` reads
- * layout after each call, as a page that measures between updates does.
- */
-function run(make, { count, calls = 1, same = false, frame = false, readBetween = false }) {
-  const strategy = make();
-  strategy.install?.();
-  tick = 0;
-  const warm = update(NAMES.length);
-  strategy.write(warm);
-  flush();
-  const times = [];
-  let lastOut = warm;
-  for (let s = 0; s < SAMPLES + 20; s++) {
-    const batches = [];
-    for (let c = 0; c < calls; c++) batches.push(same ? lastOut : update(count));
-    const t0 = performance.now();
-    if (frame) {
-      const merged = {};
-      for (const b of batches) Object.assign(merged, b);
-      strategy.write(merged);
-    } else {
-      for (const b of batches) {
-        strategy.write(b);
-        if (readBetween) flush();
-      }
-    }
-    flush();
-    const t1 = performance.now();
-    if (s >= 20) times.push(t1 - t0);
-    lastOut = batches[batches.length - 1];
-  }
-  strategy.reset();
-  flush();
-  return times;
-}
+/** The timer's step: the least nonzero gap between two readings. */
+const resolution = () => { let least = Infinity; for (let i = 0; i < 2e5; i++) { const a = performance.now(); const b = performance.now(); if (b > a && b - a < least) least = b - a; } return least; };
 
 const SCENARIOS = {
-  'one var changes': { count: 1 },
-  'all 10 change': { count: 10 },
-  'nothing changes': { count: 10, same: true },
-  '5 calls before a frame, at once': { count: 2, calls: 5 },
-  '5 calls before a frame, merged': { count: 2, calls: 5, frame: true },
-  '5 calls, layout read between each': { count: 2, calls: 5, readBetween: true }
+  'one variable changes': { count: 1 },
+  'one colour variable changes': { count: 1, only: COLOUR },
+  'one layout variable changes': { count: 1, only: LAYOUT },
+  'all ten change': { count: 10 },
+  'nothing changes': { count: 10, same: true }
 };
 
-const results = {};
-await new Promise(r => setTimeout(r, 300));
-const order = Object.entries(STRATEGIES);
-for (let round = 0; round < 4; round++) {
-  for (const [scenario, opts] of Object.entries(SCENARIOS)) {
-    /* Each round starts one strategy later, so no strategy always runs after another. */
-    for (let i = 0; i < order.length; i++) {
-      const [name, make] = order[(i + round) % order.length];
-      ((results[scenario] ??= {})[name] ??= []).push(...run(make, opts));
+/** Samples, each the time per update over BATCH updates, each written and forced through style and layout. */
+function sample(s, { count, only, same }, step) {
+  const batch = [];
+  for (let b = 0; b < BATCH; b++) batch.push(update(s.prefix, count, same ? 0 : step + b, only));
+  const t0 = performance.now();
+  for (const out of batch) { s.write(out); flush(); }
+  return (performance.now() - t0) / BATCH;
+}
+
+async function strategies() {
+  const order = Object.entries(STRATEGIES);
+  const rounds = {};
+  for (let round = 0; round < ROUNDS; round++) {
+    for (const [scenario, opts] of Object.entries(SCENARIOS).filter(([name]) => !params.has('scenarios') || params.get('scenarios').split(',').includes(name))) {
+      document.getElementById('out').textContent = `running strategies: round ${round + 1} of ${ROUNDS}, ${scenario}`;
+      const xs = Object.fromEntries(order.map(([name]) => [name, []]));
+      for (let i = -1; i < SAMPLES; i++) {
+        for (let k = 0; k < order.length; k++) {
+          const [name, s] = order[(k + round + Math.max(i, 0)) % order.length];
+          reset(); install(s);
+          s.write(update(s.prefix, N, 0)); flush();
+          const x = sample(s, opts, 1 + Math.max(i, 0) * BATCH);
+          if (i >= 0) xs[name].push(x);
+          await pause();
+        }
+      }
+      for (const [name] of order) ((rounds[scenario] ??= {})[name] ??= []).push(xs[name]);
     }
   }
+  reset();
+  const table = {};
+  for (const [scenario, byName] of Object.entries(rounds)) {
+    const all = (n) => byName[n].flat();
+    const base = median(all('current'));
+    const aa = Math.max(...byName.current.map((xs, r) => Math.abs(median(xs) - median(byName['current (A/A)'][r]))));
+    table[scenario] = {
+      'A/A spread (ms, % of current)': `${round3(aa)} (${(100 * aa / base).toFixed(1)}%)`,
+      ...Object.fromEntries(Object.keys(byName).map((n) => {
+        const xs = all(n), m = median(xs), d = m - base;
+        return [n, `${round3(m)} (${round3(quantile(xs, 0.25))}–${round3(quantile(xs, 0.75))}) ${d >= 0 ? '+' : ''}${(100 * d / base).toFixed(1)}%${Math.abs(d) > aa ? '' : ' (within A/A)'}`];
+      }))
+    };
+  }
+  return table;
 }
-const table = {};
-const ms = (x) => Number(x.toFixed(1));
-for (const [scenario, byName] of Object.entries(results)) {
-  table[scenario] = Object.fromEntries(Object.entries(byName).map(([n, xs]) => [n, `${ms(quantile(xs, 0.5))} (${ms(quantile(xs, 0.25))}–${ms(quantile(xs, 0.75))})`]));
+
+/** Every element's computed values for the properties the variables reach, and each variable by the name its rules read. */
+const READ = ['padding-top', 'background-color', 'color', 'border-top-color', 'height', 'opacity', 'outline-color', 'font-weight', 'letter-spacing', 'width'];
+function snapshot(prefix) {
+  const out = [];
+  for (const el of [root, document.body, cards, ...cards.querySelectorAll('*')]) {
+    const cs = getComputedStyle(el);
+    let row = READ.map(p => cs.getPropertyValue(p)).join('|');
+    for (let i = 0; i < N; i++) row += `|${cs.getPropertyValue(`--${prefix}${i}`)}`;
+    out.push(row);
+  }
+  return out;
 }
-window.results = { elements: document.querySelectorAll('#cards *').length, samples: SAMPLES * 4, ms: table, visible: document.visibilityState, ua: navigator.userAgent };
-document.getElementById('out').textContent = JSON.stringify(window.results, null, 1);
+async function identity() {
+  const result = {};
+  let before, after;
+  for (const [name, s] of Object.entries(STRATEGIES)) {
+    reset(); install(s); flush();
+    const b = snapshot(s.prefix);
+    for (let n = 1; n <= 7; n++) s.write(update(s.prefix, n === 7 ? N : 3, n));
+    s.write(update(s.prefix, 2, 3, COLOUR));
+    flush();
+    const a = snapshot(s.prefix);
+    before ??= b; after ??= a;
+    const differs = (x, y) => x.reduce((c, row, i) => c + (row !== y[i] ? 1 : 0), 0);
+    const first = a.findIndex((row, i) => row !== after[i]);
+    result[name] = { elements: a.length, 'differ before': differs(b, before), 'differ after': differs(a, after), ...(first === -1 ? {} : { 'first difference': { element: first, current: after[first], this: a[first] } }) };
+    await pause();
+  }
+  reset();
+  return result;
+}
+
+/** The setter's own JS, apart from the recalc it causes: ten values per set(), no read between sets, one flush after the timed run. */
+async function setter() {
+  const target = { style: root.style };
+  const calls = 2000;
+  const out = {};
+  const sets = (k, same) => Array.from({ length: k }, (_, n) => update('v', N, same ? 0 : n + 1));
+  const time = (batches) => {
+    const t0 = performance.now();
+    for (const b of batches) writeVars(b, target);
+    const t = (performance.now() - t0) / batches.length;
+    flush();
+    return t;
+  };
+  const runs = { 'set() of ten new values (µs)': [], 'set() of ten unchanged values (µs)': [] };
+  for (let r = 0; r < 7; r++) {
+    reset(); install(STRATEGIES.current); writeVars(update('v', N, 0), target); flush();
+    runs['set() of ten new values (µs)'].push(time(sets(calls, false)));
+    writeVars(update('v', N, 0), target); flush();
+    runs['set() of ten unchanged values (µs)'].push(time(sets(calls, true)));
+    await pause();
+  }
+  for (const [k, xs] of Object.entries(runs)) out[k] = `${us(median(xs))} (runs ${xs.map(us).join(', ')})`;
+
+  /* Does reading the inline value force style? Each step writes, then reads; if the read forced a recalc of 12,000 elements, each step would cost what a forced recalc costs (the positive control). */
+  const steps = 200;
+  const perStep = (read) => {
+    flush();
+    const t0 = performance.now();
+    for (let n = 0; n < steps; n++) { root.style.setProperty('--v0', value(0, n)); read(); }
+    const t = (performance.now() - t0) / steps;
+    flush();
+    return t;
+  };
+  const reads = { 'write, then the inline getPropertyValue (µs per step)': () => root.style.getPropertyValue('--v0'), 'write, then a computed read (positive control, µs per step)': () => getComputedStyle(probe).getPropertyValue('--v0'), 'write alone (µs per step)': () => {} };
+  for (const [k, read] of Object.entries(reads)) { const xs = []; for (let r = 0; r < 5; r++) xs.push(perStep(read)); out[k] = us(median(xs)); }
+  reset();
+  return out;
+}
+
+/** Style, then layout, timed apart for each update: a variable that only paints should leave layout nothing to do. */
+async function layout() {
+  const s = STRATEGIES.current;
+  const kinds = { 'colour variable': COLOUR, 'layout variable (positive control)': LAYOUT, 'nothing written (null control)': [] };
+  const out = {};
+  const shifts = [];
+  const observer = new PerformanceObserver((list) => shifts.push(...list.getEntries()));
+  observer.observe({ type: 'layout-shift', buffered: false });
+  for (const [kind, only] of Object.entries(kinds)) {
+    const style = [], lay = [];
+    reset(); install(s); s.write(update('v', N, 0)); flush();
+    for (let r = 0; r < 5; r++) {
+      let ts = 0, tl = 0;
+      const k = 40;
+      for (let n = 0; n < k; n++) {
+        if (only.length > 0) s.write(update('v', 1, r * k + n + 1, only));
+        const t0 = performance.now(); flushStyle();
+        const t1 = performance.now(); void probe.offsetHeight;
+        const t2 = performance.now();
+        ts += t1 - t0; tl += t2 - t1;
+      }
+      style.push(ts / k); lay.push(tl / k);
+      await pause();
+    }
+    /* A frame per kind, so a shift a visible page renders is reported to the observer. */
+    const before = shifts.length;
+    for (let f = 0; f < 5; f++) { if (only.length > 0) s.write(update('v', 1, 900 + f, only)); await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0))); }
+    out[kind] = { 'style (ms per update)': round3(median(style)), 'layout after style (ms per update)': round3(median(lay)), 'layout shifts over 5 frames': shifts.length - before };
+  }
+  observer.disconnect();
+  reset();
+  return out;
+}
+
+const results = { ua: navigator.userAgent, crossOriginIsolated, 'timer resolution (ms)': resolution(), visible: document.visibilityState, elements: cards.querySelectorAll('*').length, batch: BATCH, samples: `${ROUNDS} rounds of ${SAMPLES}` };
+await new Promise(r => setTimeout(r, 300));
+const suites = { strategies, identity, setter, layout };
+for (const name of SUITES) { results[name] = await suites[name](); document.getElementById('out').textContent = JSON.stringify(results, null, 1); }
+results.done = true;
+window.results = results;
+document.getElementById('out').textContent = JSON.stringify(results, null, 1);
+/* serve.mjs keeps the last results it is sent, so a run in a hidden tab can be read from a shell. */
+fetch('/results', { method: 'POST', body: JSON.stringify(results, null, 1) }).catch(() => {});
 </script>
