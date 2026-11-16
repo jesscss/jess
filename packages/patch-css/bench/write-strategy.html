@@ -12,15 +12,17 @@
   strategies: each sample times BATCH updates, each written and then forced
   through style and layout, and reports the time per update. A cell is the
   median and interquartile range over ROUNDS rounds of SAMPLES samples. The
-  strategies take turns sample by sample, in an order that rotates each
-  sample, so a slow spell in the machine lands on all of them; each sample
+  strategies take turns sample by sample, in a new random order each turn,
+  so a slow spell in the machine lands on all of them; each sample
   starts from a fresh install and one untimed write of all ten values, and
   each scenario starts with an untimed sample of every strategy.
   A strategy's difference from `current` is the median, over every sample,
   of its time over the `current` sample taken in the same turn, so drift in
   the machine between turns cancels. `current (A/A)` repeats `current`; a
-  row's A/A spread is the largest such difference between the two in any one
-  round, and a difference no larger than it is not a result.
+  row's A/A spread is the 95th percentile of the A/A arm's difference over
+  1,000 resamples of its turns, and a difference no larger than it is not a
+  result. `current, +5% (control)` adds a busy-wait of 5% of `current`'s
+  update to each write: a row resolves 5% when that arm is not within A/A.
 -->
 <style>
   body { margin: 0; font: 12px system-ui; }
@@ -81,8 +83,11 @@ const STRATEGIES = {
   'Typed OM attributeStyleMap.set': { prefix: 'v', target: root, write: onStyle(root.style).typed },
   "@property '*', inherits: true": { prefix: 'r', target: root, write: onStyle(root.style).current },
   'on #cards, not the root': { prefix: 'v', target: cards, write: (out) => writeVars(out, cards) },
-  "@property '*', inherits: false (data point)": { prefix: 'f', target: root, write: onStyle(root.style).current }
+  "@property '*', inherits: false (data point)": { prefix: 'f', target: root, write: onStyle(root.style).current },
+  'current, +5% (control)': { prefix: 'v', target: root, write: (out) => { const t = performance.now() + extra; writeVars(out, root); while (performance.now() < t); } }
 };
+/* The control arm's busy-wait per update: 5% of `current`'s median update so far in the scenario, so a 5% change the harness cannot resolve shows as within A/A. */
+let extra = 0;
 const install = (s) => { cards.className = `m-${s.prefix}`; };
 const reset = () => { for (const p of Object.keys(PREFIXES)) for (const k of names(p)) { root.style.removeProperty(k); cards.style.removeProperty(k); } cards.className = ''; };
 
@@ -100,6 +105,7 @@ const flush = () => { void probe.offsetHeight; return flushStyle(); };
 const median = (xs) => quantile(xs, 0.5);
 const quantile = (xs, q) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor((s.length - 1) * q)]; };
 const round3 = (x) => Number(x.toFixed(3));
+const shuffle = (xs) => { const a = [...xs]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const us = (ms) => Number((ms * 1000).toFixed(2));
 /* A yield to the event loop that a hidden page does not throttle, as it does timers. */
 const channel = new MessageChannel();
@@ -132,15 +138,18 @@ async function strategies() {
     for (const [scenario, opts] of Object.entries(SCENARIOS).filter(([name]) => !params.has('scenarios') || params.get('scenarios').split(',').includes(name))) {
       document.getElementById('out').textContent = `running strategies: round ${round + 1} of ${ROUNDS}, ${scenario}`;
       const xs = Object.fromEntries(order.map(([name]) => [name, []]));
+      extra = 0;
       for (let i = -1; i < SAMPLES; i++) {
-        for (let k = 0; k < order.length; k++) {
-          const [name, s] = order[(k + round + Math.max(i, 0)) % order.length];
+        const turn = shuffle(order);
+        for (const [name, s] of turn) {
           reset(); install(s);
           s.write(update(s.prefix, N, 0)); flush();
           const x = sample(s, opts, 1 + Math.max(i, 0) * BATCH);
           if (i >= 0) xs[name].push(x);
+          else if (name === 'current') extra = 0.05 * x;
           await pause();
         }
+        if (i >= 0) extra = 0.05 * median(xs.current);
       }
       for (const [name] of order) ((rounds[scenario] ??= {})[name] ??= []).push(xs[name]);
     }
@@ -149,15 +158,18 @@ async function strategies() {
   const table = {};
   for (const [scenario, byName] of Object.entries(rounds)) {
     const all = (n) => byName[n].flat();
-    /* Each sample over the `current` sample of the same turn, in a round or in all. */
-    const ratios = (n, r) => byName[n][r].map((x, i) => x / byName.current[r][i]);
+    /* Each sample over the `current` sample of the same turn. */
+    const ratios = (n) => byName[n].flatMap((xs, r) => xs.map((x, i) => x / byName.current[r][i]));
     const change = (xs) => median(xs) - 1;
-    const aa = Math.max(...byName.current.map((_, r) => Math.abs(change(ratios('current (A/A)', r)))));
+    /* The A/A spread: the 95th percentile of the A/A arm's change over 1,000 resamples of its turns, the same estimator every arm's change uses. */
+    const aaRatios = ratios('current (A/A)');
+    const boot = Array.from({ length: 1000 }, () => Math.abs(change(aaRatios.map(() => aaRatios[Math.floor(Math.random() * aaRatios.length)]))));
+    const aa = Math.max(quantile(boot, 0.95), Math.abs(change(aaRatios)));
     const pct = (x) => `${x >= 0 ? '+' : ''}${(100 * x).toFixed(1)}%`;
     table[scenario] = {
       'A/A spread': `${(100 * aa).toFixed(1)}%`,
       ...Object.fromEntries(Object.keys(byName).map((n) => {
-        const xs = all(n), d = change(byName[n].flatMap((_, r) => ratios(n, r)));
+        const xs = all(n), d = change(ratios(n));
         return [n, `${round3(median(xs))} (${round3(quantile(xs, 0.25))}–${round3(quantile(xs, 0.75))}) ${pct(d)}${Math.abs(d) > aa ? '' : ' (within A/A)'}`];
       }))
     };
@@ -185,6 +197,8 @@ async function identity() {
     const b = snapshot(s.prefix);
     for (let n = 1; n <= 7; n++) s.write(update(s.prefix, n === 7 ? N : 3, n));
     s.write(update(s.prefix, 2, 3, COLOUR));
+    /* Values the style already holds, so a strategy that skips them is compared too. */
+    s.write(update(s.prefix, N, 7)); s.write(update(s.prefix, 2, 3, COLOUR));
     flush();
     const a = snapshot(s.prefix);
     before ??= b; after ??= a;
@@ -270,10 +284,14 @@ async function layout() {
   return out;
 }
 
-const results = { ua: navigator.userAgent, crossOriginIsolated, 'timer resolution (ms)': resolution(), visible: document.visibilityState, elements: cards.querySelectorAll('*').length, batch: BATCH, samples: `${ROUNDS} rounds of ${SAMPLES}` };
+let visibilityChanges = 0;
+document.addEventListener('visibilitychange', () => visibilityChanges++);
+const results = { ua: navigator.userAgent, crossOriginIsolated, 'timer resolution (ms)': resolution(), 'visible at the start': document.visibilityState, elements: cards.querySelectorAll('*').length, batch: BATCH, samples: `${ROUNDS} rounds of ${SAMPLES}` };
 await new Promise(r => setTimeout(r, 300));
 const suites = { strategies, identity, setter, layout };
 for (const name of SUITES) { results[name] = await suites[name](); document.getElementById('out').textContent = JSON.stringify(results, null, 1); }
+results['visible at the end'] = document.visibilityState;
+results['visibility changes'] = visibilityChanges;
 results.done = true;
 window.results = results;
 document.getElementById('out').textContent = JSON.stringify(results, null, 1);
