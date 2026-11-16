@@ -95,6 +95,28 @@ describe('Less @expose variables (A4)', () => {
     await expect(render(source)).resolves.toContain(expected);
   });
 
+  it.each([
+    ['translate(@a * 2, 0)', 'translate(calc(var(--a, 2px) * 2), 0)'],
+    ['translate(-@a, 0)', 'translate(calc(-1 * var(--a, 2px)), 0)'],
+    ['translate(@a * 2 1px)', 'translate(calc(var(--a, 2px) * 2) 1px)'],
+    ['drop-shadow(0 0 @a * 2 red)', 'drop-shadow(0 0 calc(var(--a, 2px) * 2) red)'],
+    ['translate(@a + @b, 0)', 'translate(calc(var(--a, 2px) + 3px), 0)'],
+    ['max(@a * 2, 1px)', 'max(var(--a, 2px) * 2, 1px)'],
+    ['translate(max(@a * 2, 1px), 0)', 'translate(max(var(--a, 2px) * 2, 1px), 0)'],
+    ['translate(calc(@a * 2), 0)', 'translate(calc(var(--a, 2px) * 2), 0)'],
+    ['translate(var(--q) * 2, 0)', 'translate(var(--q) * 2, 0)'],
+    ['foo(@a + bar)', 'foo(var(--a, 2px) + bar)'],
+    ['translate(@a - auto, 0)', 'translate(var(--a, 2px) - auto, 0)'],
+    ['rotate(@a / 2)', 'rotate(var(--a, 2px) / 2)'],
+    ['translate(@b * 2, 0)', 'translate(6px, 0)']
+  ])('writes math on an exposed variable in a call written out as the top level does: %s', async (written, expected) => {
+    await expect(render(`@expose a;\n@a: 2px;\n@b: 3px;\n.x { transform: ${written}; }`)).resolves.toContain(`transform: ${expected};`);
+  });
+
+  it('fails math on an exposed colour in a call written out, as at the top level', async () => {
+    await expect(render('@expose c;\n@c: #f00;\n.x { transform: translate(@c * 2, 0); }')).rejects.toThrow('Operation on an operand it is not defined on');
+  });
+
   it('writes a compressed var() in compressed output', async () => {
     await expect(render('@expose brand;\n@brand: #c00;\n.btn { color: @brand; }', true)).resolves.toBe('.btn{color:var(--brand,#c00)}');
   });
