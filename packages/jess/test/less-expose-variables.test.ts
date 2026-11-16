@@ -217,6 +217,13 @@ describe('Less @expose variables (A4)', () => {
     await expect(render(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 
+  it('reads a known number by its magnitude under strict units, as colour maths over a known colour does', async () => {
+    const strict = async (source: string): Promise<string> =>
+      String(await new Compiler({ language: { less: { unitMode: 'strict' } } }).renderString(source, { filePath: 'entry.less', extension: '.less' }));
+    expect(await strict('.a { v: #111 * (2px * 3px); }')).toContain('v: #666666;');
+    expect(await strict('@expose c;\n@c: #c00;\n.a { v: @c * (2px * 3px); }')).toContain('v: rgb(from var(--c, #c00) clamp(0, r * 6, 255) clamp(0, g * 6, 255) clamp(0, b * 6, 255));');
+  });
+
   it.each([
     ['a keyword', '@expose c;\n@c: foo;\n.a { v: (@c * 2); }'],
     ['a string', '@expose c;\n@c: "s";\n.a { v: (@c * 2); }'],

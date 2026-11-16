@@ -260,9 +260,13 @@ export function operated(op: string, left: Value, right: Value, modes: EvalModes
   return operatedIn(op, left, right, { modes, tested: false }, keeps);
 }
 
+/** Colour maths with one side only the browser knows, in a lane (V39); `undefined` for any other operation. */
+const colourIn = (op: string, left: Value, right: Value, modes: EvalModes, tested: boolean): Value | undefined =>
+  isColourOnDeferred(left, right) ? colourOnDeferred(op, keptSpelling(left, modes, tested), keptSpelling(right, modes, tested), modes.compress === true) : undefined;
+
 /** {@link operated} in a lane: inside a feature query (`tested`) a glued minus stays as written. */
 function operatedIn(op: string, left: Value, right: Value, { modes, tested }: Pick<OperandLane, 'modes' | 'tested'>, keeps: boolean): Value {
-  const colour = keeps || !isColourOnDeferred(left, right) ? undefined : colourOnDeferred(op, keptSpelling(left, modes, tested), keptSpelling(right, modes, tested), modes.compress === true);
+  const colour = keeps ? undefined : colourIn(op, left, right, modes, tested);
   if (colour !== undefined) {
     return colour;
   }

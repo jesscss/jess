@@ -770,12 +770,9 @@ export function operandRule(op: string, left: ValueGroup, right: ValueGroup, ev:
   }
   const scss = sass && ev.sassCalculations === true;
   const call = !isValueGroupArray(left) && !isValueGroupArray(right) && (left.type === 'FunctionCall' || right.type === 'FunctionCall');
-  if (call && !scss && isColourOnDeferred(left, right)) {
-    return null;
-  }
   const leftKind = invalidOperand(left, sass, scss);
   const kind = leftKind ?? invalidOperand(right, sass, scss) ?? (call && colourAndDeferred(left, right) ? 'function call' : null);
-  if (kind !== null) {
+  if (kind !== null && (scss || !call || !isColourOnDeferred(left, right))) {
     throw new InvalidOperandError(`\`${emitValue(left)} ${op} ${emitValue(right)}\`: \`${op}\` is not defined on a ${kind} (\`${emitValue(leftKind === null ? right : left)}\`).`);
   }
   return null;
