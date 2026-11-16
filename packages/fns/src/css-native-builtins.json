@@ -209,11 +209,11 @@
     {
       "dialect": "less",
       "name": "contrast",
-      "class": "approx",
-      "css": "contrast-color(C)",
-      "withColors": "rgb(from contrast-color(C) calc(Dr + (Lr - Dr) * r / 255) calc(Dg + (Lg - Dg) * r / 255) calc(Db + (Lb - Db) * r / 255) / calc(Da + (La - Da) * r / 255))",
-      "spec": "css-color-5 §8",
-      "notes": "built: slice 7. Ruled 2026-11-01 (Q13): a known input picks dark/light by the larger WCAG 2.1 contrast ratio, so contrast(#999) = black; an explicit threshold keeps the luma rule for a known input and has no CSS form for an unknown one (it fails, or runs on the runtime). A lone contrast(<unknown>) goes by where it stands: directly in filter or backdrop-filter it is CSS's filter function, directly in any other declaration contrast-color(), and where no position is known as written (owner 2026-11-05 for grayscale and invert; the coordinator's extension to contrast). A number stays the filter. Black and white agree with contrast-color() in Chrome 152 on every origin of the grid; a custom pair can disagree, because the form switches where black and white do. Dark and light must be known for the withColors form"
+      "class": "exact",
+      "css": "color(from C srgb-linear min(1, sign(T - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) min(1, sign(T - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) min(1, sign(T - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) / 1)",
+      "withColors": "color(from C srgb-linear calc(Dr + (Lr - Dr) * S) calc(Dg + (Lg - Dg) * S) calc(Db + (Lb - Db) * S) / calc(Da + (La - Da) * S))",
+      "spec": "css-color-5 §4 (relative colour), css-values-4 sign()",
+      "notes": "built: slice 7; exact form V40 (owner 2026-11-16). A known input picks dark/light by the larger WCAG 2.1 contrast ratio (Q13), a tie to light; an explicit threshold keeps the luma rule. Over an unknown C the form makes the same choice: D and L in linear light, S = min(1, sign(T - Y) + 1) with T = sqrt((Y_D + 0.05)(Y_L + 0.05)) - 0.05 computed at compile time, and with a threshold t, S = max(0, sign(t - Y)). A lone contrast(<unknown>) goes by where it stands: directly in filter or backdrop-filter it is CSS's filter function, directly in any other declaration the form, and where no position is known as written (owner 2026-11-05 for grayscale and invert; the coordinator's extension to contrast). A number stays the filter. Dark and light must be known for the withColors form"
     },
     {
       "dialect": "less",
