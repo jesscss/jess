@@ -178,12 +178,36 @@ describe('Less @expose variables (A4)', () => {
   });
 
   it.each([
-    ['a colour', '@expose c;\n@c: #c00;\n.a { v: (@c * 2); }'],
-    ['a colour keyword', '@expose c;\n@c: red;\n.a { v: (@c * 2); }'],
+    ['a colour', '@expose c;\n@c: #c00;\n.a { v: (@c * 2); }', 'v: rgb(from var(--c, #c00) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255));'],
+    ['a colour keyword', '@expose c;\n@c: red;\n.a { v: (@c * 2); }', 'v: rgb(from var(--c, red) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255));'],
+    ['a colour bound as a mixin argument', '@expose c;\n@c: #c00;\n.m(@p) { v: (@p * 2); }\n.a { .m(@c); }', 'v: rgb(from var(--c, #c00) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255));'],
+    ['a colour beside a known colour', '@expose c;\n@c: #c00;\n.a { v: @c + #111; }', 'v: rgb(from var(--c, #c00) clamp(0, r + 17, 255) clamp(0, g + 17, 255) clamp(0, b + 17, 255) / 1);'],
+    ['a colour after a known colour', '@expose c;\n@c: #c00;\n.a { v: #111 - @c; }', 'v: rgb(from var(--c, #c00) clamp(0, 17 - r, 255) clamp(0, 17 - g, 255) clamp(0, 17 - b, 255) / 1);'],
+    ['a colour beside a translucent colour', '@expose c;\n@c: #c00;\n.a { v: @c + #00000080; }', 'v: rgb(from var(--c, #c00) clamp(0, r + 0, 255) clamp(0, g + 0, 255) clamp(0, b + 0, 255) / calc(alpha * 0.4980392157 + 0.5019607843));'],
+    ['a colour after a number', '@expose c;\n@c: #c00;\n.a { v: (2 - @c); }', 'v: rgb(from var(--c, #c00) clamp(0, 2 - r, 255) clamp(0, 2 - g, 255) clamp(0, 2 - b, 255) / 1);'],
+    ['a colour under %', '@expose c;\n@c: #c00;\n.a { v: (@c % 2); }', 'v: rgb(from var(--c, #c00) clamp(0, rem(r, 2), 255) clamp(0, rem(g, 2), 255) clamp(0, rem(b, 2), 255));'],
+    ['a number beside a known colour', '.a { v: #111 * var(--k); }', 'v: rgb(clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255));'],
+    ['a number before a translucent colour', '.a { v: var(--k) - #11111180; }', 'v: rgb(clamp(0, var(--k) - 17, 255) clamp(0, var(--k) - 17, 255) clamp(0, var(--k) - 17, 255));'],
+    ['a number beside a translucent colour', '.a { v: #11111180 * var(--k); }', 'v: rgb(clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) / 0.5019607843);']
+  ])('writes colour maths with one side only the browser knows as a relative colour (V39): %s', async (_what, source, expected) => {
+    await expect(render(source)).resolves.toContain(expected);
+  });
+
+  it('writes colour maths over an unknown side with compressed numbers and commas', async () => {
+    await expect(render('@expose c;\n@c: #c00;\n.a { v: @c + #11111180; }', true)).resolves.toBe('.a{v:rgb(from var(--c,#c00) clamp(0,r + 17,255) clamp(0,g + 17,255) clamp(0,b + 17,255) / calc(alpha * .4980392157 + .5019607843))}');
+  });
+
+  it.each([
+    ['two colours', '@expose c, d;\n@c: #c00;\n@d: #111;\n.a { v: @c + @d; }'],
+    ['a colour and a number', '@expose c;\n@c: #c00;\n.a { v: @c + var(--k); }']
+  ])('fails colour maths with both sides only the browser knows: %s', async (_what, source) => {
+    await expect(render(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+
+  it.each([
     ['a keyword', '@expose c;\n@c: foo;\n.a { v: (@c * 2); }'],
     ['a string', '@expose c;\n@c: "s";\n.a { v: (@c * 2); }'],
-    ['a list', '@expose c;\n@c: 1px 2px;\n.a { v: (@c * 2); }'],
-    ['a colour bound as a mixin argument', '@expose c;\n@c: #c00;\n.m(@p) { v: (@p * 2); }\n.a { .m(@c); }']
+    ['a list', '@expose c;\n@c: 1px 2px;\n.a { v: (@c * 2); }']
   ])('fails math on an exposed variable of a known wrong type: %s', async (_what, source) => {
     await expect(render(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });

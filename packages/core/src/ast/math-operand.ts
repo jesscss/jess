@@ -22,7 +22,7 @@ import type { Operation } from './nodes.js';
 import { DivisionByZeroError, InvalidOperandError, emitValue, isValueGroupArray, joinGroup, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { arithmeticOperand, makeDimension, makeKeyword, makeWrittenMath, withFields } from './value-factory.js';
 import { convertible } from './value-units.js';
-import { carryKeptClash, isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, overPercent, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
+import { carryKeptClash, colourOnDeferred, isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, overPercent, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
 
 type Divider = Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>;
 
@@ -245,6 +245,10 @@ export function operated(op: string, left: Value, right: Value, modes: EvalModes
   validateFinalUnits(right, modes);
   const l = keptSpelling(left, modes);
   const r = keptSpelling(right, modes);
+  const colour = deferred && !keeps ? colourOnDeferred(op, l, r, modes.compress === true) : undefined;
+  if (colour !== undefined) {
+    return colour;
+  }
   if (op === '%' && !(keeps && (l.type === 'List' || r.type === 'List'))) {
     return remOn(l, r, modes);
   }

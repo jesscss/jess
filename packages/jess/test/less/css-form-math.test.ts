@@ -144,8 +144,8 @@ describe('a math built-in over a known input', () => {
     await expect(value('(1px + 1em) * 2')).resolves.toBe('calc((1px + 1em) * 2)');
   });
 
-  it('fails an operand of a known wrong type (V36)', async () => {
-    await expect(value('(#111 + var(--x))')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  it('fails an operand of a known wrong type (V36), a colour beside it being colour maths (V39)', async () => {
+    await expect(value('(#111 + var(--x))')).resolves.toBe('rgb(clamp(0, 17 + var(--x), 255) clamp(0, 17 + var(--x), 255) clamp(0, 17 + var(--x), 255))');
     await expect(value('(foo + var(--x))')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
     await expect(value('("a" + var(--x))')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
