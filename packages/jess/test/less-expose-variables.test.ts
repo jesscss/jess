@@ -113,8 +113,10 @@ describe('Less @expose variables (A4)', () => {
     await expect(render(`@expose a;\n@a: 2px;\n@b: 3px;\n.x { transform: ${written}; }`)).resolves.toContain(`transform: ${expected};`);
   });
 
-  it('fails math on an exposed colour in a call written out, as at the top level', async () => {
-    await expect(render('@expose c;\n@c: #f00;\n.x { transform: translate(@c * 2, 0); }')).rejects.toThrow('Operation on an operand it is not defined on');
+  it('writes math on an exposed colour in a call written out as the top level does (V39)', async () => {
+    const colour = 'rgb(from var(--c, #f00) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255))';
+    expect(await render('@expose c;\n@c: #f00;\n.x { color: @c * 2; }')).toContain(`color: ${colour};`);
+    expect(await render('@expose c;\n@c: #f00;\n.x { transform: translate(@c * 2, 0); }')).toContain(`transform: translate(${colour}, 0);`);
   });
 
   it('writes a compressed var() in compressed output', async () => {
