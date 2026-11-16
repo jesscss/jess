@@ -18,9 +18,10 @@
  * HARD MODULE BOUNDARY: the value domain and the operand rule only.
  */
 import { isMathFunctionName } from './math-functions.js';
-import type { Operation } from './nodes.js';
+import type { FunctionCall as CallNode, Operation, ValueSlot } from './nodes.js';
+import { isValueSlotArray } from './css-grammar-helpers.js';
 import { DivisionByZeroError, InvalidOperandError, emitValue, isValueGroupArray, joinGroup, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
-import { arithmeticOperand, makeDimension, makeKeyword, makeWrittenMath, withFields } from './value-factory.js';
+import { arithmeticOperand, makeDimension, makeFunctionCall, makeKeyword, makeWrittenMath, withFields } from './value-factory.js';
 import { convertible } from './value-units.js';
 import { carryKeptClash, isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, overPercent, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
 
@@ -59,6 +60,9 @@ interface OperandLane {
   readonly modes: EvalModes;
   readonly keepsMath: boolean;
   readonly calcDepth: number;
+
+  /** Inside a feature query, which tests a glued minus as written. */
+  readonly tested: boolean;
 }
 
 /**
@@ -173,6 +177,17 @@ export function isNegatable(name: string): boolean {
   return lower === 'var' || lower === 'env' || lower === 'attr' || isMathFunctionName(lower);
 }
 
+/** A glued minus on what only the browser knows (`-var(--x)`, `-abs(…)`), which a feature query tests as written (CSS-NATIVE-BUILTINS §3.4). */
+export const isGluedCall = (node: CallNode): boolean => node.name.charCodeAt(0) === 45 && isNegatable(node.name.slice(1));
+
+/** A glued-minus call a feature query tests, written as it is (`written`): a call, which math around it reads without negating it ({@link operatedIn}'s `tested`). */
+export const testedCall = (node: CallNode, written: EvalValue): EvalValue =>
+  typeof written === 'string' ? makeFunctionCall(node.name, makeKeyword(written.slice(node.name.length + 1, -1)), written) : written;
+
+/** A `supports()` test written out as a call (`.less` `if(supports(…): …)`): its length and first letter are read before its name. */
+export const isSupportsCall = (node: CallNode): boolean =>
+  node.name.length === 8 && (node.name.charCodeAt(0) | 32) === 115 && node.name.toLowerCase() === 'supports';
+
 export const negatedMath = (v: Value): Value => mathOnDeferred('*', MINUS_ONE, v);
 
 /**
@@ -204,10 +219,10 @@ const isSlashMath = (v: Value): boolean =>
  * So is every `/` before it in the chain, and the math they made is as written
  * (`1 / var(--c) / span`), a keyword never being in a `calc()`.
  */
-export function slashOperated(node: Pick<Operation, 'operator' | 'left' | 'mathOutsideParens'>, left: Value, right: Value, modes: EvalModes, keeps: boolean): Value {
+export function slashOperated(node: Pick<Operation, 'operator' | 'left' | 'mathOutsideParens'>, left: Value, right: Value, e: OperandLane, keeps: boolean): Value {
   const separates = node.operator === '/' && node.mathOutsideParens && !(isSlashMath(left) && isSlashMath(right));
   const inner = separates && node.left.type === 'Operation' && node.left.operator === '/' && node.left.mathOutsideParens ? writtenCalcInner(left) : null;
-  return operated(node.operator, inner === null ? left : makeKeyword(inner), right, modes, keeps || separates);
+  return operatedIn(node.operator, inner === null ? left : makeKeyword(inner), right, e, keeps || separates);
 }
 
 /**
@@ -225,9 +240,11 @@ export function writtenCallValue(v: ValueGroup, emit: (v: ValueGroup) => string)
   return v.type === 'Arithmetic' && v.op === '' ? `calc${v.bytes}` : emit(v);
 }
 
-/** An operand of math kept for the browser: what a glued minus means, its numbers compressed under `compress` (§3.5). */
-const keptSpelling = (v: Value, modes: EvalModes): Value =>
-  modes.compress === true ? spelledCompressed(negated(v)) : negated(v);
+/** An operand of math kept for the browser: what a glued minus means, unless a feature query tests it (`tested`), its numbers compressed under `compress` (§3.5). */
+const keptSpelling = (v: Value, modes: EvalModes, tested = false): Value => {
+  const spelled = tested ? v : negated(v);
+  return modes.compress === true ? spelledCompressed(spelled) : spelled;
+};
 
 /**
  * An operation outside `.scss` over operands that are not two known numbers. Math
@@ -237,14 +254,19 @@ const keptSpelling = (v: Value, modes: EvalModes): Value =>
  * as math ({@link Lane.keepsMath}), so a written operation stays as written.
  */
 export function operated(op: string, left: Value, right: Value, modes: EvalModes, keeps: boolean): Value {
+  return operatedIn(op, left, right, { modes, tested: false }, keeps);
+}
+
+/** {@link operated} in a lane: inside a feature query (`tested`) a glued minus stays as written. */
+function operatedIn(op: string, left: Value, right: Value, { modes, tested }: Pick<OperandLane, 'modes' | 'tested'>, keeps: boolean): Value {
   const deferred = isMathOnDeferred(left, right);
   if (!deferred && keptMathOf(left) === undefined && keptMathOf(right) === undefined && (op !== '%' || (writtenCalcInner(left) === null && writtenCalcInner(right) === null))) {
     return operate(op, left, right, modes);
   }
   validateFinalUnits(left, modes);
   validateFinalUnits(right, modes);
-  const l = keptSpelling(left, modes);
-  const r = keptSpelling(right, modes);
+  const l = keptSpelling(left, modes, tested);
+  const r = keptSpelling(right, modes, tested);
   if (op === '%' && !(keeps && (l.type === 'List' || r.type === 'List'))) {
     return remOn(l, r, modes);
   }

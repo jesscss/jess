@@ -227,7 +227,7 @@ import { cssFilterCall, mayBeFilter } from './filter-position.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, moduleReferenceCallNode, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
-import { mathOperand, negatedCall, slashOperated, writtenMath, writtenPercent } from './math-operand.js';
+import { isGluedCall, isSupportsCall, mathOperand, negatedCall, slashOperated, testedCall, writtenMath, writtenPercent } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type FnOrigin, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -4240,6 +4240,13 @@ interface Lane {
   keepsMath: boolean;
 
   /**
+   * Inside a feature query (`@supports`, `supports()`), which tests a declaration
+   * as written: a glued minus (`-var(--x)`) stays, what is around it evaluating as
+   * before (CSS-NATIVE-BUILTINS §3.4). Lane state, as `calcDepth` is.
+   */
+  tested: boolean;
+
+  /**
    * The channel keywords of the CSS colour whose channels this lane evaluates,
    * bound to its origin's values (`l` in `hsl(from C h s calc(l - 10))`); set
    * by {@link resolveColorCall} only for a call a consumer demands. A keyword reads
@@ -4495,7 +4502,7 @@ interface EvalSession {
  */
 function deriveLane(
   e: Lane,
-  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked' | 'keepMath' | 'checkMath' | 'asked' | 'condition' | 'channels',
+  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked' | 'keepMath' | 'checkMath' | 'asked' | 'condition' | 'channels' | 'tested',
   sink?: { elided: boolean },
   isDefault?: () => boolean,
   channels?: ColorChannels
@@ -4523,6 +4530,7 @@ function deriveLane(
             : change === 'statement' ? undefined : e.parenFrames,
         exprBoundary: change === 'parenBoundary' || change === 'boundary' || change === 'callBoundary' || (change !== 'statement' && e.exprBoundary),
         keepsMath: change === 'keepMath' || (change !== 'checkMath' && change !== 'statement' && e.keepsMath),
+        tested: change === 'tested' || (change !== 'statement' && e.tested),
         channels: change === 'channels' ? channels : change === 'statement' ? undefined : e.channels,
         importantSink: change === 'statement' ? undefined : e.importantSink,
         elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
@@ -5613,7 +5621,7 @@ const keepsOperation = (node: Operation, e: Lane, left: ValueGroup, right: Value
 const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
   (left.type === 'Dimension' && right.type === 'Dimension') || (ev.sassCalculations === true && keepsOperation(node, e, left, right))
     ? ev.operate(node.operator, left, right, e.modes)
-    : slashOperated(node, left, right, e.modes, keepsOperation(node, e, left, right));
+    : slashOperated(node, left, right, e, keepsOperation(node, e, left, right));
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
@@ -8981,15 +8989,19 @@ function evalCall(
      */
     return makeBool(e.defaultFn());
   }
-  const intro = e.readAt !== ASKED && asksType(node.name) ? evalCall(node, frame, deriveLane(e, 'asked'), demanded) : evalIntrospection(node, frame, e);
+  const intro = e.readAt !== ASKED && asksType(node.name)
+    ? evalCall(node, frame, deriveLane(e, 'asked'), demanded)
+    : !e.tested && isSupportsCall(node) ? evalCall(node, frame, deriveLane(e, 'tested'), demanded) : evalIntrospection(node, frame, e);
   if (intro !== undefined) {
     return intro;
   }
   if (e.ev && node.args.length === 1 && node.name.toLowerCase() === 'calc') {
     return evalCalc(node, frame, e);
   }
-  if (!e.ev) {
-    return preserveCall(node, frame, e);
+
+  /* A feature test (`supports(margin-left: -var(--x))`) tests the declaration as written, a glued minus included (CSS-NATIVE-BUILTINS §3.4). */
+  if (!e.ev || (e.tested && isGluedCall(node))) {
+    return e.ev ? mapMaybe(preserveCall(node, frame, e), written => testedCall(node, written)) : preserveCall(node, frame, e);
   }
   const lname = node.name.toLowerCase();
 
@@ -11004,6 +11016,7 @@ function scratchEmit(e: Lane): Emit {
     parenFrames: undefined,
     exprBoundary: false,
     keepsMath: e.keepsMath,
+    tested: e.tested,
     channels: e.channels,
     importantSink: undefined,
     elideSink: undefined,
@@ -14115,6 +14128,7 @@ function createRenderSession(
     parenFrames: undefined,
     exprBoundary: false,
     keepsMath: false,
+    tested: false,
     channels: undefined,
     importantSink: undefined,
     elideSink: undefined,
@@ -22026,7 +22040,7 @@ function atRulePreludeBytes(node: AtRuleBlock, frame: Frame, e: Emit): MaybeProm
     return '';
   }
   if (lname === '@supports') {
-    return mapMaybe(evalSupportsPrelude(checkedSupportsPrelude(node, node.prelude, e.s), frame, e), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
+    return mapMaybe(evalSupportsPrelude(checkedSupportsPrelude(node, node.prelude, e.s), frame, deriveLane(e, 'tested')), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
   }
   if (lname === '@media' || lname === '@container') {
     return mapMaybe(evalQueryPreludeParts(node.prelude, frame, e), parts => normalizePreludeParts(parts, normalizeQueryPrelude, e.compress === true));
