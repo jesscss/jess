@@ -110,7 +110,7 @@ describe('vite-plugin-jess', () => {
 
   it.each([
     ['@less.mix(@brand, red, 25%)', 'color-mix(in srgb,var(--brand, #c00) 25%,red)'],
-    ['@less.contrast(@brand)', 'contrast-color(var(--brand, #c00))']
+    ['@less.contrast(@brand)', 'color(from var(--brand, #c00) srgb-linear min(1,sign(.17912878475 - (.2126 * r + .7152 * g + .0722 * b)) + 1)']
   ])('bundles no evaluator for %s', async (call, printed) => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
