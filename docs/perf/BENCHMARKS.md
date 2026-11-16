@@ -253,8 +253,8 @@ server as well, which writes `bench/results.json` (ignored by git).
 - `?rounds=` and `?samples=` set the size of the run.
 
 **Read the differences, not the times.** On some runs the same update took 3
-to 6 times as long, with wide interquartile ranges. That happened under
-machine load (load averages of 20–80 on 14 cores) and with the pane hidden,
+to 6 times as long, with wide interquartile ranges. That happened while
+other work loaded the machine and with the pane hidden,
 but a hidden run on a quiet machine was fast, so the cause is not isolated.
 The paired differences hold through it: the run in the table below was in
 that slow regime, and still resolved 5%. Absolute times are only comparable
@@ -326,8 +326,8 @@ That run was in the slow regime: `current` took 39.4 ms per update on "one
 variable changes", with an interquartile range of 9.5–49.7. The absolute times
 come from the quiet run at 09:58 the same day (pane hidden at load). That run
 used the earlier statistic, a difference of pooled medians with the A/A gap
-between round medians. It also had no control arm, and its differences sat
-within −1.7% to +1.7%. `current`, in ms per update:
+between round medians. It also had no control arm. On the four rows where values change, its
+differences sat within −1.7% to +1.7%. `current`, in ms per update:
 
 | Scenario | `current` |
 |---|---|
@@ -389,8 +389,8 @@ What it decided:
   - The comparison is what keeps an unchanged `set()` under 1 µs. It also
     makes "nothing changes" 19% cheaper than writing every value.
   - The inline `getPropertyValue` it reads costs about 0.2 µs more than a
-    write alone. That is close to the timer's step over 200 steps, so it only
-    shows that the read forces no style: a computed read costs 5,447 µs.
+    write alone. That is a few timer steps over 200 steps, so it only shows
+    that the read forces no style: a computed read costs 5,447 µs.
   - `writeVars` compares against the style, not a record of its own writes,
     so a value removed or changed by other code is written again.
 - **`set()`'s own JS is 3 µs for ten values.** Everything else is the browser's

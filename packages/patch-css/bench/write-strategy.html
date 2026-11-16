@@ -86,7 +86,7 @@ const STRATEGIES = {
   "@property '*', inherits: false (data point)": { prefix: 'f', target: root, write: onStyle(root.style).current },
   'current, +5% (control)': { prefix: 'v', target: root, write: (out) => { const t = performance.now() + extra; writeVars(out, root); while (performance.now() < t); } }
 };
-/* The control arm's busy-wait per update: 5% of `current`'s median update so far in the scenario, so a 5% change the harness cannot resolve shows as within A/A. */
+/* The control arm's busy-wait per update: 5% of `current`'s median update so far in the scenario, so a 5% change the harness cannot resolve shows as within A/A. Below the timer's 5 µs step (the "nothing changes" row) the wait is the step, not 5%. */
 let extra = 0;
 const install = (s) => { cards.className = `m-${s.prefix}`; };
 const reset = () => { for (const p of Object.keys(PREFIXES)) for (const k of names(p)) { root.style.removeProperty(k); cards.style.removeProperty(k); } cards.className = ''; };
