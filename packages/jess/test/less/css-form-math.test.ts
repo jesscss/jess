@@ -670,4 +670,22 @@ describe('a glued minus in a call written out', () => {
   it('a custom property keeps its tokens', async () => {
     await expect(css('.a { --y: -var(--x); }')).resolves.toContain('--y: -var(--x);');
   });
+
+  it.each(['.css', '.less', '.scss', '.jess'])('a feature query tests the declaration as written in %s', async (extension) => {
+    const source = '@supports (margin-left: -var(--x)) { .a { b: 1; } }\n@supports not (width: abs(-var(--x))) { .a { b: 1; } }\n.c { d: if(supports(margin-left: -var(--x)): 1px; else: 2px); }';
+    const out = String(await new Compiler({}).renderString(source, { filePath: `entry${extension}`, extension, suppressWarnings: true }));
+    expect(out).toContain('@supports (margin-left: -var(--x))');
+    expect(out).toContain('@supports not (width: abs(-var(--x)))');
+    expect(out).toContain('d: if(supports(margin-left: -var(--x)): 1px; else: 2px);');
+  });
+
+  it.each([
+    ['@supports (width: -var(--x) percentage(0.5)) { .a { b: 1; } }', '@supports (width: -var(--x) 50%)'],
+    ['@supports (margin: -var(--x) + 1px) { .a { b: 1; } }', '@supports (margin: calc(-var(--x) + 1px))'],
+    ['@g: 2px; @supports (margin: calc(-var(--x) + @g) (@g * 2)) { .a { b: 1; } }', '@supports (margin: calc(-var(--x) + 2px) 4px)'],
+    ['.c { d: if(supports(width: -var(--x) percentage(0.5)): 1px; else: 2px); }', 'd: if(supports(width: -var(--x) 50%): 1px; else: 2px);'],
+    ['.c { d: if(media(min-width: -var(--x)): 1px; else: 2px); }', 'd: if(media(min-width: calc(-1 * var(--x))): 1px; else: 2px);']
+  ])('a feature query keeps only the glued minus as written: %s', async (source, expected) => {
+    await expect(css(source)).resolves.toContain(expected);
+  });
 });
