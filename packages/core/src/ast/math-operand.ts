@@ -266,6 +266,7 @@ const colourIn = (op: string, left: Value, right: Value, modes: EvalModes, teste
 
 /** {@link operated} in a lane: inside a feature query (`tested`) a glued minus stays as written. */
 function operatedIn(op: string, left: Value, right: Value, { modes, tested }: Pick<OperandLane, 'modes' | 'tested'>, keeps: boolean): Value {
+  // TODO(perf): this hook costs +0.3% on a colour-maths fixture from code shape alone; try moving it into operandRule's former error branch. Parseman docs/future/perf-attempts.md, "Jess core: move the relative-colour hook off the known-operand path".
   const colour = keeps ? undefined : colourIn(op, left, right, modes, tested);
   if (colour !== undefined) {
     return colour;
