@@ -16,9 +16,11 @@
   sample, so a slow spell in the machine lands on all of them; each sample
   starts from a fresh install and one untimed write of all ten values, and
   each scenario starts with an untimed sample of every strategy.
-  `current (A/A)` repeats `current`; a row's A/A
-  spread is the largest gap between the two in any round's median, and a
-  difference smaller than it is not a result.
+  A strategy's difference from `current` is the median, over every sample,
+  of its time over the `current` sample taken in the same turn, so drift in
+  the machine between turns cancels. `current (A/A)` repeats `current`; a
+  row's A/A spread is the largest such difference between the two in any one
+  round, and a difference no larger than it is not a result.
 -->
 <style>
   body { margin: 0; font: 12px system-ui; }
@@ -147,13 +149,16 @@ async function strategies() {
   const table = {};
   for (const [scenario, byName] of Object.entries(rounds)) {
     const all = (n) => byName[n].flat();
-    const base = median(all('current'));
-    const aa = Math.max(...byName.current.map((xs, r) => Math.abs(median(xs) - median(byName['current (A/A)'][r]))));
+    /* Each sample over the `current` sample of the same turn, in a round or in all. */
+    const ratios = (n, r) => byName[n][r].map((x, i) => x / byName.current[r][i]);
+    const change = (xs) => median(xs) - 1;
+    const aa = Math.max(...byName.current.map((_, r) => Math.abs(change(ratios('current (A/A)', r)))));
+    const pct = (x) => `${x >= 0 ? '+' : ''}${(100 * x).toFixed(1)}%`;
     table[scenario] = {
-      'A/A spread (ms, % of current)': `${round3(aa)} (${(100 * aa / base).toFixed(1)}%)`,
+      'A/A spread': `${(100 * aa).toFixed(1)}%`,
       ...Object.fromEntries(Object.keys(byName).map((n) => {
-        const xs = all(n), m = median(xs), d = m - base;
-        return [n, `${round3(m)} (${round3(quantile(xs, 0.25))}–${round3(quantile(xs, 0.75))}) ${d >= 0 ? '+' : ''}${(100 * d / base).toFixed(1)}%${Math.abs(d) > aa ? '' : ' (within A/A)'}`];
+        const xs = all(n), d = change(byName[n].flatMap((_, r) => ratios(n, r)));
+        return [n, `${round3(median(xs))} (${round3(quantile(xs, 0.25))}–${round3(quantile(xs, 0.75))}) ${pct(d)}${Math.abs(d) > aa ? '' : ' (within A/A)'}`];
       }))
     };
   }
