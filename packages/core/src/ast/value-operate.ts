@@ -11,7 +11,7 @@
  * HARD MODULE BOUNDARY: imports only the value domain, the factory, and the shared
  * units table.
  */
-import { formatNumber, ratioOf } from '@jesscss/patch-css';
+import { ratioOf } from '@jesscss/patch-css';
 import { addExact, modExact, mulExact, subExact } from './decimal.js';
 import { DimensionValueNode } from './node-ctors.js';
 import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, NoCssForm, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Arithmetic, type Color, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
@@ -19,7 +19,7 @@ import { groupItems } from './value-list.js';
 import { compressDimensionBytes } from './compress.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { HEX } from './color.js';
-import { colorRawRgb, makeAny, makeArithmetic, makeCalc, makeColorRgb, makeCompoundDimension, makeComputedCall, makeComputedColor, makeDimension, makeGroupedKeyword, makeKeyword, makeList, makeQuoted, withFields } from './value-factory.js';
+import { colorRawRgb, makeAny, makeArithmetic, makeCalc, makeColorRgb, makeCompoundDimension, makeComputedCall, makeDimension, makeGroupedKeyword, makeKeyword, makeList, makeQuoted, withFields } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { convertValue, convertible, foldUnit, unitMultisetKey } from './value-units.js';
 
@@ -769,11 +769,12 @@ export function operandRule(op: string, left: ValueGroup, right: ValueGroup, ev:
     return null;
   }
   const scss = sass && ev.sassCalculations === true;
-  if (!scss && isColourOnDeferred(left, right)) {
+  const call = !isValueGroupArray(left) && !isValueGroupArray(right) && (left.type === 'FunctionCall' || right.type === 'FunctionCall');
+  if (call && !scss && isColourOnDeferred(left, right)) {
     return null;
   }
   const leftKind = invalidOperand(left, sass, scss);
-  const kind = leftKind ?? invalidOperand(right, sass, scss) ?? ((!isValueGroupArray(left) && !isValueGroupArray(right) && (left.type === 'FunctionCall' || right.type === 'FunctionCall') && colourAndDeferred(left, right) ? 'function call' : null));
+  const kind = leftKind ?? invalidOperand(right, sass, scss) ?? (call && colourAndDeferred(left, right) ? 'function call' : null);
   if (kind !== null) {
     throw new InvalidOperandError(`\`${emitValue(left)} ${op} ${emitValue(right)}\`: \`${op}\` is not defined on a ${kind} (\`${emitValue(leftKind === null ? right : left)}\`).`);
   }
@@ -792,14 +793,14 @@ const colourAndDeferred = (left: ValueGroup, right: ValueGroup): boolean =>
   (isColourOperand(left) && isDeferredOperand(right)) || (isColourOperand(right) && isDeferredOperand(left));
 
 /** A colour only the browser knows: an exposed colour's `var()`, or a colour form over one. */
-const isUnknownColour = (v: ValueGroup): v is FunctionCall => !isValueGroupArray(v) && v.type === 'FunctionCall' && v.result === 'color' && writtenCalcInner(v) === null;
+const isUnknownColour = (v: ValueGroup): boolean => !isValueGroupArray(v) && v.type === 'FunctionCall' && v.result === 'color' && writtenCalcInner(v) === null;
 
-/** A call only the browser knows that is no colour, which colour math reads as a number. */
-const isDeferredNumber = (v: ValueGroup): boolean => isDeferredOperand(v) && !isValueGroupArray(v) && v.type === 'FunctionCall' && v.result !== 'color' && v.result !== 'other';
+/** A call only the browser knows that is no colour, a `calc()` included, which colour maths reads as a number. */
+const isDeferredNumber = (v: ValueGroup): boolean => !isValueGroupArray(v) && v.type === 'FunctionCall' && v.result !== 'color' && v.result !== 'other';
 
-/** Colour math with one side only the browser knows, which {@link colourOnDeferred} writes. */
-function isColourOnDeferred(left: ValueGroup, right: ValueGroup): boolean {
-  if (isValueGroupArray(left) || isValueGroupArray(right) || (left.type !== 'FunctionCall' && right.type !== 'FunctionCall')) {
+/** Colour maths with one side only the browser knows and the other known (V39), which `colour-math.ts` writes. */
+export function isColourOnDeferred(left: ValueGroup, right: ValueGroup): boolean {
+  if (isValueGroupArray(left) || isValueGroupArray(right)) {
     return false;
   }
   if (isUnknownColour(left)) {
@@ -808,54 +809,7 @@ function isColourOnDeferred(left: ValueGroup, right: ValueGroup): boolean {
   if (isUnknownColour(right)) {
     return isColourOperand(left) || left.type === 'Dimension';
   }
-  return (isColourOperand(left) && isDeferredNumber(right)) || (isColourOperand(right) && isDeferredNumber(left));
-}
-
-/** A known colour's or number's part of a channel: a number is the same in each, its unit unread, as {@link colorOperate} reads it. */
-const knownChannels = (v: Value): readonly number[] => {
-  const known = coerceNamedColorKeyword(v);
-  return known.type === 'Color' ? colorRawRgb(known) : known.type === 'Dimension' ? [known.number, known.number, known.number] : [];
-};
-
-/** The alpha a second colour gives one only the browser knows: `a·(1 − bα) + bα` over its `alpha` (V39). */
-const blendedAlpha = (known: number, num: (n: number) => string): string => known === 1 ? '1' : known === 0 ? 'alpha' : `calc(alpha * ${num(1 - known)} + ${num(known)})`;
-
-/**
- * Colour math with one side only the browser knows (V39, owner 2026-11-16:
- * *"Write relative colour (Recommended)"*): the known rule, per channel on
- * 0–255 rgb and clamped ({@link colorOperate}), as a relative colour over an
- * unknown colour (`@c + #111` is `rgb(from var(--c, #c00) clamp(0, r + 17,
- * 255) … / 1)`) or an `rgb()` over an unknown number (`#111 * var(--k)` is
- * `rgb(clamp(0, 17 * var(--k), 255) …)`). A number keeps the colour's alpha, and
- * one on the left an opaque colour's; a second colour's alpha is
- * `a·(1 − bα) + bα`. `undefined` unless {@link isColourOnDeferred}. Compressed,
- * its numbers and commas are as a built-in's CSS form's (§3.5).
- */
-export function colourOnDeferred(op: string, left: Value, right: Value, compress: boolean): Value | undefined {
-  if (!isColourOnDeferred(left, right)) {
-    return undefined;
-  }
-  const sep = compress ? ',' : ', ';
-  const num = (n: number): string => (compress ? compressDimensionBytes(formatNumber(n)) : formatNumber(n));
-  const channel = (a: string, b: string): string => `clamp(0${sep}${op === '%' ? `rem(${a}${sep}${b})` : `${a} ${op} ${b}`}${sep}255)`;
-  const unknownLeft = isUnknownColour(left);
-  if (unknownLeft || isUnknownColour(right)) {
-    const known = unknownLeft ? right : left;
-    const parts = knownChannels(known).map(num);
-    const channels = ['r', 'g', 'b'].map((name, i) => (unknownLeft ? channel(name, parts[i]!) : channel(parts[i]!, name)));
-    const colour = coerceNamedColorKeyword(known);
-    const alpha = colour.type === 'Color' ? ` / ${blendedAlpha(colour.alpha, num)}` : unknownLeft ? '' : ' / 1';
-    return makeComputedColor('rgb', `rgb(from ${emitValue(unknownLeft ? left : right)} ${channels.join(' ')}${alpha})`);
-  }
-  const known = coerceNamedColorKeyword(left);
-  const colourLeft = known.type === 'Color';
-  const colour = colourLeft ? known : coerceNamedColorKeyword(right);
-  if (colour.type !== 'Color') {
-    return undefined;
-  }
-  const number = mathSpelling(colourLeft ? right : left, op, colourLeft);
-  const channels = colorRawRgb(colour).map(n => (colourLeft ? channel(num(n), number) : channel(number, num(n))));
-  return makeComputedColor('rgb', `rgb(${channels.join(' ')}${colourLeft && colour.alpha !== 1 ? ` / ${num(colour.alpha)}` : ''})`);
+  return (isDeferredNumber(right) && isColourOperand(left)) || (isDeferredNumber(left) && isColourOperand(right));
 }
 
 /**

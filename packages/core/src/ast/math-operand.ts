@@ -23,7 +23,9 @@ import { isValueSlotArray } from './css-grammar-helpers.js';
 import { DivisionByZeroError, InvalidOperandError, emitValue, isValueGroupArray, joinGroup, type Dimension, type EvalModes, type EvalValue, type FunctionCall, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { arithmeticOperand, makeDimension, makeFunctionCall, makeKeyword, makeWrittenMath, withFields } from './value-factory.js';
 import { convertible } from './value-units.js';
-import { carryKeptClash, colourOnDeferred, isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, overPercent, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
+import { colourOnDeferred } from './colour-math.js';
+import { coerceNamedColorKeyword } from './literal-tag.js';
+import { carryKeptClash, isColourOnDeferred, isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, overPercent, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
 
 type Divider = Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>;
 
@@ -209,9 +211,10 @@ export function negatedCall(value: EvalValue): Value | undefined {
 /** What only the browser knows by name, whatever it holds; a glued minus is the same value negated. */
 const RUNTIME_VALUE: ReadonlySet<string> = new Set(['var', '-var', 'env', '-env', 'attr', '-attr']);
 
-/** What a `/` no group asked to divide reads as math: a number, or a function of one. */
+/** What a `/` no group asked to divide reads as math: a number, a colour (V13), or a function of one. */
 const isSlashMath = (v: Value): boolean =>
-  v.type === 'Dimension' || v.type === 'Arithmetic' || (v.type === 'FunctionCall' && (v.result === 'numeric' || RUNTIME_VALUE.has(v.name.toLowerCase())));
+  v.type === 'Dimension' || v.type === 'Arithmetic' || v.type === 'Color' || (v.type === 'Keyword' && coerceNamedColorKeyword(v) !== v)
+  || (v.type === 'FunctionCall' && (v.result === 'numeric' || v.result === 'color' || RUNTIME_VALUE.has(v.name.toLowerCase())));
 
 /**
  * A `/` no group asked to divide (Less `math: always`) beside anything else is
@@ -259,6 +262,10 @@ export function operated(op: string, left: Value, right: Value, modes: EvalModes
 
 /** {@link operated} in a lane: inside a feature query (`tested`) a glued minus stays as written. */
 function operatedIn(op: string, left: Value, right: Value, { modes, tested }: Pick<OperandLane, 'modes' | 'tested'>, keeps: boolean): Value {
+  const colour = keeps || !isColourOnDeferred(left, right) ? undefined : colourOnDeferred(op, keptSpelling(left, modes, tested), keptSpelling(right, modes, tested), modes.compress === true);
+  if (colour !== undefined) {
+    return colour;
+  }
   const deferred = isMathOnDeferred(left, right);
   if (!deferred && keptMathOf(left) === undefined && keptMathOf(right) === undefined && (op !== '%' || (writtenCalcInner(left) === null && writtenCalcInner(right) === null))) {
     return operate(op, left, right, modes);
@@ -267,10 +274,6 @@ function operatedIn(op: string, left: Value, right: Value, { modes, tested }: Pi
   validateFinalUnits(right, modes);
   const l = keptSpelling(left, modes, tested);
   const r = keptSpelling(right, modes, tested);
-  const colour = deferred && !keeps ? colourOnDeferred(op, l, r, modes.compress === true) : undefined;
-  if (colour !== undefined) {
-    return colour;
-  }
   if (op === '%' && !(keeps && (l.type === 'List' || r.type === 'List'))) {
     return remOn(l, r, modes);
   }

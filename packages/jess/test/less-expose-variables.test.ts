@@ -188,9 +188,22 @@ describe('Less @expose variables (A4)', () => {
     ['a colour under %', '@expose c;\n@c: #c00;\n.a { v: (@c % 2); }', 'v: rgb(from var(--c, #c00) clamp(0, rem(r, 2), 255) clamp(0, rem(g, 2), 255) clamp(0, rem(b, 2), 255));'],
     ['a number beside a known colour', '.a { v: #111 * var(--k); }', 'v: rgb(clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255));'],
     ['a number before a translucent colour', '.a { v: var(--k) - #11111180; }', 'v: rgb(clamp(0, var(--k) - 17, 255) clamp(0, var(--k) - 17, 255) clamp(0, var(--k) - 17, 255));'],
-    ['a number beside a translucent colour', '.a { v: #11111180 * var(--k); }', 'v: rgb(clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) / 0.5019607843);']
+    ['a number beside a translucent colour', '.a { v: #11111180 * var(--k); }', 'v: rgb(clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) / 0.5019607843);'],
+    ['a chain, clamped once at its output', '@expose c;\n@c: #c00;\n.a { v: ((@c * 2) - #111); }', 'v: rgb(from var(--c, #c00) clamp(0, (r * 2) - 17, 255) clamp(0, (g * 2) - 17, 255) clamp(0, (b * 2) - 17, 255) / 1);'],
+    ['a chain over a number', '.a { v: (#111 * var(--k)) + #222; }', 'v: rgb(clamp(0, (17 * var(--k)) + 34, 255) clamp(0, (17 * var(--k)) + 34, 255) clamp(0, (17 * var(--k)) + 34, 255));'],
+    ['a chain of translucent colours', '@expose c;\n@c: #c00;\n.a { v: (@c + #00000080) + #00000080; }', 'v: rgb(from var(--c, #c00) clamp(0, (r + 0) + 0, 255) clamp(0, (g + 0) + 0, 255) clamp(0, (b + 0) + 0, 255) / calc((alpha * 0.4980392157 + 0.5019607843) * 0.4980392157 + 0.5019607843));'],
+    ['an exposed length, its unit unread', '@expose n;\n@n: 2px;\n.a { v: #111 * @n; }', 'v: rgb(clamp(0, 17 * (var(--n, 2px) / 1px), 255) clamp(0, 17 * (var(--n, 2px) / 1px), 255) clamp(0, 17 * (var(--n, 2px) / 1px), 255));'],
+    ['an exposed percentage, its unit unread', '@expose n;\n@n: 50%;\n.a { v: #111 * @n; }', 'v: rgb(clamp(0, 17 * ((var(--n, 0.5) * 100%) / 1%), 255) clamp(0, 17 * ((var(--n, 0.5) * 100%) / 1%), 255) clamp(0, 17 * ((var(--n, 0.5) * 100%) / 1%), 255));'],
+    ['math only the browser knows', '.a { v: #111 + -var(--a); }', 'v: rgb(clamp(0, 17 + (-1 * var(--a)), 255) clamp(0, 17 + (-1 * var(--a)), 255) clamp(0, 17 + (-1 * var(--a)), 255));'],
+    ['a calc()', '.a { v: #111 + calc(var(--a) * 2); }', 'v: rgb(clamp(0, 17 + (var(--a) * 2), 255) clamp(0, 17 + (var(--a) * 2), 255) clamp(0, 17 + (var(--a) * 2), 255));']
   ])('writes colour maths with one side only the browser knows as a relative colour (V39): %s', async (_what, source, expected) => {
     await expect(render(source)).resolves.toContain(expected);
+  });
+
+  it('divides a colour by what only the browser knows under math: always, as it divides by a number (V13)', async () => {
+    const always = new Compiler({ language: { less: { math: 'always' } } });
+    await expect(always.renderString('.a { v: #111 / var(--k); w: var(--k) / #111; }', { filePath: 'entry.less', extension: '.less' })).resolves
+      .toBe('.a {\n  v: rgb(clamp(0, 17 / var(--k), 255) clamp(0, 17 / var(--k), 255) clamp(0, 17 / var(--k), 255));\n  w: rgb(clamp(0, var(--k) / 17, 255) clamp(0, var(--k) / 17, 255) clamp(0, var(--k) / 17, 255));\n}\n');
   });
 
   it('writes colour maths over an unknown side with compressed numbers and commas', async () => {
