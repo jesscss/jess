@@ -57,6 +57,9 @@ function picked(color: ValueGroup, givenDark?: Color, givenLight?: Color, thresh
     if (below !== undefined) {
       return between(color, below, dark, light, true);
     }
+    if (lumaDark === lumaLight) {
+      return light;
+    }
     const t = switchPoint(lumaDark, lumaLight);
     return givenDark === undefined && givenLight === undefined ? [forms.contrast, color, makeDimension(t)] : between(color, t, dark, light, false);
   }
@@ -72,7 +75,7 @@ function picked(color: ValueGroup, givenDark?: Color, givenLight?: Color, thresh
  * 1). Unknown, it is one relative colour that makes the same choice in the
  * browser (V40, owner 2026-11-16: *"Exact form (Recommended)"*), a threshold
  * included; an unknown `dark` or `light` has none, a relative colour reading one
- * origin. The two are swapped if `dark` is the lighter, and a known result takes
+ * origin. A pair of equal luma ties for every colour, so it is `light`. The two are swapped if `dark` is the lighter, and a known result takes
  * `color`'s format.
  */
 export const contrast: Fn = /* @__PURE__ */ defineForm('contrast', { params: PARAMS, form: picked, filter: true });

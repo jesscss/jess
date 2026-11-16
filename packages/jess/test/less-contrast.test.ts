@@ -51,6 +51,14 @@ describe('contrast() is its exact relative-colour form over an unknown colour (V
     expect(await render(call, { compile: { functionMode: 'error' } })).toContain(`x: ${css};`);
   });
 
+  it.each([
+    ['contrast(var(--c), rgba(0, 0, 0, .5), black)', 'contrast(#808080, rgba(0, 0, 0, .5), black)', 'black'],
+    ['contrast(var(--c), transparent, black)', 'contrast(#fff, transparent, black)', 'black']
+  ])('picks light for every colour where the pair has equal luma: %s', async (unknown, known, light) => {
+    expect(await render(known)).toContain(`x: ${light};`);
+    expect(await render(unknown)).toContain(`x: ${light};`);
+  });
+
   it('writes the form compressed', async () => {
     expect(await render('contrast(var(--c), rgba(1, 2, 3, .5), #eee)', { output: { compress: true } }))
       .toContain('x:color(from var(--c) srgb-linear calc(.00030352698355 + .8546890811 * min(1,sign(.16391690753 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) calc(.0006070539671 + .8543855542 * min(1,sign(.16391690753 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) calc(.0009105809506 + .8540820272 * min(1,sign(.16391690753 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) / calc(.5 + .5 * min(1,sign(.16391690753 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)))');

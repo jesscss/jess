@@ -214,7 +214,7 @@ function evalForm(form: FormActivation, call: FormCall, lanes: FormLane, format:
 /**
  * A function defined by a CSS form. `form` picks the form and its arguments
  * from the bound parameters, or gives the colour when the form cannot compute it
- * (`contrast-color()`'s algorithm is the browser's). A parameter takes what only the browser knows when
+ (`contrast(C, D, L)` over a known colour). A parameter takes what only the browser knows when
  * its type includes `FunctionCall`; any other reads a call as it always has.
  *
  * `filter`: the name is also a CSS filter function, so one argument of a number
