@@ -33,8 +33,8 @@ const FORMS: ReadonlyArray<readonly [source: string, form: string]> = [
   ['floor(var(--x))', 'round(down, var(--x), 1)'],
   ['round(var(--x))', 'calc(sign(var(--x)) * round(abs(var(--x)), 1))'],
   ['round(var(--x), 2)', 'calc(sign(var(--x)) * round(abs(var(--x)), 0.01))'],
-  ['round(var(--x), var(--p))', 'calc(sign(var(--x)) * round(abs(var(--x)), pow(10, -1 * var(--p))))'],
-  ['round(1.5px, var(--p))', 'calc(sign(1.5px) * round(abs(1.5px), pow(10, -1 * var(--p)) * 1px))'],
+  ['round(var(--x), var(--p))', 'calc(sign(var(--x)) * round(abs(var(--x)), pow(10, -1 * clamp(0, round(to-zero, var(--p), 1), 292))))'],
+  ['round(1.5px, var(--p))', 'calc(sign(1.5px) * round(abs(1.5px), pow(10, -1 * clamp(0, round(to-zero, var(--p), 1), 292)) * 1px))'],
   ['mod(var(--x), 3)', 'rem(var(--x), 3)'],
   ['mod(5px, var(--x))', 'rem(5px, var(--x))'],
   ['darken(#c00, var(--a))', 'hsl(from #c00 h s clamp(0, l - var(--a) / 1%, 100))'],
@@ -294,8 +294,8 @@ describe('other dialects', () => {
 
 describe('what only the browser knows, whatever its shape', () => {
   it('an unknown precision behaves as `var()` does', async () => {
-    await expect(value('round(1.5, (var(--p) + 1))')).resolves.toBe('calc(sign(1.5) * round(abs(1.5), pow(10, -1 * (var(--p) + 1))))');
-    await expect(value('round(1.5, var(--p))')).resolves.toBe('calc(sign(1.5) * round(abs(1.5), pow(10, -1 * var(--p))))');
+    await expect(value('round(1.5, (var(--p) + 1))')).resolves.toBe('calc(sign(1.5) * round(abs(1.5), pow(10, -1 * clamp(0, round(to-zero, (var(--p) + 1), 1), 292))))');
+    await expect(value('round(1.5, var(--p))')).resolves.toBe('calc(sign(1.5) * round(abs(1.5), pow(10, -1 * clamp(0, round(to-zero, var(--p), 1), 292))))');
   });
 
   it('`%` is `rem()`, as `mod()` is, and never `calc(... % ...)`', async () => {
@@ -630,5 +630,62 @@ describe('a glued minus on what only the browser knows', () => {
     ['ceil(-attr(a))', 'round(up, -1 * attr(a), 1)']
   ])('%s', async (source, form) => {
     await expect(value(source)).resolves.toBe(form);
+  });
+});
+
+/*
+ * `-var(--x)` is one function token to CSS, `-var`, which no browser reads: a
+ * glued minus written out is the value negated (§4 known gaps, now closed).
+ */
+describe('a glued minus in a call written out', () => {
+  it.each([
+    ['-var(--gutter)', 'calc(-1 * var(--gutter))'],
+    ['abs(-var(--x))', 'abs(-1 * var(--x))'],
+    ['min(-var(--gap), 0px)', 'min(-1 * var(--gap), 0px)'],
+    ['translate(-var(--x), 0)', 'translate(calc(-1 * var(--x)), 0)'],
+    ['translate((-var(--x)), 0)', 'translate(calc(-1 * var(--x)), 0)'],
+    ['-sqrt(var(--x))', 'calc(-1 * sqrt(var(--x)))'],
+    ['-calc(var(--x) * 2)', 'calc(-1 * (var(--x) * 2))'],
+    ['-env(safe-area-inset-top)', 'calc(-1 * env(safe-area-inset-top))'],
+    ['-VAR(--x)', 'calc(-1 * VAR(--x))']
+  ])('%s', async (source, form) => {
+    await expect(value(source)).resolves.toBe(form);
+  });
+
+  it.each([
+    ['-sqrt(4)', '-2'],
+    ['-percentage(0.5)', '-50%'],
+    ['-abs(-2px)', '-2px'],
+    ['-abs(0)', '0']
+  ])('over a known number, %s is the number negated', async (source, out) => {
+    await expect(value(source)).resolves.toBe(out);
+  });
+
+  it.each(['.scss', '.jess'])('in %s too', async (extension) => {
+    const out = String(await new Compiler({}).renderString('.a { b: -var(--x); c: abs(-var(--x)); }', { filePath: `entry${extension}`, extension, suppressWarnings: true }));
+    expect(out).toContain('b: calc(-1 * var(--x));');
+    expect(out).toContain('c: abs(-1 * var(--x));');
+  });
+
+  it('a custom property keeps its tokens', async () => {
+    await expect(css('.a { --y: -var(--x); }')).resolves.toContain('--y: -var(--x);');
+  });
+
+  it.each(['.css', '.less', '.scss', '.jess'])('a feature query tests the declaration as written in %s', async (extension) => {
+    const source = '@supports (margin-left: -var(--x)) { .a { b: 1; } }\n@supports not (width: abs(-var(--x))) { .a { b: 1; } }\n.c { d: if(supports(margin-left: -var(--x)): 1px; else: 2px); }';
+    const out = String(await new Compiler({}).renderString(source, { filePath: `entry${extension}`, extension, suppressWarnings: true }));
+    expect(out).toContain('@supports (margin-left: -var(--x))');
+    expect(out).toContain('@supports not (width: abs(-var(--x)))');
+    expect(out).toContain('d: if(supports(margin-left: -var(--x)): 1px; else: 2px);');
+  });
+
+  it.each([
+    ['@supports (width: -var(--x) percentage(0.5)) { .a { b: 1; } }', '@supports (width: -var(--x) 50%)'],
+    ['@supports (margin: -var(--x) + 1px) { .a { b: 1; } }', '@supports (margin: calc(-var(--x) + 1px))'],
+    ['@g: 2px; @supports (margin: calc(-var(--x) + @g) (@g * 2)) { .a { b: 1; } }', '@supports (margin: calc(-var(--x) + 2px) 4px)'],
+    ['.c { d: if(supports(width: -var(--x) percentage(0.5)): 1px; else: 2px); }', 'd: if(supports(width: -var(--x) 50%): 1px; else: 2px);'],
+    ['.c { d: if(media(min-width: -var(--x)): 1px; else: 2px); }', 'd: if(media(min-width: calc(-1 * var(--x))): 1px; else: 2px);']
+  ])('a feature query keeps only the glued minus as written: %s', async (source, expected) => {
+    await expect(css(source)).resolves.toContain(expected);
   });
 });
