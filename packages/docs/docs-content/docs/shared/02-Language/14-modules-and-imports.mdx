@@ -131,8 +131,8 @@ declaration as its default:
 
 `@import` keeps Less 4 behavior: extensions and options decide whether it emits
 a CSS import or folds source into the current scope. `@-import` always folds the
-stylesheet, parsed in the language of its own extension (`(less)` parses it as
-Less whatever its extension). Both continue to work for migration, but warn in Less 5 because
+stylesheet, parsed in the language of its own extension, except that a `.css`
+target is parsed as Less (`(less)` parses any target as Less). Both continue to work for migration, but warn in Less 5 because
 their shared scope is harder to reason about.
 
 ```less

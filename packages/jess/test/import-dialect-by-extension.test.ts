@@ -1,7 +1,8 @@
 /**
  * An imported stylesheet is parsed in the dialect of its own extension, whatever
- * the importing file's dialect and whichever import spelling loads it. Only an
- * explicit `(less)` option asks for the Less parser regardless of extension.
+ * the importing file's dialect and whichever import spelling loads it, except a
+ * Less import of a `.css` target: `(less)` on any target, or `@-import` of a
+ * `.css` one, reads it as Less (ledger A21).
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
@@ -40,6 +41,7 @@ const THEME: Record<string, string> = {
 };
 const BUTTON = '.button {\n  color: red;\n}\n';
 const BUTTON_CSS = '.button {\n  color: red;\n  margin: 1px + 2px;\n}\n';
+const BUTTON_LESS = '.button {\n  color: red;\n  margin: 3px;\n}\n';
 
 describe('an imported stylesheet is parsed by its own extension', () => {
   it.each([
@@ -58,11 +60,15 @@ describe('an imported stylesheet is parsed by its own extension', () => {
     await expect(render(entryExt, `${name} "./theme.${themeExt}";\n`, themeExt, THEME[themeExt]!)).resolves.toBe(BUTTON);
   });
 
+  /* `@-import` is a clear signal the import is not a CSS `@import`, so it reads a `.css` target as Less. */
+  it.each(['jess', 'less'])('.%s @-import .css reads it as Less', async (entryExt) => {
+    await expect(render(entryExt, '@-import "./theme.css";\n', 'css', THEME.css!)).resolves.toBe(BUTTON_LESS);
+  });
+
   it.each([
-    ['jess', '@-import'],
-    ['less', '@-import'],
-    ['jess', '@-compose']
-  ])('.%s %s .css', async (entryExt, name) => {
+    ['jess', '@-compose'],
+    ['less', '@compose']
+  ])('.%s %s .css reads it as CSS', async (entryExt, name) => {
     await expect(render(entryExt, `${name} "./theme.css";\n`, 'css', THEME.css!)).resolves.toBe(BUTTON_CSS);
   });
 

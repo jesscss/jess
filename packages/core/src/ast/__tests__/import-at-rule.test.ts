@@ -481,10 +481,10 @@ describe('StyleImport', () => {
     expect(lessAgain.parseCalls).toBe(1);
   });
 
-  it('parses a dash import by the extension of its target while a bare css import stays terminal', async () => {
+  it('routes dash import css targets through the Less parser while bare css imports stay terminal', async () => {
     const filePath = '/virtual/tokens.css';
     const imported = stylesheet([
-      rule('.from-css-parser', [decl('color', keyword('red'))])
+      rule('.from-less-parser', [decl('color', keyword('red'))])
     ]);
     const dashImport = stylesheet([
       authoredImport('@-import', quoted(`"${filePath}"`, filePath, '"', false)),
@@ -505,31 +505,31 @@ describe('StyleImport', () => {
 
       override async getSource() {
         this.sourceCalls++;
-        return '.from-css-parser { color: red; }\n';
+        return '.from-less-parser { color: red; }\n';
       }
     }
 
-    class MemoryCssPlugin extends AbstractPlugin {
-      name = 'css';
-      supportedExtensions = ['.css'];
+    class MemoryLessPlugin extends AbstractPlugin {
+      name = 'less';
+      supportedExtensions = ['.less'];
       parseCalls = 0;
 
       safeParse(_filePath: string, _source: string, options?: { importOptions?: { type?: string } }) {
         this.parseCalls++;
-        expect(options?.importOptions?.type).toBeUndefined();
+        expect(options?.importOptions?.type).toBe('less');
         return { document: imported, errors: [], warnings: [] };
       }
     }
 
     const files = new MemoryFilePlugin();
-    const css = new MemoryCssPlugin();
-    const context = new Context({}, [files, css]);
+    const less = new MemoryLessPlugin();
+    const context = new Context({}, [files, less]);
 
     await expect(context.withDocument(dashImport, () => serialize(dashImport, { context }))).resolves.toEqual({
-      css: '.from-css-parser {\n  color: red;\n}\n.entry {\n  color: blue;\n}\n'
+      css: '.from-less-parser {\n  color: red;\n}\n.entry {\n  color: blue;\n}\n'
     });
     expect(files.sourceCalls).toBe(1);
-    expect(css.parseCalls).toBe(1);
+    expect(less.parseCalls).toBe(1);
 
     /*
      * A bare `.css` import is a plain CSS at-rule the parser already classified,
@@ -539,7 +539,7 @@ describe('StyleImport', () => {
       css: `@import "${filePath}";\n.entry {\n  color: blue;\n}\n`
     });
     expect(files.sourceCalls).toBe(1);
-    expect(css.parseCalls).toBe(1);
+    expect(less.parseCalls).toBe(1);
   });
 
   it('loads a claimed external import through Context without a core network resolver', async () => {

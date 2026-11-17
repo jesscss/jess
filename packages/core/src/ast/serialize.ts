@@ -35,6 +35,7 @@ import serializerNodes, {
   dimension,
   funcCall,
   importOptionWords,
+  importTargetIsCss,
   mixinCall,
   mixinDef,
   operation,
@@ -713,19 +714,21 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     }
 
     /*
-     * Parse-mode selection remains Context/plugin-owned. The typed Less `(less)`
-     * flag asks the existing dispatcher for its `less` plugin even when the path
-     * ends in `.css`; core never chooses or invokes a parser itself. Every other
-     * import, `@-import` included, is parsed by its own file's extension (ledger
-     * A21). An import with no CSS meaning — `(less)`, `@-import`, `(reference)`,
-     * `@compose` — must load, so a plugin refuses rather than leaves it a CSS
-     * terminal.
+     * Parse-mode selection remains Context/plugin-owned; core never chooses or
+     * invokes a parser itself. It asks the dispatcher for its `less` plugin in
+     * one case: a Less import of a `.css` target, which is `(less)` on any
+     * target or `@-import` of a `.css` one. Every other import is parsed by its
+     * own file's extension (ledger A21). An import with no CSS meaning —
+     * `(less)`, `@-import`, `(reference)`, `@compose` — must load, so a plugin
+     * refuses rather than leaves it a CSS terminal.
      */
-    const less = importOptionWords(node.options).includes('less');
-    const mustLoad = less || importOptionWords(node.options).includes('reference') || node.mode === 'compose' || node.name.toLowerCase() === '@-import';
+    const dashImport = node.name.toLowerCase() === '@-import';
+    const less = importOptionWords(node.options).includes('less') || (dashImport && importTargetIsCss(specifier));
     let loaded: Awaited<ReturnType<Context['loadImport']>>;
     try {
-      loaded = await context.loadImport(specifier, less ? { type: 'less', mustLoad } : { mustLoad });
+      loaded = await context.loadImport(specifier, less
+        ? { type: 'less', mustLoad: true }
+        : { mustLoad: dashImport || importOptionWords(node.options).includes('reference') || node.mode === 'compose' });
     } catch (error) {
       /*
        * `(optional)` suppresses ONLY the missing-file diagnostic, and the import
