@@ -210,6 +210,10 @@ export function arithmeticOperand(math: Arithmetic, side: 'left' | 'right'): Eva
   return node?.type === 'Dimension' ? new DimensionValueNode(node.number, node.unit, node.src) : math[side];
 }
 
+/** The `rgb()` the compile wrote for colour maths only the browser knows, spelled `bytes`, `args` the maths it carries (`colour-math.ts`). */
+export const makeComputedColor = (bytes: string, args: ValueGroup): FunctionCall =>
+  new FunctionCallValueNode('rgb', args, 'color', true, bytes);
+
 /** A `calc()` over what it holds, spelled `bytes` ({@link FunctionCall}). */
 export const makeCalc = (args: ValueGroup, bytes: string, computed = false): FunctionCall =>
   new FunctionCallValueNode('calc', args, 'numeric', computed, bytes);
