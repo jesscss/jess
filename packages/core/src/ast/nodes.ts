@@ -2078,6 +2078,9 @@ export const variableExpose = (names: readonly ExposedName[]): VariableExpose =>
 
 export const exposedName = (name: string): ExposedName => new ExposedNameNode(name, NO_SPAN, NO_SPAN);
 
+export const isVariableExpose = (value: unknown): value is VariableExpose =>
+  typeof value === 'object' && value !== null && 'type' in value && value.type === 'VariableExpose';
+
 /** The one `MixinDefinition` literal: every field, in one order, so all share one hidden class (V8 invariant 1). */
 const mixinDefinition = (name: string, params: Param[], rules: Statement[], extendInstructions: ExtendInstruction[] | undefined, guard: GuardNode | undefined): MixinDefinition =>
   (new MixinDefinitionNode(name, params, rules, extendInstructions, guard, undefined, NO_SPAN, NO_SPAN, NO_SPAN, NO_SPAN));

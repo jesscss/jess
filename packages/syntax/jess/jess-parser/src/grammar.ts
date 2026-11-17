@@ -31,7 +31,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCall, guardCompare, guardDefault, guardNot, guardValue, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
-import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -117,6 +117,7 @@ import {
   genericCallFrom
 } from './grammar-helpers.js';
 import { collectionFrom, curlyListFrom, enterCssCall, leaveCssCall } from './curly-list.js';
+import { exposeFrom } from './expose-statement.js';
 import type {
   ExpressionFact,
   JessOperatorFact,
@@ -254,6 +255,7 @@ type JessRules = {
   If: Combinator<If>;
   While: Combinator<While>;
   StyleImport: Combinator<StyleImport>;
+  ExposeStatement: Combinator<VariableExpose | VariableDeclaration>;
   StyleImportConfig: Combinator<StyleImportConfig>;
   ModuleSpecifier: Combinator<ModuleImportSpecifier>;
   ModuleImport: Combinator<ModuleImport>;
@@ -646,6 +648,21 @@ const rawParenInner = scanTo(
 );
 
 /*
+ * What follows an `@-expose`'s names, up to its `;`, its block, the body's `}`
+ * or the end. It is empty unless the statement is malformed, and is read whole
+ * so that statement is reported rather than lost (P45). It never fails, so the
+ * statement decides on its next token and never rewinds.
+ */
+const exposeRest = scanTo(
+  choice(
+    literal(';'),
+    literal('{'),
+    literal('}')
+  ),
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets], orEOF: true }
+);
+
+/*
  * Jess's live `$` grammar does not permit CSS escapes in names. Keep that
  * dialect-local fact explicit while the value keyword leaf remains shared.
  */
@@ -894,11 +911,12 @@ const unquotedUrlText = regex(/(?:[^"'()\\$ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|
  * malformed one must report its own error rather than silently degrade.
  */
 const compilerAtRuleName = keywords(
-  ['@-use', '@-compose', '@-export', '@-import', '@-from'],
+  ['@-use', '@-compose', '@-export', '@-import', '@-from', '@-expose'],
   { boundary: IDENT_BOUNDARY, caseInsensitive: true }
 );
 
 const charsetAtRuleName = word('@charset', IDENT_BOUNDARY, { caseInsensitive: true });
+const exposeAtRuleName = word('@-expose', IDENT_BOUNDARY, { caseInsensitive: true });
 const importAtRuleName = word('@import', IDENT_BOUNDARY, { caseInsensitive: true });
 const propertyAtRuleName = word('@property', IDENT_BOUNDARY, { caseInsensitive: true });
 const scopeAtRuleName = word('@scope', IDENT_BOUNDARY, { caseInsensitive: true });
@@ -931,7 +949,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    */
   const typedAtRuleStatementNames = [
     '@charset', '@import', '@supports',
-    '@-use', '@-compose', '@-export', '@-import', '@-from'
+    '@-use', '@-compose', '@-export', '@-import', '@-from', '@-expose'
   ];
 
   const VariableReference = node<Lookup>(
@@ -1725,6 +1743,34 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       }
       throw new TypeError('Jess grammar produced an unknown style import form.');
     }
+  );
+
+  /**
+   * `@-expose brand, gap;` publishes root variables by name (ledger A20). The
+   * names are bare: `$` starts a read and is not part of a name, as `@` is in
+   * Less, so `.less` to `.jess` renames only the keyword. `.jess` requires the
+   * dash (A1). It parses in every body, as Less's `@expose` does, and evaluation
+   * rejects one below the top level. The declaration form
+   * (`@-expose $brand: red;`) and any other shape after the keyword parse whole
+   * and are reported, never written as CSS (P45).
+   */
+  const ExposeStatement = node<VariableExpose | VariableDeclaration>(
+    'ExposeStatement',
+    sequence(
+      exposeAtRuleName,
+      choice(
+        field('declaration', g.VariableDeclaration),
+        sequence(
+          optional(oneOrMoreSep(field('name', dollarName), literal(','))),
+          field('rest', exposeRest),
+          optional(choice(
+            field('block', balancedBraces),
+            literal(';')
+          ))
+        )
+      )
+    ),
+    (_children, fields, span, _rawChildren, _triviaLog, state) => exposeFrom(fields, span, state)
   );
   const ModuleSpecifier = node<ModuleImportSpecifier>(
     'ModuleSpecifier',
@@ -4951,6 +4997,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.NestedRuleset,
     g.SupportsAtRuleBlock,
     g.Keyframes,
+    g.ExposeStatement,
     g.UnknownAtRuleBlock,
     g.ScopeBlock,
     g.AtRuleBlock,
@@ -4977,6 +5024,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.NestedRuleset,
     g.SupportsAtRuleBlock,
     g.Keyframes,
+    g.ExposeStatement,
     g.UnknownAtRuleBlock,
     g.ScopeBlock,
     g.AtRuleBlock,
@@ -6344,6 +6392,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.Extend,
     g.NestedRuleset,
     g.SupportsAtRuleBlock,
+    g.ExposeStatement,
     g.UnknownAtRuleBlock,
     g.ScopeBlock,
     g.AtRuleBlock,
@@ -6424,6 +6473,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(choice(
         g.StyleImport,
         g.ModuleImport,
+        g.ExposeStatement,
         g.ValueBlockDeclaration,
         g.VariableDeclaration,
         g.ImportStatement,
@@ -6445,6 +6495,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.SupportsAtRuleBlock,
         g.PropertyAtRule,
         g.Keyframes,
+        g.ExposeStatement,
         g.UnknownAtRuleBlock,
         g.ScopeBlock,
         g.AtRuleBlock,
@@ -6497,6 +6548,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     Quoted,
     LiteralQuoted,
     StyleImport,
+    ExposeStatement,
     StyleImportConfig,
     ModuleSpecifier,
     ModuleImport,

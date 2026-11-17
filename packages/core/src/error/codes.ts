@@ -301,17 +301,17 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'parse/expose-declaration',
     {
-      summary: '@expose names variables; it does not declare one',
-      reason: '@expose lists the names of variables declared on their own, without their @.',
-      fix: 'Declare the variable, then expose it by name, for example: @brand: red; @expose brand;'
+      summary: '${keyword} names variables; it does not declare one',
+      reason: '${keyword} lists the names of variables declared on their own, without their ${sigil}.',
+      fix: 'Declare the variable, then expose it by name: ${sigil}${name}: …; ${keyword} ${name};'
     }
   ],
   [
     'parse/malformed-expose',
     {
-      summary: '@expose takes a comma-separated list of variable names',
-      reason: '@expose is followed by one or more variable names without their @, separated by commas, and ends at a semicolon.',
-      fix: 'Write the names it exposes, for example: @expose brand, gap;'
+      summary: '${keyword} takes a comma-separated list of variable names',
+      reason: '${keyword} is followed by one or more variable names without their ${sigil}, separated by commas, and ends at a semicolon.',
+      fix: 'Write the names it exposes, for example: ${keyword} brand, gap;'
     }
   ],
   [

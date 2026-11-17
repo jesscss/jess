@@ -130,8 +130,33 @@ or needs JS) to decide what ships in the bundle.
   an expression start. So I think @export brand or @export brand, gap; is what
   I would want"*). It parses in any body (P45); the AST is a `VariableExpose`
   statement holding the names (`nodes.ts`).
-- **`.jess`.** The `.jess` spelling is `@-expose`; the `.jess` grammar does not
-  parse it yet, so `.less → .jess` reports a gap for an `@expose`.
+- **`.jess`.** The `.jess` spelling is `@-expose brand, gap;`, with the dash
+  (A1; owner 2026-11-17: *".jess should have `@-expose`, whilst .less has
+  `@expose` / `@-expose`"*), naming variables declared as `$brand: #c00;`
+  without their `$` (orchestrator ruling 2026-11-17, applying A20): the `$`
+  starts a read, as Less's `@` does, so `.less → .jess` renames only the
+  keyword (`emit-jess.ts`). A bare `@expose` in `.jess` is a generic unknown
+  at-rule. It parses in any body; the declaration form
+  (`@-expose $brand: red;`) and other shapes raise the same
+  `parse/expose-declaration` and `parse/malformed-expose` as Less, spelled for
+  `.jess` (`ExposeDeclarationError` / `MalformedExposeError` in
+  `@jesscss/core/diagnostics`, one class for both dialects). Evaluation is
+  shared: the name is the binding the scoped store holds at the top level (the
+  last top-level declaration), and a live `$brand` read of that declaration is
+  an exposed read. Pinned in
+  `packages/syntax/jess/jess-parser/test/expose-statement.test.ts` and
+  `packages/jess/test/jess-expose-variables.test.ts`, which checks that a
+  converted stylesheet and one written with live reads compile to the CSS and
+  runtime of the Less stylesheet.
+  **Open (`.jess` live store):** a live read sees the declaration current where
+  it is written, so a read written before a later top-level redeclaration
+  (`$brand: red; .a { color: $brand; } $brand: blue; @-expose brand;`) or after
+  a live reassignment (`$brand := blue;`) reads a binding other than the exposed
+  one and writes its plain value, not `var(--brand, …)`. A Less `@brand` read
+  and a converted `$^brand` read always see the last declaration. Not yet ruled.
+  The diagnostics `eval/expose-not-declared` and `eval/expose-not-top-level`
+  still spell the statement and the name the Less way (`@expose`, `@brand`) in
+  a `.jess` file.
 - **Top level, of any file (R8-6).** An `@expose` exposes when it is
   activated in a frame with no parent: the rendered document's root, which a
   top-level `@import` splices into, or a

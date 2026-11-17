@@ -76,6 +76,23 @@ describe('vite-plugin-jess', () => {
     return { css: css?.type === 'asset' ? String(css.source) : '', js: output[0]?.code ?? '' };
   }
 
+  it('bundles the CSS and the runtime of a .jess stylesheet that exposes variables', async () => {
+    await inProject([
+      ['main.js', `export { set, vars } from './theme.jess';\n`],
+      ['theme.jess', `@-use "#less";\n@-expose brand;\n$brand: #c00;\n.button { color: $brand; opacity: $less.lightness($brand); }\n`]
+    ], async (root) => {
+      const { css, js } = await built(root);
+      expect(css).toContain('color:var(--brand, #c00)');
+      expect(css).toContain('var(--brand-lightness,');
+      const file = path.join(root, 'main.mjs');
+      fs.writeFileSync(file, js);
+      const module: unknown = await import(file);
+      expect(module).toHaveProperty('set');
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+      expect(isRuntime(module) && module.vars({ brand: '#08f' })).toEqual({ '--brand': '#08f', '--brand-lightness': '50%' });
+    });
+  });
+
   it('bundles a function with a CSS form that the runtime has to run', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
