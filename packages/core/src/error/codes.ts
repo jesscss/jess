@@ -433,17 +433,17 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'eval/expose-not-top-level',
     {
-      summary: '@expose is only allowed at the top level of a stylesheet',
-      reason: 'An @expose is written inside a ruleset, at-rule, mixin, guard or loop body, or in a file imported into one; it publishes a variable of a stylesheet\'s top level.',
-      fix: 'Move the @expose to the top level of the stylesheet, or import the file at its top level.'
+      summary: '${keyword} is only allowed at the top level of a stylesheet',
+      reason: 'A ${keyword} is written inside a ruleset, at-rule, mixin, guard or loop body, or in a file imported into one; it publishes a variable of a stylesheet\'s top level.',
+      fix: 'Move the ${keyword} to the top level of the stylesheet, or import the file at its top level.'
     }
   ],
   [
     'eval/expose-not-declared',
     {
-      summary: '@expose names @${name}, which is not visible at the top level of this file',
-      reason: '@expose ${name} publishes the variable @${name} a read at the top level of this file sees: one declared there, by a file it imports or by a mixin it calls there. A variable declared only in a nested block is not one.',
-      fix: 'Declare @${name} at the top level of this file, or remove ${name} from the @expose.'
+      summary: '${keyword} names ${sigil}${name}, which is not visible at the top level of this file',
+      reason: '${keyword} ${name} publishes the variable ${sigil}${name} a read at the top level of this file sees: one declared there, by a file it imports or by a mixin it calls there. A variable declared only in a nested block is not one.',
+      fix: 'Declare ${sigil}${name} at the top level of this file, or remove ${name} from the ${keyword}.'
     }
   ],
   [

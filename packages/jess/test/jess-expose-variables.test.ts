@@ -57,6 +57,33 @@ describe('.jess @-expose (A20)', () => {
     expect(await outcome(jess, 'jess'), jess).toEqual(expected);
   });
 
+  /* Evaluation's expose errors spell the statement and the read as the stylesheet's dialect does. */
+  it.each([
+    ['less', '@expose nope;\n', {
+      message: '@expose names @nope, which is not visible at the top level of this file',
+      fix: 'Declare @nope at the top level of this file, or remove nope from the @expose.'
+    }],
+    ['jess', '@-expose nope;\n', {
+      message: '@-expose names $nope, which is not visible at the top level of this file',
+      fix: 'Declare $nope at the top level of this file, or remove nope from the @-expose.'
+    }]
+  ] as const)('names an undeclared exposed variable in %s spelling', async (language, source, text) => {
+    const { errors } = await compiled(source, language);
+    expect(errors).toEqual([expect.objectContaining({ code: 'eval/expose-not-declared', ...text })]);
+  });
+
+  it.each([
+    ['less', '@brand: red;\n.a { @expose brand; color: @brand; }\n', '@expose'],
+    ['jess', '$brand: red;\n.a { @-expose brand; color: $brand; }\n', '@-expose']
+  ] as const)('reports a nested expose in %s spelling', async (language, source, keyword) => {
+    const { errors } = await compiled(source, language);
+    expect(errors).toEqual([expect.objectContaining({
+      code: 'eval/expose-not-top-level',
+      message: `${keyword} is only allowed at the top level of a stylesheet`,
+      fix: `Move the ${keyword} to the top level of the stylesheet, or import the file at its top level.`
+    })]);
+  });
+
   it.each([
     [
       '@use "#less";\n@expose brand;\n@brand: #c00;\n.button { color: @brand; opacity: @less.lightness(@brand); }\n',

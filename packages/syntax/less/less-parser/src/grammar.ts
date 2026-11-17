@@ -1537,7 +1537,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         ? []
         : requireFields(fields, 'name').map(name => withSourceSpan(exposedName(requireSupportedVariableName(name.value, name.span.start, name.span.end)), name.span));
       const rest = fields?.rest === undefined ? null : requireField(fields, 'rest').value;
-      const exposed = withSourceSpan(variableExpose(names), span);
+      const exposed = withSourceSpan(variableExpose(names, LESS_EXPOSE), span);
       if (names.length === 0 || rest !== null || fields?.block !== undefined) {
         reportRecovered(new MalformedExposeError(span.start, span.end, LESS_EXPOSE, exposed), state);
       }

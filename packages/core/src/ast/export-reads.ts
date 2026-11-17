@@ -395,7 +395,7 @@ function settle<F>(x: ExportState<F>): void {
       const site = siteOf(where);
       const hit = resolve(name);
       if (hit === undefined) {
-        throw ERR.exposeNotDeclared({ node: exported, ...where, meta: { name } });
+        throw ERR.exposeNotDeclared({ node: exported, ...where, meta: { ...node.spelling, name } });
       }
       const bound = x.bound.get(name);
       if (bound !== undefined && (bound.value !== hit.value || bound.frame !== hit.frame)) {
@@ -1240,7 +1240,7 @@ function exportNotWritten(reader: object | undefined, symbol: string, name: stri
 /** `@expose` publishes a stylesheet's top-level variables; one in a body (`nested`) is an error. */
 export function rejectNestedExpose(node: VariableExpose, nested: boolean, e: ExportLane<unknown>): void {
   if (nested) {
-    throw ERR.exposeNotTopLevel({ node, ...callSiteLocation(node, e.s) });
+    throw ERR.exposeNotTopLevel({ node, ...callSiteLocation(node, e.s), meta: node.spelling });
   }
 }
 

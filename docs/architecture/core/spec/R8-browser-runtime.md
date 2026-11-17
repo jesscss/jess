@@ -154,9 +154,9 @@ or needs JS) to decide what ships in the bundle.
   a live reassignment (`$brand := blue;`) reads a binding other than the exposed
   one and writes its plain value, not `var(--brand, …)`. A Less `@brand` read
   and a converted `$^brand` read always see the last declaration. Not yet ruled.
-  The diagnostics `eval/expose-not-declared` and `eval/expose-not-top-level`
-  still spell the statement and the name the Less way (`@expose`, `@brand`) in
-  a `.jess` file.
+  The statement carries its dialect's spelling (`VariableExpose.spelling`), so
+  `eval/expose-not-declared` and `eval/expose-not-top-level` name `@-expose`
+  and `$brand` in a `.jess` file.
 - **Top level, of any file (R8-6).** An `@expose` exposes when it is
   activated in a frame with no parent: the rendered document's root, which a
   top-level `@import` splices into, or a

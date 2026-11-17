@@ -26,7 +26,7 @@ export function exposeFrom(fields: FieldMap | undefined, span: Span, state: unkn
   const names = fields?.name === undefined
     ? []
     : requireFields(fields, 'name').map(name => withSourceSpan(exposedName(requireString(name.value)), name.span));
-  const exposed = withSourceSpan(variableExpose(names), span);
+  const exposed = withSourceSpan(variableExpose(names, JESS_EXPOSE), span);
 
   /* The rest scan is empty unless text follows the names before the `;`, block or `}`. */
   const rest = fields?.rest === undefined ? undefined : requireFields(fields, 'rest')[0]?.span;

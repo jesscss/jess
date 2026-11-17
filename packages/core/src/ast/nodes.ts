@@ -28,6 +28,7 @@
 import { AnonymousMixinNode, AnonymousMixinWithParamsNode, AnPlusBNode, AnyNode, ApplyNode, BlockNode, BranchNode, CallArgValue, CollectionEntryNode, CollectionNode, CollectionSpreadNode, ColorNode, CommentNode, ComplexSelectorNode, CompoundSelectorNode, ConditionNode, DeclarationNode, DimensionNode, EscapedBlockNode, ExposedNameNode, ExpressionNode, ForNode, FunctionCallNode, IfNode, IfValueNode, ImportantNode, IndexedLookupStepNode, InterpolationNode, KeywordNode, LeadQuotingInterpolationNode, ListNode, LookupNode, LookupStepNode, MixinCallNode, MixinDefinitionNode, MixinPathSegmentNode, ModuleImportNode, NestedPropertyBlockNode, NullNode, OperationNode, PseudoSelectorNode, QuotedNode, RangeNode, ReferenceCallNode, ReferenceNode, RelativeSelectorNode, RulesetExtendGuardNode, RulesetExtendNode, RulesetGuardNode, RulesetNode, SelectorCaptureNode, SelectorListNode, SequenceNode, SimpleSelectorNode, StyleImportNode, StylesheetNode, UrlNode, ValueOnNewLineCollectionEntryNode, ValueOnNewLineDeclarationNode, VariableDeclarationNode, VariableExposeNode, WhileNode } from './node-ctors.js';
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
+import type { ExposeSpelling } from '../error/diagnostics.js';
 import type { ForgivenSelectorItem } from './forgiving-selector.js';
 import { NO_SPAN, isAuthoredGroupExpression, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
 export { copyNode, withFields } from './value-factory.js';
@@ -1376,6 +1377,9 @@ export interface VariableDeclaration extends SpanSlots {
 export interface VariableExpose extends SpanSlots {
   readonly type: 'VariableExpose';
   readonly names: readonly ExposedName[];
+
+  /** How the dialect writes the statement and a variable's read, for evaluation's diagnostics. */
+  readonly spelling: ExposeSpelling;
 }
 
 /** One name an `@expose` lists, located where it is written. */
@@ -2073,8 +2077,8 @@ export const variableDeclaration = (
 export const withWrite = (declaration: VariableDeclaration, write: VariableWrite): VariableDeclaration =>
   (new VariableDeclarationNode(declaration.name, declaration.value, write, declaration._s, declaration._e));
 
-export const variableExpose = (names: readonly ExposedName[]): VariableExpose =>
-  (new VariableExposeNode(names, NO_SPAN, NO_SPAN));
+export const variableExpose = (names: readonly ExposedName[], spelling: ExposeSpelling): VariableExpose =>
+  (new VariableExposeNode(names, spelling, NO_SPAN, NO_SPAN));
 
 export const exposedName = (name: string): ExposedName => new ExposedNameNode(name, NO_SPAN, NO_SPAN);
 

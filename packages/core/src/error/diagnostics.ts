@@ -648,10 +648,10 @@ export class InvalidRulePreludeError extends SyntaxError {
  * starts a read of one (ledger A20): Less `@expose` and `@`, `.jess` `@-expose`
  * and `$`.
  */
-export interface ExposeSpelling {
+export type ExposeSpelling = {
   readonly keyword: string;
   readonly sigil: string;
-}
+};
 
 /**
  * An expose written as a declaration, `@expose @brand: red;` (ledger A20): it
@@ -945,14 +945,14 @@ export const ERR = {
       ...args
     });
   },
-  exposeNotTopLevel(args: Common) {
+  exposeNotTopLevel(args: Common & { meta: ExposeSpelling }) {
     return makeJessError({
       code: 'eval/expose-not-top-level',
       phase: 'eval',
       ...args
     });
   },
-  exposeNotDeclared(args: Common & { meta: { name: string } }) {
+  exposeNotDeclared(args: Common & { meta: ExposeSpelling & { name: string } }) {
     return makeJessError({
       code: 'eval/expose-not-declared',
       phase: 'eval',
