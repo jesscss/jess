@@ -716,8 +716,8 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
      * Parse-mode selection remains Context/plugin-owned. The typed Less `(less)`
      * flag asks the existing dispatcher for its `less` plugin even when the path
      * ends in `.css`; core never chooses or invokes a parser itself. Every other
-     * import, `@-import` included, is parsed by its own file's extension. An
-     * import with no CSS meaning — `(less)`, `@-import`, `(reference)`,
+     * import, `@-import` included, is parsed by its own file's extension (ledger
+     * A21). An import with no CSS meaning — `(less)`, `@-import`, `(reference)`,
      * `@compose` — must load, so a plugin refuses rather than leaves it a CSS
      * terminal.
      */
