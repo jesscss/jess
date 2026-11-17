@@ -46,7 +46,8 @@ describe('.jess @-expose (A20)', () => {
 
   it.each([
     ['a ruleset', '.a { @-expose n; }'],
-    ['an at-rule', '@media print { @-expose n; }']
+    ['an at-rule', '@media print { @-expose n; }'],
+    ['a mixin', '.m() { @-expose n; }']
   ])('parses an @-expose written in %s', (_where, source) => {
     const rule = parse(source).rules[0];
     expect(rule !== undefined && 'rules' in rule && Array.isArray(rule.rules) ? namesOf(rule.rules[0]) : []).toEqual(['n']);
@@ -84,6 +85,11 @@ describe('.jess @-expose (A20)', () => {
       offset: 0,
       fix: 'Write the names it exposes, for example: @-expose brand, gap;'
     }));
+  });
+
+  it.each(['a\\;b', 'a\\}b'])('reads past an escaped terminator in a malformed list: %s', (rest) => {
+    expect(() => parse(`@-expose ${rest};`)).toThrow(expect.objectContaining({ code: 'parse/malformed-expose', offset: 0 }));
+    expect(() => parse(`@-expose ${rest};\n.x { c: d }`)).toThrow(expect.objectContaining({ code: 'parse/malformed-expose' }));
   });
 
   it('prints back as the statement it parsed from', () => {

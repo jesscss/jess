@@ -659,7 +659,7 @@ const exposeRest = scanTo(
     literal('{'),
     literal('}')
   ),
-  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets], orEOF: true }
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, regex(/\\[^\n\r\f]/), balancedParens, balancedBrackets], orEOF: true }
 );
 
 /*
@@ -1749,8 +1749,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * `@-expose brand, gap;` publishes root variables by name (ledger A20). The
    * names are bare: `$` starts a read and is not part of a name, as `@` is in
    * Less, so `.less` to `.jess` renames only the keyword. `.jess` requires the
-   * dash (A1). It parses in every body, as Less's `@expose` does, and evaluation
-   * rejects one below the top level. The declaration form
+   * dash (A1). It parses in every statement body, as Less's `@expose` does,
+   * and evaluation rejects one below the top level. The declaration form
    * (`@-expose $brand: red;`) and any other shape after the keyword parse whole
    * and are reported, never written as CSS (P45).
    */
@@ -4972,7 +4972,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * Shared block-body statement set for the at-rule-bearing blocks (`@supports`,
-   * generic at-rules): identical 16-rule choice plus a bare `;` arm. Keep this
+   * generic at-rules): one choice of statement rules plus a bare `;` arm. Keep this
    * as one local const so the macro fuses a single shared choice instead of
    * re-emitting it per block.
    *
@@ -5006,8 +5006,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * Shared nested-scope statement set for `$mixin`/`$for`/`$if` bodies: identical
-   * 15-rule choice with no bare `;` or `$extend` arm.
+   * Shared nested-scope statement set for `$mixin`/`$for`/`$if` bodies: one
+   * choice of statement rules plus a bare `;` arm, with no `$extend` arm.
     */
   const nestedBodyStatement = choice(
     literal(';'),
