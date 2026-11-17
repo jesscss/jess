@@ -17,6 +17,9 @@ const value = async (call: string): Promise<string> => {
 const GRAY = 'hsl(from var(--x) h 0 l)';
 const INVERT = 'rgb(from var(--x) calc(255 - r) calc(255 - g) calc(255 - b))';
 
+/** `contrast()` over an unknown colour: its exact relative-colour form (V40). */
+const CONTRAST = 'color(from var(--x) srgb-linear min(1, sign(0.17912878475 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) min(1, sign(0.17912878475 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) min(1, sign(0.17912878475 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) / 1)';
+
 describe('an adjuster over an input only the browser knows prints its form', () => {
   it.each([
     ['lighten(var(--a), 10%)', 'hsl(from var(--a) h s clamp(0, l + 10, 100))'],
@@ -94,7 +97,7 @@ describe('a lone grayscale(), invert() or contrast() over an unknown goes by whe
     await expect(compile('a { color: grayscale(var(--x)); background-color: invert(var(--x)); border: 1px solid grayscale(var(--x)); background: url(a.png), invert(var(--x)); }'))
       .resolves.toBe(`a {\n  color: ${GRAY};\n  background-color: ${INVERT};\n  border: 1px solid ${GRAY};\n  background: url(a.png), ${INVERT};\n}\n`);
     await expect(compile('.a { color: contrast(var(--x)); filter: contrast(var(--x)); backdrop-filter: blur(1px) contrast(var(--x)); }', '.less'))
-      .resolves.toBe('.a {\n  color: contrast-color(var(--x));\n  filter: contrast(var(--x));\n  backdrop-filter: blur(1px) contrast(var(--x));\n}\n');
+      .resolves.toBe(`.a {\n  color: ${CONTRAST};\n  filter: contrast(var(--x));\n  backdrop-filter: blur(1px) contrast(var(--x));\n}\n`);
   });
 
   it('holds in a mixin body and a loop body, which know their declaration', async () => {
@@ -105,8 +108,8 @@ describe('a lone grayscale(), invert() or contrast() over an unknown goes by whe
   it('goes by the declaration reading a variable, whichever read comes first', async () => {
     await expect(compile('$f: grayscale(var(--x));\na { filter: $f; color: $f; }')).resolves.toBe(`a {\n  filter: grayscale(var(--x));\n  color: ${GRAY};\n}\n`);
     await expect(compile('$f: grayscale(var(--x));\na { color: $f; filter: $f; }')).resolves.toBe(`a {\n  color: ${GRAY};\n  filter: grayscale(var(--x));\n}\n`);
-    await expect(compile('@f: contrast(var(--x));\n.a { filter: @f; color: @f; }', '.less')).resolves.toBe('.a {\n  filter: contrast(var(--x));\n  color: contrast-color(var(--x));\n}\n');
-    await expect(compile('@f: contrast(var(--x));\n.a { color: @f; filter: @f; }', '.less')).resolves.toBe('.a {\n  color: contrast-color(var(--x));\n  filter: contrast(var(--x));\n}\n');
+    await expect(compile('@f: contrast(var(--x));\n.a { filter: @f; color: @f; }', '.less')).resolves.toBe(`.a {\n  filter: contrast(var(--x));\n  color: ${CONTRAST};\n}\n`);
+    await expect(compile('@f: contrast(var(--x));\n.a { color: @f; filter: @f; }', '.less')).resolves.toBe(`.a {\n  color: ${CONTRAST};\n  filter: contrast(var(--x));\n}\n`);
   });
 
   it('is as written where no position is known', async () => {
@@ -143,7 +146,7 @@ describe('a lone grayscale(), invert() or contrast() over an unknown goes by whe
 
   it('takes the form through a module, under any property', async () => {
     await expect(compile('@use "sass:color";\na { filter: color.grayscale(var(--x)); color: color.invert(var(--x)); }')).resolves.toBe(`a {\n  filter: ${GRAY};\n  color: ${INVERT};\n}\n`);
-    await expect(compile('@use "#less";\n.a { filter: @less.contrast(var(--x)); }', '.less')).resolves.toBe('.a {\n  filter: contrast-color(var(--x));\n}\n');
+    await expect(compile('@use "#less";\n.a { filter: @less.contrast(var(--x)); }', '.less')).resolves.toBe(`.a {\n  filter: ${CONTRAST};\n}\n`);
     await expect(compile('@-from "#sass" import (grayscale);\n.a { filter: $grayscale(var(--x)); }', '.jess')).resolves.toBe(`.a {\n  filter: ${GRAY};\n}\n`);
   });
 

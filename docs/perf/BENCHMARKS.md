@@ -233,53 +233,186 @@ How to use it:
 ## 10. patch-css write strategy — how the page takes new variable values
 
 `@jesscss/patch-css` writes a stylesheet's exposed variables (`set()` from a
-`.less`/`.jess` module). The harness is
-`packages/patch-css/bench/write-strategy.html`, a static page: open it in a
-browser and read the table it prints, or `window.results`.
+`.less`/`.jess` module) with `writeVars`. The harness is
+`packages/patch-css/bench/write-strategy.html`.
+
+**Run it.** The page imports the built package, so build `@jesscss/patch-css`
+first. It needs a cross-origin isolated page, so that `performance.now()`
+resolves 5 µs rather than 0.1 ms. Serve it with:
+
+```bash
+node packages/patch-css/bench/serve.mjs packages/patch-css 4817
+```
+
+Then open `http://localhost:4817/bench/write-strategy.html`. The page prints
+its results and also leaves them on `window.results`. It POSTs them to the
+server as well, which writes `bench/results.json` (ignored by git).
+- `?suites=` picks one or more of `strategies`, `identity`, `setter` and
+  `layout`.
+- `?scenarios=` picks rows of the strategies table.
+- `?rounds=` and `?samples=` set the size of the run.
+
+**Read the differences, not the times.** On some runs the same update took 3
+to 6 times as long, with wide interquartile ranges. That happened while
+other work loaded the machine and with the pane hidden,
+but a hidden run on a quiet machine was fast, so the cause is not isolated.
+The paired differences hold through it: the run in the table below was in
+that slow regime, and still resolved 5%. Absolute times are only comparable
+between quiet runs. The page records its visibility at the start and the end,
+and counts the changes in between.
 
 **Method:**
-- The page has 3,000 cards, 12,000 elements, and every card reads ten custom
-  properties, two of which size its layout.
-- Each sample writes one update and then forces style and layout, so it times
-  the write and the recalc that the write causes. No `requestAnimationFrame` is
-  involved, so a background tab times the same.
-- A cell is the median, with the interquartile range in brackets, of 600
-  samples: four rounds of 150.
-- Each round starts the strategy order one place later, so no strategy always
-  runs after another.
-- `inlineAll (A/A)` repeats `inlineAll`; the gap between the two is the noise
-  floor.
-- `performance.now()` is coarsened to 0.1 ms on this page.
+- **The page.** It has 3,000 cards, 12,000 elements. Every card reads ten
+  custom properties: five colours, an opacity, and four that size its layout
+  (a padding, a height, a font weight and a letter spacing).
+- **`strategies`.** Each sample times ten updates. Each update is written and
+  then forced through style and layout, and the sample reports the time per
+  update.
+  - The strategies take turns sample by sample, in a new random order each
+    turn, so a slow spell on the machine lands on all of them alike.
+  - Each turn starts from a fresh install and an untimed write of all ten
+    values.
+  - A run is six rounds of 20 samples. The page prints each arm's median time,
+    with its interquartile range, and its difference from `current`.
+  - A strategy's difference from `current` is the median, over every sample,
+    of its time over the `current` sample of the same turn. Drift between turns
+    therefore cancels.
+  - `current (A/A)` repeats `current`. A row's A/A spread is the 95th
+    percentile of the A/A arm's difference over 1,000 resamples of its turns,
+    which is the same estimator every other arm's difference uses. **A
+    difference no larger than the A/A spread is not a result.**
+  - `current, +5% (control)` adds a busy-wait of 5% of `current`'s update to
+    each write. A row resolves a 5% change when that arm is not within A/A.
+- **`identity`.** Each strategy writes the same sequence of values. The suite
+  then reads `getComputedStyle` on the root, the body, the cards' container and
+  all 12,000 cards and their children. It reads ten properties the variables
+  reach, plus the ten variables, before the writes and after them. Every
+  element must read the same as under `current`. The writes repeat values the
+  style already holds, so a strategy that skips them is compared too.
+  - The ten variables are compared as `getComputedStyle` serializes them. So
+    a typed `@property` syntax (such as `<color>`, which serializes `hsl()`
+    as `rgb()`) fails by construction. Only `syntax: '*'` is a candidate.
+- **`setter`.** It times 2,000 `writeVars` calls of ten values each, with no
+  style flush, over 7 runs. It also checks whether `writeVars`'s comparison
+  read forces style. It times 200 steps of write-then-inline-read against a
+  write alone, with a computed-style read as the positive control.
+- **`layout`.** It times style and layout separately for each update: a style
+  read first, then `offsetHeight`. A colour-only update is compared with a
+  layout variable (the positive control) and with writing nothing (the null
+  control). It also watches `layout-shift` entries over five frames.
 
-Measured 2026-11-11 in Chrome 156 (the Claude desktop browser pane, hidden), in ms per update:
+Measured 2026-11-16 in Chrome 156.0.8078.75 (the Claude desktop browser pane,
+cross-origin isolated, timer step 5 µs). The pane went from hidden to in view,
+with 7 visibility changes. Each cell is the difference from `current`, per
+update:
 
-| Scenario | inline, every value | inline, every value (A/A) | inline, a value the style lacks | adopted sheet, `replaceSync` | adopted sheet, one rule's `style` |
-|---|---|---|---|---|---|
-| one variable changes | 6.5 (0–7.8) | 6.5 (0–7.7) | 6.5 (0–7.7) | 7.5 (1–8.6) | 7.5 (0–8.7) |
-| all ten change | 21.7 (20.5–23.9) | 21.8 (20.6–23.9) | 21.7 (20.6–23.9) | 22.7 (21.7–25.3) | 22.8 (21.6–25.4) |
-| nothing changes | 0 | 0 | 0 | 0.9 (0.9–1) | 0 |
-| five calls, written at once | 12.7 (6.8–20.4) | 12.7 (6.8–20.2) | 11.7 (6.8–20) | 13 (7.8–20.9) | 12.8 (7.7–20.8) |
-| five calls merged into one write | 13.5 (6.7–19.9) | 12.8 (6.8–19.8) | 12.1 (6.8–19.9) | 12.9 (7.7–20.9) | 14 (7.8–20.8) |
-| five calls, layout read between each | 66.3 (58–75.1) | 68 (58.3–74.9) | 66.4 (58.5–74.8) | 71.5 (63.6–79.9) | 74.1 (63.9–80.2) |
+| Scenario | A/A spread | +5% control | `current` (A/A) | every value, unchecked | Typed OM `attributeStyleMap.set` | `@property`, `syntax: '*'`, `inherits: true` |
+|---|---|---|---|---|---|---|
+| one variable changes | 2.8% | **+6.2%** | +1.2% | −0.2% | −1.1% | +1.4% |
+| one colour variable changes | 3.0% | **+4.2%** | −1.6% | −2.0% | −0.9% | −1.1% |
+| one layout variable changes | 4.2% | **+6.0%** | +1.4% | −1.6% | +0.1% | +2.3% |
+| all ten change | 3.6% | **+5.2%** | −1.2% | −0.9% | +0.1% | −0.2% |
+| nothing changes | 7.1% | +7.7% | +0.0% | **+18.8%** | **+653.8%** | +7.1% |
+
+- **The +5% control is outside A/A on all four rows where values change**, so
+  the harness resolves a 5% change there.
+- **Every strategy that keeps every computed value is within A/A on those
+  four rows**, from −2.0% to +2.3%.
+- **On "nothing changes"**, a write takes 8 µs. Writing every value unchecked
+  costs 19% more. Typed OM costs 7.5× (+654%), because it has no cheap
+  comparison.
+
+That run was in the slow regime: `current` took 39.4 ms per update on "one
+variable changes", with an interquartile range of 9.5–49.7. The absolute times
+come from the quiet run at 09:58 the same day (pane hidden at load). That run
+used the earlier statistic, a difference of pooled medians with the A/A gap
+between round medians. It also had no control arm. On the four rows where values change, its
+differences sat within −1.7% to +1.7%. `current`, in ms per update:
+
+| Scenario | `current` |
+|---|---|
+| one variable changes | **8.11** (7.31–8.83) |
+| one colour variable changes | 5.78 (5.60–6.03) |
+| one layout variable changes | 13.10 (12.32–13.87) |
+| all ten change | 17.37 (16.69–17.78) |
+| nothing changes | 0.003 |
+
+Two candidates change what CSS computes, so neither is in the tables. They are
+data points only:
+- **Writing on the cards' container, not the root**, ties with `current` on
+  every row. But the root and the body lose the variables (2 elements differ
+  after the writes), so it is not a candidate.
+- **`@property`, `syntax: '*'`, `inherits: false`** takes 0.05–0.1 ms per
+  update, because a value on the root then never reaches the cards. They read
+  their fallbacks instead, and all 12,003 elements differ after the writes
+  (the root's height is 126,000 px rather than 138,000 px). That is a
+  semantics change.
+
+`identity`: `current`, its A/A, the +5% control, every value unchecked, Typed
+OM and `@property` with `inherits: true` read identically on all 12,003
+elements, before the writes and after them.
+
+`setter` and `layout`, from a quiet run (pane hidden). Both compare against
+controls in the same run:
+
+| Check | Result |
+|---|---|
+| `set()` of ten new values, JS only | 3.0 µs (runs 2.9–4.9) |
+| `set()` of ten unchanged values | 0.92 µs |
+| write, then the inline `getPropertyValue` | 0.45 µs per step |
+| write alone | 0.25 µs per step |
+| write, then a computed read (positive control) | 5,447 µs per step |
+| colour variable: style, then layout, per update | 5.68 ms, then **0.002 ms** |
+| layout variable (positive control) | 5.52 ms, then 7.53 ms |
+| nothing written (null control) | 0.001 ms, then 0 ms |
+| `layout-shift` entries over five frames | 0 in all three, the positive control included |
+
+The slow run's figures for the same checks were:
+- `set()` of ten new values: 20.7 µs;
+- inline read after a write: 2.52 µs per step, against 1.98 µs for the write
+  alone and 43,095 µs for the computed read;
+- colour layout: 0.011 ms, against 7.43 ms for the positive control.
 
 What it decided:
 
-- **Write on the root's inline style.** An adopted sheet costs 1 ms more per
-  update, against an A/A gap of 0–0.1 ms on those rows. `replaceSync` also
-  re-parses when nothing changed. Each `--name` is declared once, on the root.
-- **Skip a value the style already holds, by reading the style.** In Chrome
-  this ties with writing every value, because Chrome skips a repeated inline
-  value itself. `writeVars` compares against `style.getPropertyValue` rather
-  than a record of its own writes, so a value removed or changed by other code
-  is written again.
-- **`set()` stays synchronous.** Merging five calls into one write is within
-  noise of writing each at once (12.7 to 13.5 against an A/A spread of 0.7),
-  because the browser recomputes style once per frame anyway. Batching pays
-  only when the page reads layout between calls: five calls with a read
-  between each cost 66 ms, against about 13 merged. A deferred `set()` would
-  hide that cost, but `getComputedStyle` right after `set()` would then read
-  the old value. A page that measures between updates should pass all its
-  values to one `set()`.
+- **Keep writing unregistered `--name`s on the root's inline style.**
+  - No strategy that keeps every computed value is 20% faster than `current`.
+    On the four rows where values change, none differs from it by more than
+    its A/A spread, and the harness resolves 5% there.
+  - `@property` with `inherits: true` ties. It would only add a permanent
+    registration per name.
+  - Typed OM ties on writes. It costs 7.5× when nothing changes.
+  - This covers `syntax: '*'` only. A typed syntax changes how the variables
+    serialize, so it is a semantics change by construction.
+- **Skip a value the style already holds, by reading the style.**
+  - Writing every value ties when values change.
+  - The comparison is what keeps an unchanged `set()` under 1 µs. It also
+    makes "nothing changes" 19% cheaper than writing every value.
+  - The inline `getPropertyValue` it reads costs about 0.2 µs more than a
+    write alone. That is a few timer steps over 200 steps, so it only shows
+    that the read forces no style: a computed read costs 5,447 µs.
+  - `writeVars` compares against the style, not a record of its own writes,
+    so a value removed or changed by other code is written again.
+- **`set()`'s own JS is 3 µs for ten values.** Everything else is the browser's
+  recalc of the elements that read the variables.
+- **A colour-only variable causes no layout.** Layout after a colour update
+  costs 0.002 ms, against 7.5 ms for a layout variable and 0 for writing
+  nothing. The Layout Instability API reported no shift even on the positive
+  control, so it does not resolve this in the pane; the layout timing does.
+- **`set()` stays synchronous** (measured 2026-11-11, previous harness).
+  - Merging five calls into one write was within noise of writing each at once
+    (12.7 to 13.5 ms, against an A/A spread of 0.7), because the browser
+    recomputes style once per frame anyway.
+  - Batching pays only when the page reads layout between calls: 66 ms with a
+    read between each, against about 13 merged.
+  - A page that measures between updates should pass all its values to one
+    `set()`.
+- **Adopted sheets lost** (measured 2026-11-11, previous harness).
+  `replaceSync` and a rule's `style` cost 1 ms more per update than the inline
+  style, against an A/A gap of 0–0.1 ms, and `replaceSync` re-parses when
+  nothing changed.
+
+Not tested: Firefox, Safari, and any Chromium other than the desktop pane's.
 
 Rerun the page after any change to how `writeVars` writes.
 
@@ -295,7 +428,7 @@ gzip sizes beside it. Every PR reports each goal as goal → measured.
 | G1. setter only, no derived value | ≤ 450 B without the unit check, ≤ 1,000 B with it (was ≤ 1,500 B, ≤ 700 B gzip, met 2026-11-11) | **met**: 381 B, 234 B gzip (no CSS form reads the export); 906 B, 470 B gzip with the unit check (`rgb(@r, 0, 0)`). Was 2,195 B. |
 | G2. one-function recipe, `lightness(@brand)` | ≤ 15,000 B once its module code tree-shakes; ≤ 3,000 B once the compiler and the runtime share one value walker | 31,736 B, 10,289 B gzip, of which big.js is 8.6 KB; 23,153 B (7,776 B gzip) with big.js gone. Was 43,976 B. |
 | G3. ratchet | each size test's ceiling is its measured size plus about 5%, and no PR raises one | ceilings 400, 950 and 33,300 B |
-| G4. setter speed | one `setProperty` per changed variable; one variable on 12,000 elements stays at 6.5 ms (table above) | `writeVars` unchanged since that run |
+| G4. setter speed | one `setProperty` per changed variable; one variable on 12,000 elements does not regress from 8.1 ms (§10, quiet run 2026-11-16; a re-baseline, since the page now has four layout variables, not two, and samples batches of ten rotating updates; the 6.5 ms of 2026-11-11 was the previous fixture); `set()` of ten values ≤ 0.05 ms of JS; a colour-only variable causes no layout | **met**: 8.11 ms, `writeVars` unchanged from dev; 3.0 µs; 0.002 ms of layout |
 
 What each step bought, for `lightness(@brand)`:
 

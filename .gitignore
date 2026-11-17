@@ -106,3 +106,6 @@ packages/core/.bmark-ast/
 
 # COD toolkit checkout (scripts/cod.mjs)
 .cache/cod-kit/
+
+# patch-css write-strategy harness output (bench/serve.mjs)
+packages/patch-css/bench/results.json

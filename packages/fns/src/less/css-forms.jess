@@ -34,8 +34,9 @@ $shade: @($color, $weight) > { result: color-mix(in srgb, black $weight, $color)
 $mix-over: @($color, $weight, $r, $g, $b, $a) > { result: rgb(from $color clamp(0, (r * alpha * $weight + $r) / (alpha * $weight + $a), 255) clamp(0, (g * alpha * $weight + $g) / (alpha * $weight + $a), 255) clamp(0, (b * alpha * $weight + $b) / (alpha * $weight + $a), 255) / calc(alpha * $weight + $a)); }
 $invert: @($color) > { result: rgb(from $color calc(255 - r) calc(255 - g) calc(255 - b)); }
 $invert-weighted: @($color, $weight) > { result: color-mix(in srgb, rgb(from $color calc(255 - r) calc(255 - g) calc(255 - b)) $weight, $color); }
-$contrast: @($color) > { result: contrast-color($color); }
-$contrast-between: @($color, $r, $red, $g, $green, $b, $blue, $a, $alpha) > { result: rgb(from contrast-color($color) calc($r + $red * r / 255) calc($g + $green * r / 255) calc($b + $blue * r / 255) / calc($a + $alpha * r / 255)); }
+$contrast: @($color, $t) > { result: color(from $color srgb-linear min(1, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) min(1, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) min(1, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) / 1); }
+$contrast-between: @($color, $t, $r, $red, $g, $green, $b, $blue, $a, $alpha) > { result: color(from $color srgb-linear calc($r + $red * min(1, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) calc($g + $green * min(1, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) calc($b + $blue * min(1, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) / calc($a + $alpha * min(1, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1))); }
+$contrast-below: @($color, $t, $r, $red, $g, $green, $b, $blue, $a, $alpha) > { result: color(from $color srgb-linear calc($r + $red * max(0, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b)))) calc($g + $green * max(0, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b)))) calc($b + $blue * max(0, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b)))) / calc($a + $alpha * max(0, sign($t - (0.2126 * r + 0.7152 * g + 0.0722 * b))))); }
 $rgb-slots: @($color, $r, $g, $b) > { result: rgb(from $color $r $g $b); }
 $rgb-slots-alpha: @($color, $r, $g, $b, $a) > { result: rgb(from $color $r $g $b / $a); }
 $hsl-slots: @($color, $h, $s, $l) > { result: hsl(from $color $h $s $l); }

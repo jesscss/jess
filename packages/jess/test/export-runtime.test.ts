@@ -51,8 +51,7 @@ describe('the export runtime', () => {
   it.each([
     'mix(@a, @b, 150%)',
     'mix(@a, var(--z), 150%)',
-    'mix(var(--y), @a, 150%)',
-    'contrast(@a, #111, #eee, 50%)'
+    'mix(var(--y), @a, 150%)'
   ])('does not print a built-in with no form, unimported in a classic partial: %s', async (call) => {
     expect((await compileWithPartial(`.a { color: ${call}; }`)).errors).toMatchObject([{ code: 'eval/expose-not-a-value', reason: expect.stringContaining('@a is exposed') }]);
   });
@@ -113,8 +112,10 @@ describe('the export runtime', () => {
     ['@less.mix(red, @brand, 25%)', '#c00', 'color-mix(in srgb, red 25%, var(--brand, #c00))'],
     ['@less.mix(red, blue, @brand)', '25%', 'rgb(from red clamp(0, (r * alpha * var(--brand, 0.25) + 0 * (1 - var(--brand, 0.25))) / (alpha * var(--brand, 0.25) + 1 * (1 - var(--brand, 0.25))), 255) clamp(0, (g * alpha * var(--brand, 0.25) + 0 * (1 - var(--brand, 0.25))) / (alpha * var(--brand, 0.25) + 1 * (1 - var(--brand, 0.25))), 255) clamp(0, (b * alpha * var(--brand, 0.25) + 255 * (1 - var(--brand, 0.25))) / (alpha * var(--brand, 0.25) + 1 * (1 - var(--brand, 0.25))), 255) / calc(alpha * var(--brand, 0.25) + 1 * (1 - var(--brand, 0.25))))'],
     ['@less.average(@brand, red)', '#c00', 'color-mix(in srgb, var(--brand, #c00), red)'],
-    ['@less.contrast(@brand)', '#c00', 'contrast-color(var(--brand, #c00))'],
-    ['@less.contrast(@brand, #111, #eee)', '#c00', 'rgb(from contrast-color(var(--brand, #c00)) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) / calc(1 + 0 * r / 255))'],
+    ['@less.contrast(@brand)', '#c00', 'color(from var(--brand, #c00) srgb-linear min(1, sign(0.17912878475 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) min(1, sign(0.17912878475 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) min(1, sign(0.17912878475 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1) / 1)'],
+    ['@less.contrast(@brand, #111, #eee)', '#c00', 'color(from var(--brand, #c00) srgb-linear calc(0.005605391624 + 0.8493872165 * min(1, sign(0.17432670013 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) calc(0.005605391624 + 0.8493872165 * min(1, sign(0.17432670013 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) calc(0.005605391624 + 0.8493872165 * min(1, sign(0.17432670013 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) / calc(1 + 0 * min(1, sign(0.17432670013 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)))'],
+    ['@less.contrast(@brand, #111, #eee, 50%)', '#999', 'color(from var(--brand, #999) srgb-linear calc(0.005605391624 + 0.8493872165 * max(0, sign(0.5 - (0.2126 * r + 0.7152 * g + 0.0722 * b)))) calc(0.005605391624 + 0.8493872165 * max(0, sign(0.5 - (0.2126 * r + 0.7152 * g + 0.0722 * b)))) calc(0.005605391624 + 0.8493872165 * max(0, sign(0.5 - (0.2126 * r + 0.7152 * g + 0.0722 * b)))) / calc(1 + 0 * max(0, sign(0.5 - (0.2126 * r + 0.7152 * g + 0.0722 * b)))))'],
+    ['@less.contrast(rgb(@brand 0 0), #111, #eee, 50%)', '200', 'color(from rgb(var(--brand, 200) 0 0) srgb-linear calc(0.005605391624 + 0.8493872165 * max(0, sign(0.5 - (0.2126 * r + 0.7152 * g + 0.0722 * b)))) calc(0.005605391624 + 0.8493872165 * max(0, sign(0.5 - (0.2126 * r + 0.7152 * g + 0.0722 * b)))) calc(0.005605391624 + 0.8493872165 * max(0, sign(0.5 - (0.2126 * r + 0.7152 * g + 0.0722 * b)))) / calc(1 + 0 * max(0, sign(0.5 - (0.2126 * r + 0.7152 * g + 0.0722 * b)))))'],
     ['@less.tint(@brand, 13%)', '#c00', 'color-mix(in srgb, white 13%, var(--brand, #c00))'],
     ['@less.tint(red, @brand)', '13%', 'rgb(from red clamp(0, (r * alpha * (1 - var(--brand, 0.13)) + 255 * var(--brand, 0.13)) / (alpha * (1 - var(--brand, 0.13)) + 1 * var(--brand, 0.13)), 255) clamp(0, (g * alpha * (1 - var(--brand, 0.13)) + 255 * var(--brand, 0.13)) / (alpha * (1 - var(--brand, 0.13)) + 1 * var(--brand, 0.13)), 255) clamp(0, (b * alpha * (1 - var(--brand, 0.13)) + 255 * var(--brand, 0.13)) / (alpha * (1 - var(--brand, 0.13)) + 1 * var(--brand, 0.13)), 255) / calc(alpha * (1 - var(--brand, 0.13)) + 1 * var(--brand, 0.13)))'],
     ['@less.shade(@brand)', '#c00', 'color-mix(in srgb, black 50%, var(--brand, #c00))'],
@@ -136,7 +137,6 @@ describe('the export runtime', () => {
   });
 
   it.each([
-    ['@less.contrast(@brand, #111, #eee, 50%)', '#999', '#222'],
     ['@less.contrast(#999, @brand, #eee)', '#111', '#222'],
     ['@less.lightness(@less.mix(@brand, red))', '#c00', '#08f']
   ])('runs %s of %s on the runtime, where no form holds it', async (expression, value, later) => {
@@ -164,7 +164,6 @@ describe('the export runtime', () => {
   });
 
   it.each([
-    ['@less.contrast(rgb(@o 0 0), #111, #eee, 50%)', '200'],
     ['@less.mix(color-mix(in srgb, @o, red), var(--b), 150%)', '#c00'],
     ['@less.lightness(rgb(@o 0 0))', '200'],
     ['@less.multiply(rgb(@o 0 0), red)', '200']
@@ -191,8 +190,6 @@ describe('the export runtime', () => {
     ['@less.lightness(@less.multiply(@a, GRAY))', '#c00', '#08f'],
     ['@less.luma(@less.screen(@a, gray))', '#c00', '#fff'],
     ['@less.hue(@less.difference(@a, rebeccapurple))', '#c00', '#123'],
-    ['@less.contrast(@less.multiply(@a, white), Gray, White, 50%)', '#000', '#fff'],
-    ['@less.contrast(@less.multiply(@a, white), Gray, White, 50%)', '#fff', '#000'],
     ['@less.alpha(@less.mix(@a, Transparent, 50%))', '#c00', '#08f']
   ])('runs %s for @a: %s then %s as the compile of that value does, reading no names', async (expression, initial, value) => {
     const source = (a: string): string => `@use "#less";\n@expose a;\n@a: ${a};\n.x { v: ${expression}; }`;
