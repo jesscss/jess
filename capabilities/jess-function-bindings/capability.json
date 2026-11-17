@@ -168,6 +168,45 @@
       }
     },
     {
+      "id": "jess-expose-round-trip",
+      "entrypoint": "packages/jess/test/jess-expose-variables.test.ts",
+      "export": "LESS_FUNCTIONS",
+      "alternatives": {
+        "wrapper": {
+          "replace": [
+            {
+              "from": "const LESS_FUNCTIONS = jessFunctions();",
+              "to": "const LESS_FUNCTIONS = { ...jessFunctions() };"
+            }
+          ]
+        },
+        "copy": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-less';",
+              "to": "import { lessExportNames } from '@jesscss/fns/less/registry';"
+            },
+            {
+              "from": "const LESS_FUNCTIONS = jessFunctions();",
+              "to": "const LESS_FUNCTIONS = { from: '#less', names: lessExportNames() };"
+            }
+          ]
+        },
+        "unusedImport": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-less';",
+              "to": "import { jessFunctions } from '@jesscss/plugin-less';\nimport { lessExportNames } from '@jesscss/fns/less/registry';"
+            },
+            {
+              "from": "const LESS_FUNCTIONS = jessFunctions();",
+              "to": "void jessFunctions();\nconst LESS_FUNCTIONS = { from: '#less', names: lessExportNames() };"
+            }
+          ]
+        }
+      }
+    },
+    {
       "id": "sass-list-map-functions",
       "entrypoint": "packages/jess/test/scss/sass-list-map-functions.test.ts",
       "export": "SASS_FUNCTIONS",
