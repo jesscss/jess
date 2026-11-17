@@ -7,7 +7,8 @@
  * (docs/design/CSS-NATIVE-BUILTINS.md §3.3). `$amount` is a number on the
  * channel's scale (css-color-5 §4.4); a `-deferred` form takes what only the
  * browser knows, a colour's amount as a percentage (Q2), Less's decimal places
- * as `pow(10, -1 * $places)`. `$step` and `$one` are 1 in the unit of a known
+ * as `pow(10, -1 * clamp(0, round(to-zero, $places, 1), 292))`, the places the
+ * compile reads (`round.ts` `places`). `$step` and `$one` are 1 in the unit of a known
  * `$value`, and a number otherwise (Q3).
  */
 import { readFileSync, writeFileSync } from 'node:fs';

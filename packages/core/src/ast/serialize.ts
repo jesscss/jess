@@ -213,7 +213,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { channelFunction, channelMath, channelOf, formChannels, isComputedColorCall, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
-import { argumentStatementKind, declareExpose, excluding, exposedWritten, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, declareExpose, excluding, exposedWritten, readsExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedAtRuleName, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation, laneSiteLocation } from './call-site-location.js';
@@ -227,7 +227,7 @@ import { cssFilterCall, mayBeFilter } from './filter-position.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, moduleReferenceCallNode, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
-import { mathOperand, negatedCall, slashOperated, writtenMath, writtenPercent } from './math-operand.js';
+import { isGluedCall, isSupportsCall, mathOperand, negatedCall, slashOperated, testedCall, writtenMath, writtenPercent } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type FnOrigin, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -4240,6 +4240,13 @@ interface Lane {
   keepsMath: boolean;
 
   /**
+   * Inside a feature query (`@supports`, `supports()`), which tests a declaration
+   * as written: a glued minus (`-var(--x)`) stays, what is around it evaluating as
+   * before (CSS-NATIVE-BUILTINS §3.4). Lane state, as `calcDepth` is.
+   */
+  tested: boolean;
+
+  /**
    * The channel keywords of the CSS colour whose channels this lane evaluates,
    * bound to its origin's values (`l` in `hsl(from C h s calc(l - 10))`); set
    * by {@link resolveColorCall} only for a call a consumer demands. A keyword reads
@@ -4495,7 +4502,7 @@ interface EvalSession {
  */
 function deriveLane(
   e: Lane,
-  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked' | 'keepMath' | 'checkMath' | 'asked' | 'condition' | 'channels',
+  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked' | 'keepMath' | 'checkMath' | 'asked' | 'condition' | 'channels' | 'tested',
   sink?: { elided: boolean },
   isDefault?: () => boolean,
   channels?: ColorChannels
@@ -4523,6 +4530,7 @@ function deriveLane(
             : change === 'statement' ? undefined : e.parenFrames,
         exprBoundary: change === 'parenBoundary' || change === 'boundary' || change === 'callBoundary' || (change !== 'statement' && e.exprBoundary),
         keepsMath: change === 'keepMath' || (change !== 'checkMath' && change !== 'statement' && e.keepsMath),
+        tested: change === 'tested' || (change !== 'statement' && e.tested),
         channels: change === 'channels' ? channels : change === 'statement' ? undefined : e.channels,
         importantSink: change === 'statement' ? undefined : e.importantSink,
         elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
@@ -5602,15 +5610,18 @@ const isOpaqueText = (v: Value, e: Lane, call = false): v is TextValue | Keyword
  */
 const textGroup = (v: TextValue | KeywordValue | ValueFunctionCall): Value => groupText(v);
 
-/** Whether math on an operand a rule rejects is kept as written instead: it is CSS's, or not reached as math (V36, J16, V31). */
-const keepsOperation = (node: Operation, e: Lane): boolean =>
-  e.keepsMath || (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right);
+/**
+ * Whether math on an operand a rule rejects is kept as written instead: it is CSS's, or not reached as math (V36, J16, V31).
+ * Math on an export's `var()` in a call written out is the compile's, as at the top level ({@link readsExport}).
+ */
+const keepsOperation = (node: Operation, e: Lane, left: ValueGroup, right: ValueGroup): boolean =>
+  (e.keepsMath && !readsExport(e, left, right)) || (e.calcDepth ?? 0) > 0 || isConditionOperand(node.left) || isConditionOperand(node.right);
 
 /** An operation over its operands: two known numbers are the operation's, anything else may be CSS's math ({@link operatedOn}). */
 const operated = (node: Operation, left: Value, right: Value, ev: ValueEvaluator, e: Lane): Value =>
-  (left.type === 'Dimension' && right.type === 'Dimension') || (ev.sassCalculations === true && keepsOperation(node, e))
+  (left.type === 'Dimension' && right.type === 'Dimension') || (ev.sassCalculations === true && keepsOperation(node, e, left, right))
     ? ev.operate(node.operator, left, right, e.modes)
-    : slashOperated(node, left, right, e.modes, keepsOperation(node, e));
+    : slashOperated(node, left, right, e, keepsOperation(node, e, left, right));
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
@@ -6283,7 +6294,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * function's and a written-out call's arguments keep such math as
            * written rather than reject it ({@link Lane.keepsMath}).
            */
-          return checkedOperation(node.operator, values[0]!, values[1]!, ev, keepsOperation(node, e) || (node.operator === '/' && node.mathOutsideParens))
+          return checkedOperation(node.operator, values[0]!, values[1]!, ev, keepsOperation(node, e, values[0]!, values[1]!) || (node.operator === '/' && node.mathOutsideParens))
             ?? (e.channels !== undefined && !channelMath(node.operator, values[0]!, values[1]!) ? rejectChannelMath(node.operator) : undefined)
             ?? rememberUnitOwner(operated(
               node,
@@ -8978,15 +8989,19 @@ function evalCall(
      */
     return makeBool(e.defaultFn());
   }
-  const intro = e.readAt !== ASKED && asksType(node.name) ? evalCall(node, frame, deriveLane(e, 'asked'), demanded) : evalIntrospection(node, frame, e);
+  const intro = e.readAt !== ASKED && asksType(node.name)
+    ? evalCall(node, frame, deriveLane(e, 'asked'), demanded)
+    : !e.tested && isSupportsCall(node) ? evalCall(node, frame, deriveLane(e, 'tested'), demanded) : evalIntrospection(node, frame, e);
   if (intro !== undefined) {
     return intro;
   }
   if (e.ev && node.args.length === 1 && node.name.toLowerCase() === 'calc') {
     return evalCalc(node, frame, e);
   }
-  if (!e.ev) {
-    return preserveCall(node, frame, e);
+
+  /* A feature test (`supports(margin-left: -var(--x))`) tests the declaration as written, a glued minus included (CSS-NATIVE-BUILTINS §3.4). */
+  if (!e.ev || (e.tested && isGluedCall(node))) {
+    return e.ev ? mapMaybe(preserveCall(node, frame, e), written => testedCall(node, written)) : preserveCall(node, frame, e);
   }
   const lname = node.name.toLowerCase();
 
@@ -11001,6 +11016,7 @@ function scratchEmit(e: Lane): Emit {
     parenFrames: undefined,
     exprBoundary: false,
     keepsMath: e.keepsMath,
+    tested: e.tested,
     channels: e.channels,
     importantSink: undefined,
     elideSink: undefined,
@@ -14112,6 +14128,7 @@ function createRenderSession(
     parenFrames: undefined,
     exprBoundary: false,
     keepsMath: false,
+    tested: false,
     channels: undefined,
     importantSink: undefined,
     elideSink: undefined,
@@ -22023,7 +22040,7 @@ function atRulePreludeBytes(node: AtRuleBlock, frame: Frame, e: Emit): MaybeProm
     return '';
   }
   if (lname === '@supports') {
-    return mapMaybe(evalSupportsPrelude(checkedSupportsPrelude(node, node.prelude, e.s), frame, e), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
+    return mapMaybe(evalSupportsPrelude(checkedSupportsPrelude(node, node.prelude, e.s), frame, deriveLane(e, 'tested')), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
   }
   if (lname === '@media' || lname === '@container') {
     return mapMaybe(evalQueryPreludeParts(node.prelude, frame, e), parts => normalizePreludeParts(parts, normalizeQueryPrelude, e.compress === true));

@@ -4,7 +4,16 @@ import { Compiler } from '../src/index.js';
 const render = async (value: string, options: ConstructorParameters<typeof Compiler>[0] = {}): Promise<string> =>
   new Compiler(options).renderString(`.a { x: ${value}; }`, { filePath: 'entry.less', extension: '.less' });
 
-describe('contrast() is contrast-color()', () => {
+/** The step of the exact form (V40): 1 at or below the switch point `t`, else 0; with a threshold, 1 below it. */
+const Y = '(0.2126 * r + 0.7152 * g + 0.0722 * b)';
+const step = (t: string): string => `min(1, sign(${t} - ${Y}) + 1)`;
+const below = (t: string): string => `max(0, sign(${t} - ${Y}))`;
+const blackWhite = (origin: string): string => `color(from ${origin} srgb-linear ${step('0.17912878475')} ${step('0.17912878475')} ${step('0.17912878475')} / 1)`;
+const between = (origin: string, s: string, [r, g, b, a]: readonly (readonly [string, string])[]): string =>
+  `color(from ${origin} srgb-linear calc(${r![0]} + ${r![1]} * ${s}) calc(${g![0]} + ${g![1]} * ${s}) calc(${b![0]} + ${b![1]} * ${s}) / calc(${a![0]} + ${a![1]} * ${s}))`;
+const darkLight = [['0.005605391624', '0.8493872165'], ['0.005605391624', '0.8493872165'], ['0.005605391624', '0.8493872165'], ['1', '0']] as const;
+
+describe('contrast() is its exact relative-colour form over an unknown colour (V40)', () => {
   it.each([
     ['contrast(#999)', '#000000'],
     ['contrast(red)', '#000000'],
@@ -31,22 +40,31 @@ describe('contrast() is contrast-color()', () => {
   });
 
   it.each([
-    ['contrast(currentcolor)', 'contrast-color(currentcolor)'],
-    ['contrast(mix(var(--a), red))', 'contrast-color(color-mix(in srgb, var(--a), red))'],
-    ['contrast(var(--c), #111)', 'rgb(from contrast-color(var(--c)) calc(17 + 238 * r / 255) calc(17 + 238 * r / 255) calc(17 + 238 * r / 255) / calc(1 + 0 * r / 255))'],
-    ['contrast(var(--c), #eee, #111)', 'rgb(from contrast-color(var(--c)) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) calc(17 + 221 * r / 255) / calc(1 + 0 * r / 255))'],
-    ['contrast(var(--c), rgba(1, 2, 3, .5), rgba(250, 251, 252, .25))', 'rgb(from contrast-color(var(--c)) calc(1 + 249 * r / 255) calc(2 + 249 * r / 255) calc(3 + 249 * r / 255) / calc(0.5 + -0.25 * r / 255))']
+    ['contrast(currentcolor)', blackWhite('currentcolor')],
+    ['contrast(mix(var(--a), red))', blackWhite('color-mix(in srgb, var(--a), red)')],
+    ['contrast(var(--c), #111)', between('var(--c)', step('0.19163125047'), [['0.005605391624', '0.9943946084'], ['0.005605391624', '0.9943946084'], ['0.005605391624', '0.9943946084'], ['1', '0']])],
+    ['contrast(var(--c), #eee, #111)', between('var(--c)', step('0.17432670013'), darkLight)],
+    ['contrast(var(--c), #111, #eee, 50%)', between('var(--c)', below('0.5'), darkLight)],
+    ['contrast(var(--c), rgba(1, 2, 3, .5), rgba(250, 251, 252, .25))', between('var(--c)', step('0.17637436724'), [['0.00030352698355', '0.9556698263'], ['0.0006070539671', '0.964079194'], ['0.0009105809506', '0.9725347094'], ['0.5', '-0.25']])]
   ])('writes the form of %s', async (call, css) => {
     expect(await render(call)).toContain(`x: ${css};`);
     expect(await render(call, { compile: { functionMode: 'error' } })).toContain(`x: ${css};`);
   });
 
-  it('writes the form compressed', async () => {
-    expect(await render('contrast(var(--c), rgba(1, 2, 3, .5), #eee)', { output: { compress: true } }))
-      .toContain('x:rgb(from contrast-color(var(--c)) calc(1 + 237 * r / 255) calc(2 + 236 * r / 255) calc(3 + 235 * r / 255) / calc(.5 + .5 * r / 255))');
+  it.each([
+    ['contrast(var(--c), rgba(0, 0, 0, .5), black)', 'contrast(#808080, rgba(0, 0, 0, .5), black)', 'black'],
+    ['contrast(var(--c), transparent, black)', 'contrast(#fff, transparent, black)', 'black']
+  ])('picks light for every colour where the pair has equal luma: %s', async (unknown, known, light) => {
+    expect(await render(known)).toContain(`x: ${light};`);
+    expect(await render(unknown)).toContain(`x: ${light};`);
   });
 
-  it.each(['contrast(30%)', 'contrast(1.5)', 'contrast(foo)', 'contrast(#999, 1)', 'contrast(#999, #111, #eee, foo)', 'contrast(#999, var(--d), #eee)', 'contrast(var(--c), #111, #eee, 50%)'])('writes %s as it was', async (call) => {
+  it('writes the form compressed', async () => {
+    expect(await render('contrast(var(--c), rgba(1, 2, 3, .5), #eee)', { output: { compress: true } }))
+      .toContain('x:color(from var(--c) srgb-linear calc(.00030352698355 + .8546890811 * min(1,sign(.16391690753 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) calc(.0006070539671 + .8543855542 * min(1,sign(.16391690753 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) calc(.0009105809506 + .8540820272 * min(1,sign(.16391690753 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)) / calc(.5 + .5 * min(1,sign(.16391690753 - (0.2126 * r + 0.7152 * g + 0.0722 * b)) + 1)))');
+  });
+
+  it.each(['contrast(30%)', 'contrast(1.5)', 'contrast(foo)', 'contrast(#999, 1)', 'contrast(#999, #111, #eee, foo)', 'contrast(#999, var(--d), #eee)'])('writes %s as it was', async (call) => {
     expect(await render(call)).toContain(`x: ${call};`);
   });
 
@@ -61,21 +79,20 @@ describe('contrast() is contrast-color()', () => {
     );
     expect(out).toContain('filter: contrast(var(--amount));');
     expect(out).toContain('backdrop-filter: blur(2px) contrast(var(--c)) brightness(1.2);');
-    expect(out).toContain('color: contrast-color(var(--bg));');
-    expect(await render('contrast(var(--amount))', { compile: { functionMode: 'error' } })).toContain('x: contrast-color(var(--amount));');
+    expect(out).toContain(`color: ${blackWhite('var(--bg)')};`);
+    expect(await render('contrast(var(--amount))', { compile: { functionMode: 'error' } })).toContain(`x: ${blackWhite('var(--amount)')};`);
     expect(await render('contrast(calc(1 * var(--amount)))')).toContain('x: contrast(calc(1 * var(--amount)));');
     expect(await render('darken(contrast(var(--c)), 10%)')).toContain('x: hsl(from contrast(var(--c)) h s clamp(0, l - 10, 100));');
   });
 
   it('prints the form where the call says it is a colour', async () => {
-    expect(await render('contrast(var(--c), #000, #fff)')).toContain('rgb(from contrast-color(var(--c)) ');
+    expect(await render('contrast(var(--c), #000, #fff)')).toContain(`x: ${between('var(--c)', step('0.17912878475'), [['0', '1'], ['0', '1'], ['0', '1'], ['1', '0']])};`);
     const imported = await new Compiler({}).renderString('@use "#less";\n.a { x: @less.contrast(var(--x)); }', { filePath: 'entry.less', extension: '.less' });
-    expect(imported).toContain('x: contrast-color(var(--x));');
+    expect(imported).toContain(`x: ${blackWhite('var(--x)')};`);
   });
 
-  it('fails a threshold over a colour only the browser knows', async () => {
-    await expect(render('contrast(var(--c), #111, #eee, 50%)', { compile: { functionMode: 'error' } })).rejects.toMatchObject({ code: 'eval/invalid-function' });
-    await expect(new Compiler({}).renderString('@use "#less";\n.a { x: @less.contrast(var(--c), #111, #eee, 50%); }', { filePath: 'entry.less', extension: '.less' }))
-      .rejects.toMatchObject({ code: 'eval/invalid-function' });
+  it('writes a threshold over a colour only the browser knows as the same form', async () => {
+    const imported = await new Compiler({}).renderString('@use "#less";\n.a { x: @less.contrast(var(--c), #111, #eee, 50%); }', { filePath: 'entry.less', extension: '.less' });
+    expect(imported).toContain(`x: ${between('var(--c)', below('0.5'), darkLight)};`);
   });
 });
