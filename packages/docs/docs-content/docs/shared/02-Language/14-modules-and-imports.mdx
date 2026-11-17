@@ -130,8 +130,9 @@ declaration as its default:
 ## `@import` remains a legacy bridge
 
 `@import` keeps Less 4 behavior: extensions and options decide whether it emits
-a CSS import or folds source into the current scope. `@-import` always folds a
-Less stylesheet. Both continue to work for migration, but warn in Less 5 because
+a CSS import or folds source into the current scope. `@-import` always folds the
+stylesheet, parsed in the language of its own extension (`(less)` parses it as
+Less whatever its extension). Both continue to work for migration, but warn in Less 5 because
 their shared scope is harder to reason about.
 
 ```less

@@ -32,8 +32,6 @@
     "import-option-split: importHasOption(options, 'multiple') && expanding.has(key);",
     "import-option-split: return options === null || (!importHasOption(options, 'multiple') && !importHasOption(options, 'reference'));",
     "import-option-split: if (importHasOption(options, 'inline')) {",
-    "import-option-split: const less = importHasOption(options, 'less') || node.name.toLowerCase() === '@-import';",
-    "import-option-split: const mustLoad = less || node.mode === 'compose' || importHasOption(options, 'reference');",
     "import-option-split: if (importHasOption(options, 'optional') && error instanceof JessError && error.code === 'import/not-found') {",
     "dialect-sniff: if (e.s.context?.sourceContext?.plugin?.supportedExtensions?.includes('.scss') === true) {",
     "name-code-point: || code === 0x5F /* _ */",
