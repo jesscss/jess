@@ -449,15 +449,15 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'eval/expose-conflict',
     {
-      summary: '@expose ${name} names a different @${name} than @expose ${name} at ${other}',
-      reason: 'An exposed variable is one custom property, --${name}, that the runtime sets; two @expose lists may name it only if they name the same variable. These name separate ones, such as a composed module\'s own @${name} and this file\'s.',
+      summary: '${keyword} ${name} names a different ${sigil}${name} than ${otherKeyword} ${name} at ${other}',
+      reason: 'An exposed variable is one custom property, --${name}, that the runtime sets; two expose lists may name it only if they name the same variable. These name separate ones, such as a composed module\'s own ${sigil}${name} and this file\'s.',
       fix: 'Expose only one of them, or rename one of the variables.'
     }
   ],
   [
     'eval/expose-key-conflict',
     {
-      summary: '@expose ${name} and @expose ${other} at ${at} are both ${key} in JavaScript',
+      summary: '${keyword} ${name} and ${otherKeyword} ${other} at ${at} are both ${key} in JavaScript',
       reason: 'The runtime keys each exposed variable by its name with dash-case turned to camelCase (brand-color is brandColor), so ${name} and ${other} would be one key.',
       fix: 'Rename one of the variables, or expose only one of them.'
     }

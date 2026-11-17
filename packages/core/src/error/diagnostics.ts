@@ -959,14 +959,14 @@ export const ERR = {
       ...args
     });
   },
-  exposeConflict(args: Common & { meta: { name: string; other: string } }) {
+  exposeConflict(args: Common & { meta: ExposeSpelling & { name: string; other: string; otherKeyword: string } }) {
     return makeJessError({
       code: 'eval/expose-conflict',
       phase: 'eval',
       ...args
     });
   },
-  exposeKeyConflict(args: Common & { meta: { name: string; key: string; other: string; at: string } }) {
+  exposeKeyConflict(args: Common & { meta: ExposeSpelling & { name: string; key: string; other: string; at: string; otherKeyword: string } }) {
     return makeJessError({
       code: 'eval/expose-key-conflict',
       phase: 'eval',

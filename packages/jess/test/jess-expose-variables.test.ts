@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { emitJess } from '@jesscss/core';
 import { parse as parseLess } from '@jesscss/less-parser';
@@ -70,6 +73,30 @@ describe('.jess @-expose (A20)', () => {
   ] as const)('names an undeclared exposed variable in %s spelling', async (language, source, text) => {
     const { errors } = await compiled(source, language);
     expect(errors).toEqual([expect.objectContaining({ code: 'eval/expose-not-declared', ...text })]);
+  });
+
+  /* Each statement is named as its own file writes it, so a .jess file that imports a .less one names both spellings. */
+  it('names both expose statements of one name that name different variables, each in its own spelling', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-expose-conflict-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'tokens.less'), '@brand: red;\n@expose brand;\n');
+      fs.writeFileSync(path.join(dir, 'entry.jess'), '@-import "./tokens.less";\n$brand: blue;\n@-expose brand;\n');
+      const { errors } = await new Compiler({}).renderToResult(path.join(dir, 'entry.jess'));
+      expect(errors).toEqual([expect.objectContaining({
+        code: 'eval/expose-conflict',
+        message: '@expose brand names a different @brand than @-expose brand at entry.jess:3:10'
+      })]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('names both @-expose names that are one JavaScript key', async () => {
+    const { errors } = await compiled('$brand-: #c00;\n$brand: #00f;\n@-expose brand-, brand;\n', 'jess');
+    expect(errors).toEqual([expect.objectContaining({
+      code: 'eval/expose-key-conflict',
+      message: '@-expose brand and @-expose brand- at entry.jess:3:10 are both brand in JavaScript'
+    })]);
   });
 
   it.each([
