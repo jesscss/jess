@@ -769,9 +769,10 @@ export function operandRule(op: string, left: ValueGroup, right: ValueGroup, ev:
     return null;
   }
   const scss = sass && ev.sassCalculations === true;
+  const call = !isValueGroupArray(left) && !isValueGroupArray(right) && (left.type === 'FunctionCall' || right.type === 'FunctionCall');
   const leftKind = invalidOperand(left, sass, scss);
-  const kind = leftKind ?? invalidOperand(right, sass, scss) ?? ((!isValueGroupArray(left) && !isValueGroupArray(right) && (left.type === 'FunctionCall' || right.type === 'FunctionCall') && colourAndDeferred(left, right) ? 'function call' : null));
-  if (kind !== null) {
+  const kind = leftKind ?? invalidOperand(right, sass, scss) ?? (call && colourAndDeferred(left, right) ? 'function call' : null);
+  if (kind !== null && (scss || !call || !isColourOnDeferred(left, right))) {
     throw new InvalidOperandError(`\`${emitValue(left)} ${op} ${emitValue(right)}\`: \`${op}\` is not defined on a ${kind} (\`${emitValue(leftKind === null ? right : left)}\`).`);
   }
   return null;
@@ -787,6 +788,26 @@ const isColourOperand = (v: ValueGroup): boolean =>
 /** A colour never adds to what only the browser knows: `calc()` holds no colour. */
 const colourAndDeferred = (left: ValueGroup, right: ValueGroup): boolean =>
   (isColourOperand(left) && isDeferredOperand(right)) || (isColourOperand(right) && isDeferredOperand(left));
+
+/** A colour only the browser knows: an exposed colour's `var()`, or a colour form over one. */
+const isUnknownColour = (v: ValueGroup): boolean => !isValueGroupArray(v) && v.type === 'FunctionCall' && v.result === 'color' && writtenCalcInner(v) === null;
+
+/** A call only the browser knows that is no colour, a `calc()` included, which colour maths reads as a number. */
+const isDeferredNumber = (v: ValueGroup): boolean => !isValueGroupArray(v) && v.type === 'FunctionCall' && v.result !== 'color' && v.result !== 'other';
+
+/** Colour maths with one side only the browser knows and the other known (V39), which `colour-math.ts` writes. */
+export function isColourOnDeferred(left: ValueGroup, right: ValueGroup): boolean {
+  if (isValueGroupArray(left) || isValueGroupArray(right)) {
+    return false;
+  }
+  if (isUnknownColour(left)) {
+    return isColourOperand(right) || right.type === 'Dimension';
+  }
+  if (isUnknownColour(right)) {
+    return isColourOperand(left) || left.type === 'Dimension';
+  }
+  return (isDeferredNumber(right) && isColourOperand(left)) || (isDeferredNumber(left) && isColourOperand(right));
+}
 
 /**
  * An exposed variable read as an operand: its `var()`, of the type its compile-time

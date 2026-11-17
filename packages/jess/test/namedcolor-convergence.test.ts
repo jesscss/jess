@@ -77,6 +77,12 @@ describe('NamedColor→Keyword convergence', () => {
 
     /* `.scss` has no colour math (ledger V36; owner 2026-10-23: "ya keep it an error in .scss"). */
     await expect(compiler.renderString('a { color: red + #111; }', { extension: '.scss', suppressWarnings: true })).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+    await expect(compiler.renderString('a { color: red * var(--k); }', { extension: '.scss', suppressWarnings: true })).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+
+  it('writes a named colour beside a number only the browser knows as the colour maths it is (V39)', async () => {
+    const css = await new Compiler().renderString('a { color: red + var(--k); }', { extension: '.less', suppressWarnings: true });
+    expect(String(css)).toContain('color: rgb(clamp(0, 255 + var(--k), 255) clamp(0, 0 + var(--k), 255) clamp(0, 0 + var(--k), 255));');
   });
 
   it('keeps a named color a color for Less type predicates', async () => {
