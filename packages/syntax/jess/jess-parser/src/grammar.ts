@@ -647,12 +647,7 @@ const rawParenInner = scanTo(
   { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets, balancedBraces] }
 );
 
-/*
- * What follows an `@-expose`'s names, up to its `;`, its block, the body's `}`
- * or the end. It is empty unless the statement is malformed, and is read whole
- * so that statement is reported rather than lost (P45). It never fails, so the
- * statement decides on its next token and never rewinds.
- */
+/* Any text after an `@-expose`'s names, read whole so a malformed one is reported (P45); it never fails. */
 const exposeRest = scanTo(
   choice(
     literal(';'),
@@ -1745,15 +1740,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     }
   );
 
-  /**
-   * `@-expose brand, gap;` publishes root variables by name (ledger A20). The
-   * names are bare: `$` starts a read and is not part of a name, as `@` is in
-   * Less, so `.less` to `.jess` renames only the keyword. `.jess` requires the
-   * dash (A1). It parses in every statement body, as Less's `@expose` does,
-   * and evaluation rejects one below the top level. The declaration form
-   * (`@-expose $brand: red;`) and any other shape after the keyword parse whole
-   * and are reported, never written as CSS (P45).
-   */
+  /** `@-expose brand, gap;` exposes variables by bare name (ledger A1, A20); any other shape is reported (P45). */
   const ExposeStatement = node<VariableExpose | VariableDeclaration>(
     'ExposeStatement',
     sequence(
