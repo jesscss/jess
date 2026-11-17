@@ -785,6 +785,15 @@ const isDeferredOperand = (v: ValueGroup): boolean =>
 const isColourOperand = (v: ValueGroup): boolean =>
   !isValueGroupArray(v) && (v.type === 'Color' || (v.type === 'Keyword' && coerceNamedColorKeyword(v) !== v));
 
+/**
+ * A side {@link isColourOnDeferred} needs one of: a colour, a keyword that may name
+ * one, or a colour only the browser knows. A caller checks it first so that maths
+ * with no colour never calls {@link isColourOnDeferred} (parseman
+ * `docs/future/perf-attempts.md`, "Jess core: move the relative-colour hook off the
+ * known-operand path").
+ */
+export const isColourSide = (v: Value): boolean => v.type === 'Color' || v.type === 'Keyword' || (v.type === 'FunctionCall' && v.result === 'color');
+
 /** A colour never adds to what only the browser knows: `calc()` holds no colour. */
 const colourAndDeferred = (left: ValueGroup, right: ValueGroup): boolean =>
   (isColourOperand(left) && isDeferredOperand(right)) || (isColourOperand(right) && isDeferredOperand(left));
@@ -795,7 +804,10 @@ const isUnknownColour = (v: ValueGroup): boolean => !isValueGroupArray(v) && v.t
 /** A call only the browser knows that is no colour, a `calc()` included, which colour maths reads as a number. */
 const isDeferredNumber = (v: ValueGroup): boolean => !isValueGroupArray(v) && v.type === 'FunctionCall' && v.result !== 'color' && v.result !== 'other';
 
-/** Colour maths with one side only the browser knows and the other known (V39), which `colour-math.ts` writes. */
+/**
+ * Colour maths with one side only the browser knows and the other known (V39), which `colour-math.ts` writes.
+ * Every pair it accepts has a side {@link isColourSide} accepts, and a `FunctionCall` side; `operatedIn` relies on both.
+ */
 export function isColourOnDeferred(left: ValueGroup, right: ValueGroup): boolean {
   if (isValueGroupArray(left) || isValueGroupArray(right)) {
     return false;

@@ -25,7 +25,7 @@ import { arithmeticOperand, makeDimension, makeFunctionCall, makeKeyword, makeWr
 import { convertible } from './value-units.js';
 import { colourOnDeferred } from './colour-math.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
-import { carryKeptClash, isColourOnDeferred, isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, overPercent, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
+import { carryKeptClash, isColourOnDeferred, isColourSide, isMathOnDeferred, keptMathOf, mathOnDeferred, operandRule, operate, overPercent, remOn, spelledCompressed, validateFinalUnits, writtenCalcInner } from './value-operate.js';
 
 type Divider = Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>;
 
@@ -262,18 +262,19 @@ export function operated(op: string, left: Value, right: Value, modes: EvalModes
 
 /** Colour maths with one side only the browser knows, in a lane (V39); `undefined` for any other operation. */
 const colourIn = (op: string, left: Value, right: Value, modes: EvalModes, tested: boolean): Value | undefined =>
-  isColourOnDeferred(left, right) ? colourOnDeferred(op, keptSpelling(left, modes, tested), keptSpelling(right, modes, tested), modes.compress === true) : undefined;
+  (isColourSide(left) || isColourSide(right)) && isColourOnDeferred(left, right) ? colourOnDeferred(op, keptSpelling(left, modes, tested), keptSpelling(right, modes, tested), modes.compress === true) : undefined;
 
 /** {@link operated} in a lane: inside a feature query (`tested`) a glued minus stays as written. */
 function operatedIn(op: string, left: Value, right: Value, { modes, tested }: Pick<OperandLane, 'modes' | 'tested'>, keeps: boolean): Value {
-  // TODO(perf): this hook costs +0.3% on a colour-maths fixture from code shape alone; try moving it into operandRule's former error branch. Parseman docs/future/perf-attempts.md, "Jess core: move the relative-colour hook off the known-operand path".
+  const deferred = isMathOnDeferred(left, right);
+
+  // Two known operands compute, unless one is a `calc()` written beside a colour, which reads as a number (V39).
+  if (!deferred && keptMathOf(left) === undefined && keptMathOf(right) === undefined && (op !== '%' || (writtenCalcInner(left) === null && writtenCalcInner(right) === null)) && (keeps || (left.type !== 'FunctionCall' && right.type !== 'FunctionCall') || !isColourOnDeferred(left, right))) {
+    return operate(op, left, right, modes);
+  }
   const colour = keeps ? undefined : colourIn(op, left, right, modes, tested);
   if (colour !== undefined) {
     return colour;
-  }
-  const deferred = isMathOnDeferred(left, right);
-  if (!deferred && keptMathOf(left) === undefined && keptMathOf(right) === undefined && (op !== '%' || (writtenCalcInner(left) === null && writtenCalcInner(right) === null))) {
-    return operate(op, left, right, modes);
   }
   validateFinalUnits(left, modes);
   validateFinalUnits(right, modes);
