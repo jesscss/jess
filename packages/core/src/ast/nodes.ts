@@ -2217,6 +2217,9 @@ export const importOptionWords = (options: List | null): string[] => {
 /* ASCII-only patterns: `i` without `u`, so no Unicode case folding (`ſ` is not `s`). */
 const CSS_TARGET = /\.css(?:[?#].*)?$/i;
 
+/** Whether an import target is spelled with a `.css` extension (a `?query`/`#fragment` may follow). */
+export const importTargetIsCss = (spelling: string): boolean => CSS_TARGET.test(spelling);
+
 /**
  * WHICH of the two import nodes an `@import` becomes — decided from SYNTAX, by
  * the grammar, never deferred to eval. `true` ⇒ build a {@link StyleImport};
@@ -2249,7 +2252,7 @@ export const importIsCompileTime = (
   if (words.includes('less') || name.toLowerCase() === '@-import') {
     return true;
   }
-  return !CSS_TARGET.test(spelling ?? importTargetSpelling(target));
+  return !importTargetIsCss(spelling ?? importTargetSpelling(target));
 };
 
 /**
