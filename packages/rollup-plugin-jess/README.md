@@ -79,6 +79,22 @@ set({ brand: '#08f' }, element);   // on one element
 vars({ brand: '#08f' });           // { '--brand': '#08f', '--brand-darken': '#006dcc' }, e.g. as a React style
 ```
 
+A `.jess` stylesheet exposes its variables with `@-expose`, naming them without
+their `$`, and its module has the same exports:
+
+```jess
+// theme.jess
+@-use "#less";
+@-expose brand;
+$brand: #c00;
+
+.button { border-color: $less.darken($brand, 10%); }
+```
+
+```js
+import { vars, set } from './theme.jess';
+```
+
 Each value is keyed by the variable's name with dash-case turned to camelCase:
 `@brand-color` is `brandColor`.
 

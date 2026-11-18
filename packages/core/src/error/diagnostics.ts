@@ -644,6 +644,70 @@ export class InvalidRulePreludeError extends SyntaxError {
 }
 
 /**
+ * How a dialect writes the statement that exposes variables and the sigil that
+ * starts a read of one (ledger A20): Less `@expose` and `@`, `.jess` `@-expose`
+ * and `$`.
+ */
+export type ExposeSpelling = {
+  readonly keyword: string;
+  readonly sigil: string;
+};
+
+/**
+ * An expose written as a declaration, `@expose @brand: red;` (ledger A20): it
+ * names variables and does not declare one. The declaration is kept, so the rest
+ * of the document still evaluates (P45). One class for every dialect.
+ */
+export class ExposeDeclarationError extends SyntaxError {
+  readonly code = 'parse/expose-declaration' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason: string;
+  readonly fix: string;
+
+  /** The declaration the parse kept; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, name: string, spelling: ExposeSpelling, recoveredValue: object) {
+    const text = resolveTemplate('parse/expose-declaration', { ...spelling, name });
+    super(text.summary);
+    this.name = 'ExposeDeclarationError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.reason = text.reason;
+    this.fix = text.fix;
+    this.recoveredValue = recoveredValue;
+  }
+}
+
+/**
+ * An expose that is not a comma-separated list of variable names (ledger A20),
+ * such as `@expose brand gap;` or `@expose;`: parsed whole, never written as
+ * CSS, and reported (P45). One class for every dialect.
+ */
+export class MalformedExposeError extends SyntaxError {
+  readonly code = 'parse/malformed-expose' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason: string;
+  readonly fix: string;
+
+  /** The statement the parse kept; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, spelling: ExposeSpelling, recoveredValue: object) {
+    const text = resolveTemplate('parse/malformed-expose', { ...spelling });
+    super(text.summary);
+    this.name = 'MalformedExposeError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.reason = text.reason;
+    this.fix = text.fix;
+    this.recoveredValue = recoveredValue;
+  }
+}
+
+/**
  * Sass's `if($condition, $if-true, $if-false)`, which Dart Sass deprecates in
  * favor of CSS `if()` (its deprecation `if-function`). A parse WARNING: the
  * call is still evaluated, as Dart Sass evaluates it.
@@ -881,28 +945,28 @@ export const ERR = {
       ...args
     });
   },
-  exposeNotTopLevel(args: Common) {
+  exposeNotTopLevel(args: Common & { meta: ExposeSpelling }) {
     return makeJessError({
       code: 'eval/expose-not-top-level',
       phase: 'eval',
       ...args
     });
   },
-  exposeNotDeclared(args: Common & { meta: { name: string } }) {
+  exposeNotDeclared(args: Common & { meta: ExposeSpelling & { name: string } }) {
     return makeJessError({
       code: 'eval/expose-not-declared',
       phase: 'eval',
       ...args
     });
   },
-  exposeConflict(args: Common & { meta: { name: string; other: string } }) {
+  exposeConflict(args: Common & { meta: ExposeSpelling & { name: string; other: string; otherKeyword: string } }) {
     return makeJessError({
       code: 'eval/expose-conflict',
       phase: 'eval',
       ...args
     });
   },
-  exposeKeyConflict(args: Common & { meta: { name: string; key: string; other: string; at: string } }) {
+  exposeKeyConflict(args: Common & { meta: ExposeSpelling & { name: string; key: string; other: string; at: string; otherKeyword: string } }) {
     return makeJessError({
       code: 'eval/expose-key-conflict',
       phase: 'eval',

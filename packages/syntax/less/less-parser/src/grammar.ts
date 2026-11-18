@@ -32,7 +32,8 @@ import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, keyframeSelectorList, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, isSelectorList, isSimpleToken, branchSegments, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue, withMixinPath, guardNot, mixinPathSegment } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose } from '@jesscss/core/ast';
 import { closeAmbientFunctions, contextOf, functionScopeOf, reportRecovered, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessExposeDeclarationError, LessMalformedExposeError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { ExposeDeclarationError, MalformedExposeError } from '@jesscss/core/diagnostics';
+import { LESS_EXPOSE, LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
   atRulePreludeFrom,
@@ -1529,17 +1530,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       closeAmbientFunctions(state);
       const declaration = fields?.declaration === undefined ? undefined : requireField(fields, 'declaration').value;
       if (isVarDeclaration(declaration)) {
-        reportRecovered(new LessExposeDeclarationError(span.start, span.end, declaration.name), state);
+        reportRecovered(new ExposeDeclarationError(span.start, span.end, declaration.name, LESS_EXPOSE, declaration), state);
         return declaration;
       }
       const names = fields?.name === undefined
         ? []
         : requireFields(fields, 'name').map(name => withSourceSpan(exposedName(requireSupportedVariableName(name.value, name.span.start, name.span.end)), name.span));
       const rest = fields?.rest === undefined ? null : requireField(fields, 'rest').value;
+      const exposed = withSourceSpan(variableExpose(names, LESS_EXPOSE), span);
       if (names.length === 0 || rest !== null || fields?.block !== undefined) {
-        reportRecovered(new LessMalformedExposeError(span.start, span.end), state);
+        reportRecovered(new MalformedExposeError(span.start, span.end, LESS_EXPOSE, exposed), state);
       }
-      return withSourceSpan(variableExpose(names), span);
+      return exposed;
     }
   );
   /** The two Less spellings share one case-insensitive, identifier-bounded terminal. */

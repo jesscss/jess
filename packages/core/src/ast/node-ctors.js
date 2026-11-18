@@ -414,9 +414,10 @@ export function VariableDeclarationNode(name, value, write, _s, _e) {
 }
 VariableDeclarationNode.prototype = Object.prototype;
 
-export function VariableExposeNode(names, _s, _e) {
+export function VariableExposeNode(names, spelling, _s, _e) {
   this.type = 'VariableExpose';
   this.names = names;
+  this.spelling = spelling;
   this._s = _s;
   this._e = _e;
 }

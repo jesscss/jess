@@ -225,10 +225,10 @@ export interface ExportState<F> {
   runtime: ExportRuntime | undefined;
 
   /** By name, the binding each export resolved to, and where the `@expose` that named it first is. */
-  readonly bound: Map<string, { readonly value: CallValue; readonly frame: F; readonly site: string }>;
+  readonly bound: Map<string, { readonly value: CallValue; readonly frame: F; readonly site: string; readonly keyword: string }>;
 
   /** By JS key ({@link exportKey}), the name that has it and where it is exported. */
-  readonly keys: Map<string, { readonly name: string; readonly site: string }>;
+  readonly keys: Map<string, { readonly name: string; readonly site: string; readonly keyword: string }>;
 
   /** Each `@expose` activated, in the frame it binds in. */
   readonly declared: Array<{ readonly node: VariableExpose; readonly frame: F }>;
@@ -238,7 +238,7 @@ export interface ExportState<F> {
   readonly pendingNames: Set<string>;
 
   /** By name, the top-level statements of the first file to declare and expose it, and where. */
-  readonly owners: Map<string, { readonly own: readonly Statement[]; readonly site: string }>;
+  readonly owners: Map<string, { readonly own: readonly Statement[]; readonly site: string; readonly keyword: string }>;
 }
 
 /** An `@expose` waiting for its frame to be complete, with how its names resolve there. */
@@ -395,29 +395,29 @@ function settle<F>(x: ExportState<F>): void {
       const site = siteOf(where);
       const hit = resolve(name);
       if (hit === undefined) {
-        throw ERR.exposeNotDeclared({ node: exported, ...where, meta: { name } });
+        throw ERR.exposeNotDeclared({ node: exported, ...where, meta: { ...node.spelling, name } });
       }
       const bound = x.bound.get(name);
       if (bound !== undefined && (bound.value !== hit.value || bound.frame !== hit.frame)) {
-        throw ERR.exposeConflict({ node: exported, ...where, meta: { name, other: bound.site } });
+        throw ERR.exposeConflict({ node: exported, ...where, meta: { ...node.spelling, name, other: bound.site, otherKeyword: bound.keyword } });
       }
 
       /* Owner 2026-11-02: two files that each declare and expose a name clash, though an import shares one top level. */
       const declaring = declares.has(name) ? own : undefined;
       const owner = declaring === undefined ? undefined : x.owners.get(name);
       if (owner !== undefined && owner.own !== declaring) {
-        throw ERR.exposeConflict({ node: exported, ...where, meta: { name, other: owner.site } });
+        throw ERR.exposeConflict({ node: exported, ...where, meta: { ...node.spelling, name, other: owner.site, otherKeyword: owner.keyword } });
       }
       if (declaring !== undefined && owner === undefined) {
-        x.owners.set(name, { own: declaring, site });
+        x.owners.set(name, { own: declaring, site, keyword: node.spelling.keyword });
       }
       const key = exportKey(name);
       const keyed = x.keys.get(key);
       if (keyed !== undefined && keyed.name !== name) {
-        throw ERR.exposeKeyConflict({ node: exported, ...where, meta: { name, key, other: keyed.name, at: keyed.site } });
+        throw ERR.exposeKeyConflict({ node: exported, ...where, meta: { ...node.spelling, name, key, other: keyed.name, at: keyed.site, otherKeyword: keyed.keyword } });
       }
-      x.bound.set(name, bound ?? { value: hit.value, frame: hit.frame, site });
-      x.keys.set(key, keyed ?? { name, site });
+      x.bound.set(name, bound ?? { value: hit.value, frame: hit.frame, site, keyword: node.spelling.keyword });
+      x.keys.set(key, keyed ?? { name, site, keyword: node.spelling.keyword });
       runtime.exports.add(name);
       runtime.properties.set(`--${name}`, name);
       if (!isValueSlotArray(hit.value) && hit.value.type === 'Dimension' && hit.value.unit === '%') {
@@ -1240,7 +1240,7 @@ function exportNotWritten(reader: object | undefined, symbol: string, name: stri
 /** `@expose` publishes a stylesheet's top-level variables; one in a body (`nested`) is an error. */
 export function rejectNestedExpose(node: VariableExpose, nested: boolean, e: ExportLane<unknown>): void {
   if (nested) {
-    throw ERR.exposeNotTopLevel({ node, ...callSiteLocation(node, e.s) });
+    throw ERR.exposeNotTopLevel({ node, ...callSiteLocation(node, e.s), meta: node.spelling });
   }
 }
 

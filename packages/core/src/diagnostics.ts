@@ -15,8 +15,10 @@
 export {
   DeprecatedIfFunctionWarning,
   ERR,
+  ExposeDeclarationError,
   InvalidRulePreludeError,
   LeadingSeparatorValueError,
+  MalformedExposeError,
   WARN,
   makeJessError,
   makeJessErrorFromDiagnostic,
@@ -25,6 +27,7 @@ export {
 } from './error/diagnostics.js';
 export type {
   ErrorDiagnostic,
+  ExposeSpelling,
   ParserDiagnosticOptions,
   ParserFailure,
   WarningDiagnostic
