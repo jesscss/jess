@@ -130,3 +130,102 @@ describe('.jess @-expose (A20)', () => {
     expect(written).toEqual(await outcome(less, 'less'));
   });
 });
+
+/**
+ * Ledger A22 (owner 2026-11-19): a read of an exposed variable refers to the
+ * variable, not to the value it holds where the read is written, so every read
+ * is its `var()`, whose fallback is the value that read sees, and the runtime's
+ * default is the variable's final value. A nested `$brand: blue;` declares a new
+ * variable and stays its own value.
+ */
+describe('.jess reads of an exposed variable assigned more than once (A22)', () => {
+  /** The warnings' codes, and their messages, of a compile. */
+  const warned = (warnings: ReadonlyArray<{ code: string; message: string }>) => warnings.map(({ code, message }) => ({ code, message }));
+  const REASSIGNED = { code: 'eval/expose-reassigned', message: '$brand is exposed and assigned more than once; set() sets its value for every read' };
+
+  it('reads the variable before a later declaration of it', async () => {
+    const { css, errors, warnings } = await compiled('@-expose brand;\n$brand: red;\n.button { color: $brand; }\n$brand: blue;\n.link { color: $brand; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.button {\n  color: var(--brand, red);\n}\n.link {\n  color: var(--brand, blue);\n}\n');
+    expect(warned(warnings)).toEqual([REASSIGNED]);
+  });
+
+  it('reads the variable after a := reassignment of it, in a ruleset or at the top level', async () => {
+    const { css, errors } = await compiled('@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n.dark { $brand := #f66; color: $brand; }\n.link { color: $brand; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.button {\n  color: var(--brand, #c00);\n}\n.dark {\n  color: var(--brand, #f66);\n}\n.link {\n  color: var(--brand, #f66);\n}\n');
+  });
+
+  it('computes a reassignment in terms of itself from the value it reaches', async () => {
+    const { css, errors, runtime } = await compiled('@-expose size;\n$size: 10px;\n.a { width: $size; }\n$size := $($size * 2);\n.b { width: $size; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  width: var(--size, 10px);\n}\n.b {\n  width: var(--size, 20px);\n}\n');
+    expect(runtime?.exports).toEqual(['size']);
+  });
+
+  it('reads the variable into a computed value before a later declaration, with the final value as the runtime default', async () => {
+    const { css, errors, runtime } = await compiled('@-use "#less";\n@-expose brand;\n$brand: #c00;\n.button { opacity: $less.lightness($brand); }\n$brand: #f80;\n.link { color: $brand; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.button {\n  opacity: var(--brand-lightness, 40%);\n}\n.link {\n  color: var(--brand, #f80);\n}\n');
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+    expect(runtime?.derived).toEqual({ '--brand-lightness': expect.objectContaining({ args: [{ export: 'brand' }] }) });
+    expect(runtime?.defaults).toEqual({ brand: '#f80' });
+  });
+
+  /* Without set(), the CSS is the stylesheet's own, each var() holding the value its read sees. */
+  it.each([
+    ['a later declaration', '$brand: #c00;\n.button { color: $brand; }\n$brand: #f80;\n.link { color: $brand; }\n'],
+    ['a := in a ruleset', '$brand: #c00;\n.button { color: $brand; }\n.dark { $brand := #f66; color: $brand; }\n.link { border-color: $brand; }\n'],
+    ['a ::= in a ruleset', '$brand: #c00;\n.button { color: $brand; }\n.dark { $brand ::= #f66; color: $brand; }\n.link { border-color: $brand; }\n']
+  ])('writes the CSS the stylesheet compiles to without @-expose, read through var(), after %s', async (_name, source) => {
+    const exposed = await compiled(`@-expose brand;\n${source}`, 'jess');
+    const plain = await compiled(source, 'jess');
+    expect(exposed.errors).toEqual([]);
+    expect(exposed.css).toContain('var(--brand, ');
+    expect(exposed.css.replace(/var\(--brand, ([^()]*)\)/g, '$1')).toBe(plain.css);
+  });
+
+  it('holds the ratio each read of a percentage sees', async () => {
+    const { css, errors } = await compiled('@-use "#less";\n@-expose tint;\n$tint: 10%;\n.a { color: rgb($tint, 0, 0); }\n$tint := 20%;\n.b { color: rgb($tint, 0, 0); }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  color: rgb(calc(var(--tint, 0.1) * 100%), 0, 0);\n}\n.b {\n  color: rgb(calc(var(--tint, 0.2) * 100%), 0, 0);\n}\n');
+  });
+
+  /* Orchestrator 2026-11-19: an importer's override of a variable a file it imports declares is deliberate, so only a second assignment in one file warns. */
+  it.each([
+    ['less', '@brand: #c00;\n@expose brand;\n', '@import "./tokens.less";\n', '@brand'],
+    ['jess', '$brand: #c00;\n@-expose brand;\n', '@-import "./tokens.jess";\n', '$brand']
+  ] as const)('does not warn when a %s importer overrides an exposed variable, and warns at its own second assignment', async (language, tokens, importer, symbol) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-expose-override-'));
+    const sigil = symbol[0]!;
+    try {
+      fs.writeFileSync(path.join(dir, `tokens.${language}`), tokens);
+      fs.writeFileSync(path.join(dir, `override.${language}`), `${importer}${sigil}brand: #f80;\n.button { color: ${symbol}; }\n`);
+      fs.writeFileSync(path.join(dir, `twice.${language}`), `${importer}${sigil}brand: #f80;\n.button { color: ${symbol}; }\n${sigil}brand: #08f;\n`);
+      const override = await new Compiler({}).renderToResult(path.join(dir, `override.${language}`));
+      expect(override).toMatchObject({ css: '.button {\n  color: var(--brand, #f80);\n}\n', errors: [], warnings: [] });
+      const twice = await new Compiler({}).renderToResult(path.join(dir, `twice.${language}`));
+      expect(twice.errors).toEqual([]);
+      expect(warned(twice.warnings)).toEqual([{ code: 'eval/expose-reassigned', message: `${symbol} is exposed and assigned more than once; set() sets its value for every read` }]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves a nested shadow of the name its own value, with no warning', async () => {
+    const { css, errors, warnings } = await compiled('@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n.dark { $brand: #f66; color: $brand; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.button {\n  color: var(--brand, #c00);\n}\n.dark {\n  color: #f66;\n}\n');
+    expect(warnings).toEqual([]);
+  });
+
+  it.each([
+    ['less', '@expose brand;\n@brand: #c00;\n.button { color: @brand; }\n@brand: #f80;\n', '@brand', '#f80'],
+    ['jess', '@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n$brand := #f80;\n', '$brand', '#c00']
+  ] as const)('warns once that a %s exposed variable is assigned more than once, and writes the same CSS', async (language, source, symbol, read) => {
+    const { css, errors, warnings } = await compiled(source, language);
+    expect(errors).toEqual([]);
+    expect(css).toBe(`.button {\n  color: var(--brand, ${read});\n}\n`);
+    expect(warned(warnings)).toEqual([{ code: 'eval/expose-reassigned', message: `${symbol} is exposed and assigned more than once; set() sets its value for every read` }]);
+  });
+});

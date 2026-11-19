@@ -148,12 +148,31 @@ or needs JS) to decide what ships in the bundle.
   `packages/jess/test/jess-expose-variables.test.ts`, which checks that a
   converted stylesheet and one written with live reads compile to the CSS and
   runtime of the Less stylesheet.
-  **Open (`.jess` live store):** a live read sees the declaration current where
-  it is written, so a read written before a later top-level redeclaration
-  (`$brand: red; .a { color: $brand; } $brand: blue; @-expose brand;`) or after
-  a live reassignment (`$brand := blue;`) reads a binding other than the exposed
-  one and writes its plain value, not `var(--brand, …)`. A Less `@brand` read
-  and a converted `$^brand` read always see the last declaration. Not yet ruled.
+  **A read refers to the variable (ledger A22, owner 2026-11-19).** A read of an
+  exposed variable reads the variable, not the value it holds where the read is
+  written, so every read that reaches it is `var(--name, <the value this read
+  sees>)`. A live read written before a later top-level declaration
+  (`$brand: red; .a { color: $brand; } $brand: blue; @-expose brand;`) is
+  `var(--brand, red)`; one after a reassignment of it (`$brand := blue;` or
+  `::=`, at the top level or in a body) is `var(--brand, blue)`; a computed read
+  takes the same route, its generated property's fallback computed from the
+  value it sees. A Less `@brand` read and a converted `$^brand` read see the
+  last declaration, so their fallback is its value. `set()` / `vars()` set the
+  variable's value, which every read follows, and the runtime's default for it
+  is its final value (`exportFinalDefaults`). Without `set()`, the CSS is what
+  the stylesheet compiles to without the expose, apart from the stand-ins
+  above (the `var()`, and the `calc()` around one in math or for a
+  percentage's ratio, which holds the ratio each read sees). The model is an
+  exported JavaScript `let`: one variable, assigned any number of times. An
+  assignment of the variable is one made in the frame its `@expose` binds in,
+  whatever writes it there (`exposed-assignments.ts` `writeCell` and
+  `writeReassign`, called from `serialize.ts` `activateVariableDeclaration`); a
+  nested `$brand: blue;` declares a new variable, which stays its own value. A
+  read inside the variable's own value (`$size := $($size * 2)`) computes that
+  value and stays plain (`excluding`). A second assignment in the same file
+  warns `eval/expose-reassigned`, once per variable, at that assignment; an
+  importer's override of a variable a file it imports declares does not
+  (orchestrator 2026-11-19).
   The statement carries its dialect's spelling (`VariableExpose.spelling`), so
   `eval/expose-not-declared`, `eval/expose-not-top-level`,
   `eval/expose-conflict` and `eval/expose-key-conflict` name `@-expose` and
@@ -516,6 +535,22 @@ or needs JS) to decide what ships in the bundle.
   export of the scoped class map once slice 5 exists (R8 API direction below).
 
 ## Open — needs the owner
+
+- **One exposed variable holding values of different kinds** (A22). `$r: 10%;
+  … $r: 5px;` or `$gap: 4px; … $gap: 1em;` compile with each read's own value,
+  but the runtime keeps one unit and one ratio contract per variable
+  (`units`, `ratios`), so after `set()` a read of the other kind gets a value
+  of the wrong kind. Should that be `eval/expose-unit-conflict`?
+- **A read of an earlier assignment outside a CSS value** (A22 with A20).
+  `@-expose brand; $brand: red; .a-${brand} { c: d; } $brand: blue;` or a
+  `$if ($n == 1)` over an exposed `$n` before a later assignment: the read is
+  of the exposed variable, so it raises `eval/expose-not-a-value`, which ends
+  the compile with no CSS; before A22 only a read of the last declaration did.
+  Is that error right for these reads, and should it be a diagnostic at its
+  span that lets the compile go on (P45)?
+- **Module configuration and the warning.** A `@-compose … with { $brand: blue; }`
+  value seeds the module's variable without an assignment, so a later
+  `$brand: green;` in the module does not warn `eval/expose-reassigned`.
 
 - **Custom-property values.** `--x: @{brand}` raises: a custom property's
   value is not written as a checked CSS value, though a `var()` is valid there.
