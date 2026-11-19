@@ -172,6 +172,25 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
     expect(runtime?.defaults).toEqual({ brand: '#f80' });
   });
 
+  /* Without set(), the CSS is the stylesheet's own, each var() holding the value its read sees. */
+  it.each([
+    ['a later declaration', '$brand: #c00;\n.button { color: $brand; }\n$brand: #f80;\n.link { color: $brand; }\n'],
+    ['a := in a ruleset', '$brand: #c00;\n.button { color: $brand; }\n.dark { $brand := #f66; color: $brand; }\n.link { border-color: $brand; }\n'],
+    ['a ::= in a ruleset', '$brand: #c00;\n.button { color: $brand; }\n.dark { $brand ::= #f66; color: $brand; }\n.link { border-color: $brand; }\n']
+  ])('writes the CSS the stylesheet compiles to without @-expose, read through var(), after %s', async (_name, source) => {
+    const exposed = await compiled(`@-expose brand;\n${source}`, 'jess');
+    const plain = await compiled(source, 'jess');
+    expect(exposed.errors).toEqual([]);
+    expect(exposed.css).toContain('var(--brand, ');
+    expect(exposed.css.replace(/var\(--brand, ([^()]*)\)/g, '$1')).toBe(plain.css);
+  });
+
+  it('holds the ratio each read of a percentage sees', async () => {
+    const { css, errors } = await compiled('@-use "#less";\n@-expose tint;\n$tint: 10%;\n.a { color: rgb($tint, 0, 0); }\n$tint := 20%;\n.b { color: rgb($tint, 0, 0); }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  color: rgb(calc(var(--tint, 0.1) * 100%), 0, 0);\n}\n.b {\n  color: rgb(calc(var(--tint, 0.2) * 100%), 0, 0);\n}\n');
+  });
+
   it('leaves a nested shadow of the name its own value, with no warning', async () => {
     const { css, errors, warnings } = await compiled('@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n.dark { $brand: #f66; color: $brand; }\n', 'jess');
     expect(errors).toEqual([]);

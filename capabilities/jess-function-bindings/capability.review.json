@@ -8,9 +8,9 @@
     "compiler-convert": "025fbfaf6a326041c74696279aa2c2587884ba6edf24db9310f7b2ffdb31801c",
     "less-equivalence": "ddf02419b51ff689350e3dee0e7aa9c735555dfb38baf2a2471f9925ead4ca08",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
-    "jess-expose-round-trip": "f814ee910979fc177bf23004a11f6d79ac4c7399f817334b4adc7c3ccf5e29b6",
+    "jess-expose-round-trip": "73401530fb4a649d23b0b8ae4e051baf91e13cf210668363c9f964a19d242d7f",
     "sass-list-map-functions": "d46a456dacad8fc205dd41cd378c76fcaa88772415fa4016f75bcbc907c20457",
     "sass-selector-parse": "0f15e760ecafc11546d65927c5d0a92168d849ebbf163e4dfe0dfae683096d81"
   },
-  "rationale": "jess-expose-variables.test.ts gained an A22 describe block (reads of an exposed variable assigned more than once); it uses compiled() only, not LESS_FUNCTIONS, so the jess-expose-round-trip consumer and its alternatives are unchanged."
+  "rationale": "jess-expose-variables.test.ts gained an A22 describe block (reads of an exposed variable assigned more than once, the no-expose comparison and percentage ratios); it uses compiled() only, not LESS_FUNCTIONS, so the jess-expose-round-trip consumer and its alternatives are unchanged."
 }

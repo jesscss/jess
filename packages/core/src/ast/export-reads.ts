@@ -1,6 +1,6 @@
 import { combineAll, isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Context } from '../context.js';
-import { ERR, WARN } from '../error/diagnostics.js';
+import { ERR } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
@@ -9,7 +9,7 @@ import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
 import type { BodyOrigin } from './functions/types.js';
 import { namedColor } from './color-names.js';
-import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableDeclaration, type VariableExpose } from './nodes.js';
+import { type CallValue, type Declaration, type FunctionCall, type Statement, type VariableDeclaration, type VariableExpose } from './nodes.js';
 import { calcOperand } from './math-operand.js';
 import { isBrowserColor, takesColor, takesOnlyColor } from './value-dispatch.js';
 import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
@@ -17,6 +17,9 @@ import { writeCall } from './evaluator.js';
 import { groupItems } from './value-list.js';
 import type { ValueCheckLane } from './invalid-value-syntax.js';
 import { makeDimension, makeKeyword, makeList, withFields } from './value-factory.js';
+import { assignmentRef, exposedRef, type ExposedWrite } from './exposed-assignments.js';
+
+export { excluding, exportFinalDefaults, writeCell, writeReassign } from './exposed-assignments.js';
 import { cancelPercent, exposedOperand, insideParens, keepAsWritten, mathOnDeferred, ratioOf } from './value-operate.js';
 
 /**
@@ -64,7 +67,7 @@ export interface ExportRuntime {
   /** Each export whose custom property holds its ratio, `50%` as `0.5`: one whose compile-time value is a percentage ({@link ratioOfHeld}). */
   readonly ratios: Set<string>;
 
-  /** The read of each `%` export, built once ({@link percentRead}). */
+  /** The read of each `%` export, built once for each ratio it holds, by name and ratio ({@link percentRead}). */
   readonly percent: Map<string, ValueGroup>;
 
   /** Each generated custom property, by its name, with how the runtime computes it. */
@@ -152,7 +155,7 @@ interface ExportSource<F> {
  * snapshot already writes the `var()` and which a computed function reads as
  * written (`source`).
  */
-type ExportRef<F> =
+export type ExportRef<F> =
   | { readonly name: string; readonly call: FunctionCall; readonly frame: F; readonly source?: undefined }
   | { readonly name?: undefined; readonly call?: undefined; readonly frame?: undefined; readonly source: ExportSource<F> | undefined };
 
@@ -179,89 +182,6 @@ function refOf<F>(x: ExportState<F>, hit: { value: CallValue; frame: F }): Expor
     return x.refs.get(value[0]!);
   }
   return value.some(slot => x.refs.has(slot)) ? IN_ARGUMENTS : undefined;
-}
-
-/**
- * Owner 2026-11-19 (ledger A22): a read of an exposed variable refers to the
- * variable, not to one of its values, so a read that reaches any assignment of
- * it (`$brand: red` before a later `$brand: blue`, or `$brand := blue`) is its
- * `var()`, with the value that read sees as the fallback, as the read of its
- * last declaration is ({@link settle}).
- */
-function assignmentRef<F>(x: ExportState<F>, hit: { value: CallValue; frame: F }): ExportRef<F> | undefined {
-  const write = x.writes.get(hit.value);
-  return write?.frame !== hit.frame || !x.bound.has(write.name) ? undefined : exposedRef(x, write.name, hit);
-}
-
-/** The ref of a read of exposed variable `name` that reaches `hit`: its `var()` over the value it reaches, none for a mixin call's. */
-function exposedRef<F>(x: ExportState<F>, name: string, hit: { value: CallValue; frame: F }): ExportRef<F> | undefined {
-  const value = hit.value;
-  if (!isValueSlotArray(value) && value.type === 'MixinCall') {
-    return undefined;
-  }
-  const call = funcCall('var', [keyword(`--${name}`), value]);
-  const ref = { name, call, frame: hit.frame, source: undefined };
-  x.refs.set(value, ref);
-  x.behind.set(call, value);
-  return ref;
-}
-
-/**
- * An assignment of `node.name` in frame `owner` whose value `value` is read in
- * `frame`: when an `@expose` of the name binds in `owner`, it assigns the exposed
- * variable ({@link assignmentRef}). A second one warns: the variable is one,
- * like an exported JavaScript `let` assigned twice, so `set()` sets the value
- * every read follows (owner 2026-11-19, ledger A22).
- */
-export function exposedWrite<F>(e: ExportLane<F>, node: VariableDeclaration, owner: F, value: CallValue, frame: F): void {
-  const x = e.s.exports;
-  const name = node.name;
-  const home = x.homes.get(name);
-  if (home?.frame !== owner) {
-    return;
-  }
-  x.writes.set(value, { name, frame });
-  x.last.set(name, { value, frame });
-  const first = x.assigned.get(name);
-  if (first === undefined) {
-    x.assigned.set(name, node);
-  } else if (first !== null && first !== node) {
-    x.assigned.set(name, null);
-    e.s.context?.warn(WARN.exposeReassigned({ node, ...callSiteLocation(node, e.s), meta: { ...home.node.spelling, name } }));
-  }
-}
-
-/**
- * Each exposed variable assigned more than once has its last value as the
- * runtime's default, the value it holds once the stylesheet is compiled,
- * though a read before a later assignment saw an earlier one (owner
- * 2026-11-19, ledger A22). `evaluate` evaluates a value in its frame; exports
- * read inside it are read as their compile-time values, as a computed call's
- * known arguments are ({@link knownArguments}).
- */
-export function exportFinalDefaults<F>(e: ExportLane<F>, evaluate: (value: CallValue, frame: F) => MaybePromise<EvalValue>): MaybePromise<void> {
-  const x = exporting(e.s.exports);
-  if (x === undefined) {
-    return undefined;
-  }
-  const finals: Array<MaybePromise<void>> = [];
-  for (const [name, last] of x.last) {
-    if (x.assigned.get(name) !== null || !x.runtime.defaults.has(name)) {
-      continue;
-    }
-    const { inputs, knownReads } = x;
-    x.inputs = [];
-    x.knownReads = true;
-    try {
-      finals.push(mapMaybe(evaluate(last.value, last.frame), (value) => {
-        x.runtime.defaults.set(name, typeof value === 'string' ? value : emitValue(value));
-      }));
-    } finally {
-      x.inputs = inputs;
-      x.knownReads = knownReads;
-    }
-  }
-  return finals.some(isThenable) ? Promise.all(finals).then(() => undefined) : undefined;
 }
 
 /**
@@ -326,19 +246,19 @@ export interface ExportState<F> {
   /** By name, the top-level statements of the first file to declare and expose it, and where. */
   readonly owners: Map<string, { readonly own: readonly Statement[]; readonly site: string; readonly keyword: string }>;
 
-  /** By name, the frame an `@expose` of it binds in and the first such `@expose`: where an assignment of the name is one of the exposed variable ({@link exposedWrite}). */
+  /** By name, the frame an `@expose` of it binds in and the first such `@expose`: where an assignment of the name is one of the exposed variable (exposed-assignments.ts `exposedWrite`). */
   readonly homes: Map<string, { readonly frame: F; readonly node: VariableExpose }>;
 
   /** By value node, each assignment of an exposed variable, with the frame a read of it evaluates in: a read that reaches one reads the variable ({@link refOf}). */
-  readonly writes: Map<object, { readonly name: string; readonly frame: F }>;
+  readonly writes: Map<object, ExposedWrite<F>>;
 
   /** By name, an exposed variable's first assignment, then `null` once a second one has warned. */
   readonly assigned: Map<string, VariableDeclaration | null>;
 
-  /** By name, an exposed variable's latest assignment: its final value once the render ends ({@link exportFinalDefaults}). */
-  readonly last: Map<string, { readonly value: CallValue; readonly frame: F }>;
+  /** By name, an exposed variable's latest assignment: its final value once the render ends (exposed-assignments.ts `exportFinalDefaults`). */
+  readonly last: Map<string, ExposedWrite<F>>;
 
-  /** By name, how many reads of an exposed variable are evaluating its value ({@link excluding}): a read of it there reads the value it reaches. */
+  /** By name, how many reads of an exposed variable are evaluating its value (exposed-assignments.ts `excluding`): a read of it there reads the value it reaches. */
   readonly within: Map<string, number>;
 }
 
@@ -403,51 +323,6 @@ export const READS_EXPORT = {};
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
 export function exportState<F>(): ExportState<F> {
   return { refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map(), homes: new Map(), writes: new Map(), assigned: new Map(), last: new Map(), within: new Map() };
-}
-
-/**
- * Excludes `node` from lookups while a read evaluates it (`on`), or releases it.
- * An exposed variable's read evaluates its `var()` stand-in, whose fallback is
- * the declaration's own value, so the declaration is excluded with it: in
- * `@b: @b + 1` the `@b` then reads the earlier `@b`, as it does unexposed.
- */
-export function excluding<F>(e: { readonly excluded: Set<CallValue>; readonly s: { readonly exports: ExportState<F> } }, node: CallValue, on: boolean): void {
-  const x = e.s.exports;
-  if (x.runtime === undefined) {
-    if (on) {
-      e.excluded.add(node);
-    } else {
-      e.excluded.delete(node);
-    }
-    return;
-  }
-  const behind = x.behind.get(node);
-  const value = behind ?? node;
-
-  /* While a read evaluates an exposed variable's value, a read of the variable inside it reads the value it reaches: in `$b: $b + 1` the value is computed, not a CSS read. */
-  const name = x.refs.get(value)?.name;
-  if (on) {
-    e.excluded.add(node);
-    if (behind !== undefined) {
-      e.excluded.add(behind);
-    }
-    if (name !== undefined) {
-      x.within.set(name, (x.within.get(name) ?? 0) + 1);
-    }
-  } else {
-    e.excluded.delete(node);
-    if (behind !== undefined) {
-      e.excluded.delete(behind);
-    }
-    if (name !== undefined) {
-      const depth = x.within.get(name)! - 1;
-      if (depth === 0) {
-        x.within.delete(name);
-      } else {
-        x.within.set(name, depth);
-      }
-    }
-  }
 }
 
 /** The state when something is exported, else undefined. */
@@ -687,17 +562,20 @@ function percentRead(read: ValueGroup, modes: EvalModes, runtime: ExportRuntime)
   if (key === undefined) {
     return read;
   }
-  let built = runtime.percent.get(key);
-  if (built === undefined) {
-    const ratio = ratioOfHeld(held);
-    if (ratio === undefined) {
-      return read;
-    }
-    noteRatio(runtime, key);
-    built = mathOnDeferred('*', keepAsWritten(withFields(writeCall('var', makeList([name, ratio], ','), modes), { result: 'numeric' as const })), makeDimension(100, '%'));
-    runtime.percent.set(key, built);
+  const ratio = ratioOfHeld(held);
+  if (ratio === undefined) {
+    return read;
   }
-  return built;
+
+  /* By the ratio too: a variable assigned more than once holds the value each read sees (A22). */
+  const built = `${key} ${emitValue(ratio)}`;
+  let percent = runtime.percent.get(built);
+  if (percent === undefined) {
+    noteRatio(runtime, key);
+    percent = mathOnDeferred('*', keepAsWritten(withFields(writeCall('var', makeList([name, ratio], ','), modes), { result: 'numeric' as const })), makeDimension(100, '%'));
+    runtime.percent.set(built, percent);
+  }
+  return percent;
 }
 
 /**

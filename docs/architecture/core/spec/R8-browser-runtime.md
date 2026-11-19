@@ -160,11 +160,13 @@ or needs JS) to decide what ships in the bundle.
   last declaration, so their fallback is its value. `set()` / `vars()` set the
   variable's value, which every read follows, and the runtime's default for it
   is its final value (`exportFinalDefaults`). Without `set()`, the CSS is what
-  the stylesheet compiles to without the expose, apart from the `var()`
-  wrappers. The model is an exported JavaScript `let`: one variable, assigned
-  any number of times. An assignment of the variable is one made in the frame
-  its `@expose` binds in, whatever writes it there (`export-reads.ts`
-  `exposedWrite`, called from `serialize.ts` `activateVariableDeclaration`); a
+  the stylesheet compiles to without the expose, apart from the stand-ins
+  above (the `var()`, and the `calc()` around one in math or for a
+  percentage's ratio, which holds the ratio each read sees). The model is an
+  exported JavaScript `let`: one variable, assigned any number of times. An
+  assignment of the variable is one made in the frame its `@expose` binds in,
+  whatever writes it there (`exposed-assignments.ts` `writeCell` and
+  `writeReassign`, called from `serialize.ts` `activateVariableDeclaration`); a
   nested `$brand: blue;` declares a new variable, which stays its own value. A
   read inside the variable's own value (`$size := $($size * 2)`) computes that
   value and stays plain (`excluding`). A second assignment warns
@@ -531,6 +533,22 @@ or needs JS) to decide what ships in the bundle.
   export of the scoped class map once slice 5 exists (R8 API direction below).
 
 ## Open — needs the owner
+
+- **One exposed variable holding values of different kinds** (A22). `$r: 10%;
+  … $r: 5px;` or `$gap: 4px; … $gap: 1em;` compile with each read's own value,
+  but the runtime keeps one unit and one ratio contract per variable
+  (`units`, `ratios`), so after `set()` a read of the other kind gets a value
+  of the wrong kind. Should that be `eval/expose-unit-conflict`?
+- **A read of an earlier assignment outside a CSS value** (A22 with A20).
+  `@-expose brand; $brand: red; .a-${brand} { c: d; } $brand: blue;` or a
+  `$if ($n == 1)` over an exposed `$n` before a later assignment: the read is
+  of the exposed variable, so it raises `eval/expose-not-a-value`, which ends
+  the compile with no CSS; before A22 only a read of the last declaration did.
+  Is that error right for these reads, and should it be a diagnostic at its
+  span that lets the compile go on (P45)?
+- **Module configuration and the warning.** A `@-compose … with { $brand: blue; }`
+  value seeds the module's variable without an assignment, so a later
+  `$brand: green;` in the module does not warn `eval/expose-reassigned`.
 
 - **Custom-property values.** `--x: @{brand}` raises: a custom property's
   value is not written as a checked CSS value, though a `var()` is valid there.
