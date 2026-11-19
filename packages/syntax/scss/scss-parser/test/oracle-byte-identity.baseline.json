@@ -5,12 +5,12 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "d5c4aed57de3b776b54107c659f3eb01be17ec142dc3857e8a995cffd23aaba6",
-      "threw": 463
+      "aggregate": "45dc86c5be0186c349bfa85a1ba30a899ae036e9c9ed6a44b06b7370b549ae5b",
+      "threw": 462
     },
     {
       "name": "cst",
-      "aggregate": "6bced261493d341abdd381bc613be49e7fb1eadaece7ea1fc592d92517d54f17",
+      "aggregate": "47cbfbbd25cb2cbf699832435816f426cfe339d1931b9ec1291b0f27874fabb7",
       "threw": 0
     }
   ],
@@ -227,10 +227,6 @@
       "ast": "63b7902bd9c64d1d",
       "cst": "39f5d31244bddce6"
     },
-    "packages/syntax/css/css-parser/test/css/errors/keyframes-bad-ident-selector.css": {
-      "ast": "63b7902bd9c64d1d",
-      "cst": "39f5d31244bddce6"
-    },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-block-no-selector.css": {
       "ast": "63b7902bd9c64d1d",
       "cst": "39f5d31244bddce6"
@@ -390,6 +386,10 @@
     "packages/syntax/css/css-parser/test/css/important.css": {
       "ast": "5fc7d56cbbe1d580",
       "cst": "96b55d1019548381"
+    },
+    "packages/syntax/css/css-parser/test/css/keyframes-stop-names.css": {
+      "ast": "d1faa84d94b1d473",
+      "cst": "e5326bcd96e708df"
     },
     "packages/syntax/css/css-parser/test/css/keyframes.css": {
       "ast": "b4c398e062911734",
