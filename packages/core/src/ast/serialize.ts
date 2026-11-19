@@ -214,7 +214,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { channelFunction, channelMath, channelOf, formChannels, isComputedColorCall, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
-import { argumentStatementKind, declareExpose, excluding, exposedWritten, readsExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, declareExpose, excluding, exportFinalDefaults, exposedWrite, exposedWritten, readsExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedAtRuleName, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation, laneSiteLocation } from './call-site-location.js';
@@ -3672,6 +3672,17 @@ function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall 
   return copyNode(value);
 }
 
+/**
+ * [A22] An assignment of `node.name` in `owner`, read in `frame`: one of an
+ * exposed variable when an `@expose` of the name binds in `owner`
+ * ({@link exposedWrite}). A document that exposes nothing pays one check.
+ */
+function noteAssignment(e: Lane, node: VariableDeclaration, owner: Frame, value: Binding, frame: Frame): void {
+  if (e.s.exports.runtime !== undefined) {
+    exposedWrite(e, node, owner, value, frame);
+  }
+}
+
 function activateVariableDeclaration(node: VariableDeclaration | VariableExpose, frame: Frame, e: Lane, own?: readonly Statement[]): void {
   /*
    * [A20] An `@expose` binds each name to what a read beside it resolves to. A
@@ -3721,6 +3732,7 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
       prev: liveCellPredecessor(cells, node)
     });
     (frame.reassign ??= new Map()).set(node.name, node);
+    noteAssignment(e, node, frame, node.value, frame);
     return;
   }
   if (node.write.mode === 'reassign') {
@@ -3736,6 +3748,7 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
         declaration: node, value: node.value, valueFrame: null, evaluated: null,
         prev: liveCellPredecessor(cells, node)
       });
+      noteAssignment(e, node, owner, node.value, owner);
       return;
     }
     const found = lookupScopedBinding(frame, node.name, e);
@@ -3743,6 +3756,7 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
       throw ERR.nameNotFound({ node, ctx: { file: e.s.context?.sourceContext?.file }, meta: { symbol: `$${node.name}` } });
     }
     (found.frame.reassign ??= new Map()).set(node.name, node);
+    noteAssignment(e, node, found.frame, node.value, found.frame);
     return;
   }
   if (node.write.mode === 'reassign-or-declare') {
@@ -3766,17 +3780,21 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
        * the loop. ponytail: read walks the write chain, so a very long accumulator
        * loop is O(n^2) at read — snapshot eagerly if a hot loop ever needs it.
        */
+      const value = snapshotLiveWrite(node.value);
       cells.set(node.name, {
         declaration: node,
-        value: snapshotLiveWrite(node.value),
+        value,
         valueFrame: frame,
         evaluated: null,
         prev: liveCellPredecessor(cells, node)
       });
+      noteAssignment(e, node, owner, value, frame);
       return;
     }
     const found = lookupScopedBinding(frame, node.name, e);
-    ((found?.frame ?? frame).reassign ??= new Map()).set(node.name, node);
+    const target = found?.frame ?? frame;
+    (target.reassign ??= new Map()).set(node.name, node);
+    noteAssignment(e, node, target, node.value, target);
     return;
   }
   const cells = frame.cells ??= new Map();
@@ -3784,6 +3802,7 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
     declaration: node, value: node.value, valueFrame: null, evaluated: null,
     prev: liveCellPredecessor(cells, node)
   });
+  noteAssignment(e, node, frame, node.value, frame);
 }
 
 /**
@@ -14398,7 +14417,10 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     };
     const emitBody = (): SerializeReturn => {
       emitLeadingDocumentBlockComments(e);
-      return mapMaybe(emitDocumentStatements(root.rules, rootFrame, e, importDocument), finish);
+
+      /* [A22] An exposed variable assigned more than once has its last value as the runtime's default. */
+      const finalDefaults = () => exportFinalDefaults(e, (value, frame) => withExcluded(e, value, () => evalBinding(value, frame, e)));
+      return mapMaybe(mapMaybe(emitDocumentStatements(root.rules, rootFrame, e, importDocument), finalDefaults), finish);
     };
     return emitBody();
   };

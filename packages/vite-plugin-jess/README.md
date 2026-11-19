@@ -93,6 +93,13 @@ $brand: #c00;
 import { vars, set } from './theme.jess';
 ```
 
+`set()` sets the variable's value, and every read of the variable follows it.
+A read written before a later assignment of it, or after a `$brand := …`
+reassignment, is `var(--brand, <the value that read sees>)` too, and the
+runtime's default for the variable is its final value. An exposed variable
+assigned more than once warns `eval/expose-reassigned`. A nested `$brand: …`
+declares a new variable, which `set()` does not reach.
+
 Each value is keyed by the variable's name with dash-case turned to camelCase:
 `@brand-color` is `brandColor`.
 

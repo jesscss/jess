@@ -1426,6 +1426,16 @@ export const WARN = {
       ...args
     });
   },
+
+  /** Owner 2026-11-19 (ledger A22): an exposed variable assigned more than once is still one variable. */
+  exposeReassigned(args: Common & { meta: ExposeSpelling & { name: string } }) {
+    return makeJessError({
+      severity: 'warn',
+      code: 'eval/expose-reassigned',
+      phase: 'eval',
+      ...args
+    });
+  },
   unitConversion(args: Common & { meta: { value: string } }) {
     return makeJessError({
       severity: 'warn',

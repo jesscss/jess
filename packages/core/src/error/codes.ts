@@ -66,6 +66,7 @@ export type JessErrorCode =
   | 'eval/expose-conflict'
   | 'eval/expose-key-conflict'
   | 'eval/expose-unit-conflict'
+  | 'eval/expose-reassigned'
   | 'eval/loop-iteration-limit'
   | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
@@ -460,6 +461,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '${keyword} ${name} and ${otherKeyword} ${other} at ${at} are both ${key} in JavaScript',
       reason: 'The runtime keys each exposed variable by its name with dash-case turned to camelCase (brand-color is brandColor), so ${name} and ${other} would be one key.',
       fix: 'Rename one of the variables, or expose only one of them.'
+    }
+  ],
+  [
+    'eval/expose-reassigned',
+    {
+      summary: '${sigil}${name} is exposed and assigned more than once; set() sets its value for every read',
+      reason: 'An exposed variable is one variable, as an exported JavaScript `let` is: each assignment changes its value, and every read of it is var(--${name}), so the runtime\'s set() changes it for every read, before and after each assignment. Each read\'s fallback is the value it sees when the stylesheet compiles.',
+      fix: 'Assign ${sigil}${name} once, or expose a separate variable for each value.'
     }
   ],
   [

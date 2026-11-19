@@ -130,3 +130,62 @@ describe('.jess @-expose (A20)', () => {
     expect(written).toEqual(await outcome(less, 'less'));
   });
 });
+
+/**
+ * Ledger A22 (owner 2026-11-19): a read of an exposed variable refers to the
+ * variable, not to the value it holds where the read is written, so every read
+ * is its `var()`, whose fallback is the value that read sees, and the runtime's
+ * default is the variable's final value. A nested `$brand: blue;` declares a new
+ * variable and stays its own value.
+ */
+describe('.jess reads of an exposed variable assigned more than once (A22)', () => {
+  /** The warnings' codes, and their messages, of a compile. */
+  const warned = (warnings: ReadonlyArray<{ code: string; message: string }>) => warnings.map(({ code, message }) => ({ code, message }));
+  const REASSIGNED = { code: 'eval/expose-reassigned', message: '$brand is exposed and assigned more than once; set() sets its value for every read' };
+
+  it('reads the variable before a later declaration of it', async () => {
+    const { css, errors, warnings } = await compiled('@-expose brand;\n$brand: red;\n.button { color: $brand; }\n$brand: blue;\n.link { color: $brand; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.button {\n  color: var(--brand, red);\n}\n.link {\n  color: var(--brand, blue);\n}\n');
+    expect(warned(warnings)).toEqual([REASSIGNED]);
+  });
+
+  it('reads the variable after a := reassignment of it, in a ruleset or at the top level', async () => {
+    const { css, errors } = await compiled('@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n.dark { $brand := #f66; color: $brand; }\n.link { color: $brand; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.button {\n  color: var(--brand, #c00);\n}\n.dark {\n  color: var(--brand, #f66);\n}\n.link {\n  color: var(--brand, #f66);\n}\n');
+  });
+
+  it('computes a reassignment in terms of itself from the value it reaches', async () => {
+    const { css, errors, runtime } = await compiled('@-expose size;\n$size: 10px;\n.a { width: $size; }\n$size := $($size * 2);\n.b { width: $size; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  width: var(--size, 10px);\n}\n.b {\n  width: var(--size, 20px);\n}\n');
+    expect(runtime?.exports).toEqual(['size']);
+  });
+
+  it('reads the variable into a computed value before a later declaration, with the final value as the runtime default', async () => {
+    const { css, errors, runtime } = await compiled('@-use "#less";\n@-expose brand;\n$brand: #c00;\n.button { opacity: $less.lightness($brand); }\n$brand: #f80;\n.link { color: $brand; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.button {\n  opacity: var(--brand-lightness, 40%);\n}\n.link {\n  color: var(--brand, #f80);\n}\n');
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
+    expect(runtime?.derived).toEqual({ '--brand-lightness': expect.objectContaining({ args: [{ export: 'brand' }] }) });
+    expect(runtime?.defaults).toEqual({ brand: '#f80' });
+  });
+
+  it('leaves a nested shadow of the name its own value, with no warning', async () => {
+    const { css, errors, warnings } = await compiled('@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n.dark { $brand: #f66; color: $brand; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.button {\n  color: var(--brand, #c00);\n}\n.dark {\n  color: #f66;\n}\n');
+    expect(warnings).toEqual([]);
+  });
+
+  it.each([
+    ['less', '@expose brand;\n@brand: #c00;\n.button { color: @brand; }\n@brand: #f80;\n', '@brand', '#f80'],
+    ['jess', '@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n$brand := #f80;\n', '$brand', '#c00']
+  ] as const)('warns once that a %s exposed variable is assigned more than once, and writes the same CSS', async (language, source, symbol, read) => {
+    const { css, errors, warnings } = await compiled(source, language);
+    expect(errors).toEqual([]);
+    expect(css).toBe(`.button {\n  color: var(--brand, ${read});\n}\n`);
+    expect(warned(warnings)).toEqual([{ code: 'eval/expose-reassigned', message: `${symbol} is exposed and assigned more than once; set() sets its value for every read` }]);
+  });
+});
