@@ -457,9 +457,8 @@ type SharedSyntax = {
   MediaTestBody: Combinator<unknown>;
   StyleTestBody: Combinator<unknown>;
   SupportsTestBody: Combinator<unknown>;
-  // Converged to the CSS base (inherited via compose): same node type
-  // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
-  // the CSS base; reducer differs only requireToken().value vs sourceText().
+  // Inherited from the CSS base: one keyframe stop, a SimpleSelector. Less adds
+  // its interpolated stop in `KeyframeBlock`, not here.
   keyframeSelector: Combinator<SimpleSelector>;
   // Converged to the CSS base (inherited via compose): same token rule
   // token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
@@ -4499,11 +4498,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // function-call statements. The shared prefix is the property/call name, but
   // the deciding delimiter is `:` versus `(` / `;`, so a cosmetic dispatch on
   // the identifier would commit too early.
+  // A stop is the CSS `keyframeSelector`, or a variable interpolation naming one
+  // (`@{step}`); the two arms part on the first character (`@` is no CSS stop).
   const KeyframeBlock = node(
     'KeyframeBlock',
     sequence(
       oneOrMoreSep(
-        g.keyframeSelector,
+        choice(g.keyframeSelector, g.BareInterpolatedSelector),
         literal(',')
       ),
       literal('{'),

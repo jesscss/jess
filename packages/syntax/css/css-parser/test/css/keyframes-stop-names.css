@@ -1,0 +1,8 @@
+/* Any identifier is a well-formed keyframe stop; Scroll-driven Animations 1,
+ * Appendix A adds <timeline-range-name> <percentage>. */
+@keyframes x { foo { opacity: 1 } }
+@keyframes y {
+  10%, bar { opacity: 0.5 }
+  entry 0%, exit 100% { opacity: 1 }
+  contain 50% { opacity: 1 }
+}

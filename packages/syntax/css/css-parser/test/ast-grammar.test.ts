@@ -1576,6 +1576,40 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
+  it('reads any identifier as a keyframe stop, and a timeline range name with its percentage', () => {
+    const source = '@keyframes x { foo { opacity: 0; } 10%, bar { opacity: 0.5; } entry 10%, exit 100% { opacity: 1; } contain 0% { opacity: 1; } }';
+    const cst = parseCssCst(source);
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(bare(parse(source))).toEqual(bare(parseAst(source)));
+    expect(parseAst(source).rules[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      name: '@keyframes',
+      rules: [
+        { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'foo' }] } },
+        {
+          type: 'Ruleset',
+          selector: {
+            type: 'SelectorList',
+            selectors: [{ type: 'SimpleSelector', text: '10%' }, { type: 'SimpleSelector', text: 'bar' }]
+          }
+        },
+        {
+          type: 'Ruleset',
+          selector: {
+            type: 'SelectorList',
+            selectors: [{ type: 'SimpleSelector', text: 'entry 10%' }, { type: 'SimpleSelector', text: 'exit 100%' }]
+          }
+        },
+        { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'contain 0%' }] } }
+      ]
+    });
+    expect(serialize(parseAst(source))).toEqual({
+      css: '@keyframes x {\n  foo {\n    opacity: 0;\n  }\n  10%,\n  bar {\n    opacity: 0.5;\n  }\n  entry 10%,\n  exit 100% {\n    opacity: 1;\n  }\n  contain 0% {\n    opacity: 1;\n  }\n}\n'
+    });
+  });
+
   it('rejects non-keyframe selectors and bare declarations in a keyframes body', () => {
     for (const input of ['@keyframes fade { .card { opacity: 0; } }', '@keyframes fade { opacity: 0; }', '@keyframes fade { 50px { opacity: 0; } }']) {
       expect(() => parseAst(input)).toThrow('CSS AST grammar did not consume the document');

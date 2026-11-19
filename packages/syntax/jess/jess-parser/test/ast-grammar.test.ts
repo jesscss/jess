@@ -2263,6 +2263,26 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('reads any identifier, and a timeline range name with its percentage, as a keyframe stop', () => {
+    const source = '@keyframes x { foo { opacity: 0; } 10%, bar { opacity: 0.5; } entry 10%, exit 100% { opacity: 1; } }';
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(parse(source).rules[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      name: '@keyframes',
+      rules: [
+        { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'foo' }] } },
+        { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '10%' }, { type: 'SimpleSelector', text: 'bar' }] } },
+        { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'entry 10%' }, { type: 'SimpleSelector', text: 'exit 100%' }] } }
+      ]
+    });
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
+      '@keyframes x {\n  foo {\n    opacity: 0;\n  }\n  10%,\n  bar {\n    opacity: 0.5;\n  }\n  entry 10%,\n  exit 100% {\n    opacity: 1;\n  }\n}\n'
+    );
+  });
+
   it('keeps block and line comments in trivia instead of statement children', () => {
     const source = '// root\n$theme: blue; /* between */ .card { // inside\n color: $theme; /* tail */ }';
     const legacy = parseJessCst(source);

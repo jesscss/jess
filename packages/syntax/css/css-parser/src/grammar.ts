@@ -606,10 +606,6 @@ const nonSlashPunctuationValueStart = choice(
 
 const importTailWhitespace = regex(/[ \t\n\r\f]+/);
 const importTailText = regex(/[^()[\]"'\/; \t\n\r\f]+/);
-const keyframeEndpoint = keywords(
-  ['from', 'to'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
-);
 
 /*
  * `|` is NOT a combinator: `svg|circle` is one namespaced type selector
@@ -5209,13 +5205,24 @@ const cssFactory = (g: GrammarSelf) => {
       children.filter(isDeclaration)
     ), rawChildren), span)
   );
+
+  /*
+   * One keyframe stop. css-animations-1 §4 gives `<keyframe-selector> = from |
+   * to | <percentage [0,100]>`, and Scroll-driven Animations 1 (Appendix A,
+   * "Named Timeline Range Keyframe Selectors",
+   * https://drafts.csswg.org/scroll-animations-1/#named-range-keyframes) adds
+   * `<timeline-range-name> <percentage>` (`entry 10%`). Any identifier is read,
+   * not only `from`, `to` and the named ranges: `foo` is well-formed, and what
+   * it means is a diagnostics question, not a parse failure. The stop keeps its
+   * spelling, its two tokens joined by one space.
+   */
   const keyframeSelector = node(
     'SimpleSelector',
     choice(
-      keyframeEndpoint,
-      g.Percentage
+      g.Percentage,
+      sequence(genericIdentifier, optional(g.Percentage))
     ),
-    children => simpleSelector(sourceText(children[0]))
+    children => simpleSelector(children.map(sourceText).join(' '))
   );
   const KeyframeBlock = node(
     'KeyframeBlock',

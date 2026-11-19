@@ -5305,13 +5305,54 @@ describe('Less AST grammar facts', () => {
       )
     ).toThrow(LessBareVariableInterpolationError);
 
-    for (const rejected of [
-      '@keyframes fade { @{step} { opacity: 0; } }',
-      '@keyframes fade { 10 { opacity: 0; } }'
-    ]) {
-      const direct = runRaw(lessGrammar.Document, rejected);
-      expect(direct.ok && direct.unconsumedFrom === null, rejected).toBe(false);
-    }
+    const direct = runRaw(lessGrammar.Document, '@keyframes fade { 10 { opacity: 0; } }');
+    expect(direct.ok && direct.unconsumedFrom === null).toBe(false);
+  });
+
+  it('reads any identifier, a timeline range with its percentage, and an interpolation as a keyframe stop', () => {
+    const source = '@keyframes x { foo { opacity: 0; } 10%, bar { opacity: 0.5; } entry 10%, exit 100% { opacity: 1; } @{s} { opacity: 1; } }';
+    const cst = parseLessCst(source);
+    const result = runRaw(lessGrammar.Document, source);
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{
+        type: 'AtRuleBlock',
+        name: '@keyframes',
+        rules: [
+          { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'foo' }] } },
+          {
+            type: 'Ruleset',
+            selector: {
+              type: 'SelectorList',
+              selectors: [{ type: 'SimpleSelector', text: '10%' }, { type: 'SimpleSelector', text: 'bar' }]
+            }
+          },
+          {
+            type: 'Ruleset',
+            selector: {
+              type: 'SelectorList',
+              selectors: [{ type: 'SimpleSelector', text: 'entry 10%' }, { type: 'SimpleSelector', text: 'exit 100%' }]
+            }
+          },
+          {
+            type: 'Ruleset',
+            selector: {
+              type: 'SelectorList',
+              selectors: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation' } }]
+            }
+          }
+        ]
+      }]
+    });
+    const withStep = runRaw(lessGrammar.Document, `@s: contain 50%; ${source}`);
+    expect(serialize(stylesheet(withStep.value)).css).toBe(
+      '@keyframes x {\n  foo {\n    opacity: 0;\n  }\n  10%,\n  bar {\n    opacity: 0.5;\n  }\n  entry 10%,\n  exit 100% {\n    opacity: 1;\n  }\n  contain 50% {\n    opacity: 1;\n  }\n}\n'
+    );
   });
 
   it('treats Less keyframe comments as trivia', () => {

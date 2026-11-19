@@ -38,7 +38,7 @@ describe('public CSS parse()', () => {
      * nothing, and reads exactly like a pass. Assert the count so the fixture
      * set cannot shrink — or fail to resolve — in silence.
      */
-    expect(fixtures.length).toBe(35);
+    expect(fixtures.length).toBe(36);
     for (const filename of fixtures) {
       const source = readFileSync(join(fixtureRoot, filename), 'utf8');
       const cst = parseCssCst(source);
@@ -51,7 +51,7 @@ describe('public CSS parse()', () => {
   it('rejects every public-CST error fixture through the direct Stylesheet route', () => {
     const fixtureRoot = join(import.meta.dirname, 'css/errors');
     const fixtures = readdirSync(fixtureRoot).filter(name => name.endsWith('.css'));
-    expect(fixtures.length).toBe(52);
+    expect(fixtures.length).toBe(51);
     for (const filename of fixtures) {
       const source = readFileSync(join(fixtureRoot, filename), 'utf8');
       const cst = parseCssCst(source);
