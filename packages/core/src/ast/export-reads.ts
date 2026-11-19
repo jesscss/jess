@@ -9,7 +9,7 @@ import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
 import type { BodyOrigin } from './functions/types.js';
 import { namedColor } from './color-names.js';
-import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
+import { type CallValue, type Declaration, type FunctionCall, type Statement, type VariableDeclaration, type VariableExpose } from './nodes.js';
 import { calcOperand } from './math-operand.js';
 import { isBrowserColor, takesColor, takesOnlyColor } from './value-dispatch.js';
 import { emitValue, isValueGroupArray, type CallResult, type EvalModes, type EvalValue, type Value, type ValueEvaluator, type ValueGroup } from './value-eval.js';
@@ -17,6 +17,9 @@ import { writeCall } from './evaluator.js';
 import { groupItems } from './value-list.js';
 import type { ValueCheckLane } from './invalid-value-syntax.js';
 import { makeDimension, makeKeyword, makeList, withFields } from './value-factory.js';
+import { assignmentRef, exposedRef, type ExposedWrite } from './exposed-assignments.js';
+
+export { excluding, exportFinalDefaults, writeCell, writeReassign } from './exposed-assignments.js';
 import { cancelPercent, exposedOperand, insideParens, keepAsWritten, mathOnDeferred, ratioOf } from './value-operate.js';
 
 /**
@@ -64,7 +67,7 @@ export interface ExportRuntime {
   /** Each export whose custom property holds its ratio, `50%` as `0.5`: one whose compile-time value is a percentage ({@link ratioOfHeld}). */
   readonly ratios: Set<string>;
 
-  /** The read of each `%` export, built once ({@link percentRead}). */
+  /** The read of each `%` export, built once for each ratio it holds, by name and ratio ({@link percentRead}). */
   readonly percent: Map<string, ValueGroup>;
 
   /** Each generated custom property, by its name, with how the runtime computes it. */
@@ -152,7 +155,7 @@ interface ExportSource<F> {
  * snapshot already writes the `var()` and which a computed function reads as
  * written (`source`).
  */
-type ExportRef<F> =
+export type ExportRef<F> =
   | { readonly name: string; readonly call: FunctionCall; readonly frame: F; readonly source?: undefined }
   | { readonly name?: undefined; readonly call?: undefined; readonly frame?: undefined; readonly source: ExportSource<F> | undefined };
 
@@ -168,7 +171,10 @@ const IN_ARGUMENTS: ExportRef<never> = { name: undefined, call: undefined, sourc
  */
 function refOf<F>(x: ExportState<F>, hit: { value: CallValue; frame: F }): ExportRef<F> | undefined {
   const value = hit.value;
-  const ref = x.refs.get(value);
+  const ref = x.refs.get(value) ?? assignmentRef(x, hit);
+  if (ref?.name !== undefined && x.within.has(ref.name)) {
+    return undefined;
+  }
   if (ref !== undefined || !isValueSlotArray(value)) {
     return ref?.frame === undefined || ref.frame === hit.frame ? ref : undefined;
   }
@@ -239,6 +245,24 @@ export interface ExportState<F> {
 
   /** By name, the top-level statements of the first file to declare and expose it, and where. */
   readonly owners: Map<string, { readonly own: readonly Statement[]; readonly site: string; readonly keyword: string }>;
+
+  /** By name, the frame an `@expose` of it binds in and the first such `@expose`: where an assignment of the name is one of the exposed variable (exposed-assignments.ts `exposedWrite`). */
+  readonly homes: Map<string, { readonly frame: F; readonly node: VariableExpose }>;
+
+  /** By value node, each assignment of an exposed variable, with the frame a read of it evaluates in: a read that reaches one reads the variable ({@link refOf}). */
+  readonly writes: Map<object, ExposedWrite<F>>;
+
+  /** By name, an exposed variable's first assignment, then `null` once it has a second one, in any file, so its runtime default is its last value. */
+  readonly assigned: Map<string, VariableDeclaration | null>;
+
+  /** By name, each file's first assignment of an exposed variable, then `null` once a second one in one file has warned. */
+  readonly assignedIn: Map<string, Map<unknown, VariableDeclaration> | null>;
+
+  /** By name, an exposed variable's latest assignment: its final value once the render ends (exposed-assignments.ts `exportFinalDefaults`). */
+  readonly last: Map<string, ExposedWrite<F>>;
+
+  /** By name, how many reads of an exposed variable are evaluating its value (exposed-assignments.ts `excluding`): a read of it there reads the value it reaches. */
+  readonly within: Map<string, number>;
 }
 
 /** An `@expose` waiting for its frame to be complete, with how its names resolve there. */
@@ -301,28 +325,7 @@ export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
 export function exportState<F>(): ExportState<F> {
-  return { refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map() };
-}
-
-/**
- * Excludes `node` from lookups while a read evaluates it (`on`), or releases it.
- * An exposed variable's read evaluates its `var()` stand-in, whose fallback is
- * the declaration's own value, so the declaration is excluded with it: in
- * `@b: @b + 1` the `@b` then reads the earlier `@b`, as it does unexposed.
- */
-export function excluding<F>(e: { readonly excluded: Set<CallValue>; readonly s: { readonly exports: ExportState<F> } }, node: CallValue, on: boolean): void {
-  const behind = e.s.exports.runtime === undefined ? undefined : e.s.exports.behind.get(node);
-  if (on) {
-    e.excluded.add(node);
-    if (behind !== undefined) {
-      e.excluded.add(behind);
-    }
-  } else {
-    e.excluded.delete(node);
-    if (behind !== undefined) {
-      e.excluded.delete(behind);
-    }
-  }
+  return { refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map(), homes: new Map(), writes: new Map(), assigned: new Map(), assignedIn: new Map(), last: new Map(), within: new Map() };
 }
 
 /** The state when something is exported, else undefined. */
@@ -370,6 +373,9 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
   x.pending.push({ node, resolve, own, declares, at: node.names.map(exported => callSiteLocation(exported, e.s)) });
   for (const exported of node.names) {
     x.pendingNames.add(exported.name);
+    if (!x.homes.has(exported.name)) {
+      x.homes.set(exported.name, { frame, node });
+    }
   }
   x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), literalNames: false, ownNames: false, indirect: false, named: new Map(), properties: new Map(), slots: new Map() };
 }
@@ -423,11 +429,7 @@ function settle<F>(x: ExportState<F>): void {
       if (!isValueSlotArray(hit.value) && hit.value.type === 'Dimension' && hit.value.unit === '%') {
         noteRatio(runtime, name);
       }
-      if (isValueSlotArray(hit.value) || hit.value.type !== 'MixinCall') {
-        const call = funcCall('var', [keyword(`--${name}`), hit.value]);
-        x.refs.set(hit.value, { name, call, frame: hit.frame, source: undefined });
-        x.behind.set(call, hit.value);
-      }
+      exposedRef(x, name, hit);
     });
   }
 }
@@ -563,17 +565,20 @@ function percentRead(read: ValueGroup, modes: EvalModes, runtime: ExportRuntime)
   if (key === undefined) {
     return read;
   }
-  let built = runtime.percent.get(key);
-  if (built === undefined) {
-    const ratio = ratioOfHeld(held);
-    if (ratio === undefined) {
-      return read;
-    }
-    noteRatio(runtime, key);
-    built = mathOnDeferred('*', keepAsWritten(withFields(writeCall('var', makeList([name, ratio], ','), modes), { result: 'numeric' as const })), makeDimension(100, '%'));
-    runtime.percent.set(key, built);
+  const ratio = ratioOfHeld(held);
+  if (ratio === undefined) {
+    return read;
   }
-  return built;
+
+  /* By the ratio too: a variable assigned more than once holds the value each read sees (A22). */
+  const built = `${key} ${emitValue(ratio)}`;
+  let percent = runtime.percent.get(built);
+  if (percent === undefined) {
+    noteRatio(runtime, key);
+    percent = mathOnDeferred('*', keepAsWritten(withFields(writeCall('var', makeList([name, ratio], ','), modes), { result: 'numeric' as const })), makeDimension(100, '%'));
+    runtime.percent.set(built, percent);
+  }
+  return percent;
 }
 
 /**

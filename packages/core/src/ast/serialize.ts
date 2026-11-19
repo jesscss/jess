@@ -214,7 +214,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { channelFunction, channelMath, channelOf, formChannels, isComputedColorCall, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
-import { argumentStatementKind, declareExpose, excluding, exposedWritten, readsExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, declareExpose, excluding, exportFinalDefaults, writeCell, writeReassign, exposedWritten, readsExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedAtRuleName, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation, laneSiteLocation } from './call-site-location.js';
@@ -3716,10 +3716,10 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
       return;
     }
     const cells = frame.cells ??= new Map();
-    cells.set(node.name, {
+    writeCell(e, cells, {
       declaration: node, value: node.value, valueFrame: null, evaluated: null,
       prev: liveCellPredecessor(cells, node)
-    });
+    }, frame);
     (frame.reassign ??= new Map()).set(node.name, node);
     return;
   }
@@ -3732,17 +3732,17 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
         throw ERR.nameNotFound({ node, ctx: { file: e.s.context?.sourceContext?.file }, meta: { symbol: `$${node.name}` } });
       }
       const cells = owner.cells!;
-      cells.set(node.name, {
+      writeCell(e, cells, {
         declaration: node, value: node.value, valueFrame: null, evaluated: null,
         prev: liveCellPredecessor(cells, node)
-      });
+      }, owner);
       return;
     }
     const found = lookupScopedBinding(frame, node.name, e);
     if (!found) {
       throw ERR.nameNotFound({ node, ctx: { file: e.s.context?.sourceContext?.file }, meta: { symbol: `$${node.name}` } });
     }
-    (found.frame.reassign ??= new Map()).set(node.name, node);
+    writeReassign(e, found.frame, node);
     return;
   }
   if (node.write.mode === 'reassign-or-declare') {
@@ -3766,24 +3766,24 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
        * the loop. ponytail: read walks the write chain, so a very long accumulator
        * loop is O(n^2) at read — snapshot eagerly if a hot loop ever needs it.
        */
-      cells.set(node.name, {
+      writeCell(e, cells, {
         declaration: node,
         value: snapshotLiveWrite(node.value),
         valueFrame: frame,
         evaluated: null,
         prev: liveCellPredecessor(cells, node)
-      });
+      }, owner);
       return;
     }
     const found = lookupScopedBinding(frame, node.name, e);
-    ((found?.frame ?? frame).reassign ??= new Map()).set(node.name, node);
+    writeReassign(e, found?.frame ?? frame, node);
     return;
   }
   const cells = frame.cells ??= new Map();
-  cells.set(node.name, {
+  writeCell(e, cells, {
     declaration: node, value: node.value, valueFrame: null, evaluated: null,
     prev: liveCellPredecessor(cells, node)
-  });
+  }, frame);
 }
 
 /**
@@ -3994,12 +3994,12 @@ function hasExcludedPropRef(frame: Frame | null, name: string, e: Lane): boolean
  * also {@link whileReached}.
  */
 function withExcluded<T>(e: Lane, node: Binding, run: () => T, reader?: object): T {
-  excluding(e, node, true);
+  const entered = excluding(e, node, true);
   try {
     /* A root variable's value is looked up only once the session's documents differ. */
     return whileReachedFrom(e, node, e.s.context?.readsValueOwners === true ? e.s.context.bodyOwner(node) : undefined, run, reader);
   } finally {
-    excluding(e, node, false);
+    excluding(e, node, false, entered);
   }
 }
 
@@ -14398,7 +14398,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     };
     const emitBody = (): SerializeReturn => {
       emitLeadingDocumentBlockComments(e);
-      return mapMaybe(emitDocumentStatements(root.rules, rootFrame, e, importDocument), finish);
+
+      /* [A22] An exposed variable assigned more than once has its last value as the runtime's default. */
+      return mapMaybe(mapMaybe(emitDocumentStatements(root.rules, rootFrame, e, importDocument), () => exportFinalDefaults(e, (value, frame) => withExcluded(e, value, () => evalBinding(value, frame, e)))), finish);
     };
     return emitBody();
   };
