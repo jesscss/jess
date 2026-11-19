@@ -25,6 +25,7 @@ import {
   atRuleBlock,
   atRuleStatement,
   attributeSelectorFrom,
+  authoredSource,
   authoredText,
   block,
   branchRest,
@@ -5213,8 +5214,9 @@ const cssFactory = (g: GrammarSelf) => {
    * https://drafts.csswg.org/scroll-animations-1/#named-range-keyframes) adds
    * `<timeline-range-name> <percentage>` (`entry 10%`). Any identifier is read,
    * not only `from`, `to` and the named ranges: `foo` is well-formed, and what
-   * it means is a diagnostics question, not a parse failure. The stop keeps its
-   * spelling, its two tokens joined by one space.
+   * it means is a diagnostics question, not a parse failure. The stop's text is
+   * the author's own bytes, from its first token to its last: no separator is
+   * made up between them.
    */
   const keyframeSelector = node(
     'SimpleSelector',
@@ -5222,7 +5224,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.Percentage,
       sequence(genericIdentifier, optional(g.Percentage))
     ),
-    children => simpleSelector(children.map(sourceText).join(' '))
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => simpleSelector(authoredSource(span, state, 'A keyframe stop'))
   );
   const KeyframeBlock = node(
     'KeyframeBlock',

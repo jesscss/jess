@@ -1610,6 +1610,27 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
+  it('keeps a two-token keyframe stop as the author wrote it, with no separator made up', () => {
+    const source = '@keyframes x { to.5% { opacity: 0; } entry\n  10% /* c */ , exit 100% { opacity: 1; } }';
+    const cst = parseCssCst(source);
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(bare(parse(source))).toEqual(bare(parseAst(source)));
+    expect(parseAst(source).rules[0]).toMatchObject({
+      rules: [
+        { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'to.5%' }] } },
+        {
+          type: 'Ruleset',
+          selector: {
+            type: 'SelectorList',
+            selectors: [{ type: 'SimpleSelector', text: 'entry\n  10%' }, { type: 'SimpleSelector', text: 'exit 100%' }]
+          }
+        }
+      ]
+    });
+  });
+
   it('rejects non-keyframe selectors and bare declarations in a keyframes body', () => {
     for (const input of ['@keyframes fade { .card { opacity: 0; } }', '@keyframes fade { opacity: 0; }', '@keyframes fade { 50px { opacity: 0; } }']) {
       expect(() => parseAst(input)).toThrow('CSS AST grammar did not consume the document');

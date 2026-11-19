@@ -5349,6 +5349,12 @@ describe('Less AST grammar facts', () => {
         ]
       }]
     });
+    const asWritten = runRaw(lessGrammar.Document, '@keyframes x { to.5%, entry\n  10% { opacity: 1; } }');
+    expect(asWritten.ok && asWritten.unconsumedFrom === null).toBe(true);
+    expect(asWritten.value).toMatchObject({
+      rules: [{ rules: [{ selector: { selectors: [{ text: 'to.5%' }, { text: 'entry\n  10%' }] } }] }]
+    });
+
     const withStep = runRaw(lessGrammar.Document, `@s: contain 50%; ${source}`);
     expect(serialize(stylesheet(withStep.value)).css).toBe(
       '@keyframes x {\n  foo {\n    opacity: 0;\n  }\n  10%,\n  bar {\n    opacity: 0.5;\n  }\n  entry 10%,\n  exit 100% {\n    opacity: 1;\n  }\n  contain 50% {\n    opacity: 1;\n  }\n}\n'

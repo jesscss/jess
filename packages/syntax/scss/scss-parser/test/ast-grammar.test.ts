@@ -2795,6 +2795,9 @@ describe('SCSS @charset inherits the CSS <string> prelude', () => {
         }
       ]
     });
+    expect(parse('@keyframes x { to.5%, entry\n  10% { opacity: 1; } }').rules[0]).toMatchObject({
+      rules: [{ selector: { selectors: [{ text: 'to.5%' }, { text: 'entry\n  10%' }] } }]
+    });
     expect(serialize(parse(`$s: contain 50%; ${source}`)).css).toBe(
       '@keyframes x {\n  foo {\n    opacity: 0;\n  }\n  10%,\n  bar {\n    opacity: 0.5;\n  }\n  entry 10%,\n  exit 100% {\n    opacity: 1;\n  }\n  contain 50% {\n    opacity: 1;\n  }\n}\n'
     );
