@@ -1706,7 +1706,6 @@
       "Apply",
       "Extend",
       "Ruleset",
-      "NestedRuleset",
       "Stylesheet"
     ],
     "packages/syntax/less/less-parser/src/grammar.ts": [

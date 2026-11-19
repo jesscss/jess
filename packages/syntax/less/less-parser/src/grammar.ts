@@ -3753,7 +3753,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'DeclarationItem',
     sequence(
       g.Declaration,
-      choice(declarationEnd, g.DeclarationPreludeBlock)
+      choice(literal(';'), peek(literal('}')), g.DeclarationPreludeBlock)
     ),
     declarationOrRuleFrom,
     { collapse: true }
@@ -3801,7 +3801,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'DeclarationPreludeBlock',
     sequence(
       choice(literal('{'), sequence(g.RulePreludeRest, literal('{'))),
-      blockBody,
+      g.blockBody,
       literal('}')
     ),
     (children, _fields, span, rawChildren, _triviaLog, state) => declarationPreludeBlockFrom(children, rawChildren, span.start, state)

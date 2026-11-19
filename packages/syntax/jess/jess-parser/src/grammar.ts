@@ -6416,6 +6416,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ), children);
     }
   );
+
+  /**
+   * A rule in a block: a nested selector list, then its block, or the rest of a
+   * prelude no selector reads (inherited from the CSS base) and the block, with
+   * the error at the prelude (ledger P45). The `{` is tried first.
+   */
   const NestedRuleset = node<Ruleset>(
     'NestedRuleset',
     sequence(
