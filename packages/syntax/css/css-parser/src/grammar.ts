@@ -25,6 +25,7 @@ import {
   atRuleBlock,
   atRuleStatement,
   attributeSelectorFrom,
+  authoredSource,
   authoredText,
   block,
   branchRest,
@@ -606,10 +607,6 @@ const nonSlashPunctuationValueStart = choice(
 
 const importTailWhitespace = regex(/[ \t\n\r\f]+/);
 const importTailText = regex(/[^()[\]"'\/; \t\n\r\f]+/);
-const keyframeEndpoint = keywords(
-  ['from', 'to'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
-);
 
 /*
  * `|` is NOT a combinator: `svg|circle` is one namespaced type selector
@@ -1776,8 +1773,9 @@ const cssFactory = (g: GrammarSelf) => {
    * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
    * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
    * type, referenced by name from productions such as `<keyframe-selector> =
-   * from | to | <percentage>` (css-animations-1 §4), so it is a rule here rather
-   * than a shape each consumer re-spells.
+   * from | to | <percentage [0,100]>` (css-animations-1 §3 "Declaring
+   * Keyframes"), so it is a rule here rather than a shape each consumer
+   * re-spells.
    *
    * This does NOT add an AST node type: in value position a percentage is a
    * `Dimension` whose unit is `%` — `dimensionUnit` admits `%` exactly as the
@@ -5209,13 +5207,28 @@ const cssFactory = (g: GrammarSelf) => {
       children.filter(isDeclaration)
     ), rawChildren), span)
   );
+
+  /*
+   * One keyframe stop. css-animations-1 §3 "Declaring Keyframes" gives
+   * `<keyframe-selector> = from | to | <percentage [0,100]>`, and Scroll-driven
+   * Animations 1 (Appendix A, "Named Timeline Range Keyframe Selectors",
+   * https://drafts.csswg.org/scroll-animations-1/#named-range-keyframes) adds
+   * `<timeline-range-name> <percentage>` (`entry 10%`). Accepted: a percentage,
+   * or an identifier optionally followed by a percentage. The identifier is any
+   * ident that does not start `--` (`foo` is well-formed; what it means is a
+   * diagnostics question, not a parse failure). The stop's text is the
+   * author's own bytes, from its first token to its last.
+   *
+   * `genericIdentifier`, not the `Identifier` slot: Less overrides `Identifier`
+   * as a value node (a Keyword or an Interpolation), which is no stop name.
+   */
   const keyframeSelector = node(
     'SimpleSelector',
     choice(
-      keyframeEndpoint,
-      g.Percentage
+      g.Percentage,
+      sequence(genericIdentifier, optional(g.Percentage))
     ),
-    children => simpleSelector(sourceText(children[0]))
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => simpleSelector(authoredSource(span, state, 'A keyframe stop'))
   );
   const KeyframeBlock = node(
     'KeyframeBlock',

@@ -2763,6 +2763,45 @@ describe('SCSS @charset inherits the CSS <string> prelude', () => {
       { type: 'AtRuleStatement', name: '@layer', prelude: { src: 'a.b, c' } }
     ]);
   });
+
+  it('reads any identifier, a timeline range with its percentage, and an interpolation as a keyframe stop', () => {
+    const source = '@keyframes x { foo { opacity: 0; } 10%, bar { opacity: 0.5; } entry 10%, exit 100% { opacity: 1; } #{$s} { opacity: 1; } }';
+    const cst = parseScssCst(source);
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(parse(source).rules[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      name: '@keyframes',
+      rules: [
+        { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'foo' }] } },
+        {
+          type: 'Ruleset',
+          selector: {
+            type: 'SelectorList',
+            selectors: [{ type: 'SimpleSelector', text: '10%' }, { type: 'SimpleSelector', text: 'bar' }]
+          }
+        },
+        {
+          type: 'Ruleset',
+          selector: {
+            type: 'SelectorList',
+            selectors: [{ type: 'SimpleSelector', text: 'entry 10%' }, { type: 'SimpleSelector', text: 'exit 100%' }]
+          }
+        },
+        {
+          type: 'Ruleset',
+          selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation' } }] }
+        }
+      ]
+    });
+    expect(parse('@keyframes x { to.5%, entry\n  10% { opacity: 1; } }').rules[0]).toMatchObject({
+      rules: [{ selector: { selectors: [{ text: 'to.5%' }, { text: 'entry\n  10%' }] } }]
+    });
+    expect(serialize(parse(`$s: contain 50%; ${source}`)).css).toBe(
+      '@keyframes x {\n  foo {\n    opacity: 0;\n  }\n  10%,\n  bar {\n    opacity: 0.5;\n  }\n  entry 10%,\n  exit 100% {\n    opacity: 1;\n  }\n  contain 50% {\n    opacity: 1;\n  }\n}\n'
+    );
+  });
 });
 
 /*

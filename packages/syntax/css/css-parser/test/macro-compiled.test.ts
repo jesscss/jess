@@ -70,8 +70,10 @@ test('coverage-enabled macro CSS reports structural grammar coverage across publ
     const collector = createGrammarCoverageCollector(definitions);
     const fixtureRoot = join(import.meta.dirname, 'css');
     for (const filename of readdirSync(fixtureRoot).filter(name => name.endsWith('.css'))) {
-      const result = run(stylesheetRule, readFileSync(join(fixtureRoot, filename), 'utf8'), {
+      const source = readFileSync(join(fixtureRoot, filename), 'utf8');
+      const result = run(stylesheetRule, source, {
         trivia: covered.cssGrammar.whitespace,
+        state: { source },
         instrumentation: createGrammarInstrumentationContext({ collector })
       });
       expect(result.ok && result.unconsumedFrom === null, filename).toBe(true);

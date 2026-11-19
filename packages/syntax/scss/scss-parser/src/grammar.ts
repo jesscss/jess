@@ -251,10 +251,8 @@ type ScssSharedSyntax = {
   Percentage: Combinator<string>;
 
   /*
-   * Converged to the CSS base (inherited via compose): same node type
-   * SimpleSelector over a byte-identical `keyframeEndpoint` recognizer and
-   * `g.Percentage`; the reducer differed only requireToken().value vs
-   * tokenText(). SCSS's copy was additionally misnamed `KeyframeSelector`.
+   * Inherited from the CSS base: one keyframe stop, a SimpleSelector. SCSS adds
+   * its interpolated stop in `KeyframeBlock`, not here.
    */
   keyframeSelector: Combinator<SimpleSelector>;
 
@@ -4794,16 +4792,27 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
+   * A keyframe stop: the CSS `keyframeSelector`, or an interpolated simple
+   * selector naming one (`#{$step}`), the same typed interpolation a selector
+   * compound reads. The CSS arm leads, and `#{` cannot start a CSS stop, so a
+   * stop that opens with an interpolation reaches the second arm.
+   *
+   * Known gap: a stop whose identifier comes BEFORE an interpolation
+   * (`foo#{$s}`, `foo-#{$s}`) does not parse. The CSS arm commits on `foo`, and
+   * the `#{` after it then fails the keyframe block.
+   */
+  const keyframeStop = choice(g.keyframeSelector, g.InterpolatedSimple);
+
+  /*
    * Keyframes already fit the canonical AtRuleBlock + Ruleset model: the at-rule
-   * name/prelude and every descriptor block remain structured.  Keep this
-   * deliberately static at the header and selector boundary; interpolated
-   * keyframe names/selectors need typed selector interpolation rather than raw
+   * name/prelude and every descriptor block remain structured.  The header stays
+   * static; an interpolated header needs typed interpolation rather than raw
    * text capture.
    */
   const KeyframeBlock = node<Ruleset>(
     'KeyframeBlock',
     sequence(
-      g.keyframeSelector,
+      keyframeStop,
 
       /*
        * Comments are valid selector-list delimiters.  Keep them as grammar
@@ -4814,7 +4823,7 @@ const scssFactory = (g: ScssInputRules) => {
         many(g.Comment),
         literal(','),
         many(g.Comment),
-        g.keyframeSelector
+        keyframeStop
       )),
       many(g.Comment),
       literal('{'),

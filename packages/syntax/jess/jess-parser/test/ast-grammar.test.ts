@@ -2234,7 +2234,7 @@ describe('Jess AST grammar facts', () => {
 
   it('constructs CSS and vendor keyframes as typed at-rule blocks with selector-only descriptor bodies', () => {
     const source = '@KEYFRAMES fade { from /* selector delimiter */, 50% { opacity: 0; } to { opacity: 1; } } @-MOZ-KEYFRAMES "zoom" { from { opacity: 0; } }';
-    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace, state: { source } });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -2261,6 +2261,29 @@ describe('Jess AST grammar facts', () => {
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
+  });
+
+  it('reads any identifier, and a timeline range name with its percentage, as a keyframe stop', () => {
+    const source = '@keyframes x { foo { opacity: 0; } 10%, bar { opacity: 0.5; } entry 10%, exit 100% { opacity: 1; } }';
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace, state: { source } });
+
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(parse(source).rules[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      name: '@keyframes',
+      rules: [
+        { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'foo' }] } },
+        { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '10%' }, { type: 'SimpleSelector', text: 'bar' }] } },
+        { type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'entry 10%' }, { type: 'SimpleSelector', text: 'exit 100%' }] } }
+      ]
+    });
+    expect(parse('@keyframes x { to.5%, entry\n  10% { opacity: 1; } }').rules[0]).toMatchObject({
+      rules: [{ selector: { selectors: [{ text: 'to.5%' }, { text: 'entry\n  10%' }] } }]
+    });
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
+      '@keyframes x {\n  foo {\n    opacity: 0;\n  }\n  10%,\n  bar {\n    opacity: 0.5;\n  }\n  entry 10%,\n  exit 100% {\n    opacity: 1;\n  }\n}\n'
+    );
   });
 
   it('keeps block and line comments in trivia instead of statement children', () => {

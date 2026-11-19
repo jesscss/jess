@@ -10,12 +10,12 @@
     "bootstrapVersion": "5.3.8"
   },
   "counts": {
-    "ok": 64,
-    "reject": 55,
+    "ok": 65,
+    "reject": 54,
     "emitError": 2
   },
-  "emittedBytes": 609103,
-  "aggregate": "c1bb3590a0c71698ec82ecad06619d320b27e0e44707b99e71f82933ef98af66",
+  "emittedBytes": 609420,
+  "aggregate": "38fa2a2716ff0c5dab0ba5d732d84ed182b9c3598ad3f04fb116a149be700924",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -413,12 +413,6 @@
       "bytes": null,
       "fingerprint": "7f31a3cf40b74a97"
     },
-    "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-bad-ident-selector.css": {
-      "bucket": "repo",
-      "status": "reject",
-      "bytes": null,
-      "fingerprint": "ceb7099105050501"
-    },
     "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-block-no-selector.css": {
       "bucket": "repo",
       "status": "reject",
@@ -658,6 +652,12 @@
       "status": "ok",
       "bytes": 330,
       "fingerprint": "fd2079c27e4436b0"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/keyframes-stop-names.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 317,
+      "fingerprint": "ed9a8f0f9fce2ee9"
     },
     "repo/packages/syntax/css/css-parser/test/css/keyframes.css": {
       "bucket": "repo",
