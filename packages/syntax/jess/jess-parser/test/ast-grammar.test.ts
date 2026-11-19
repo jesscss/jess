@@ -2234,7 +2234,7 @@ describe('Jess AST grammar facts', () => {
 
   it('constructs CSS and vendor keyframes as typed at-rule blocks with selector-only descriptor bodies', () => {
     const source = '@KEYFRAMES fade { from /* selector delimiter */, 50% { opacity: 0; } to { opacity: 1; } } @-MOZ-KEYFRAMES "zoom" { from { opacity: 0; } }';
-    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace, state: { source } });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
