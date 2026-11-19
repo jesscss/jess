@@ -971,7 +971,7 @@ describe('Less AST grammar facts', () => {
     '@expose @a: selector(1px);',
     '@expose @a: /b;',
 
-    /* These three stop short today, which is a well-formed-input gap (jesscss/jess#672), not intended behaviour. */
+    /* A tree with a report in it: a rule in a block whose prelude no selector reads (jesscss/jess#672). */
     '.x { a: selector(1px) { b: c; } }',
     '.x { a:hover selector(1px) { b: c; } }',
     '.x { a:b selector(1px), .c { d: e } }',
@@ -997,6 +997,44 @@ describe('Less AST grammar facts', () => {
       recoveredProblemsOf(state, result).map(error => parserDiagnostic({ dialect: 'Less', error, filePath: 'entry.less', source })),
       source
     ).toEqual(parsed.document === undefined ? [] : parsed.errors);
+  });
+
+  it.each([
+    ['.x { a: selector(1px) { b: c; } }', 'a: selector(1px)', 'b'],
+    ['.x { a:hover selector(1px) { b: c; } }', 'a:hover selector(1px)', 'b'],
+    ['.x { a:b selector(1px), .c { d: e } }', 'a:b selector(1px), .c', 'd']
+  ])('reads %j as a nested rule whose prelude no selector reads, then reports it (P45)', (source, prelude, name) => {
+    const state = createLessParseState(source);
+    const result = run(lessGrammar.Stylesheet, source, { trivia: lessGrammar.whitespace, state });
+    expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+    expect(recoveredProblemsOf(state, result).map(error => [error.code, source.slice(error.offset, error.endOffset)])).toEqual([
+      ['parse/invalid-rule-prelude', prelude]
+    ]);
+    expect(result.value).toMatchObject({
+      rules: [{
+        type: 'Ruleset',
+        rules: [{
+          type: 'Ruleset',
+          selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: prelude }] },
+          rules: [{ type: 'Declaration', name }]
+        }]
+      }]
+    });
+  });
+
+  it('still reads a glued pseudo before a block as the nested rule\'s selector', () => {
+    const source = '.x { a:hover { b: c } }';
+    const result = runRaw(lessGrammar.Stylesheet, source);
+    expect(result.ok && result.unconsumedFrom === null).toBe(true);
+    expect(result.value).toMatchObject({
+      rules: [{
+        rules: [{
+          type: 'Ruleset',
+          selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: 'a' }, { text: ':hover' }] }] },
+          rules: [{ type: 'Declaration', name: 'b' }]
+        }]
+      }]
+    });
   });
 
   it('keeps selector() inside an @supports prelude and a supports() if-test the CSS feature test', () => {

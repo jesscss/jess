@@ -1,5 +1,5 @@
 import { AbstractPlugin, type ISafeParseResult, parserDiagnostic } from '@jesscss/core';
-import { parse as parseCss } from '@jesscss/css-parser';
+import { parseRecovering } from '@jesscss/css-parser';
 
 /**
  * Plain `.css` input: parsed by the CSS grammar and rendered through the same
@@ -17,7 +17,8 @@ export class CssPlugin extends AbstractPlugin {
 
   safeParse(filePath: string, source: string): ISafeParseResult {
     try {
-      return { document: parseCss(source), errors: [], warnings: [] };
+      const { document, recovered } = parseRecovering(source);
+      return { document, errors: recovered.map(error => parserDiagnostic({ dialect: 'CSS', error, filePath, source })), warnings: [] };
     } catch (error) {
       return { errors: [parserDiagnostic({ dialect: 'CSS', error, filePath, source })], warnings: [] };
     }

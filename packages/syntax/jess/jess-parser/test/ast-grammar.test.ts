@@ -1169,6 +1169,36 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it.each([
+    ['.x { a: selector(1px) { b: c; } }', 'a: selector(1px)', 'b'],
+    ['.x { a:hover selector(1px) { b: c; } }', 'a:hover selector(1px)', 'b'],
+    ['.x { a:b selector(1px), .c { d: e } }', 'a:b selector(1px), .c', 'd']
+  ])('reads %j as a nested rule whose prelude no selector reads, then reports it (P45)', (source, prelude, name) => {
+    const { document, recovered } = parseRecovering(source);
+    expect(recovered.map(error => [error.code, source.slice(error.offset, error.endOffset)])).toEqual([['parse/invalid-rule-prelude', prelude]]);
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{
+        type: 'Ruleset',
+        selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: prelude }] },
+        rules: [{ type: 'Declaration', name }]
+      }]
+    });
+    expect(() => parse(source)).toThrow(expect.objectContaining({ code: 'parse/invalid-rule-prelude' }));
+  });
+
+  it('still reads a glued pseudo before a block as the nested rule\'s selector', () => {
+    const { document, recovered } = parseRecovering('.x { a:hover { b: c } }');
+    expect(recovered).toEqual([]);
+    expect(document.rules[0]).toMatchObject({
+      rules: [{
+        type: 'Ruleset',
+        selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: 'a' }, { text: ':hover' }] }] },
+        rules: [{ type: 'Declaration', name: 'b' }]
+      }]
+    });
+  });
+
   /* Once P45 residuals: a delim-led value and a `*` delim (balanced-value-shapes.test.ts). */
   it.each(['$t: * [.notice];', 'a { b: 2*[3]; }'])('parses `%s`', (source) => {
     expect(parseRecovering(source).document).toBeDefined();
@@ -2776,13 +2806,14 @@ describe('Jess AST grammar facts', () => {
      * `&-1` is rejected because `-1` is not an identifier: `&(-1)` is how the
      * append is spelled. `&('')` is an output-PLACEMENT instruction (Sass's
      * `@at-root`), which has no AST v2 carrier, and `nil` is not a Jess keyword,
-     * so neither may degrade into an append of nothing.
+     * so neither may degrade into an append of nothing. Each is a rule whose
+     * prelude no selector reads: it parses, with the error at the prelude (P45).
      */
-    for (const source of ['.a { &-1 { color: blue; } }', '.a { &1 { color: blue; } }', '.a { &() { color: blue; } }', '.a { &(\'\') { color: blue; } }', '.a { &(nil) { color: blue; } }', '.a { &-$[tone] { color: blue; } }']) {
-      const cst = parseJessCst(source);
-      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value)).toBe(false);
+    for (const prelude of ['&-1', '&1', '&()', '&(\'\')', '&(nil)', '&-$[tone]']) {
+      const source = `.a { ${prelude} { color: blue; } }`;
+      const { document, recovered } = parseRecovering(source);
+      expect(recovered.map(error => [error.code, source.slice(error.offset, error.endOffset)]), source).toEqual([['parse/invalid-rule-prelude', prelude]]);
+      expect(document.rules[0], source).toMatchObject({ rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'SimpleSelector', text: prelude }] } }] });
     }
   });
 

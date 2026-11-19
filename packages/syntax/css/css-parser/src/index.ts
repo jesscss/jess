@@ -10,9 +10,10 @@ export type {
 } from './cst-host.js';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { cssGrammar } from './grammar/ast.js';
-import { parseWith } from './parse-with.js';
+import { parseRecoveringWith, parseWith, type CssParsed } from './parse-with.js';
 
 export { CssParseError } from './parse-error.js';
+export type { CssParsed, CssRecoveredError } from './parse-with.js';
 
 /**
  * Parse CSS directly into the canonical AST v2 document.
@@ -23,4 +24,12 @@ export { CssParseError } from './parse-error.js';
  */
 export function parse(input: string): Stylesheet {
   return parseWith(cssGrammar, input);
+}
+
+/**
+ * Parse CSS, keeping the located errors the grammar recovered from (ledger
+ * P45) beside the document instead of raising the first.
+ */
+export function parseRecovering(input: string): CssParsed {
+  return parseRecoveringWith(cssGrammar, input);
 }

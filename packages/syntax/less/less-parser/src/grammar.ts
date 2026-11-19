@@ -30,7 +30,7 @@ import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, keyframeSelectorList, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, isSelectorList, isSimpleToken, branchSegments, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue, withMixinPath, guardNot, mixinPathSegment } from '@jesscss/core/ast';
-import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, RulePreludeRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose } from '@jesscss/core/ast';
 import { closeAmbientFunctions, contextOf, functionScopeOf, reportRecovered, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { ExposeDeclarationError, MalformedExposeError } from '@jesscss/core/diagnostics';
 import { LESS_EXPOSE, LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -149,6 +149,7 @@ import {
   variableNameText,
   variableValueSlot
 } from './grammar-helpers.js';
+import { declarationOrRuleFrom, declarationPreludeBlockFrom, type DeclarationPreludeBlock as DeclarationPreludeBlockFact } from './declaration-prelude.js';
 import { capturedPseudoFrom, selectorCaptureFrom } from './selector-capture.js';
 import { mixinReferenceBaseFrom } from './mixin-reference-base.js';
 import { operatorRun, runOperand } from './delim-runs.js';
@@ -256,6 +257,7 @@ type LessRules = {
   VarFunction: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
+  DeclarationPreludeBlock: Combinator<DeclarationPreludeBlockFact>;
   ClassIdStatement: Combinator<Statement>;
   MixinArguments: Combinator<MixinArgumentsFact>;
   MixinInterior: Combinator<MixinInteriorFact>;
@@ -397,6 +399,8 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base: what is left of a rule's prelude when no selector reads the current token.
+  RulePreludeRest: Combinator<RulePreludeRest>;
   // Inherited from the CSS base: the `!important` priority marker, read by VariableValue, MixinCallValue and MixinReferenceImportant.
   Important: Combinator<unknown>;
   // Inherited from the CSS base: a `[…]` simple block in a value (grid line names), over Less's ValueList.
@@ -3749,9 +3753,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'DeclarationItem',
     sequence(
       g.Declaration,
-      declarationEnd
+      choice(declarationEnd, g.DeclarationPreludeBlock)
     ),
-    children => requireDeclaration(children[0]),
+    declarationOrRuleFrom,
     { collapse: true }
   );
   const stylesheetEnd = not(regex(/[\s\S]/));
@@ -3784,6 +3788,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // shared arms keep their precedence. The reducer of the node that owns the
   // body hoists the extends; a body with no rule to land in extends nothing.
   const blockBody = many(choice(blockItem, g.ExtendStatement));
+
+  /**
+   * The block after a statement that reads as a declaration up to a token no
+   * declaration ends at: `a: selector(1px) { … }`, `a:b f(1px), .c { … }`. In a
+   * block, a statement that is not a declaration and runs into `{…}` is a rule
+   * (css-syntax-3 §5.5.5, §5.5.6; css-nesting-1 §3.1), so it parses, its prelude in one
+   * simple selector and the error at it (ledger P45). What the declaration left
+   * before the `{` is the prelude's rest. The `{` is tried first.
+   */
+  const DeclarationPreludeBlock = node(
+    'DeclarationPreludeBlock',
+    sequence(
+      choice(literal('{'), sequence(g.RulePreludeRest, literal('{'))),
+      blockBody,
+      literal('}')
+    ),
+    (children, _fields, span, rawChildren, _triviaLog, state) => declarationPreludeBlockFrom(children, rawChildren, span.start, state)
+  );
   const EachName = node(
     'EachName',
     sequence(literal('@'), lessVariableName),
@@ -6218,6 +6240,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     RelativeSelector,
     ForgivingSelectorRest,
     NestedRulesetWithExtends,
+    DeclarationPreludeBlock,
     Quoted,
     LiteralQuoted,
     EscapedQuoted,

@@ -8,8 +8,10 @@
  */
 import { buildLineIndex, offsetToLineCol, run } from 'parseman/run';
 import type { Span } from 'parseman';
+import type { InvalidRulePreludeError } from '@jesscss/core/diagnostics';
 import {
   createTriviaMapFromParseman,
+  recoveredInTree,
   withForgivenSelectorItems,
   withSourceSpan,
   withTriviaMap,
@@ -22,6 +24,15 @@ import { commentTriviaLabels } from './trivia-labels.js';
 
 /** The rule map both compiled CSS AST variants expose. */
 export type CssAstGrammar = typeof cssGrammar;
+
+/** A well-formed shape the grammar read and reported rather than stopping on (ledger P45). */
+export type CssRecoveredError = InvalidRulePreludeError;
+
+/** A parsed document and the located errors the grammar recovered from (ledger P45), in source order. */
+export interface CssParsed {
+  readonly document: Stylesheet;
+  readonly recovered: readonly CssRecoveredError[];
+}
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object'
@@ -67,6 +78,19 @@ function lineOptions(input: string, span: Span): {
 }
 
 export function parseWith(grammar: CssAstGrammar, input: string): Stylesheet {
+  const { document, recovered } = parseRecoveringWith(grammar, input);
+  const first = recovered[0];
+  if (first !== undefined) {
+    throw first;
+  }
+  return document;
+}
+
+/**
+ * Parse, keeping the located errors the grammar recovered from (ledger P45)
+ * beside the document instead of raising the first.
+ */
+export function parseRecoveringWith(grammar: CssAstGrammar, input: string): CssParsed {
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {
@@ -77,13 +101,15 @@ export function parseWith(grammar: CssAstGrammar, input: string): Stylesheet {
    * The input rides the parse state so a reducer can record the source bytes of
    * a structured `<general-enclosed>` group, which the emitter prints as written.
    * `document.forgivenSelectorItems` collects each `:is()` / `:where()` item
-   * that is not a selector, for the compiler's warning.
+   * that is not a selector, for the compiler's warning. `state.diagnostics`
+   * collects what the grammar recovered from (P45).
    */
+  const diagnostics: CssRecoveredError[] = [];
   const forgivenSelectorItems: ForgivenSelectorItem[] = [];
   const result = run(
     entry,
     input,
-    { trivia, state: { source: input, document: { forgivenSelectorItems } }, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input, diagnostics, document: { forgivenSelectorItems } }, rootTrivia: { select: commentTriviaLabels } }
   );
 
   /*
@@ -142,8 +168,9 @@ export function parseWith(grammar: CssAstGrammar, input: string): Stylesheet {
       ...positionAt(input, result.span.end)
     });
   }
-  return withForgivenSelectorItems(withTriviaMap(
+  const document = withForgivenSelectorItems(withTriviaMap(
     withSourceSpan(result.value, result.span),
     createTriviaMapFromParseman(input, result.rootTrivia?.index)
   ), forgivenSelectorItems);
+  return { document, recovered: [...recoveredInTree(document, diagnostics)].sort((a, b) => a.offset - b.offset) };
 }

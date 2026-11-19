@@ -1237,16 +1237,18 @@ describe('public Less parse()', () => {
   });
 
   it('requires a declaration-list separator before following nested Less body items', () => {
-    for (const source of [
-      '.card { color: red .child { color: blue; } }',
-      '.card { color: red @media (min-width: 1px) { color: blue; } }'
-    ]) {
-      const cst = parseLessCst(source);
-
-      expect(
-        cst.errors.length + Number(cst.unconsumedFrom !== null),
-        source
-      ).toBeGreaterThan(0);
+    /*
+     * With no `;`, the declaration and what follows it up to the block are one
+     * rule whose prelude no selector reads (P45). In Less `@media` there is a
+     * variable in the declaration's value, so that rule's prelude holds it too.
+     */
+    for (const [source, prelude] of [
+      ['.card { color: red .child { color: blue; } }', 'color: red .child'],
+      ['.card { color: red @media (min-width: 1px) { color: blue; } }', 'color: red @media (min-width: 1px)']
+    ] as const) {
+      const { document, errors } = safeParse('entry.less', source);
+      expect(errors.map(error => error.code), source).toEqual(['parse/invalid-rule-prelude']);
+      expect(document, source).toMatchObject({ rules: [{ rules: [{ type: 'Ruleset', selector: { selectors: [{ text: prelude }] } }] }] });
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
   });
@@ -3830,7 +3832,11 @@ describe('final declaration without a trailing semicolon', () => {
   it('still rejects a declaration running into the next statement', () => {
     expect(() => parse('.a { @o: 3 color: red; }')).toThrow(LessParseError);
     expect(() => parse('.a { @o: 3 b { x: 1 } }')).toThrow(LessParseError);
-    expect(() => parse('.a { color: red b { x: 1 } }')).toThrow(LessParseError);
+
+    /* Into a block, the two are one rule whose prelude no selector reads (P45): the document survives. */
+    const { document, errors } = safeParse('entry.less', '.a { color: red b { x: 1 } }');
+    expect(errors.map(error => error.code)).toEqual(['parse/invalid-rule-prelude']);
+    expect(document).toMatchObject({ rules: [{ rules: [{ type: 'Ruleset', selector: { selectors: [{ text: 'color: red b' }] } }] }] });
   });
 });
 

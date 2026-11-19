@@ -87,6 +87,7 @@ import {
   quoted,
   relativeSelector,
   rule,
+  RulePreludeRest as RulePreludeRestNode,
   rulesetStatements,
   selectorArgumentText,
   selectorBranches,
@@ -96,11 +97,13 @@ import {
   semanticTextWithTriviaGaps,
   semicolonGroupedCall,
   simpleSelector,
+  sourceStartOf,
   sourceText,
   spaced,
   structuredPseudoFrom,
   stylesheet,
   tokenText,
+  unreadableRulePrelude,
   url,
   valueChildren,
   valueSlot,
@@ -249,6 +252,7 @@ type GrammarRuleName =
   | 'RoutedQueryFunction'
   | 'QueryPrelude'
   | 'Quoted'
+  | 'RulePreludeRest'
   | 'Ruleset'
   | 'ScopeBlock'
   | 'SelectorList'
@@ -5249,6 +5253,32 @@ const cssFactory = (g: GrammarSelf) => {
       children.filter(isDeclaration)
     ), rawChildren), span)
   );
+
+  /**
+   * What is left of a rule's prelude when no selector reads the current token:
+   * `a: selector(1px) { … }`, `a:b f(1px), .c { … }`. In a block, a statement that
+   * is not a declaration and runs into `{…}` is a rule (css-syntax-3 §5.5.5,
+   * §5.5.6; css-nesting-1 §3.1), so it parses and the error sits on the prelude (ledger P45).
+   * It reads component values up to the `{`, and a `;` or `}` ends it short of a
+   * rule. Its lead is a closed character set without `@`, so a body's choice still
+   * dispatches on the first character and an at-rule never enters here.
+   */
+  const RulePreludeRest = node(
+    'RulePreludeRest',
+    oneOrMore(choice(
+      balanced('(', ')'),
+      balanced('[', ']'),
+      regex(/(?:[!#$%&*+,\-.:<=>?^_`|~0-9A-Za-z\s\u0080-\uFFFF]|\/\*(?:[^*]|\*(?!\/))*\*\/|\/(?!\*)|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')+/)
+    )),
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => new RulePreludeRestNode(span.start, span.end, state)
+  );
+
+  /**
+   * A rule in a block: a selector list, then its block, or — when the list stops
+   * on a token no selector reads — the prelude's rest ({@link RulePreludeRest})
+   * and the block, with the error at the whole prelude. The `{` is tried first, so
+   * a rule whose selector reads to its block never enters the rest.
+   */
   const Ruleset = node(
     'Ruleset',
     sequence(
@@ -5259,15 +5289,16 @@ const cssFactory = (g: GrammarSelf) => {
 
       parser(
         { trivia: interstitialTrivia },
-        literal('{')
+        choice(literal('{'), sequence(g.RulePreludeRest, literal('{')))
       ),
       many(g.declarationListItem),
       expect(literal('}'), '}')
     ),
     (children, _fields, _span, rawChildren) => {
       const selector = children.find(isSelectorList)!;
+      const rest = children[1];
       return withBlockBody(rule(
-        selector,
+        rest instanceof RulePreludeRestNode ? unreadableRulePrelude(rest, sourceStartOf(selector)) : selector,
         rulesetStatements(children)
       ), rawChildren);
     }
@@ -5546,6 +5577,7 @@ const cssFactory = (g: GrammarSelf) => {
     MarginAtRule,
     keyframeSelector,
     KeyframeBlock,
+    RulePreludeRest,
     Ruleset,
     TopLevelRuleset,
     stylesheetBodyBlock,
