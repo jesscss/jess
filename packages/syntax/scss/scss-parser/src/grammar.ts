@@ -4794,9 +4794,12 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * A keyframe stop: the CSS `keyframeSelector`, or an interpolated simple
    * selector naming one (`#{$step}`), the same typed interpolation a selector
-   * compound reads. The CSS arm leads, so an identifier-led stop is decided on
-   * its first token; `#{` cannot start a CSS stop, so the interpolated arm is
-   * reached only where the CSS one cannot begin.
+   * compound reads. The CSS arm leads, and `#{` cannot start a CSS stop, so a
+   * stop that opens with an interpolation reaches the second arm.
+   *
+   * Known gap: a stop whose identifier comes BEFORE an interpolation
+   * (`foo#{$s}`, `foo-#{$s}`) does not parse. The CSS arm commits on `foo`, and
+   * the `#{` after it then fails the keyframe block.
    */
   const keyframeStop = choice(g.keyframeSelector, g.InterpolatedSimple);
 
