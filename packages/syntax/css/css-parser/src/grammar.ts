@@ -5260,8 +5260,9 @@ const cssFactory = (g: GrammarSelf) => {
    * is not a declaration and runs into `{…}` is a rule (css-syntax-3 §5.5.5,
    * §5.5.6; css-nesting-1 §3.1), so it parses and the error sits on the prelude (ledger P45).
    * It reads component values up to the `{` from the CSS terminals, and a `;` or
-   * `}` ends it short of a rule. Its first character is never `@`, so an at-rule
-   * never enters here; an `@` after it is part of the prelude.
+   * `}` ends it short of a rule. It is only reached after a selector list or a
+   * declaration stops before `{`, so an `@` here, first or later, is part of the
+   * prelude, never an at-rule.
    */
   const RulePreludeRest = node(
     'RulePreludeRest',
@@ -5273,7 +5274,7 @@ const cssFactory = (g: GrammarSelf) => {
       customSingleQuoted,
       customSlash,
       customEscape,
-      regex(/[-!#$%&*+,.:<=>?^_`|~0-9A-Za-z\s\u0080-\uFFFF][-!#$%&*+,.:<=>?@^_`|~0-9A-Za-z\s\u0080-\uFFFF]*/)
+      regex(/[-!#$%&*+,.:<=>?@^_`|~0-9A-Za-z\s\u0080-\uFFFF]+/)
     )),
     (_children, _fields, span, _rawChildren, _triviaLog, state) => new RulePreludeRestNode(span.start, span.end, state)
   );

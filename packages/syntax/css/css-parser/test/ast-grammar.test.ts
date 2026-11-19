@@ -131,7 +131,8 @@ describe('CSS canonical-AST grammar', () => {
   it.each([
     ['.x { a: selector(1px) { b: c; } }', 'a: selector(1px)', 'b'],
     ['.x { a:hover selector(1px) { b: c; } }', 'a:hover selector(1px)', 'b'],
-    ['.x { a:b selector(1px), .c { d: e } }', 'a:b selector(1px), .c', 'd']
+    ['.x { a:b selector(1px), .c { d: e } }', 'a:b selector(1px), .c', 'd'],
+    ['.x { a:b @c { d: e } }', 'a:b @c', 'd']
   ])('reads %j as a nested rule whose prelude no selector reads, then reports it (P45)', (source, prelude, name) => {
     const { document, recovered } = parseRecovering(source);
     expect(recovered.map(error => [error.code, source.slice(error.offset, error.endOffset)])).toEqual([['parse/invalid-rule-prelude', prelude]]);

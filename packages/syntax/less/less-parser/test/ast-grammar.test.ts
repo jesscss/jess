@@ -1002,7 +1002,8 @@ describe('Less AST grammar facts', () => {
   it.each([
     ['.x { a: selector(1px) { b: c; } }', 'a: selector(1px)', 'b'],
     ['.x { a:hover selector(1px) { b: c; } }', 'a:hover selector(1px)', 'b'],
-    ['.x { a:b selector(1px), .c { d: e } }', 'a:b selector(1px), .c', 'd']
+    ['.x { a:b selector(1px), .c { d: e } }', 'a:b selector(1px), .c', 'd'],
+    ['.x { a:b @c { d: e } }', 'a:b @c', 'd']
   ])('reads %j as a nested rule whose prelude no selector reads, then reports it (P45)', (source, prelude, name) => {
     const state = createLessParseState(source);
     const result = run(lessGrammar.Stylesheet, source, { trivia: lessGrammar.whitespace, state });
@@ -3235,9 +3236,17 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
+    /* In a block, with no `;`, the declaration and the at-rule are one rule whose prelude no selector reads (P45). */
+    const glued = '.card { color: red @media all { color: blue; } }';
+    const gluedState = createLessParseState(glued);
+    const gluedRun = run(lessGrammar.Document, glued, { trivia: lessGrammar.whitespace, state: gluedState });
+    expect(gluedRun.ok && gluedRun.unconsumedFrom === null).toBe(true);
+    expect(recoveredProblemsOf(gluedState, gluedRun).map(error => [error.code, glued.slice(error.offset, error.endOffset)])).toEqual([
+      ['parse/invalid-rule-prelude', 'color: red @media all']
+    ]);
+
     for (const rejected of [
-      'value: red @media all { x: y; }',
-      '.card { color: red @media all { color: blue; } }'
+      'value: red @media all { x: y; }'
     ]) {
       const cst = parseLessCst(rejected);
       const result = runRaw(lessGrammar.Document, rejected);
@@ -8505,7 +8514,6 @@ describe('Less AST grammar facts', () => {
     for (const source of [
       '.x { pre-@{ spaced }-post: red; }',
       '.x { --theme-${}: red; }',
-      '.x { color: @{}; }',
       '.x { color: ${ spaced }; }'
     ]) {
       const cst = parseLessCst(source);
@@ -8521,6 +8529,16 @@ describe('Less AST grammar facts', () => {
         source
       ).toBe(false);
     }
+  });
+
+  it('reads an empty `@{}` after a property as a block, so the statement is a rule whose prelude no selector reads (P45)', () => {
+    const source = '.x { color: @{}; }';
+    const state = createLessParseState(source);
+    const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state });
+    expect(result.ok && result.unconsumedFrom === null).toBe(true);
+    expect(recoveredProblemsOf(state, result).map(error => [error.code, source.slice(error.offset, error.endOffset)])).toEqual([
+      ['parse/invalid-rule-prelude', 'color: @']
+    ]);
   });
 
   it('preserves escaped quoted bytes and constructs both Less interpolation forms structurally', () => {
