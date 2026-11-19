@@ -252,8 +252,11 @@ export interface ExportState<F> {
   /** By value node, each assignment of an exposed variable, with the frame a read of it evaluates in: a read that reaches one reads the variable ({@link refOf}). */
   readonly writes: Map<object, ExposedWrite<F>>;
 
-  /** By name, an exposed variable's first assignment, then `null` once a second one has warned. */
+  /** By name, an exposed variable's first assignment, then `null` once it has a second one, in any file, so its runtime default is its last value. */
   readonly assigned: Map<string, VariableDeclaration | null>;
+
+  /** By name, each file's first assignment of an exposed variable, then `null` once a second one in one file has warned. */
+  readonly assignedIn: Map<string, Map<unknown, VariableDeclaration> | null>;
 
   /** By name, an exposed variable's latest assignment: its final value once the render ends (exposed-assignments.ts `exportFinalDefaults`). */
   readonly last: Map<string, ExposedWrite<F>>;
@@ -322,7 +325,7 @@ export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
 export function exportState<F>(): ExportState<F> {
-  return { refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map(), homes: new Map(), writes: new Map(), assigned: new Map(), last: new Map(), within: new Map() };
+  return { refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map(), homes: new Map(), writes: new Map(), assigned: new Map(), assignedIn: new Map(), last: new Map(), within: new Map() };
 }
 
 /** The state when something is exported, else undefined. */

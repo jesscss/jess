@@ -169,8 +169,10 @@ or needs JS) to decide what ships in the bundle.
   `writeReassign`, called from `serialize.ts` `activateVariableDeclaration`); a
   nested `$brand: blue;` declares a new variable, which stays its own value. A
   read inside the variable's own value (`$size := $($size * 2)`) computes that
-  value and stays plain (`excluding`). A second assignment warns
-  `eval/expose-reassigned`, once per variable, at that assignment.
+  value and stays plain (`excluding`). A second assignment in the same file
+  warns `eval/expose-reassigned`, once per variable, at that assignment; an
+  importer's override of a variable a file it imports declares does not
+  (orchestrator 2026-11-19).
   The statement carries its dialect's spelling (`VariableExpose.spelling`), so
   `eval/expose-not-declared`, `eval/expose-not-top-level`,
   `eval/expose-conflict` and `eval/expose-key-conflict` name `@-expose` and

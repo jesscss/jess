@@ -99,7 +99,8 @@ import { vars, set } from './theme.jess';
 A read written before a later assignment of it, or after a `$brand := …`
 reassignment, is `var(--brand, <the value that read sees>)` too, and the
 runtime's default for the variable is its final value. An exposed variable
-assigned more than once warns `eval/expose-reassigned`. A nested `$brand: …`
+assigned more than once in one file warns `eval/expose-reassigned`; an
+importer overriding a variable a file it imports declares does not. A nested `$brand: …`
 declares a new variable, which `set()` does not reach.
 
 Each value is keyed by the variable's name with dash-case turned to camelCase:

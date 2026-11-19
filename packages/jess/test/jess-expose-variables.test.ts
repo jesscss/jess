@@ -191,6 +191,27 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
     expect(css).toBe('.a {\n  color: rgb(calc(var(--tint, 0.1) * 100%), 0, 0);\n}\n.b {\n  color: rgb(calc(var(--tint, 0.2) * 100%), 0, 0);\n}\n');
   });
 
+  /* Orchestrator 2026-11-19: an importer's override of a variable a file it imports declares is deliberate, so only a second assignment in one file warns. */
+  it.each([
+    ['less', '@brand: #c00;\n@expose brand;\n', '@import "./tokens.less";\n', '@brand'],
+    ['jess', '$brand: #c00;\n@-expose brand;\n', '@-import "./tokens.jess";\n', '$brand']
+  ] as const)('does not warn when a %s importer overrides an exposed variable, and warns at its own second assignment', async (language, tokens, importer, symbol) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-expose-override-'));
+    const sigil = symbol[0]!;
+    try {
+      fs.writeFileSync(path.join(dir, `tokens.${language}`), tokens);
+      fs.writeFileSync(path.join(dir, `override.${language}`), `${importer}${sigil}brand: #f80;\n.button { color: ${symbol}; }\n`);
+      fs.writeFileSync(path.join(dir, `twice.${language}`), `${importer}${sigil}brand: #f80;\n.button { color: ${symbol}; }\n${sigil}brand: #08f;\n`);
+      const override = await new Compiler({}).renderToResult(path.join(dir, `override.${language}`));
+      expect(override).toMatchObject({ css: '.button {\n  color: var(--brand, #f80);\n}\n', errors: [], warnings: [] });
+      const twice = await new Compiler({}).renderToResult(path.join(dir, `twice.${language}`));
+      expect(twice.errors).toEqual([]);
+      expect(warned(twice.warnings)).toEqual([{ code: 'eval/expose-reassigned', message: `${symbol} is exposed and assigned more than once; set() sets its value for every read` }]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('leaves a nested shadow of the name its own value, with no warning', async () => {
     const { css, errors, warnings } = await compiled('@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n.dark { $brand: #f66; color: $brand; }\n', 'jess');
     expect(errors).toEqual([]);

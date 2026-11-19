@@ -51,9 +51,11 @@ export function exposedRef<F>(x: ExportState<F>, name: string, hit: { value: Cal
 /**
  * An assignment of `node.name` in frame `owner` whose value `value` is read in
  * `frame`: when an `@expose` of the name binds in `owner`, it assigns the exposed
- * variable ({@link assignmentRef}). A second one warns: the variable is one,
- * like an exported JavaScript `let` assigned twice, so `set()` sets the value
- * every read follows (owner 2026-11-19, ledger A22).
+ * variable ({@link assignmentRef}). A second one in the same file warns, once
+ * per variable: the variable is one, like an exported JavaScript `let` assigned
+ * twice, so `set()` sets the value every read follows (owner 2026-11-19, ledger
+ * A22). An importer's assignment of a variable a file it imports declares is a
+ * deliberate override and does not warn (orchestrator 2026-11-19).
  */
 export function exposedWrite<F>(e: ExportLane<F>, node: VariableDeclaration, owner: F, value: CallValue, frame: F): void {
   const x = e.s.exports;
@@ -68,8 +70,21 @@ export function exposedWrite<F>(e: ExportLane<F>, node: VariableDeclaration, own
   const first = x.assigned.get(name);
   if (first === undefined) {
     x.assigned.set(name, node);
-  } else if (first !== null && first !== node) {
+  } else if (first !== node) {
     x.assigned.set(name, null);
+  }
+  const files = x.assignedIn.get(name);
+  if (files === null) {
+    return;
+  }
+  const file = e.s.context?.fileOfNode(node) ?? e.s.context?.sourceContext?.file;
+  const earlier = files?.get(file);
+  if (files === undefined) {
+    x.assignedIn.set(name, new Map([[file, node]]));
+  } else if (earlier === undefined) {
+    files.set(file, node);
+  } else if (earlier !== node) {
+    x.assignedIn.set(name, null);
     e.s.context?.warn(WARN.exposeReassigned({ node, ...callSiteLocation(node, e.s), meta: { ...home.node.spelling, name } }));
   }
 }
