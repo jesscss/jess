@@ -784,11 +784,8 @@ export class Context {
       error.name = 'FatalWarningError';
       throw error;
     }
-    if (this.warningsMuted) {
-      return false;
-    }
-    if (!cfg.limitRepetition || cfg.verbose) {
-      return true;
+    if (this.warningsMuted || !cfg.limitRepetition || cfg.verbose) {
+      return !this.warningsMuted;
     }
     let stats = this._warnStats.get(code);
     if (!stats) {

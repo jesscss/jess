@@ -19,7 +19,7 @@ import type { ValueCheckLane } from './invalid-value-syntax.js';
 import { makeDimension, makeKeyword, makeList, withFields } from './value-factory.js';
 import { assignmentRef, exposedRef, type ExposedWrite } from './exposed-assignments.js';
 
-export { excluding, exportFinalDefaults, writeCell, writeReassign } from './exposed-assignments.js';
+export { compileHoldingMixed, excluding, exportFinalDefaults, holdExports, writeCell, writeReassign, type ExportHold } from './exposed-assignments.js';
 import { cancelPercent, exposedOperand, insideParens, keepAsWritten, mathOnDeferred, ratioOf } from './value-operate.js';
 
 /**
@@ -350,7 +350,7 @@ const NONE: ReadonlySet<string> = new Set();
  * again holding them as written. Until Jess has types no read may assume one
  * (owner 2026-11-19, ledger A22). Undefined when there are none.
  */
-export function mixedReads<F>(x: ExportState<F>): ReadonlySet<string> | undefined {
+export function mixedReads(x: Pick<ExportState<unknown>, 'runtime'>): ReadonlySet<string> | undefined {
   const runtime = x.runtime;
   if (runtime === undefined || runtime.ratios.size === 0 || runtime.written.size === 0) {
     return undefined;
