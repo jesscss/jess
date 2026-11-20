@@ -7,6 +7,7 @@
  * interpolation) and builds the rule's selector here.
  */
 import { InvalidRulePreludeError } from '../error/diagnostics.js';
+import { authoredSource } from './css-grammar-helpers.js';
 import { selist, simpleSelector } from './nodes.js';
 import type { SelectorList } from './nodes.js';
 
@@ -41,8 +42,8 @@ export function unreadableRulePrelude(
   start: number,
   report: (error: InvalidRulePreludeError, state: unknown) => void = keepOnStateDiagnostics
 ): SelectorList {
-  const written = typeof state === 'object' && state !== null && 'source' in state && typeof state.source === 'string'
-    ? state.source.slice(start, end)
+  const written = typeof state === 'object' && state !== null && 'source' in state
+    ? authoredSource({ start, end }, state, 'A rule prelude')
     : '';
   const text = written.trim();
   const offset = start + written.length - written.trimStart().length;
