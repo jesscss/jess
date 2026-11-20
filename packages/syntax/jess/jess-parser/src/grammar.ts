@@ -30,7 +30,7 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCall, guardCompare, guardDefault, guardNot, guardValue, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
+import { RulePreludeRest as PreludeRest, unreadableRulePrelude, sourceStartOf, NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup, referenceCall, guardCall, guardCompare, guardDefault, guardNot, guardValue, withMixinPath, mixinPathSegment } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
@@ -318,6 +318,9 @@ type JessRules = {
 };
 
 type SharedSyntax = {
+  /* Inherited from the CSS base: what is left of a rule's prelude when no selector reads the current token. */
+  RulePreludeRest: Combinator<PreludeRest>;
+
   /* Inherited from the CSS base: the glued `ns|` / `*|` / `|` prefix terminal. */
   AttributeNamespace: Combinator<unknown>;
 
@@ -6413,29 +6416,38 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ), children);
     }
   );
+
+  /**
+   * A rule in a block: a nested selector list, then its block, or the rest of a
+   * prelude no selector reads (inherited from the CSS base) and the block, with
+   * the error at the prelude (ledger P45). The `{` is tried first.
+   */
   const NestedRuleset = node<Ruleset>(
     'NestedRuleset',
     sequence(
       g.NestedSelectorList,
-      literal('{'),
+      choice(literal('{'), sequence(g.RulePreludeRest, literal('{'))),
       many(rulesetBodyItem),
       literal('}')
     ),
     (children) => {
+      const rest = children[1];
+      const open = rest instanceof PreludeRest ? 2 : 1;
       requireExactToken(
-        children[1],
+        children[open],
         '{'
       );
       requireExactToken(
         children.at(-1),
         '}'
       );
+      const selector = requireSelectorList(children[0]);
       const extensions = children.filter(isExtendInstructionArray).flat();
       return withBlockBody(rule(
-        requireSelectorList(children[0]),
+        rest instanceof PreludeRest ? unreadableRulePrelude(rest, sourceStartOf(selector)) : selector,
         collectBlockStatements(
           children,
-          2
+          open + 1
         ),
         extensions.length ? extensions : undefined
       ), children);

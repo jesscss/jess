@@ -1,37 +1,11 @@
-import { authoredSource, isExtendInstruction, rule, selist, simpleSelector, sourceStartOf, withBlockBody } from '@jesscss/core/ast';
-import type { AstSourceSpan, Ruleset, SelectorList, SimpleSelector } from '@jesscss/core/ast';
+import { RulePreludeRest, authoredSource, isExtendInstruction, rule, simpleSelector, sourceStartOf, unreadableRulePrelude, withBlockBody } from '@jesscss/core/ast';
+import type { AstSourceSpan, Ruleset, SimpleSelector } from '@jesscss/core/ast';
 import { InvalidRulePreludeError } from '@jesscss/core/diagnostics';
 import { reportRecovered, requireSelectorList, requireToken, statementChildren } from './grammar-helpers.js';
-
-/** What a rule's prelude holds past any selector: its span, and the parse state its error reports through. */
-export class RulePreludeRest {
-  readonly start: number;
-  readonly end: number;
-  readonly state: unknown;
-
-  constructor(start: number, end: number, state: unknown) {
-    this.start = start;
-    this.end = end;
-    this.state = state;
-  }
-}
 
 /** The bytes at a span, for a rule whose node keeps them: a raw-grammar run has no source to quote. */
 export function writtenAt(span: AstSourceSpan, state: unknown, what: string): string {
   return typeof state === 'object' && state !== null && 'source' in state ? authoredSource(span, state, what) : '';
-}
-
-/**
- * A prelude no selector reads, as written, in one simple selector, and the error
- * at it (ledger P45). A raw-grammar run keeps no reports.
- */
-function unreadableRulePrelude({ end, state }: RulePreludeRest, start: number): SelectorList {
-  const written = writtenAt({ start, end }, state, 'A rule prelude');
-  const text = written.trim();
-  const offset = start + written.length - written.trimStart().length;
-  const selector = simpleSelector(text);
-  reportRecovered(new InvalidRulePreludeError(offset, offset + text.length, selector), state);
-  return selist(selector);
 }
 
 /** A known pseudo its argument rule cannot read, as written in one simple selector, and the error at it (ledger P45). */

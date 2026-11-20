@@ -169,6 +169,7 @@ export {
 export { enterSupportsGroup, isInSupportsGroup } from './ast/supports-condition.js';
 export { adoptForgivenSelectorItems, forgivenSelectorItemsOf, forgivingSelectorItem, forgivingSelectorList, forgivingSelectorRest, withForgivenSelectorItems } from './ast/forgiving-selector.js';
 export type { ForgivenSelectorItem, ForgivingSelectorRest } from './ast/forgiving-selector.js';
+export { RulePreludeRest, unreadableRulePrelude } from './ast/rule-prelude.js';
 export { componentRun } from './ast/component-run.js';
 export { parenGroupContent } from './ast/paren-group.js';
 export { queryFeatureNameFrom, queryFeatureNameValue } from './ast/query-feature-name.js';
