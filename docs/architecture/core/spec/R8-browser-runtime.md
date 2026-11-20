@@ -374,9 +374,12 @@ or needs JS) to decide what ships in the bundle.
   alike. Measured in Chrome 156: over `/ 1px`, `--a: 50px` is right on `height`,
   `top`, `blur()`, `z-index` and `opacity`, and `--a: 2em` gives 32, `10vw` 102.
 - **Percentages.** A `%` export is held as its ratio: `@a: 50%` is `--a: 0.5`,
-  its fallback `0.5` too, and every read multiplies it back. One assigned values
+  its fallback `0.5` too, and every read multiplies it back. One read as values
   of more than one kind (`$r: 10%;` then `$r := 5px;`, ledger A22) is no ratio: it
-  holds each value as written (`var(--r, 10%)`, `var(--r, 5px)`). A plain read is
+  holds each value as written (`var(--r, 10%)`, `var(--r, 5px)`). Which reads see
+  which value is known only once the stylesheet is compiled, so a compile that read
+  one both ways compiles once more holding it as written, keeping the first run's
+  warnings (`mixedReads`, `serialize.ts` `serializeHolding`). A plain read is
   `calc(var(--a, 0.5) * 100%)`; a form reads the number, `@less.unit(@a, px)` being
   `calc(var(--a, 0.5) * 100 * 1px)` and `@less.darken(#c00, @a)`
   `hsl(from #c00 h s clamp(0, l - var(--a, 0.5) * 100, 100))`. The compile folds

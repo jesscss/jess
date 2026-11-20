@@ -5,7 +5,6 @@ import { JessError } from '../error/jess-error.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import { isDimension, knownUnit } from './css-math.js';
-import { walkAuthoredNode, type AstVisitHooks } from './traversal.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
 import type { BodyOrigin } from './functions/types.js';
@@ -69,13 +68,14 @@ export interface ExportRuntime {
   readonly ratios: Set<string>;
 
   /**
-   * Each export assigned values of more than one kind in its own frame
-   * (`$r: 10%` then `$r := 5px`): its custom property holds each value as
-   * written, never a ratio, so `set()` gives every read a value of its kind.
-   * Without types no read may assume one; a form that reads it in one unit
-   * still fixes that unit ({@link recordUnits}). Owner 2026-11-19 (A22).
+   * Each export held as written, never as a ratio: one a compile read both as
+   * a ratio and as written, so it is compiled again with it here
+   * ({@link mixedReads}).
    */
-  readonly asWritten: Set<string>;
+  readonly asWritten: ReadonlySet<string>;
+
+  /** Each export a read saw holding a value that is not a percentage. */
+  readonly written: Set<string>;
 
   /** The read of each `%` export, built once for each ratio it holds, by name and ratio ({@link percentRead}). */
   readonly percent: Map<string, ValueGroup>;
@@ -213,6 +213,9 @@ interface ExportInput {
 
 /** One render's exports ({@link exportState}). */
 export interface ExportState<F> {
+  /** The exports this compile holds as written ({@link mixedReads}). */
+  readonly asWritten: ReadonlySet<string>;
+
   /** By what a variable read resolves to. */
   readonly refs: Map<object, ExportRef<F>>;
 
@@ -334,8 +337,26 @@ const IN_LARGER_ARGUMENT = 'inside a larger argument of a function Jess computes
 export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
-export function exportState<F>(): ExportState<F> {
-  return { refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map(), homes: new Map(), writes: new Map(), assigned: new Map(), assignedIn: new Map(), last: new Map(), within: new Map() };
+export function exportState<F>(asWritten: ReadonlySet<string> = NONE): ExportState<F> {
+  return { asWritten, refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map(), homes: new Map(), writes: new Map(), assigned: new Map(), assignedIn: new Map(), last: new Map(), within: new Map() };
+}
+
+const NONE: ReadonlySet<string> = new Set();
+
+/**
+ * The exports a compile read both as a ratio and as written (`$r: 10%;` read,
+ * then `$r := 5px;` read, the second assignment in this file, an import or a
+ * mixin): one custom property holds one form, so the stylesheet is compiled
+ * again holding them as written. Until Jess has types no read may assume one
+ * (owner 2026-11-19, ledger A22). Undefined when there are none.
+ */
+export function mixedReads<F>(x: ExportState<F>): ReadonlySet<string> | undefined {
+  const runtime = x.runtime;
+  if (runtime === undefined || runtime.ratios.size === 0 || runtime.written.size === 0) {
+    return undefined;
+  }
+  const mixed = new Set([...runtime.ratios].filter(name => runtime.written.has(name)));
+  return mixed.size === 0 ? undefined : mixed;
 }
 
 /** The state when something is exported, else undefined. */
@@ -374,39 +395,10 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
     return;
   }
   x.declared.push({ node, frame });
-  const runtime = x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), asWritten: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), literalNames: false, ownNames: false, indirect: false, named: new Map(), properties: new Map(), slots: new Map() };
   const declares = new Set<string>();
-
-  /*
-   * By exposed name, whether each of its assignments so far is a literal
-   * percentage: each declaration here, and each reassignment in a body below
-   * (`.x { $r := 5px; }`); a body's own `$r: blue` is another variable (A22).
-   */
-  const percents = new Map<string, boolean>();
-  const assigns = (name: string, value: VariableDeclaration['value']): void => {
-    if (node.names.some(exported => exported.name === name)) {
-      const percent = isPercent(value);
-      const earlier = percents.get(name);
-      if (earlier !== undefined && !(earlier && percent)) {
-        runtime.asWritten.add(name);
-      }
-      percents.set(name, (earlier ?? true) && percent);
-    }
-  };
-  const reassigns: AstVisitHooks = {
-    enterNode: (inner) => {
-      if (inner.type === 'VariableDeclaration' && inner.write.mode !== 'declare') {
-        assigns(inner.name, inner.value);
-      }
-    },
-    enterSlot: () => 'skip-children'
-  };
   for (const statement of own ?? []) {
     if (statement.type === 'VariableDeclaration') {
       declares.add(statement.name);
-      assigns(statement.name, statement.value);
-    } else {
-      walkAuthoredNode(statement, reassigns);
     }
   }
   x.pending.push({ node, resolve, own, declares, at: node.names.map(exported => callSiteLocation(exported, e.s)) });
@@ -416,9 +408,8 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
       x.homes.set(exported.name, { frame, node });
     }
   }
+  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), asWritten: x.asWritten, written: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), literalNames: false, ownNames: false, indirect: false, named: new Map(), properties: new Map(), slots: new Map() };
 }
-
-const isPercent = (value: VariableDeclaration['value']): boolean => !isValueSlotArray(value) && value.type === 'Dimension' && value.unit === '%';
 
 /**
  * Resolves every pending `@expose`. A name nothing declares is an error,
@@ -602,11 +593,15 @@ function percentRead(read: ValueGroup, modes: EvalModes, runtime: ExportRuntime)
     return read;
   }
   const key = runtime.properties.get(name.text);
-  if (key === undefined || runtime.asWritten.has(key)) {
+  if (key === undefined) {
     return read;
   }
   const ratio = ratioOfHeld(held);
   if (ratio === undefined) {
+    runtime.written.add(key);
+    return read;
+  }
+  if (runtime.asWritten.has(key)) {
     return read;
   }
 
@@ -862,6 +857,7 @@ function recordUnits<F>(runtime: ExportRuntime, reads: ReadonlyArray<{ name: str
       noteRatio(runtime, read.name);
     } else if (isDimension(read.value)) {
       runtime.units.set(read.name, read.value.unit);
+      runtime.written.add(read.name);
     }
   }
   formUnits(runtime, form, undefined, false, (name, unit) => {

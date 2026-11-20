@@ -686,10 +686,6 @@ export function walkAuthoredAst(root: Stylesheet, hooks: AstVisitHooks): void {
   walkNode(root, hooks, 'root', null, 0, 0);
 }
 
-export function walkAuthoredNode(node: AstVisitNode, hooks: AstVisitHooks): void {
-  walkNode(node, hooks, 'root', null, 0, 0);
-}
-
 export function walkAuthoredValue(value: ValueSlot, hooks: AstVisitHooks): void {
   walkValueSlot(value, hooks, 'root', null, 0, 0);
 }

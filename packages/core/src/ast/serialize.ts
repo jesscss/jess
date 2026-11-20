@@ -214,7 +214,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { channelFunction, channelMath, channelOf, formChannels, isComputedColorCall, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
-import { argumentStatementKind, declareExpose, excluding, exportFinalDefaults, writeCell, writeReassign, exposedWritten, readsExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, declareExpose, excluding, exportFinalDefaults, mixedReads, writeCell, writeReassign, exposedWritten, readsExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedAtRuleName, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation, laneSiteLocation } from './call-site-location.js';
@@ -14083,7 +14083,8 @@ function createRenderSession(
   options: PrepareStaticImportsOptions | undefined,
   importDocument: SerializeOptions['importDocument'],
   rootFns: ReadonlyMap<string, Fn> | null,
-  entry: Pick<Emit, 'positions' | 'plannedImportDocuments'> & Pick<EvalSession, 'plannedModuleImports' | 'pendingPlannedModuleImports' | 'preparedImportsOwnedByCaller'>
+  entry: Pick<Emit, 'positions' | 'plannedImportDocuments'> & Pick<EvalSession, 'plannedModuleImports' | 'pendingPlannedModuleImports' | 'preparedImportsOwnedByCaller'>,
+  asWritten?: ReadonlySet<string>
 ): Emit {
   const compress = options?.compress ?? false;
   const policy = options?.modes === undefined ? options?.context?.options : undefined;
@@ -14114,7 +14115,7 @@ function createRenderSession(
       argumentSyntax: undefined,
       invalidArguments: new Map(),
       nestedPropertyOwners: undefined,
-      exports: exportState()
+      exports: exportState(asWritten)
     },
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: policy === undefined ? { ...(options?.modes ?? DEFAULT_MODES), compress } : modesOf(policy, compress),
@@ -14233,6 +14234,15 @@ function makeRenderRootFrame(root: Stylesheet, rootFns: Map<string, Fn> | null, 
 }
 
 export function serialize(root: Stylesheet, options?: SerializeOptions): SerializeReturn {
+  return serializeHolding(root, options, undefined);
+}
+
+/**
+ * {@link serialize}, holding the exports in `asWritten` as written. A compile
+ * that read an export both as a ratio and as written compiles once more with
+ * them so ({@link mixedReads}, ledger A22); one without such a read compiles once.
+ */
+function serializeHolding(root: Stylesheet, options: SerializeOptions | undefined, asWritten: ReadonlySet<string> | undefined): SerializeReturn {
   const pluginHost = options?.pluginHost;
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
   const rootFns = globalScopedFns(pluginHost);
@@ -14249,7 +14259,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       : preparedModulePlan,
     pendingPlannedModuleImports: preparedModulePlan?.size,
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined
-  });
+  }, asWritten);
   const rootFrame = makeRenderRootFrame(root, rootFns, e);
   forEachExpose(root.rules, node => activateVariableDeclaration(node, rootFrame, e, root.rules)); // [A20] bound before any read, written before or after it
   const continueRender = (planned: ImportPlannerInput): SerializeReturn => {
@@ -14420,7 +14430,33 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     const planned = planImportedFacts(root, plannerRootFrame, e, importDocument, mode, rootFrame);
     return isThenable(planned) ? planned.then(continueRender) : continueRender(planned);
   };
-  return mapMaybe(prepare, plan);
+  return mapMaybe(mapMaybe(prepare, plan), (result) => {
+    const mixed = asWritten === undefined ? mixedReads(e.s.exports) : undefined;
+    return mixed === undefined ? result : withWarningsMuted(options?.context, () => serializeHolding(root, options, mixed));
+  });
+}
+
+/** `run`, dropping the warnings it raises: the compile it repeats raised them. */
+function withWarningsMuted(context: Context | undefined, run: () => SerializeReturn): SerializeReturn {
+  if (context === undefined) {
+    return run();
+  }
+  const was = context.warningsMuted;
+  context.warningsMuted = true;
+  const restore = (): void => {
+    context.warningsMuted = was;
+  };
+  try {
+    const result = run();
+    if (isThenable(result)) {
+      return result.finally(restore);
+    }
+    restore();
+    return result;
+  } catch (error) {
+    restore();
+    throw error;
+  }
 }
 
 /** Emit a source document at the current source-order position without creating a wrapper node. */

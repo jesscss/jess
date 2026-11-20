@@ -203,6 +203,26 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
     expect(runtime?.ratios).toEqual([]);
   });
 
+  it('holds a percentage an importer overrides with a length as written', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-expose-kinds-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'tokens.jess'), '$r: 10%;\n@-expose r;\n.a { w: $r; }\n');
+      const filePath = path.join(dir, 'entry.jess');
+      const source = '@-import "./tokens.jess";\n$r: 5px;\n.b { w: $r; }\n';
+      const { css, errors, warnings } = await new Compiler({}).renderToResult({ filePath, source, language: 'jess' });
+      expect(errors).toEqual([]);
+      expect(warnings).toEqual([]);
+      expect(css).toBe('.a {\n  w: var(--r, 10%);\n}\n.b {\n  w: var(--r, 5px);\n}\n');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('warns once for a variable it compiles again to hold as written', async () => {
+    const { warnings } = await compiled('@-expose r;\n$r: 10%;\n.a { w: $r; }\n$r := 5px;\n.b { w: $r; }\n', 'jess');
+    expect(warnings.map(warning => warning.code)).toEqual(['eval/expose-reassigned']);
+  });
+
   it('still holds the ratio of a percentage a body shadows with a length', async () => {
     const { css, errors } = await compiled('@-expose r;\n$r: 10%;\n.x { $r: 5px; w: $r; }\n.a { w: $r; }\n', 'jess');
     expect(errors).toEqual([]);

@@ -656,6 +656,9 @@ export class Context {
   /** Guards {@link finalizeWarnings} idempotency. */
   private _warningsFinalized = false;
 
+  /** While set, warnings are dropped: a compile run again gives the first run's (serialize.ts `serializeHolding`). */
+  warningsMuted = false;
+
   /** The resolved warnings config, computed once from the compile options. */
   private get warnConfig(): ResolvedWarningsConfig {
     if (!this._warnConfig) {
@@ -773,6 +776,9 @@ export class Context {
     site: string,
     fatalMessage: () => string
   ): boolean {
+    if (this.warningsMuted) {
+      return false;
+    }
     const cfg = this.warnConfig;
     if (warnCodeMatchesAny(code, cfg.fatal)) {
       const message = fatalMessage();
