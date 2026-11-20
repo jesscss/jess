@@ -223,6 +223,12 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
     expect(warnings.map(warning => warning.code)).toEqual(['eval/expose-reassigned']);
   });
 
+  it('still holds the ratio of a percentage computed, then assigned', async () => {
+    const { css, errors } = await compiled('@-expose r;\n$r: $(5% * 2);\n.a { w: $r; }\n$r := 20%;\n.b { w: $r; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  w: calc(var(--r, 0.1) * 100%);\n}\n.b {\n  w: calc(var(--r, 0.2) * 100%);\n}\n');
+  });
+
   it('still holds the ratio of a percentage a body shadows with a length', async () => {
     const { css, errors } = await compiled('@-expose r;\n$r: 10%;\n.x { $r: 5px; w: $r; }\n.a { w: $r; }\n', 'jess');
     expect(errors).toEqual([]);

@@ -14243,6 +14243,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
  * them so ({@link mixedReads}, ledger A22); one without such a read compiles once.
  */
 function serializeHolding(root: Stylesheet, options: SerializeOptions | undefined, asWritten: ReadonlySet<string> | undefined): SerializeReturn {
+  const errorsBefore = options?.context?.errors.length ?? 0;
   const pluginHost = options?.pluginHost;
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
   const rootFns = globalScopedFns(pluginHost);
@@ -14432,7 +14433,13 @@ function serializeHolding(root: Stylesheet, options: SerializeOptions | undefine
   };
   return mapMaybe(mapMaybe(prepare, plan), (result) => {
     const mixed = asWritten === undefined ? mixedReads(e.s.exports) : undefined;
-    return mixed === undefined ? result : withWarningsMuted(options?.context, () => serializeHolding(root, options, mixed));
+    if (mixed === undefined) {
+      return result;
+    }
+
+    /* The second run reports this compile's errors; the first run's go. */
+    options?.context?.errors.splice(errorsBefore);
+    return withWarningsMuted(options?.context, () => serializeHolding(root, options, mixed));
   });
 }
 

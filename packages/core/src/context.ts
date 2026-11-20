@@ -656,7 +656,7 @@ export class Context {
   /** Guards {@link finalizeWarnings} idempotency. */
   private _warningsFinalized = false;
 
-  /** While set, warnings are dropped: a compile run again gives the first run's (serialize.ts `serializeHolding`). */
+  /** While set, warnings are dropped, except a fatal one: a compile run again keeps the first run's (serialize.ts `serializeHolding`). */
   warningsMuted = false;
 
   /** The resolved warnings config, computed once from the compile options. */
@@ -776,9 +776,6 @@ export class Context {
     site: string,
     fatalMessage: () => string
   ): boolean {
-    if (this.warningsMuted) {
-      return false;
-    }
     const cfg = this.warnConfig;
     if (warnCodeMatchesAny(code, cfg.fatal)) {
       const message = fatalMessage();
@@ -786,6 +783,9 @@ export class Context {
         + 'Remove this setting if you need to keep using this feature.');
       error.name = 'FatalWarningError';
       throw error;
+    }
+    if (this.warningsMuted) {
+      return false;
     }
     if (!cfg.limitRepetition || cfg.verbose) {
       return true;
