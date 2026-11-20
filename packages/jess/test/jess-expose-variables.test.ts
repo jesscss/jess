@@ -191,6 +191,24 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
     expect(css).toBe('.a {\n  color: rgb(calc(var(--tint, 0.1) * 100%), 0, 0);\n}\n.b {\n  color: rgb(calc(var(--tint, 0.2) * 100%), 0, 0);\n}\n');
   });
 
+  /* Owner 2026-11-19 (A22): until Jess has types no read may assume one, so a variable assigned a percentage and a length holds each as written. */
+  it.each([
+    ['in its frame', '$r := 5px;\n'],
+    ['in a body', '.x { $r := 5px; }\n']
+  ])('holds a variable assigned values of two kinds as written, assigned %s', async (_where, later) => {
+    const { css, errors, runtime } = await compiled(`@-expose r;\n$r: 10%;\n.a { w: $r; }\n${later}.b { w: $r; }\n`, 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toContain('.a {\n  w: var(--r, 10%);\n}\n');
+    expect(css).toContain('.b {\n  w: var(--r, 5px);\n}\n');
+    expect(runtime?.ratios).toEqual([]);
+  });
+
+  it('still holds the ratio of a percentage a body shadows with a length', async () => {
+    const { css, errors } = await compiled('@-expose r;\n$r: 10%;\n.x { $r: 5px; w: $r; }\n.a { w: $r; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.x {\n  w: 5px;\n}\n.a {\n  w: calc(var(--r, 0.1) * 100%);\n}\n');
+  });
+
   /* Orchestrator 2026-11-19: an importer's override of a variable a file it imports declares is deliberate, so only a second assignment in one file warns. */
   it.each([
     ['less', '@brand: #c00;\n@expose brand;\n', '@import "./tokens.less";\n', '@brand'],

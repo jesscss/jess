@@ -5,6 +5,7 @@ import { JessError } from '../error/jess-error.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import { isDimension, knownUnit } from './css-math.js';
+import { walkAuthoredNode, type AstVisitHooks } from './traversal.js';
 import type { Fn, ParamSpec } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
 import type { BodyOrigin } from './functions/types.js';
@@ -66,6 +67,15 @@ export interface ExportRuntime {
 
   /** Each export whose custom property holds its ratio, `50%` as `0.5`: one whose compile-time value is a percentage ({@link ratioOfHeld}). */
   readonly ratios: Set<string>;
+
+  /**
+   * Each export assigned values of more than one kind in its own frame
+   * (`$r: 10%` then `$r := 5px`): its custom property holds each value as
+   * written, never a ratio, so `set()` gives every read a value of its kind.
+   * Without types no read may assume one; a form that reads it in one unit
+   * still fixes that unit ({@link recordUnits}). Owner 2026-11-19 (A22).
+   */
+  readonly asWritten: Set<string>;
 
   /** The read of each `%` export, built once for each ratio it holds, by name and ratio ({@link percentRead}). */
   readonly percent: Map<string, ValueGroup>;
@@ -364,10 +374,39 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
     return;
   }
   x.declared.push({ node, frame });
+  const runtime = x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), asWritten: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), literalNames: false, ownNames: false, indirect: false, named: new Map(), properties: new Map(), slots: new Map() };
   const declares = new Set<string>();
+
+  /*
+   * By exposed name, whether each of its assignments so far is a literal
+   * percentage: each declaration here, and each reassignment in a body below
+   * (`.x { $r := 5px; }`); a body's own `$r: blue` is another variable (A22).
+   */
+  const percents = new Map<string, boolean>();
+  const assigns = (name: string, value: VariableDeclaration['value']): void => {
+    if (node.names.some(exported => exported.name === name)) {
+      const percent = isPercent(value);
+      const earlier = percents.get(name);
+      if (earlier !== undefined && !(earlier && percent)) {
+        runtime.asWritten.add(name);
+      }
+      percents.set(name, (earlier ?? true) && percent);
+    }
+  };
+  const reassigns: AstVisitHooks = {
+    enterNode: (inner) => {
+      if (inner.type === 'VariableDeclaration' && inner.write.mode !== 'declare') {
+        assigns(inner.name, inner.value);
+      }
+    },
+    enterSlot: () => 'skip-children'
+  };
   for (const statement of own ?? []) {
     if (statement.type === 'VariableDeclaration') {
       declares.add(statement.name);
+      assigns(statement.name, statement.value);
+    } else {
+      walkAuthoredNode(statement, reassigns);
     }
   }
   x.pending.push({ node, resolve, own, declares, at: node.names.map(exported => callSiteLocation(exported, e.s)) });
@@ -377,8 +416,9 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
       x.homes.set(exported.name, { frame, node });
     }
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), literalNames: false, ownNames: false, indirect: false, named: new Map(), properties: new Map(), slots: new Map() };
 }
+
+const isPercent = (value: VariableDeclaration['value']): boolean => !isValueSlotArray(value) && value.type === 'Dimension' && value.unit === '%';
 
 /**
  * Resolves every pending `@expose`. A name nothing declares is an error,
@@ -562,7 +602,7 @@ function percentRead(read: ValueGroup, modes: EvalModes, runtime: ExportRuntime)
     return read;
   }
   const key = runtime.properties.get(name.text);
-  if (key === undefined) {
+  if (key === undefined || runtime.asWritten.has(key)) {
     return read;
   }
   const ratio = ratioOfHeld(held);
@@ -596,6 +636,9 @@ function ratioOfHeld(held: ValueGroup | undefined): Value | undefined {
 
 /** `name` holds its ratio, and the runtime takes only a percentage for it. */
 function noteRatio(runtime: ExportRuntime, name: string): void {
+  if (runtime.asWritten.has(name)) {
+    return;
+  }
   runtime.ratios.add(name);
   runtime.units.set(name, '%');
 }
