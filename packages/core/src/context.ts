@@ -656,6 +656,9 @@ export class Context {
   /** Guards {@link finalizeWarnings} idempotency. */
   private _warningsFinalized = false;
 
+  /** While set, warnings are dropped, except a fatal one: a compile run again keeps the first run's (serialize.ts `serializeHolding`). */
+  warningsMuted = false;
+
   /** The resolved warnings config, computed once from the compile options. */
   private get warnConfig(): ResolvedWarningsConfig {
     if (!this._warnConfig) {
@@ -781,8 +784,8 @@ export class Context {
       error.name = 'FatalWarningError';
       throw error;
     }
-    if (!cfg.limitRepetition || cfg.verbose) {
-      return true;
+    if (this.warningsMuted || !cfg.limitRepetition || cfg.verbose) {
+      return !this.warningsMuted;
     }
     let stats = this._warnStats.get(code);
     if (!stats) {
