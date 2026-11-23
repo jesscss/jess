@@ -5,7 +5,7 @@
  * re-exported by a sibling entry without dragging that entry's imports along.
  */
 
-import type { ExposeDeclarationError, LeadingSeparatorValueError, MalformedExposeError } from '@jesscss/core/diagnostics';
+import type { ExposeDeclarationError, InvalidRulePreludeError, LeadingSeparatorValueError, MalformedExposeError } from '@jesscss/core/diagnostics';
 
 /** Structured failure from the public direct Jess parser. */
 export class JessParseError extends SyntaxError {
@@ -121,4 +121,4 @@ export class JessBareBraceMapError extends SyntaxError {
 
 /** A problem the grammar recovered from: a located error diagnostic the parse carries on past (ledger P45). */
 export type JessRecoveredError = JessSelectorCaptureArgumentError | LeadingSeparatorValueError | JessArithmeticOutsideExpressionError | JessBareBraceMapError
-  | ExposeDeclarationError | MalformedExposeError;
+  | ExposeDeclarationError | MalformedExposeError | InvalidRulePreludeError;

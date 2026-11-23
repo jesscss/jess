@@ -6,7 +6,7 @@ import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
 import { cssGrammar } from '../src/grammar.js';
 import { parseCssCst, commentTriviaLabels } from '../src/cst.js';
-import { parse } from '../src/index.js';
+import { parse, parseRecovering } from '../src/index.js';
 import { wptAnbParsing } from './wpt-syntax-vectors.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
@@ -125,6 +125,37 @@ describe('CSS canonical-AST grammar', () => {
         { type: 'Declaration', name: 'color', important: true },
         { type: 'Ruleset' }
       ]
+    });
+  });
+
+  it.each([
+    ['.x { a: selector(1px) { b: c; } }', 'a: selector(1px)', 'b'],
+    ['.x { a:hover selector(1px) { b: c; } }', 'a:hover selector(1px)', 'b'],
+    ['.x { a:b selector(1px), .c { d: e } }', 'a:b selector(1px), .c', 'd'],
+    ['.x { a:b @c { d: e } }', 'a:b @c', 'd']
+  ])('reads %j as a nested rule whose prelude no selector reads, then reports it (P45)', (source, prelude, name) => {
+    const { document, recovered } = parseRecovering(source);
+    expect(recovered.map(error => [error.code, source.slice(error.offset, error.endOffset)])).toEqual([['parse/invalid-rule-prelude', prelude]]);
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{
+        type: 'Ruleset',
+        selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: prelude }] },
+        rules: [{ type: 'Declaration', name }]
+      }]
+    });
+    expect(() => parse(source)).toThrow(expect.objectContaining({ code: 'parse/invalid-rule-prelude' }));
+  });
+
+  it('still reads a glued pseudo before a block as the nested rule\'s selector', () => {
+    const { document, recovered } = parseRecovering('.x { a:hover { b: c } }');
+    expect(recovered).toEqual([]);
+    expect(document.rules[0]).toMatchObject({
+      rules: [{
+        type: 'Ruleset',
+        selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: 'a' }, { text: ':hover' }] }] },
+        rules: [{ type: 'Declaration', name: 'b' }]
+      }]
     });
   });
 

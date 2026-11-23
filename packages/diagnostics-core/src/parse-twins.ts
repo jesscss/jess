@@ -400,8 +400,11 @@ export function pushParseTwinDiagnostics(
     const error = ERR.leadingSeparatorValue(lead?._tag === 'leaf' && lead.value === '/' ? '/' : '*');
     push('parse/leading-separator-value', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
   }
-  if (language === 'scss' && (gt === 'Ruleset' || gt === 'NestedRuleset')) {
+  if (language !== 'less' && (gt === 'Ruleset' || gt === 'NestedRuleset')) {
     pushInvalidRulePreludeTwin(node, source, push);
+  }
+  if (language === 'less' && gt === 'DeclarationItem') {
+    pushDeclarationPreludeTwin(node, source, push);
   }
   if (language === 'scss' && gt === 'InvalidPseudo' && !coveredPseudos.has(node)) {
     const error = ERR.invalidRulePrelude();
@@ -539,6 +542,19 @@ function pushInvalidRulePreludeTwin(node: CssCstNode, source: string, push: Pars
     const end = node.span.start + source.slice(node.span.start, rest.span.end).trimEnd().length;
     push('parse/invalid-rule-prelude', 'error', error.message, { ...node.span, end, endLine: rest.span.endLine, endColumn: rest.span.endColumn }, { phase: 'parse', reason: error.reason, fix: error.fix });
   }
+}
+
+/* Less's twin of `parse/invalid-rule-prelude`: a declaration a block follows, the prelude up to the block or the rest before it. */
+function pushDeclarationPreludeTwin(node: CssCstNode, source: string, push: ParseTwinPusher): void {
+  const block = cstChildrenOf(node).filter(isCstNode).find(child => child.grammarType === 'DeclarationPreludeBlock');
+  if (block === undefined) {
+    return;
+  }
+  const rest = cstChildrenOf(block).filter(isCstNode).find(child => child.grammarType === 'RulePreludeRest');
+  const last = rest?.span ?? { end: block.span.start, endLine: block.span.startLine, endColumn: block.span.startColumn };
+  const error = ERR.invalidRulePrelude();
+  const end = node.span.start + source.slice(node.span.start, last.end).trimEnd().length;
+  push('parse/invalid-rule-prelude', 'error', error.message, { ...node.span, end, endLine: last.endLine, endColumn: last.endColumn }, { phase: 'parse', reason: error.reason, fix: error.fix });
 }
 
 /* The editor twin of `css/invalid-supports-condition`, at the at-rule, where the compiler reports it. */

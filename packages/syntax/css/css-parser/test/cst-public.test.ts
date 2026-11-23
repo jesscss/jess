@@ -355,13 +355,14 @@ describe('@jesscss/css-parser/cst', () => {
 
   it('requires declaration separators before following nested body items', () => {
     const finalDeclaration = parseCssCst('.card { color: red }');
-    const beforeNestedAtRule = parseCssCst('.card { color: red @media (width: 1px) { color: blue; } }');
-    const beforeNestedRule = parseCssCst('.card { color: red .child { color: blue; } }');
 
     expect(finalDeclaration.errors).toHaveLength(0);
     expect(finalDeclaration.unconsumedFrom).toBeNull();
-    expect(beforeNestedAtRule.errors.length + (beforeNestedAtRule.unconsumedFrom === null ? 0 : 1)).toBeGreaterThan(0);
-    expect(beforeNestedRule.errors.length + (beforeNestedRule.unconsumedFrom === null ? 0 : 1)).toBeGreaterThan(0);
+
+    /* With no `;`, the declaration and the rule are one rule whose prelude no selector reads (P45). */
+    for (const source of ['.card { color: red .child { color: blue; } }', '.card { color: red @media (width: 1px) { color: blue; } }']) {
+      expect(() => parse(source), source).toThrow(expect.objectContaining({ code: 'parse/invalid-rule-prelude' }));
+    }
   });
 });
 

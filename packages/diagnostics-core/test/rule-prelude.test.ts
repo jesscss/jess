@@ -19,3 +19,15 @@ it('scss: one report for a prelude that also holds a pseudo no argument rule rea
     .filter(diagnostic => diagnostic.code === 'parse/invalid-rule-prelude');
   expect(reported.map(({ line, column }) => [line, column])).toEqual([[1, 1]]);
 });
+
+/* A rule in a block whose prelude no selector reads, in every dialect that reads it as one (jesscss/jess#672). */
+it.each([
+  ['css', '.x { a:hover selector(1px) { b: c; } }'],
+  ['less', '.x { a: selector(1px) { b: c; } }'],
+  ['less', '.x { a:b selector(1px), .c { d: e } }'],
+  ['jess', '.x { a: selector(1px) { b: c; } }']
+] as const)('%s: %j', (language, source) => {
+  const reported = collectTolerantDiagnostics({ source, language }).diagnostics
+    .filter(diagnostic => diagnostic.code === 'parse/invalid-rule-prelude');
+  expect(reported.map(({ line, column }) => [line, column])).toEqual([[1, 6]]);
+});

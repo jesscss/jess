@@ -1,4 +1,4 @@
-import type { ExposeDeclarationError, ExposeSpelling, MalformedExposeError } from '@jesscss/core/diagnostics';
+import type { ExposeDeclarationError, ExposeSpelling, InvalidRulePreludeError, MalformedExposeError } from '@jesscss/core/diagnostics';
 
 /** Less writes the expose statement `@expose` and a variable's read `@` (ledger A20). */
 export const LESS_EXPOSE: ExposeSpelling = { keyword: '@expose', sigil: '@' };
@@ -413,7 +413,7 @@ export class LessSelectorCaptureArgumentError extends SyntaxError {
  */
 export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError | LessConditionKeywordCaseError
   | LessSelectorCaptureArgumentError | LessLeadingSeparatorValueError | LessImportantMixinReferenceError
-  | ExposeDeclarationError | MalformedExposeError | LessUnresolvedPreludeInterpolationError;
+  | ExposeDeclarationError | MalformedExposeError | LessUnresolvedPreludeInterpolationError | InvalidRulePreludeError;
 
 /**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no
