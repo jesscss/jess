@@ -5,12 +5,12 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "97197ff914b30c02ba9a034cc3ac671b44817654a5d5be48d726bb8639b06c9b",
+      "aggregate": "bb6eea626dfbb76cc99f9c84607a5c2cd2a7a157a5456d76586330e82242e6fc",
       "threw": 103
     },
     {
       "name": "cst",
-      "aggregate": "f757c9475397d33f9cdb76a6c22dac5e03789dc7079315058bc0c6e52acfbaa2",
+      "aggregate": "cb02b06acfd393596009d733090e6185b6c788718a30c9182b770ec530d7373c",
       "threw": 0
     }
   ],
@@ -860,8 +860,8 @@
       "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/detached-ruleset-6.less": {
-      "ast": "05ff841cacec261a",
-      "cst": "39f5d31244bddce6"
+      "ast": "23f66011bf60b589",
+      "cst": "d1347d574984b7a5"
     },
     "node_modules/@less/test-data/tests-error/parse/extend-not-at-end.less": {
       "ast": "05ff841cacec261a",
