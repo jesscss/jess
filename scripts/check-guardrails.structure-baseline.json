@@ -150,8 +150,8 @@
   "packages/core/src/ast/serialize.ts#planImportedFacts.visit.visitImport": {
     "statements": 86
   },
-  "packages/core/src/ast/serialize.ts#serialize": {
-    "statements": 56
+  "packages/core/src/ast/serialize.ts#serializeHolding": {
+    "statements": 55
   },
   "packages/core/src/ast/serialize.ts#emitDocumentStatements": {
     "statements": 186

@@ -19,7 +19,7 @@ import type { ValueCheckLane } from './invalid-value-syntax.js';
 import { makeDimension, makeKeyword, makeList, withFields } from './value-factory.js';
 import { assignmentRef, exposedRef, type ExposedWrite } from './exposed-assignments.js';
 
-export { excluding, exportFinalDefaults, writeCell, writeReassign } from './exposed-assignments.js';
+export { compileHoldingMixed, excluding, exportFinalDefaults, holdExports, writeCell, writeReassign, type ExportHold } from './exposed-assignments.js';
 import { cancelPercent, exposedOperand, insideParens, keepAsWritten, mathOnDeferred, ratioOf } from './value-operate.js';
 
 /**
@@ -66,6 +66,16 @@ export interface ExportRuntime {
 
   /** Each export whose custom property holds its ratio, `50%` as `0.5`: one whose compile-time value is a percentage ({@link ratioOfHeld}). */
   readonly ratios: Set<string>;
+
+  /**
+   * Each export held as written, never as a ratio: one a compile read both as
+   * a ratio and as written, so it is compiled again with it here
+   * ({@link mixedReads}).
+   */
+  readonly asWritten: ReadonlySet<string>;
+
+  /** Each export a read saw holding a value that is not a percentage. */
+  readonly written: Set<string>;
 
   /** The read of each `%` export, built once for each ratio it holds, by name and ratio ({@link percentRead}). */
   readonly percent: Map<string, ValueGroup>;
@@ -203,6 +213,9 @@ interface ExportInput {
 
 /** One render's exports ({@link exportState}). */
 export interface ExportState<F> {
+  /** The exports this compile holds as written ({@link mixedReads}). */
+  readonly asWritten: ReadonlySet<string>;
+
   /** By what a variable read resolves to. */
   readonly refs: Map<object, ExportRef<F>>;
 
@@ -324,8 +337,26 @@ const IN_LARGER_ARGUMENT = 'inside a larger argument of a function Jess computes
 export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
-export function exportState<F>(): ExportState<F> {
-  return { refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map(), homes: new Map(), writes: new Map(), assigned: new Map(), assignedIn: new Map(), last: new Map(), within: new Map() };
+export function exportState<F>(asWritten: ReadonlySet<string> = NONE): ExportState<F> {
+  return { asWritten, refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map(), homes: new Map(), writes: new Map(), assigned: new Map(), assignedIn: new Map(), last: new Map(), within: new Map() };
+}
+
+const NONE: ReadonlySet<string> = new Set();
+
+/**
+ * The exports a compile read both as a ratio and as written (`$r: 10%;` read,
+ * then `$r := 5px;` read, the second assignment in this file, an import or a
+ * mixin): one custom property holds one form, so the stylesheet is compiled
+ * again holding them as written. Until Jess has types no read may assume one
+ * (owner 2026-11-19, ledger A22). Undefined when there are none.
+ */
+export function mixedReads(x: Pick<ExportState<unknown>, 'runtime'>): ReadonlySet<string> | undefined {
+  const runtime = x.runtime;
+  if (runtime === undefined || runtime.ratios.size === 0 || runtime.written.size === 0) {
+    return undefined;
+  }
+  const mixed = new Set([...runtime.ratios].filter(name => runtime.written.has(name)));
+  return mixed.size === 0 ? undefined : mixed;
 }
 
 /** The state when something is exported, else undefined. */
@@ -377,7 +408,7 @@ export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F
       x.homes.set(exported.name, { frame, node });
     }
   }
-  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), literalNames: false, ownNames: false, indirect: false, named: new Map(), properties: new Map(), slots: new Map() };
+  x.runtime ??= { exports: new Set(), defaults: new Map(), units: new Map(), ratios: new Set(), asWritten: x.asWritten, written: new Set(), percent: new Map(), derived: new Map(), colors: new Set(), literalNames: false, ownNames: false, indirect: false, named: new Map(), properties: new Map(), slots: new Map() };
 }
 
 /**
@@ -567,6 +598,10 @@ function percentRead(read: ValueGroup, modes: EvalModes, runtime: ExportRuntime)
   }
   const ratio = ratioOfHeld(held);
   if (ratio === undefined) {
+    runtime.written.add(key);
+    return read;
+  }
+  if (runtime.asWritten.has(key)) {
     return read;
   }
 
@@ -596,6 +631,9 @@ function ratioOfHeld(held: ValueGroup | undefined): Value | undefined {
 
 /** `name` holds its ratio, and the runtime takes only a percentage for it. */
 function noteRatio(runtime: ExportRuntime, name: string): void {
+  if (runtime.asWritten.has(name)) {
+    return;
+  }
   runtime.ratios.add(name);
   runtime.units.set(name, '%');
 }
@@ -819,6 +857,7 @@ function recordUnits<F>(runtime: ExportRuntime, reads: ReadonlyArray<{ name: str
       noteRatio(runtime, read.name);
     } else if (isDimension(read.value)) {
       runtime.units.set(read.name, read.value.unit);
+      runtime.written.add(read.name);
     }
   }
   formUnits(runtime, form, undefined, false, (name, unit) => {
