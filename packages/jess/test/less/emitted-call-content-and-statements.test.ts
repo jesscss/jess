@@ -167,6 +167,16 @@ describe('a call standing alone in statement position (P37)', () => {
     await expect(less(`a { b: c; ${statement} }`)).rejects.toThrow(notAStatement);
   });
 
+  /* A call last in its body needs no `;`: it is the same statement as with one (jess#657). */
+  it.each([
+    ['a ruleset', 'a { b: c; boolean(true) }'],
+    ['@media', '@media screen { a { b: c; } boolean(true) }'],
+    ['a detached ruleset', '@r: { b: c; and(true, false) }\na { @r(); }'],
+    ['an each() callback', '@l: 1 2; a { each(@l, { v: @value; not(false) }); }']
+  ])('raises for a condition call last in %s, without its `;`', async (_label, source) => {
+    await expect(less(source)).rejects.toThrow(notAStatement);
+  });
+
   it('modern: an unimported Less built-in in statement position raises', async () => {
     await expect(less('@use "#less";\n@a: 2; @l: 1 2; a { each(@l, { v: @a; }); }')).rejects.toThrow(notAStatement);
     await expect(less('@use "#less";\na { if((true), { color: red; }); }')).rejects.toThrow(notAStatement);

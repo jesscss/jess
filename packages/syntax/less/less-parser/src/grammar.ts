@@ -2160,9 +2160,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     optional(g.whitespace),
     choice(literal('}'), not(regex(/[\s\S]/)))
   )));
+  /** A statement call, ended by `;` or, last in its body, by `}` or the end of input (P37). */
   const GenericFunctionStatement = node(
     'Call',
-    sequence(g.CallArgumentFunction, literal(';')),
+    sequence(g.CallArgumentFunction, choice(literal(';'), terminalFunctionBoundary)),
     (children) => {
       const call = children.find(isFunctionCall);
       if (call === undefined) {
@@ -2170,10 +2171,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
       return lowerLogicalCallStatement(call);
     }
-  );
-  const TerminalGenericFunction = transform(
-    sequence(GenericFunction, terminalFunctionBoundary),
-    ([call]) => isStatement(call) ? call : ''
   );
   /*
    * A statement `if(<condition>, { … }, { … });` reads its arguments with the
@@ -2214,7 +2211,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       genericFunctionOpen,
       caseOf('each(', g.EachFunctionStatement),
       caseOf('if(', g.IfFunctionStatement),
-      otherwise(choice(GenericFunctionStatement, TerminalGenericFunction))
+      otherwise(GenericFunctionStatement)
     ),
     ([, statement]) => statement
   );

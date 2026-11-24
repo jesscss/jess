@@ -1214,7 +1214,28 @@ describe('Less AST grammar facts', () => {
     const terminalValueCall = runRaw(lessGrammar.Document, 'boolean(true)');
     expect(terminalValueCall.ok).toBe(true);
     expect(terminalValueCall.unconsumedFrom).toBeNull();
-    expect(stylesheet(terminalValueCall.value).rules).toEqual([]);
+    expect(bare(stylesheet(terminalValueCall.value))).toEqual(bare(parse('boolean(true);')));
+  });
+
+  /*
+   * A call last in its body, with no `;`, is the same statement call as with
+   * one (ledger P37) — a condition call too, which the value lane would lower
+   * to a condition and the body would then drop or reject (jess#657).
+   */
+  it.each([
+    ['.a { b: 1; boolean(true) }', '.a { b: 1; boolean(true); }'],
+    ['@media screen { b: 1; boolean(true) }', '@media screen { b: 1; boolean(true); }'],
+    ['@supports (a: b) { b: 1; boolean(true) }', '@supports (a: b) { b: 1; boolean(true); }'],
+    ['@r: { boolean(true) }', '@r: { boolean(true); }'],
+    ['@r: { a: 1; and(@a, @b) }', '@r: { a: 1; and(@a, @b); }'],
+    ['.m({ a: 1; not(@b) });', '.m({ a: 1; not(@b); });'],
+    ['each(@l, .(@v; @k) { v: @v; and(a, b) });', 'each(@l, .(@v; @k) { v: @v; and(a, b); });'],
+    ['each(@l, { v: @value; and(a, b) });', 'each(@l, { v: @value; and(a, b); });'],
+    ['.a { b: 1; or(a, b) }', '.a { b: 1; or(a, b); }'],
+    ['.a { b: 1; foo(1) }', '.a { b: 1; foo(1); }'],
+    ['.a { b: 1; if(true, { c: 1 }) }', '.a { b: 1; if(true, { c: 1 }); }']
+  ])('reads the last call of a body without its `;` as the terminated statement: %s', (source, terminated) => {
+    expect(bare(parse(source))).toEqual(bare(parse(terminated)));
   });
 
   it('requires the Less each() opener to be glued', () => {

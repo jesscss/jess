@@ -61,45 +61,45 @@
     },
     "less": {
       "source": "packages/syntax/less/less-parser/src/grammar.ts",
-      "sourceBytes": 278136,
+      "sourceBytes": 278080,
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 593060,
+          "bytes": 592375,
           "ratio": 2.13,
           "assemblyFunctions": 68
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 460996,
+          "bytes": 460891,
           "ratio": 1.66,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 463508,
-          "ratio": 1.67,
+          "bytes": 462887,
+          "ratio": 1.66,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 461325,
+          "bytes": 461220,
           "ratio": 1.66,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 277922,
+          "bytes": 277878,
           "ratio": 1,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 278008,
+          "bytes": 277964,
           "ratio": 1,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 278008,
+          "bytes": 277964,
           "ratio": 1,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 278014,
+          "bytes": 277970,
           "ratio": 1,
           "assemblyFunctions": null
         }
