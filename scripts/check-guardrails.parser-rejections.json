@@ -14,7 +14,8 @@
     "throw new JessParseError(result.span.start, result.expected, lineOptions(input, result.span));",
     "throw new JessParseError(result.unconsumedFrom, [], {",
     "throw new JessParseError(result.unconsumedFrom, [], {",
-    "throw new JessParseError(result.span.end, [], {"
+    "throw new JessParseError(result.span.end, [], {",
+    "throw recovered[0];"
   ],
   "packages/syntax/less/less-parser/src/grammar-helpers.ts": [
     "throw new LessUnsupportedVariableNameError(start, end, unsupported);",
@@ -43,7 +44,8 @@
     "return new LessParseError(result.unconsumedFrom, [], {",
     "return new LessParseError(result.unconsumedFrom, [], {",
     "throw new LessParseError(result.span.end, [], {",
-    "throw failure;"
+    "throw failure;",
+    "throw recovered[0];"
   ],
   "packages/syntax/scss/scss-parser/src/grammar-helpers.ts": [
     "throw new ScssImportPostludeError(span.start, span.end);"

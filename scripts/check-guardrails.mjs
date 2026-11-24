@@ -655,8 +655,8 @@ if (!rulings.lock) {
  */
 const PARSER_SOURCE = /^packages\/(?:syntax\/[^/]+\/[^/]+-parser|parser-shared)\/src\/.+(?<!\.d)\.ts$/;
 
-// A throw of a call, a construction or a bare name (`throw unreadable;`).
-const THROW_SITE = /\bthrow\s+(?:new\s+)?([A-Za-z_$][\w$]*)\s*(?:[(;]|$)/;
+// Every throw, whatever follows it (`throw unreadable;`, `throw recovered[0];`, `throw result.error;`).
+const THROW_SITE = /\bthrow\s+(?:new\s+)?([A-Za-z_$][\w$]*)?/;
 
 /*
  * Any other rejection built, however it reaches a throw: returned, parenthesized,
