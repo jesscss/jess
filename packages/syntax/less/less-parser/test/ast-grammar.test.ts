@@ -6170,7 +6170,7 @@ describe('Less AST grammar facts', () => {
       throw new TypeError('expected Stylesheet');
     }
 
-    /* A comment beside a query list comma is kept (ledger J18); one before `{` is not written, as before a selector's `{` (G38). */
+    /* A comment beside a query list comma is kept (ledger J18); the one before `{` is not written, which is still OPEN (G41). */
     expect(serialize(result.value)).toEqual({
       css: '@media screen /* comment */, print {\n  body {\n    font-size: 12pt;\n  }\n}\n'
     });

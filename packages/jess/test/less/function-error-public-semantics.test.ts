@@ -189,6 +189,12 @@ describe('Less built-in argument errors through the public AST route', () => {
     /* A `//` comment on a line of its own takes that line with it. */
     await expect(render('.x { a: foo(a,\n  // c\n  b); b: foo(a,\r\n  // c\r\n  b); }'))
       .resolves.toBe('.x {\n  a: foo(a,\n    b);\n  b: foo(a,\r\n    b);\n}\n');
+
+    /* With a block comment in the run too, every dialect that has `//` writes the same bytes. */
+    for (const extension of ['.less', '.scss', '.jess']) {
+      await expect(compiler.renderString('.x { a: foo(a,\n  // y\n  /* x */\n  b); b: foo(a, /* x */ // y\n  b); }', { filePath: `entry${extension}`, extension }), extension)
+        .resolves.toBe('.x {\n  a: foo(a,\n    /* x */\n    b);\n  b: foo(a, /* x */\n    b);\n}\n');
+    }
   });
 
   /* A call is written out the same way in every dialect, comments kept (ledger F11, invariant 4). */
