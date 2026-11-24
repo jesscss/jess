@@ -82,8 +82,8 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..');
  * `link:` to a less.js checkout, not a versioned install, so a baseline names the
  * commit it was recorded on (CI checks out exactly that commit) and the test-data
  * tree at it (a run compares the tree, so a less.js commit that leaves the test
- * data alone is no drift). Test data with uncommitted or ignored changes is never
- * the recorded corpus.
+ * data alone is no drift). A `.less` or `.css` file there with uncommitted or
+ * ignored changes is never the recorded corpus; other files are never read.
  */
 function lessTestDataState() {
   const dir = realpathSync(resolve(repo, 'node_modules/@less/test-data'));
@@ -92,7 +92,7 @@ function lessTestDataState() {
     dir,
     commit: git('rev-parse', 'HEAD'),
     tree: git('rev-parse', 'HEAD:./'),
-    dirty: git('status', '--porcelain', '--ignored', '--', '.') !== '',
+    dirty: git('status', '--porcelain', '--ignored', '--', '*.less', '*.css') !== '',
     published: git('branch', '-r', '--contains', 'HEAD') !== ''
   };
 }
