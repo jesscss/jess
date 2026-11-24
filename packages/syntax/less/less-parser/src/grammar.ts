@@ -3797,7 +3797,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const detachedBody = many(choice(g.BodyStatement, g.ExtendStatement));
   const ValueBlock = node(
     'ValueBlock',
-    sequence(literal('{'), detachedBody, optional(g.Call), literal('}')),
+    sequence(literal('{'), detachedBody, literal('}')),
     /* The braces are the node's first and last tokens, so its own span gives the
      * body span (where its comments are) with no raw-children capture. */
     (children, _fields, span) => {
@@ -3849,7 +3849,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(
         literal('{'),
         detachedBody,
-        optional(g.Call),
         literal('}')
       ),
       sequence(
@@ -3859,7 +3858,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         optional(sequence(commaOrSemicolon, g.EachName, optional(sequence(commaOrSemicolon, g.EachName)))),
         literal(')'), literal('{'),
         detachedBody,
-        optional(g.Call),
         literal('}')
       )
     ),
@@ -4070,7 +4068,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.SupportsPrelude),
       literal('{'),
       g.blockBody,
-      optional(g.Call),
       literal('}')
     ),
     (children, _fields, span, rawChildren) => {
@@ -4449,7 +4446,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       literal('{'),
       g.blockBody,
-      optional(g.Call),
       literal('}')
     ),
     children => children
@@ -4503,7 +4499,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ),
       literal('{'),
       many(choice(declarationItem, g.FunctionStatement, literal(';'))),
-      optional(g.Call),
       literal('}')
     ),
     (children, _fields, span, rawChildren) => {
@@ -4751,7 +4746,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const atRuleBlockBody = sequence(
     literal('{'),
     g.blockBody,
-    optional(g.Call),
     literal('}')
   );
   const genericAtRuleBlockTail = choice(
@@ -5842,7 +5836,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.MixinGuard),
       literal('{'),
       blockBody,
-      optional(g.Call),
       literal('}'),
       optional(literal(';'))
     ),
@@ -5856,7 +5849,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.MixinGuard),
       literal('{'),
       blockBody,
-      optional(g.Call),
       literal('}'),
       optional(literal(';'))
     ),
@@ -5877,7 +5869,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         literal('{')
       ),
       blockBody,
-      optional(g.Call),
       literal('}'),
       optional(literal(';'))
     )),
@@ -5936,7 +5927,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.MixinGuard),
       literal('{'),
       blockBody,
-      optional(g.Call),
       literal('}'),
       optional(literal(';'))
     ),
@@ -6036,7 +6026,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const Stylesheet = node(
     'Stylesheet',
-    sequence(many(choice(g.UseStatement, atStatement, mixinStatement, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
+    many(choice(g.UseStatement, atStatement, mixinStatement, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))),
     children => stylesheet(children.filter(isStatement)),
     { trailingTrivia: true }
   );

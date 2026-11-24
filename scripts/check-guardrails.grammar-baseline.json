@@ -917,7 +917,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3948,
+      "line": 3946,
       "const": "enclosedRaw",
       "construct": "enclosedText",
       "resolved": "4d87586bf3fdbcc3",
@@ -927,7 +927,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3970,
+      "line": 3968,
       "const": "enclosedContentItems",
       "construct": "enclosedRaw",
       "resolved": "aa60bac2a3f11be6",
@@ -937,7 +937,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4241,
+      "line": 4238,
       "const": "MediaTypeTerm",
       "construct": "attempt(g.MixinReferenceChain)",
       "resolved": "33cd9d2e2b6c1582",
@@ -947,7 +947,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4382,
+      "line": 4379,
       "const": "ContainerName",
       "construct": "not(g.QueryFunctionOpen)",
       "resolved": "8d6968a1ce5b22eb",
@@ -957,7 +957,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4712,
+      "line": 4707,
       "const": "lessUnknownAtPreludeText",
       "construct": "lessUnknownAtPreludeText",
       "why": "rule name `lessUnknownAtPreludeText`",
@@ -966,7 +966,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4713,
+      "line": 4708,
       "const": "lessUnknownAtPreludeCapture",
       "construct": "lessUnknownAtPreludeCapture",
       "why": "rule name `lessUnknownAtPreludeCapture`",
@@ -975,17 +975,18 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4758,
+      "line": 4752,
       "const": "genericAtRuleBlockTail",
       "construct": "attempt(sequence(// The typed header first; interpolation and parenthesized forms fall to // the byte prelude in the arm below. attempt(g.AtRulePreludeValue), …",
-      "resolved": "b5726cdd5a66fa90",
+      "resolved": "76fec0deaa0e5fec",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
-      "issue": "jesscss/jess#576"
+      "issue": "jesscss/jess#576",
+      "changed": "It reads a body that no longer ends in a trailing `optional(g.Call)`: a call last in a body is a statement call (jesscss/jess#657), so that arm could not match. The site reads the same text."
     },
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4761,
+      "line": 4755,
       "const": "genericAtRuleBlockTail",
       "construct": "attempt(g.AtRulePreludeValue)",
       "resolved": "e0abc396ddbe685d",
@@ -995,7 +996,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5002,
+      "line": 4996,
       "const": "AtRuleStatement",
       "construct": "attempt(sequence(g.AtRulePreludeValue, literal(';')))",
       "resolved": "8061cb32f134b20e",
@@ -1005,7 +1006,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5215,
+      "line": 5209,
       "const": "capturedArgument",
       "construct": "InvalidSelectorCaptureArgument",
       "resolved": "9588caa03f4a83d5",
@@ -1015,7 +1016,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5337,
+      "line": 5331,
       "const": "pseudo",
       "construct": "pseudoOpen",
       "resolved": "cb60ab284602ba2e",
@@ -1026,7 +1027,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5360,
+      "line": 5354,
       "const": "staticPseudoDispatch",
       "construct": "pseudoOpen",
       "resolved": "cb60ab284602ba2e",
@@ -1037,7 +1038,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5678,
+      "line": 5672,
       "const": "extendAllFlagAhead",
       "construct": "regex(/[ \\t\\n\\r\\f]*!?all(?=[ \\t\\n\\r\\f]*(?:,|\\)))/i)",
       "resolved": "4c82090aa268fdb8",
@@ -1047,7 +1048,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5696,
+      "line": 5690,
       "const": "ExtendComplex",
       "construct": "not(extendAllFlagAhead)",
       "resolved": "09f891154e9019d7",
@@ -1058,7 +1059,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5707,
+      "line": 5701,
       "const": "ExtendTargetComplex",
       "construct": "not(extendAllFlagAhead)",
       "resolved": "09f891154e9019d7",
@@ -1068,7 +1069,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5841,
+      "line": 5835,
       "const": "RulesetWithExtends",
       "construct": "attempt(selectorListWithExtends, { contain: true })",
       "resolved": "6fdfb1e5636c6cf1",
@@ -1078,7 +1079,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5855,
+      "line": 5848,
       "const": "NestedRulesetWithExtends",
       "construct": "attempt(relativeSelectorListWithExtends, { contain: true })",
       "resolved": "156835c69d5fc606",
@@ -1088,12 +1089,13 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5909,
+      "line": 5900,
       "const": "MixinStatementTail",
       "construct": "attempt(MixinDefinitionContinuation)",
-      "resolved": "616526270a2683a7",
+      "resolved": "e500feb61b55ad19",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
-      "issue": "jesscss/jess#576"
+      "issue": "jesscss/jess#576",
+      "changed": "It reads a body that no longer ends in a trailing `optional(g.Call)`: a call last in a body is a statement call (jesscss/jess#657), so that arm could not match. The site reads the same text."
     },
     {
       "rule": "dialect-prefix",

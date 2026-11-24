@@ -1547,7 +1547,9 @@ const NO_EXTEND_TARGETS: readonly ExtendTargetFact[] = [];
 /**
  * A `{ … }` body from `children[from]`, in one pass: statements go on `rules`;
  * body `&:extend()`s are returned. Other children are skipped, but under `strict`
- * (detached-ruleset and `each()` bodies) any but `;`/`}` throws, as before.
+ * (detached-ruleset and `each()` bodies) any but `;`/`}` is a wiring defect —
+ * every body item reduces to a statement, an extend or its punctuation — and
+ * throws: an invariant assertion, not an author-facing error.
  */
 function readBody(children: readonly unknown[], from: number, rules: Statement[], strict = false): readonly ExtendInstruction[] {
   let extensions: ExtendInstruction[] | undefined;
@@ -1560,7 +1562,7 @@ function readBody(children: readonly unknown[], from: number, rules: Statement[]
         (extensions ??= []).push(...child.bodyExtensions);
       }
     } else if (strict && !isLessTerminalText(child, ';') && !isLessTerminalText(child, '}')) {
-      throw new TypeError('Less grammar produced a non-statement callback-body child.');
+      throw new TypeError('Less grammar wiring defect: a callback body item reduced to neither a statement nor its punctuation.');
     }
   }
   return extensions ?? NO_EXTENSIONS;
