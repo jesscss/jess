@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, keyframeSelectorList, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, isSelectorList, isSimpleToken, branchSegments, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue, withMixinPath, guardNot, mixinPathSegment } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, keyframeSelectorList, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, isSelectorList, isSimpleToken, branchSegments, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue, withMixinPath, guardNot, mixinPathSegment, authoredSource } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, RulePreludeRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose } from '@jesscss/core/ast';
 import { closeAmbientFunctions, contextOf, functionScopeOf, reportRecovered, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { ExposeDeclarationError, MalformedExposeError } from '@jesscss/core/diagnostics';
@@ -261,6 +261,7 @@ type LessRules = {
   ClassIdSelectorPrefix: Combinator<SelectorBranchFact>;
   SelectorBranchTail: Combinator<SelectorBranchFact>;
   FlatMixinCall: Combinator<MixinCall>;
+  MixinCallArgument: Combinator<Reference>;
   NamespacedMixinCall: Combinator<MixinCall>;
   MixinCallValue: Combinator<MixinCall>;
   MixinReference: Combinator<ValueNode>;
@@ -2029,7 +2030,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.FunctionKeywordArgument,
       g.FunctionScalarArgument,
       conditionArgumentValue,
-      g.FunctionCondition
+      g.FunctionCondition,
+      g.MixinCallArgument
     ),
     (children) => {
       const named = children.find(isLessCallArg);
@@ -2067,6 +2069,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.DoubledQuoteArgument,
     g.ValueBlock,
     g.FunctionArgument
+  );
+  /** A mixin call as a whole call argument (`foo(.m())`), kept as a reference to it (P37); last, after `#fff` / `.5px`. */
+  const MixinCallArgument = node(
+    'MixinReference',
+    g.MixinCallValue,
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
+      const call = children.find(isMixinCall);
+      if (call === undefined) {
+        throw new TypeError('Less mixin-call argument lost its call.');
+      }
+      return withSourceSpan(referenceWithTails(call, authoredSource(span, state, 'A mixin-call argument'), []), span);
+    }
   );
   // CSS's `functionArgumentGap` slot. The gap runs with trivia cleared, so it reads
   // whitespace and block comments as the padding it keeps, and a `//` line comment,
@@ -6106,6 +6120,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ClassIdSelectorPrefix,
     SelectorBranchTail,
     FlatMixinCall,
+    MixinCallArgument,
     NamespacedMixinCall,
     MixinCallValue,
     Color,

@@ -1294,6 +1294,28 @@ describe('Less AST grammar facts', () => {
     expect(statementCallNamed(parse(source), name)).toMatchObject({ type: 'FunctionCall', name, args });
   });
 
+  /*
+   * A mixin call that is a whole call argument is kept, in a statement call
+   * and in a value call alike, as the reference to that call (ledger P37:
+   * an argument never vanishes; P45: the document still parses).
+   */
+  const mixinArgument = (name: string) => ({ value: { type: 'Reference', base: { type: 'MixinCall', name }, steps: [], raw: `${name}()` } });
+  it.each([
+    ['foo(.m());', 'foo(.m())', [mixinArgument('.m')]],
+    ['.a { foo(.m()); b: c }', undefined, [mixinArgument('.m')]],
+    ['.a { foo(1, .m()); }', '.a { foo(1, .m()) }', [{ value: { src: '1' } }, mixinArgument('.m')]],
+    ['.a { foo(.m()); }', '.a { foo(.m()) }', [mixinArgument('.m')]],
+    ['.a { b: foo(.n()); }', undefined, [mixinArgument('.n')]]
+  ])('keeps a mixin-call argument of a call: %s', (source, bareForm, args) => {
+    const cst = parseLessCst(source);
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(statementCallNamed(parse(source), 'foo')).toMatchObject({ type: 'FunctionCall', name: 'foo', args });
+    if (bareForm !== undefined) {
+      expect(bare(parse(bareForm))).toEqual(bare(parse(source)));
+    }
+  });
+
   it('requires the Less each() opener to be glued', () => {
     const result = runRaw(
       lessGrammar.Document,
