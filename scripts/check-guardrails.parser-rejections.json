@@ -4,7 +4,8 @@
     "throw new CssParseError(result.span.start, result.expected, lineOptions(input, result.span));",
     "throw new CssParseError(result.unconsumedFrom, [], {",
     "throw new CssParseError(result.unconsumedFrom, [], {",
-    "throw new CssParseError(result.span.end, [], {"
+    "throw new CssParseError(result.span.end, [], {",
+    "throw first;"
   ],
   "packages/syntax/jess/jess-parser/src/parse-with.ts": [
     "return new JessParseError(0, [message]);",
@@ -33,14 +34,16 @@
     "throw new LessDynamicCharsetError(span.start, span.end);"
   ],
   "packages/syntax/less/less-parser/src/parse-state.ts": [
-    "throw new LessBareVariableInterpolationError(start, end, name);"
+    "throw new LessBareVariableInterpolationError(start, end, name);",
+    "throw error;"
   ],
   "packages/syntax/less/less-parser/src/parse-with.ts": [
     "return new LessParseError(",
     "return new LessParseError(result.span.start, result.expected, lineOptions(input, result.span));",
     "return new LessParseError(result.unconsumedFrom, [], {",
     "return new LessParseError(result.unconsumedFrom, [], {",
-    "throw new LessParseError(result.span.end, [], {"
+    "throw new LessParseError(result.span.end, [], {",
+    "throw failure;"
   ],
   "packages/syntax/scss/scss-parser/src/grammar-helpers.ts": [
     "throw new ScssImportPostludeError(span.start, span.end);"
@@ -50,6 +53,8 @@
     "throw new ScssParseError(result.span.start, result.expected, lineOptions(input, result.span));",
     "throw new ScssParseError(result.unconsumedFrom, [], {",
     "throw new ScssParseError(result.unconsumedFrom, [], {",
-    "throw new ScssParseError(result.span.end, [], {"
+    "throw new ScssParseError(result.span.end, [], {",
+    "throw error;",
+    "throw unreadable;"
   ]
 }
