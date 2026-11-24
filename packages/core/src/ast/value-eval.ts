@@ -505,7 +505,8 @@ export const authoredSpace = (authored: string | undefined): string =>
  * run of spaces and tabs is one space (owner 2026-10-13: "they're never
  * meaningful unless in a custom property, so they can be collapsed"; a
  * custom-property value is text and never reaches here). A `//` line comment
- * (Less, SCSS and .jess source only) is dropped with the blanks before it, and a
+ * (Less, SCSS and .jess source only) is dropped with the blanks before it, and
+ * with its own line when it stands alone on one, and a
  * Less `;` argument separator is spelled as the list's own `,`. A block comment
  * is copied whole, so a `//`, `;` or blank inside it is text. A run with none of
  * these is returned as it is.
@@ -544,6 +545,10 @@ function replayedRun(run: string, glue: string): string {
       out = out.replace(/[ \t]+$/u, '');
       while (index + 1 < run.length && run[index + 1] !== '\n' && run[index + 1] !== '\r') {
         index++;
+      }
+      if (out.endsWith('\n') || out.endsWith('\r')) {
+        index += run[index + 1] === '\r' && run[index + 2] === '\n' ? 2 : 1;
+        lineStart = true;
       }
     } else {
       out += char === ';' && comma ? ',' : char;

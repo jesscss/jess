@@ -564,9 +564,10 @@ const isBlockCommentAt = (source: string, at: number): boolean =>
 
 /**
  * The authored trivia a node's log records before raw child `insertIndex`, as the
- * layout of a list keeps it: each block comment with the whitespace either side of
- * it; with no block comment, the whitespace only where it breaks a line; otherwise
- * nothing. An entry is classified by its own bytes (`/*` opens a block comment), so
+ * layout of a list keeps it: when the run holds a block comment, each comment with
+ * the whitespace either side of it; with none, the run whole where it
+ * breaks a line; otherwise nothing. A `//` comment stays in the layout, and the replay that
+ * writes CSS drops it with its line (`replayedRun`). An entry is classified by its own bytes (`/*` opens a block comment), so
  * any dialect's trivia scope reads the same. A caller reading the log in order
  * passes `from`, an entry at or before the run, so the read starts there.
  */
@@ -607,10 +608,9 @@ function triviaRunText(triviaLog: readonly number[], source: string, first: numb
   let text = '';
   for (let entry = first; entry < end; entry += CSS_NODE_TRIVIA_STRIDE) {
     const start = triviaLog[entry]!;
-    if (!hasBlockComment || isBlockCommentAt(source, start)
-      || (!source.startsWith('//', start)
-        && ((entry > first && isBlockCommentAt(source, triviaLog[entry - CSS_NODE_TRIVIA_STRIDE]!))
-          || (entry + CSS_NODE_TRIVIA_STRIDE < end && isBlockCommentAt(source, triviaLog[entry + CSS_NODE_TRIVIA_STRIDE]!))))) {
+    if (!hasBlockComment || isBlockCommentAt(source, start) || source.startsWith('//', start)
+      || (entry > first && (isBlockCommentAt(source, triviaLog[entry - CSS_NODE_TRIVIA_STRIDE]!) || source.startsWith('//', triviaLog[entry - CSS_NODE_TRIVIA_STRIDE])))
+      || (entry + CSS_NODE_TRIVIA_STRIDE < end && (isBlockCommentAt(source, triviaLog[entry + CSS_NODE_TRIVIA_STRIDE]!) || source.startsWith('//', triviaLog[entry + CSS_NODE_TRIVIA_STRIDE])))) {
       text += source.slice(start, triviaLog[entry + 1]);
     }
   }

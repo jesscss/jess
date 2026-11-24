@@ -185,6 +185,16 @@ describe('Less built-in argument errors through the public AST route', () => {
     const render = (source: string) => compiler.renderString(source, { filePath: 'entry.less', extension: '.less' });
     await expect(render('.x { a: foo(a, // c\n  b); b: darken(foo, // c\n  10%); c: foo(a /* 1 */; b); d: foo(@a: 1 /*c*/; @b: 2); e: 1px // c\n  2px; f: foo(a, /* x // y; */ b); }'))
       .resolves.toBe('.x {\n  a: foo(a,\n    b);\n  b: darken(foo,\n    10%);\n  c: foo(a /* 1 */, b);\n  d: foo(@a: 1 /*c*/, @b: 2);\n  e: 1px\n    2px;\n  f: foo(a, /* x // y; */ b);\n}\n');
+
+    /* A `//` comment on a line of its own takes that line with it. */
+    await expect(render('.x { a: foo(a,\n  // c\n  b); b: foo(a,\r\n  // c\r\n  b); }'))
+      .resolves.toBe('.x {\n  a: foo(a,\n    b);\n  b: foo(a,\r\n    b);\n}\n');
+
+    /* With a block comment in the run too, every dialect that has `//` writes the same bytes. */
+    for (const extension of ['.less', '.scss', '.jess']) {
+      await expect(compiler.renderString('.x { a: foo(a,\n  // y\n  /* x */\n  b); b: foo(a, /* x */ // y\n  b); }', { filePath: `entry${extension}`, extension }), extension)
+        .resolves.toBe('.x {\n  a: foo(a,\n    /* x */\n    b);\n  b: foo(a, /* x */\n    b);\n}\n');
+    }
   });
 
   /* A call is written out the same way in every dialect, comments kept (ledger F11, invariant 4). */

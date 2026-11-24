@@ -528,8 +528,7 @@ describe('Less AST grammar facts', () => {
   });
 
   it('retains the authored delimiter gap when a line comment follows a function argument comma', () => {
-    /* Stateless on purpose: parse() serializes this input differently (jess#671). */
-    const result = run(lessGrammar.Document, '.a { b: max(1px,\n  // c\n  2px); }', { trivia: lessGrammar.whitespace });
+    const result = runRaw(lessGrammar.Document, '.a { b: max(1px,\n  // c\n  2px); }');
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -556,8 +555,8 @@ describe('Less AST grammar facts', () => {
     });
 
     /*
-     * The authored `,\n  ` gap survives as layout; the comment is trivia, so it
-     * never reaches the emitted bytes.
+     * The authored `,\n  ` gap survives as layout; the dropped `//` comment takes
+     * its own line with it, so no blank line is left (ledger F11).
      */
     expect(serialize(stylesheet(result.value)).css).toBe(
       '.a {\n  b: max(1px,\n    2px);\n}\n'
@@ -6159,11 +6158,9 @@ describe('Less AST grammar facts', () => {
   });
 
   it('treats media-query prelude comments as trivia', () => {
-    /* Stateless on purpose: parse() serializes this input differently (jess#671). */
-    const result = run(
+    const result = runRaw(
       lessGrammar.Document,
-      '@media screen /* comment */, print /* another */ { body { font-size: 12pt; } }',
-      { trivia: lessGrammar.whitespace }
+      '@media screen /* comment */, print /* another */ { body { font-size: 12pt; } }'
     );
 
     expect(result.ok).toBe(true);
@@ -6172,8 +6169,10 @@ describe('Less AST grammar facts', () => {
     if (!isStylesheet(result.value)) {
       throw new TypeError('expected Stylesheet');
     }
+
+    /* A comment beside a query list comma is kept (ledger J18); the one before `{` is not written, which is still OPEN (G41). */
     expect(serialize(result.value)).toEqual({
-      css: '@media screen, print {\n  body {\n    font-size: 12pt;\n  }\n}\n'
+      css: '@media screen /* comment */, print {\n  body {\n    font-size: 12pt;\n  }\n}\n'
     });
   });
 
