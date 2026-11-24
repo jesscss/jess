@@ -506,9 +506,10 @@
       "line": 2138,
       "const": "NthChildArgument",
       "construct": "not(noTrivia(sequence(g.NthExpression, g.NthOfKeyword)))",
-      "resolved": "64160ae700417d28",
+      "resolved": "8ea5d4d1a69155ca",
       "why": "`a computed callee(...)` is not a parseman combinator this scan can prove one token wide",
-      "issue": "jesscss/jess#576"
+      "issue": "jesscss/jess#576",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar."
     },
     {
       "rule": "lookahead",
@@ -516,9 +517,10 @@
       "line": 2194,
       "const": "NthTypeArgument",
       "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
-      "resolved": "2909708d7099a68a",
+      "resolved": "f580f1c55037e6a3",
       "why": "`a computed callee(...)` is not a parseman combinator this scan can prove one token wide",
-      "issue": "jesscss/jess#576"
+      "issue": "jesscss/jess#576",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar."
     },
     {
       "rule": "lookahead",
@@ -767,8 +769,8 @@
       "line": 1694,
       "const": "inlineJavaScriptFollowingDeclaration",
       "construct": "peek(choice(literal('}'), sequence(choice(variableName, g.PunctuationMapKeyToken, sequence(choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPr…",
-      "resolved": "721c202e46692b60",
-      "changed": "The selector and body reducer edits moved it again (jesscss/jess#645): the fingerprint's closure reads every reducer-local `const node = …` binding in this file, whose name matches parseman's `node`, and those reducers changed. With those bindings renamed in both versions, every site fingerprints the same (`node scripts/probe/fingerprint-local-node-control.mjs origin/dev`). The site reads the same grammar.",
+      "resolved": "2550129f8d5f3f08",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar.",
       "why": "`variableNameEscape` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -808,8 +810,8 @@
       "line": 2279,
       "const": "BacktickJavaScript",
       "construct": "{ gate: state => contextOf(state) === 'at-rule-javascript', combinator: atRuleInlineJavaScriptBody }",
-      "resolved": "e333f82f0b7c8941",
-      "changed": "The selector and body reducer edits moved it again (jesscss/jess#645): the fingerprint's closure reads every reducer-local `const node = …` binding in this file, whose name matches parseman's `node`, and those reducers changed. With those bindings renamed in both versions, every site fingerprints the same (`node scripts/probe/fingerprint-local-node-control.mjs origin/dev`). The site reads the same grammar.",
+      "resolved": "93f5d772fb7c8865",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar.",
       "why": "this arm starts by reading past one token: `scanTo(literal('`'), { recoverAt: inlineJavaScriptRecoveryBoundary, stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration), skip:…`",
       "issue": "jesscss/jess#576"
     },
@@ -1199,9 +1201,10 @@
       "line": 2003,
       "const": "VariableDeclaration",
       "construct": "not(reservedVarHead)",
-      "resolved": "749e090a313564ac",
+      "resolved": "7e20640f454d34cd",
       "why": "`reservedVarHead` — a sequence of more than one token",
-      "issue": "jesscss/jess#576"
+      "issue": "jesscss/jess#576",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar."
     },
     {
       "rule": "lookahead",
@@ -1209,9 +1212,10 @@
       "line": 2367,
       "const": "directNestedPropertyAhead",
       "construct": "not(regex(/[^{};]*[;}]/))",
-      "resolved": "33a85b020e687478",
+      "resolved": "bab592be44c44bbc",
       "why": "regex /[^{};]*[;}]/: its pattern spans more than one token",
-      "issue": "jesscss/jess#576"
+      "issue": "jesscss/jess#576",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar."
     },
     {
       "rule": "lookahead",
@@ -1229,9 +1233,10 @@
       "line": 2652,
       "const": "ImportTail",
       "construct": "not(importSupportsOpen)",
-      "resolved": "ad61acc0c2035c5d",
+      "resolved": "4a6f0d7e5e8dfcf4",
       "why": "`importSupportsOpen` — a sequence of more than one token",
-      "issue": "jesscss/jess#576"
+      "issue": "jesscss/jess#576",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar."
     },
     {
       "rule": "lookahead",
@@ -1239,9 +1244,10 @@
       "line": 2652,
       "const": "ImportTail",
       "construct": "not(importLayerOpen)",
-      "resolved": "58e2cce2e5534ad2",
+      "resolved": "061010c551de44b5",
       "why": "`importLayerOpen` — a sequence of more than one token",
-      "issue": "jesscss/jess#576"
+      "issue": "jesscss/jess#576",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar."
     },
     {
       "rule": "dialect-prefix",
@@ -1296,10 +1302,10 @@
       "line": 5102,
       "const": "NthPseudo",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
-      "resolved": "4a21c5d3f4cd6056",
+      "resolved": "05bf3871a8ad8fb7",
       "why": "`MalformedPseudoSelectorNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f#]|#(?!\\{)|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576",
-      "changed": "SCSS overrides this gate so a '#{' after an An+B sign is not malformed; the same text is read, one character class narrower."
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar."
     },
     {
       "rule": "lookahead",
@@ -1307,10 +1313,10 @@
       "line": 5134,
       "const": "NthTypePseudo",
       "construct": "not(g.MalformedPseudoSelectorNumericArgument)",
-      "resolved": "4a21c5d3f4cd6056",
+      "resolved": "05bf3871a8ad8fb7",
       "why": "`MalformedPseudoSelectorNumericArgument` — regex /(?:[-+]?\\d*\\.\\d|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*(?:\\)|[^0-9 \\t\\n\\r\\f#]|#(?!\\{)|\\d+[_a-zA-Z\\u0080-\\uffff\\\\]))|[+-][ \\t\\n\\r\\f]+(?:\\d*n|n)|[-+]?\\d+[ \\t\\n\\r\\f]+n|[-+]?\\d+[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*n)/i: its pattern spans more than one token",
       "issue": "jesscss/jess#576",
-      "changed": "SCSS overrides this gate so a '#{' after an An+B sign is not malformed; the same text is read, one character class narrower."
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar."
     },
     {
       "rule": "lookahead",
@@ -1318,9 +1324,10 @@
       "line": 5135,
       "const": "NthTypePseudo",
       "construct": "not(parser({ trivia: whitespace }, sequence(g.NthExpression, g.NthOfKeyword)))",
-      "resolved": "8e5efcf3098b0cee",
+      "resolved": "98a925bbfba9cdbf",
       "why": "`nth` — regex /even|odd|[-+]?\\d*n(?:[ \\t\\n\\r\\f]*[+-][ \\t\\n\\r\\f]*\\d+)?|[-+]?\\d+/i: its pattern spans more than one token",
-      "issue": "jesscss/jess#576"
+      "issue": "jesscss/jess#576",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` whose name matches a grammar definition (it indexes only consts at most one function deep), so this site stopped reading such locals. The site reads the same grammar."
     },
     {
       "rule": "dialect-prefix",

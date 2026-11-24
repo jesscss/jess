@@ -607,9 +607,16 @@ export function grammarDefinitions(ts, rel, text) {
     }
     defs.get(name).push(init);
   };
-  const visit = (node) => {
+
+  /*
+   * A grammar is defined at module scope or in its rules factory, one function
+   * deep. A `const` deeper than that is a reducer's or helper's local: the
+   * fingerprint never reads inside a function, so no grammar expression can name
+   * it, and indexing it lets a local `const node` stand in for parseman's `node`.
+   */
+  const visit = (node, depth = 0) => {
     const init = node.initializer && unwrap(ts, node.initializer);
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && init && isCombinatorShape(ts, init)) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && init && depth <= 1 && isCombinatorShape(ts, init)) {
       add(node.name.text, init);
     } else if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && /^[A-Z]/.test(node.name.text)) {
       add(node.name.text, init);
@@ -621,7 +628,8 @@ export function grammarDefinitions(ts, rel, text) {
         add(target.name.text, unwrap(ts, node.right));
       }
     }
-    ts.forEachChild(node, visit);
+    const inner = ts.isFunctionLike(node) ? depth + 1 : depth;
+    ts.forEachChild(node, child => visit(child, inner));
   };
   visit(ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, scriptKind(ts, rel)));
   return defs;
