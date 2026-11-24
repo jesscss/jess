@@ -61,6 +61,26 @@ function parsesCompleteStylesheet(source: string): boolean {
   }
 }
 
+/** The first `FunctionCall` named `name` anywhere in `value`. */
+function statementCallNamed(value: unknown, name: string): unknown {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = statementCallNamed(item, name);
+      if (found !== undefined) {
+        return found;
+      }
+    }
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  if (value.type === 'FunctionCall' && value.name === name) {
+    return value;
+  }
+  return statementCallNamed(Object.values(value), name);
+}
+
 function expectExplicitListSeparators(value: unknown): void {
   if (Array.isArray(value)) {
     value.forEach(expectExplicitListSeparators);
@@ -1214,7 +1234,86 @@ describe('Less AST grammar facts', () => {
     const terminalValueCall = runRaw(lessGrammar.Document, 'boolean(true)');
     expect(terminalValueCall.ok).toBe(true);
     expect(terminalValueCall.unconsumedFrom).toBeNull();
-    expect(stylesheet(terminalValueCall.value).rules).toEqual([]);
+    expect(bare(stylesheet(terminalValueCall.value))).toEqual(bare(parse('boolean(true);')));
+  });
+
+  /*
+   * A call last in its body, with no `;`, is the same statement call as with
+   * one (ledger P37) — a condition call too, which the value lane would lower
+   * to a condition and the body would then drop or reject (jess#657).
+   */
+  it.each([
+    ['.a { b: 1; boolean(true) }', '.a { b: 1; boolean(true); }'],
+    ['@media screen { b: 1; boolean(true) }', '@media screen { b: 1; boolean(true); }'],
+    ['@supports (a: b) { b: 1; boolean(true) }', '@supports (a: b) { b: 1; boolean(true); }'],
+    ['@r: { boolean(true) }', '@r: { boolean(true); }'],
+    ['@r: { a: 1; and(@a, @b) }', '@r: { a: 1; and(@a, @b); }'],
+    ['.m({ a: 1; not(@b) });', '.m({ a: 1; not(@b); });'],
+    ['each(@l, .(@v; @k) { v: @v; and(a, b) });', 'each(@l, .(@v; @k) { v: @v; and(a, b); });'],
+    ['each(@l, { v: @value; and(a, b) });', 'each(@l, { v: @value; and(a, b); });'],
+    ['.a { b: 1; or(a, b) }', '.a { b: 1; or(a, b); }'],
+    ['.a { b: 1; foo(1) }', '.a { b: 1; foo(1); }'],
+    ['.a { b: 1; if(true, { c: 1 }) }', '.a { b: 1; if(true, { c: 1 }); }']
+  ])('reads the last call of a body without its `;` as the terminated statement: %s', (source, terminated) => {
+    expect(bare(parse(source))).toEqual(bare(parse(terminated)));
+  });
+
+  /*
+   * A statement call reads its arguments with the value call's reader, so a
+   * keyword argument, a branch list and a doubled-quote argument parse there
+   * too, with or without the `;` (P45), and keep their names and branches.
+   */
+  const keyword = (name: string, value: unknown) => ({ name, sigil: '@', value });
+  const branches = {
+    value: {
+      type: 'List',
+      sep: ';',
+      value: [
+        { type: 'Branch', condition: { src: 'a' }, value: { src: 'b' } },
+        { type: 'Branch', condition: { src: 'c' }, value: { src: 'd' } }
+      ]
+    }
+  };
+  it.each([
+    ['.a { b: 1; darken(@color: red) }', '.a { b: 1; darken(@color: red); }', 'darken', [keyword('color', { src: 'red' })]],
+    ['.a { foo(@a: 1) }', '.a { foo(@a: 1); }', 'foo', [keyword('a', { src: '1' })]],
+    ['foo(@a: 1)', 'foo(@a: 1);', 'foo', [keyword('a', { src: '1' })]],
+    ['@r: { foo(@a: 1) }', '@r: { foo(@a: 1); }', 'foo', [keyword('a', { src: '1' })]],
+    ['.m({ foo(@a: 1) });', '.m({ foo(@a: 1); });', 'foo', [keyword('a', { src: '1' })]],
+    ['each(@l, { foo(@a: 1) });', 'each(@l, { foo(@a: 1); });', 'foo', [keyword('a', { src: '1' })]],
+    ['@media screen { foo(@a: 1) }', '@media screen { foo(@a: 1); }', 'foo', [keyword('a', { src: '1' })]],
+    ['@supports (a: b) { foo(@a: 1) }', '@supports (a: b) { foo(@a: 1); }', 'foo', [keyword('a', { src: '1' })]],
+    ['.a { b: 1; foo(1, @a: 2) }', '.a { b: 1; foo(1, @a: 2); }', 'foo', [{ value: { src: '1' } }, keyword('a', { src: '2' })]],
+    ['.a { b: 1; foo(a: b; c: d) }', '.a { b: 1; foo(a: b; c: d); }', 'foo', [branches]],
+    ['@r: { foo(a: b; c: d) }', '@r: { foo(a: b; c: d); }', 'foo', [branches]],
+    ['foo(a: b; c: d)', 'foo(a: b; c: d);', 'foo', [branches]],
+    ['.a { b: 1; foo(""x"") }', '.a { b: 1; foo(""x""); }', 'foo', [{ value: { type: 'Any', src: '""x""' } }]],
+    ['.a { b: 1; foo(@a: 1) /* c */ }', '.a { b: 1; foo(@a: 1); /* c */ }', 'foo', [keyword('a', { src: '1' })]]
+  ])('reads a statement call\'s keyword, branch and quoted arguments, with or without its `;`: %s', (source, terminated, name, args) => {
+    expect(bare(parse(source))).toEqual(bare(parse(terminated)));
+    expect(statementCallNamed(parse(source), name)).toMatchObject({ type: 'FunctionCall', name, args });
+  });
+
+  /*
+   * A mixin call that is a whole call argument is kept, in a statement call
+   * and in a value call alike, as the reference to that call (ledger P37:
+   * an argument never vanishes; P45: the document still parses).
+   */
+  const mixinArgument = (name: string) => ({ value: { type: 'Reference', base: { type: 'MixinCall', name }, steps: [], raw: `${name}()` } });
+  it.each([
+    ['foo(.m());', 'foo(.m())', [mixinArgument('.m')]],
+    ['.a { foo(.m()); b: c }', undefined, [mixinArgument('.m')]],
+    ['.a { foo(1, .m()); }', '.a { foo(1, .m()) }', [{ value: { src: '1' } }, mixinArgument('.m')]],
+    ['.a { foo(.m()); }', '.a { foo(.m()) }', [mixinArgument('.m')]],
+    ['.a { b: foo(.n()); }', undefined, [mixinArgument('.n')]]
+  ])('keeps a mixin-call argument of a call: %s', (source, bareForm, args) => {
+    const cst = parseLessCst(source);
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(statementCallNamed(parse(source), 'foo')).toMatchObject({ type: 'FunctionCall', name: 'foo', args });
+    if (bareForm !== undefined) {
+      expect(bare(parse(bareForm))).toEqual(bare(parse(source)));
+    }
   });
 
   it('requires the Less each() opener to be glued', () => {

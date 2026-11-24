@@ -29,15 +29,14 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, keyframeSelectorList, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, isSelectorList, isSimpleToken, branchSegments, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue, withMixinPath, guardNot, mixinPathSegment } from '@jesscss/core/ast';
-import type { ForgivingSelectorRest as ForgivingRest, RulePreludeRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, keyframeSelectorList, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, isSelectorList, isSimpleToken, branchSegments, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue, withMixinPath, guardNot, mixinPathSegment, authoredSource } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, RulePreludeRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose } from '@jesscss/core/ast';
 import { closeAmbientFunctions, contextOf, functionScopeOf, reportRecovered, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { ExposeDeclarationError, MalformedExposeError } from '@jesscss/core/diagnostics';
 import { LESS_EXPOSE, LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
   atRulePreludeFrom,
-  argumentFunctionFromChildren,
   combinatorTailReducer,
   selectorBranchFactFrom,
   queryListHasImportCondition,
@@ -54,7 +53,6 @@ import {
   isLessGuardOperand,
   mixinGuardTermFrom,
   requireGuardTerm,
-  functionCallFromChildren,
   functionNameFromOpener,
   hasRulesetTerminator,
   enclosedFrom,
@@ -62,7 +60,6 @@ import {
   interpolationPartsFrom,
   isAny,
   isExtendTargetListFact,
-  isFunctionCall,
   isFunctionConditionFact,
   isInterp,
   isInterpolationFact,
@@ -93,7 +90,8 @@ import {
   lessParenFrom,
   parenLogicalFrom,
   requireMathOperand,
-  lowerLogicalCallStatement,
+  statementCallFromChildren,
+  valueCallFromChildren,
   mixinArgumentsFromChildren,
   mixinCallArgsFromInterior,
   mixinCallFromSelectorBranch,
@@ -226,7 +224,6 @@ type LessRules = {
   FunctionConditionOperand: Combinator<LessGuardOperand | ValueNode>;
   FunctionConditionParen: Combinator<FunctionConditionFact>;
   Call: Combinator<ValueNode>;
-  CallArgumentFunction: Combinator<FunctionCall>;
   FormatFunction: Combinator<ValueNode>;
   CallArgumentValue: Combinator<MixinCallArgument['value']>;
   FunctionStatement: Combinator<Statement | string>;
@@ -264,6 +261,7 @@ type LessRules = {
   ClassIdSelectorPrefix: Combinator<SelectorBranchFact>;
   SelectorBranchTail: Combinator<SelectorBranchFact>;
   FlatMixinCall: Combinator<MixinCall>;
+  MixinCallArgument: Combinator<Reference>;
   NamespacedMixinCall: Combinator<MixinCall>;
   MixinCallValue: Combinator<MixinCall>;
   MixinReference: Combinator<ValueNode>;
@@ -284,7 +282,6 @@ type LessRules = {
   BodyStatement: Combinator<Statement | string | [null, Reference] | [null, Ruleset]>;
   EachCallback: Combinator<LessEachCallback>;
   EachFunctionStatement: Combinator<For>;
-  IfFunctionStatement: Combinator<FunctionCall | If>;
   SupportsValue: Combinator<ValueNode>;
   SupportsFeature: Combinator<ValueNode>;
   EnclosedContent: Combinator<Interpolation>;
@@ -2033,7 +2030,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.FunctionKeywordArgument,
       g.FunctionScalarArgument,
       conditionArgumentValue,
-      g.FunctionCondition
+      g.FunctionCondition,
+      g.MixinCallArgument
     ),
     (children) => {
       const named = children.find(isLessCallArg);
@@ -2071,6 +2069,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.DoubledQuoteArgument,
     g.ValueBlock,
     g.FunctionArgument
+  );
+  /** A mixin call as a whole call argument (`foo(.m())`), kept as a reference to it (P37); last, after `#fff` / `.5px`. */
+  // TODO(jess#707): carry the called `MixinCall` itself once `FunctionCall.args` admits it; this zero-step reference reads as uncalled.
+  const MixinCallArgument = node(
+    'MixinReference',
+    g.MixinCallValue,
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
+      const call = children.find(isMixinCall);
+      if (call === undefined) {
+        throw new TypeError('Less mixin-call argument lost its call.');
+      }
+      return withSourceSpan(referenceWithTails(call, authoredSource(span, state, 'A mixin-call argument'), []), span);
+    }
   );
   // CSS's `functionArgumentGap` slot. The gap runs with trivia cleared, so it reads
   // whitespace and block comments as the padding it keeps, and a `//` line comment,
@@ -2112,31 +2123,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.InterpolatedValueStart,
     literal('(')
   )));
+  /*
+   * A routed call's arguments and `)`: the one argument reader of a Less call,
+   * in a value (`GenericFunction`) and as a statement (`StatementCall`). The
+   * lanes differ only in their reducer's lowering.
+   */
+  const routedCallTail = parser({ trivia: functionTrivia }, sequence(routed(), g.FunctionArguments, literal(')')));
   const GenericFunction = node(
     'Call',
-    parser({ trivia: functionTrivia }, sequence(routed(), g.FunctionArguments, literal(')'))),
-    (children, fields, span, rawChildren, triviaLog, state) =>
-      functionCallFromChildren(children, fields, span, triviaLog, state, rawChildren)
+    routedCallTail,
+    valueCallFromChildren
   );
   const Call = node(
     'Call',
     parser({ trivia: functionTrivia }, sequence(genericFunctionOpen, g.FunctionArguments, literal(')'))),
-    (children, fields, span, rawChildren, triviaLog, state) =>
-      functionCallFromChildren(children, fields, span, triviaLog, state, rawChildren)
-  );
-  // A detached ruleset is a call-argument form, not a general value piece.
-  // Keep this argument-enabled function production out of Value
-  // so a declaration value cannot acquire the call-only `{ … }` first set.
-  const callArgumentFunctionSeparator = field('separator', regex(/[;,][ \t\n\r\f]*/));
-  const trailingCallArgumentFunctionSeparator = field('trailingSeparator', noTrivia(regex(/[;,][ \t\n\r\f]*/)));
-  const CallArgumentFunctionArguments = optional(sequence(
-    oneOrMoreSep(g.CallArgumentValue, callArgumentFunctionSeparator),
-    optional(trailingCallArgumentFunctionSeparator)
-  ));
-  const CallArgumentFunction = node(
-    'Call',
-    sequence(routed(genericFunctionOpen), CallArgumentFunctionArguments, literal(')')),
-    argumentFunctionFromChildren
+    valueCallFromChildren
   );
   // Deprecated Less percent-format syntax is a normal existing function fact.
   // The glued `%(` opener keeps it distinct from the `%` arithmetic operator.
@@ -2153,53 +2154,36 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     (children, _fields, _span, _rawChildren, _triviaLog, state) =>
       withFunctionScope(funcCall('%', children.slice(1, -1).filter(isLessValueSlotValue)), functionScopeOf(state))
   );
-  // A bare call is a Less statement only with its terminator.  Keep this
-  // distinct from Call, which is also a value piece and must not
-  // consume a declaration/list boundary.
+  // A bare call is a Less statement only with its terminator: its `;`, or,
+  // last in its body, the body's `}` or the end of input. Keep this distinct
+  // from Call, which is also a value piece and must not consume a
+  // declaration/list boundary.
+  const stylesheetEnd = not(regex(/[\s\S]/));
   const terminalFunctionBoundary = noTrivia(peek(sequence(
     optional(g.whitespace),
-    choice(literal('}'), not(regex(/[\s\S]/)))
+    choice(literal('}'), stylesheetEnd)
   )));
-  const GenericFunctionStatement = node(
+  /**
+   * A call in statement position, read by the value call's argument reader
+   * with the statement lane's reducer: a legacy `if(<cond>, { … }, { … })`
+   * lowers to the statement it chooses, and every other call stays a call
+   * (P37 decides at evaluation what it leaves).
+   */
+  const StatementCall = node(
     'Call',
-    sequence(g.CallArgumentFunction, literal(';')),
+    routedCallTail,
+    statementCallFromChildren
+  );
+  /** A statement call, ended by `;` or, last in its body, by `}` or the end of input (P37). */
+  const FunctionCallStatement = node(
+    'Call',
+    sequence(StatementCall, choice(literal(';'), terminalFunctionBoundary)),
     (children) => {
-      const call = children.find(isFunctionCall);
-      if (call === undefined) {
+      const statement = children.find(isStatement);
+      if (statement === undefined) {
         throw new TypeError('Less function statement lost its call fact.');
       }
-      return lowerLogicalCallStatement(call);
-    }
-  );
-  const TerminalGenericFunction = transform(
-    sequence(GenericFunction, terminalFunctionBoundary),
-    ([call]) => isStatement(call) ? call : ''
-  );
-  /*
-   * A statement `if(<condition>, { … }, { … });` reads its arguments with the
-   * value call's reader (`FunctionArguments`), so its condition is the same
-   * `FunctionCondition` a value-position `if()` reads, a comparison
-   * (`if((@a = 1), { … });`) included. The generic statement lane's argument
-   * reader takes values and calls only. It is `GenericFunction`'s reader with
-   * the statement lane's reducer: the value reducer would lower the call to a
-   * value-position `if()`, where the statement lowers it to a statement.
-   */
-  const IfFunctionCall = node(
-    'Call',
-    parser({ trivia: functionTrivia }, sequence(routed(), g.FunctionArguments, literal(')'))),
-    argumentFunctionFromChildren
-  );
-
-  /* A statement-position `if(…)` and its terminator, lowered to the statement it chooses. */
-  const IfFunctionStatement = node(
-    'Call',
-    sequence(IfFunctionCall, choice(literal(';'), terminalFunctionBoundary)),
-    (children) => {
-      const call = children.find(isFunctionCall);
-      if (call === undefined) {
-        throw new TypeError('Less if() statement lost its call fact.');
-      }
-      return lowerLogicalCallStatement(call);
+      return statement;
     }
   );
   /**
@@ -2213,8 +2197,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     dispatch(
       genericFunctionOpen,
       caseOf('each(', g.EachFunctionStatement),
-      caseOf('if(', g.IfFunctionStatement),
-      otherwise(choice(GenericFunctionStatement, TerminalGenericFunction))
+      otherwise(FunctionCallStatement)
     ),
     ([, statement]) => statement
   );
@@ -3758,7 +3741,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     declarationOrRuleFrom,
     { collapse: true }
   );
-  const stylesheetEnd = not(regex(/[\s\S]/));
   const rootDeclarationItem = node(
     'RootDeclarationItem',
     sequence(
@@ -3830,7 +3812,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const detachedBody = many(choice(g.BodyStatement, g.ExtendStatement));
   const ValueBlock = node(
     'ValueBlock',
-    sequence(literal('{'), detachedBody, optional(g.Call), literal('}')),
+    sequence(literal('{'), detachedBody, literal('}')),
     /* The braces are the node's first and last tokens, so its own span gives the
      * body span (where its comments are) with no raw-children capture. */
     (children, _fields, span) => {
@@ -3882,7 +3864,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(
         literal('{'),
         detachedBody,
-        optional(g.Call),
         literal('}')
       ),
       sequence(
@@ -3892,7 +3873,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         optional(sequence(commaOrSemicolon, g.EachName, optional(sequence(commaOrSemicolon, g.EachName)))),
         literal(')'), literal('{'),
         detachedBody,
-        optional(g.Call),
         literal('}')
       )
     ),
@@ -4103,7 +4083,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.SupportsPrelude),
       literal('{'),
       g.blockBody,
-      optional(g.Call),
       literal('}')
     ),
     (children, _fields, span, rawChildren) => {
@@ -4482,7 +4461,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       literal('{'),
       g.blockBody,
-      optional(g.Call),
       literal('}')
     ),
     children => children
@@ -4536,7 +4514,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ),
       literal('{'),
       many(choice(declarationItem, g.FunctionStatement, literal(';'))),
-      optional(g.Call),
       literal('}')
     ),
     (children, _fields, span, rawChildren) => {
@@ -4784,7 +4761,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const atRuleBlockBody = sequence(
     literal('{'),
     g.blockBody,
-    optional(g.Call),
     literal('}')
   );
   const genericAtRuleBlockTail = choice(
@@ -5875,7 +5851,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.MixinGuard),
       literal('{'),
       blockBody,
-      optional(g.Call),
       literal('}'),
       optional(literal(';'))
     ),
@@ -5889,7 +5864,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.MixinGuard),
       literal('{'),
       blockBody,
-      optional(g.Call),
       literal('}'),
       optional(literal(';'))
     ),
@@ -5910,7 +5884,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         literal('{')
       ),
       blockBody,
-      optional(g.Call),
       literal('}'),
       optional(literal(';'))
     )),
@@ -5969,7 +5942,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.MixinGuard),
       literal('{'),
       blockBody,
-      optional(g.Call),
       literal('}'),
       optional(literal(';'))
     ),
@@ -6069,7 +6041,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const Stylesheet = node(
     'Stylesheet',
-    sequence(many(choice(g.UseStatement, atStatement, mixinStatement, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
+    many(choice(g.UseStatement, atStatement, mixinStatement, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))),
     children => stylesheet(children.filter(isStatement)),
     { trailingTrivia: true }
   );
@@ -6112,7 +6084,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     FunctionConditionOperand,
     FunctionConditionParen,
     Call,
-    CallArgumentFunction,
     FormatFunction,
     CallArgumentValue,
     FunctionStatement,
@@ -6150,6 +6121,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ClassIdSelectorPrefix,
     SelectorBranchTail,
     FlatMixinCall,
+    MixinCallArgument,
     NamespacedMixinCall,
     MixinCallValue,
     Color,
@@ -6170,7 +6142,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     BodyStatement,
     EachCallback,
     EachFunctionStatement,
-    IfFunctionStatement,
     SupportsValue,
     SupportsFeature,
     EnclosedContent,

@@ -1298,56 +1298,57 @@ function lowerLogicalCallStatement(call: FunctionCall): FunctionCall | If {
   );
 }
 
-function functionCallFromChildren(
+/** A generic call's arguments, as the one argument reader both call lanes share produced them. */
+function callArgumentsFrom(children: readonly unknown[]): Array<ValueSlot | LessCallArg> {
+  return children.slice(1, -1).filter((child): child is ValueSlot | LessCallArg => isLessCallArg(child) || isLessValueSlotValue(child));
+}
+
+/** [P38] `[condition, BranchRest]` is one branch-list argument, which no lane lowers. */
+function branchListCallFrom(name: string, args: Array<ValueSlot | LessCallArg>, span: SourceSpan, state: unknown): FunctionCall | undefined {
+  const [condition, rest] = args;
+  const branches = args.length === 2 && condition !== undefined && rest !== undefined && !isLessCallArg(rest)
+    ? withFirstBranchCondition(isLessCallArg(condition) ? [] : condition, rest)
+    : undefined;
+  if (branches !== undefined && isLessCallArg(condition)) {
+    throw new SyntaxError('A keyword argument cannot be a branch condition.');
+  }
+  return branches === undefined ? undefined : callWithLayout(name, [branches], [], false, span, state);
+}
+
+/** A VALUE-position call: `if()` / `boolean()` / `not()` / `and()` / `or()` lower to what they mean there. */
+function valueCallFromChildren(
   children: readonly unknown[],
   fields: FieldMap | undefined,
   span: SourceSpan,
+  rawChildren: readonly unknown[],
   triviaLog: readonly number[],
-  state: unknown,
-  rawChildren: readonly unknown[]
+  state: unknown
 ): ValueNode {
   const name = functionNameFromOpener(children[0]);
-  const args: Array<ValueSlot | LessCallArg> = [];
-  for (const child of children.slice(1, -1)) {
-    if (isLessCallArg(child) || isLessValueSlotValue(child)) {
-      args.push(child);
-    }
-  }
-  /* [P38] `[condition, BranchRest]` is one branch-list argument. */
-  const [condition, rest] = args;
-  if (args.length === 2 && condition !== undefined && rest !== undefined && !isLessCallArg(rest)) {
-    const branches = withFirstBranchCondition(isLessCallArg(condition) ? [] : condition, rest);
-    if (branches !== undefined) {
-      if (isLessCallArg(condition)) {
-        throw new SyntaxError('A keyword argument cannot be a branch condition.');
-      }
-      return callWithLayout(name, [branches], [], false, span, state);
-    }
-  }
-  const separators = functionSeparatorsFromFields(fields, rawChildren, triviaLog, state);
-  return lowerLogicalCall(callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span, state));
+  const args = callArgumentsFrom(children);
+  return branchListCallFrom(name, args, span, state) ?? lowerLogicalCall(callWithLayout(
+    name, args, functionSeparatorsFromFields(fields, rawChildren, triviaLog, state), hasField(fields, 'trailingSeparator'), span, state
+  ));
 }
 
 /**
- * The STATEMENT lane's call (`foo();`). {@link lowerLogicalCall} deliberately
- * does not run here: `if(…)` / `boolean(…)` are VALUE-position syntax, and a
- * bare `if(true, 1, 2);` statement is not that construct — lessc 4.6.3 rejects
- * it outright, and the un-lowered call keeps it an ordinary unknown-call
- * statement rather than a value node in a statement slot.
+ * A STATEMENT-position call, read by the same argument reader: a legacy
+ * `if(<cond>, { … }, { … })` lowers to the statement it chooses, and every
+ * other call stays a call (P37 decides at evaluation what it leaves).
  */
-function argumentFunctionFromChildren(
+function statementCallFromChildren(
   children: readonly unknown[],
   fields: FieldMap | undefined,
   span: SourceSpan,
-  _rawChildren: readonly unknown[],
-  _triviaLog: readonly number[],
+  rawChildren: readonly unknown[],
+  triviaLog: readonly number[],
   state: unknown
-): FunctionCall {
+): FunctionCall | If {
   const name = functionNameFromOpener(children[0]);
-  const args = children.slice(1, -1).filter(
-    (child): child is ValueSlot | LessCallArg => isLessCallArg(child) || isLessValueSlotValue(child)
-  );
-  return callWithLayout(name, args, separatorsFromFields(fields), hasField(fields, 'trailingSeparator'), span, state);
+  const args = callArgumentsFrom(children);
+  return branchListCallFrom(name, args, span, state) ?? lowerLogicalCallStatement(callWithLayout(
+    name, args, functionSeparatorsFromFields(fields, rawChildren, triviaLog, state), hasField(fields, 'trailingSeparator'), span, state
+  ));
 }
 
 function requireValueSlot(value: unknown): ValueSlot {
@@ -1546,7 +1547,9 @@ const NO_EXTEND_TARGETS: readonly ExtendTargetFact[] = [];
 /**
  * A `{ … }` body from `children[from]`, in one pass: statements go on `rules`;
  * body `&:extend()`s are returned. Other children are skipped, but under `strict`
- * (detached-ruleset and `each()` bodies) any but `;`/`}` throws, as before.
+ * (detached-ruleset and `each()` bodies) any but `;`/`}` is a wiring defect —
+ * every body item reduces to a statement, an extend or its punctuation — and
+ * throws: an invariant assertion, not an author-facing error.
  */
 function readBody(children: readonly unknown[], from: number, rules: Statement[], strict = false): readonly ExtendInstruction[] {
   let extensions: ExtendInstruction[] | undefined;
@@ -1559,7 +1562,7 @@ function readBody(children: readonly unknown[], from: number, rules: Statement[]
         (extensions ??= []).push(...child.bodyExtensions);
       }
     } else if (strict && !isLessTerminalText(child, ';') && !isLessTerminalText(child, '}')) {
-      throw new TypeError('Less grammar produced a non-statement callback-body child.');
+      throw new TypeError('Less grammar wiring defect: a callback body item reduced to neither a statement nor its punctuation.');
     }
   }
   return extensions ?? NO_EXTENSIONS;
@@ -2821,7 +2824,6 @@ export {
   STRUCTURED_PSEUDOS,
   appendEnclosedLiteral,
   appendInterpolationLiteral,
-  argumentFunctionFromChildren,
   callArgumentSource,
   callWithLayout,
   combinatorTailReducer,
@@ -2847,7 +2849,6 @@ export {
   parenLogicalFrom,
   lessMathRun,
   requireMathOperand,
-  functionCallFromChildren,
   functionNameFromOpener,
   functionSeparatorsFromFields,
   hasField,
@@ -2897,6 +2898,8 @@ export {
   lessTriviaEntryInsertIndex,
   lowerLogicalCall,
   lowerLogicalCallStatement,
+  statementCallFromChildren,
+  valueCallFromChildren,
   mixinArgumentsFromChildren,
   mixinCallArgsFromInterior,
   mixinCallArgumentFromInterior,

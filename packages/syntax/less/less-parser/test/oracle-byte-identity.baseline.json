@@ -10,7 +10,7 @@
     },
     {
       "name": "cst",
-      "aggregate": "cb02b06acfd393596009d733090e6185b6c788718a30c9182b770ec530d7373c",
+      "aggregate": "bb565f813f7cc5328cd93df5334407ea44a7735698b301b4fbdea727b68e8398",
       "threw": 0
     }
   ],
@@ -645,7 +645,7 @@
     },
     "node_modules/@less/test-data/tests-error/eval/functions-5-color-2.less": {
       "ast": "6b4e957ba953a4d3",
-      "cst": "524b27634d9eefcc"
+      "cst": "2c234ba912e91ccc"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-5-color.less": {
       "ast": "cab482c371683976",
@@ -1205,7 +1205,7 @@
     },
     "node_modules/@less/test-data/tests-unit/css-escapes/css-escapes.less": {
       "ast": "bb5977a9000e3c73",
-      "cst": "4d38180a456e2b00"
+      "cst": "b637bbf1cb586ef4"
     },
     "node_modules/@less/test-data/tests-unit/css-escapes/legacy/css-escapes.css": {
       "ast": "2079326bdeec9cfe",
@@ -1925,7 +1925,7 @@
     },
     "node_modules/@less/test-data/tests-unit/plugin/plugin.less": {
       "ast": "adfb63e78bfdb047",
-      "cst": "eaca49df602f2acf"
+      "cst": "155b3ac57da54ae5"
     },
     "node_modules/@less/test-data/tests-unit/property-accessors/legacy/property-accessors.css": {
       "ast": "20f00b8e20a8d7be",
@@ -2305,7 +2305,7 @@
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_deprecate.less": {
       "ast": "c2c5aacd88741c0d",
-      "cst": "130fb181f8c8bcf9"
+      "cst": "51bf678f458eb9fc"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_float.less": {
       "ast": "ffece068786c2d88",
@@ -2385,7 +2385,7 @@
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_transition.less": {
       "ast": "9218f0360ad5a222",
-      "cst": "7f6f40cfef93fcf3"
+      "cst": "5b0a4c94b94af743"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_visibility.less": {
       "ast": "d26d2f4ea248d73c",
@@ -2465,7 +2465,7 @@
     },
     "packages/jess/node_modules/bootstrap-less-port/less/vendor/_rfs.less": {
       "ast": "80b46f5e67755497",
-      "cst": "3c8a0de075b5ee49"
+      "cst": "dd5f992d0498275b"
     },
     "packages/jess/test/files/import-func.css": {
       "ast": "1ff8fdc220a05492",

@@ -363,15 +363,15 @@
     "statements": 49
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts": {
-    "statements": 1196
+    "statements": 1193
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts#callWithLayout": {
     "params": 6
   },
-  "packages/syntax/less/less-parser/src/grammar-helpers.ts#functionCallFromChildren": {
+  "packages/syntax/less/less-parser/src/grammar-helpers.ts#valueCallFromChildren": {
     "params": 6
   },
-  "packages/syntax/less/less-parser/src/grammar-helpers.ts#argumentFunctionFromChildren": {
+  "packages/syntax/less/less-parser/src/grammar-helpers.ts#statementCallFromChildren": {
     "params": 6
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts#mathRunFrom": {

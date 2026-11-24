@@ -441,13 +441,16 @@ describe('Less direct-AST closure CST contract', () => {
     expect(leafValues(loops[0]!)).not.toContain('each');
   });
 
-  it('keeps terminal generic calls on their single existing Call boundary', () => {
+  /* A call last in its body is the terminated statement, `;` aside (jess#657). */
+  it('gives a terminal generic call the Call boundaries of the terminated statement', () => {
     for (const source of ['ordinary()', '.x { ordinary() }']) {
       const result = parseLessCstResult(source);
+      const terminated = parseLessCstResult(source.replace('()', '();'));
 
       expect(result.errors, source).toHaveLength(0);
       expect(result.unconsumedFrom, source).toBeNull();
-      expect(findNodes(result.tree, 'Call'), source).toHaveLength(1);
+      expect(findNodes(result.tree, 'Call').map(leafValues), source).toEqual([['ordinary(', ')'], ['ordinary(', ')']]);
+      expect(findNodes(terminated.tree, 'Call').map(leafValues), source).toEqual([['ordinary(', ')', ';'], ['ordinary(', ')']]);
     }
   });
 
