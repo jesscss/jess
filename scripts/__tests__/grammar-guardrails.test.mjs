@@ -498,6 +498,23 @@ const grammar = (g) => {
   assert.notEqual(fingerprint(site(`sequence(literal('x'))`, String.raw`regex(/[^;{}]*[;{]/)`)), base);
 });
 
+test('fingerprint: a combinator helper keeps its locals visible, so widening one still moves the site', () => {
+  const site = head => `${CLEAN}
+const grammar = (g) => {
+  const keywordAhead = (name) => {
+    const head = ${head};
+    return not(choice(literal(name), head));
+  };
+  return { probe: keywordAhead('a') };
+};
+`;
+  const hit = source => scan(source).find(h => h.rule === 'lookahead' && h.construct.includes('head'));
+  const base = hit(site(String.raw`regex(/[-\w]+[ \t]*:/)`));
+  assert.ok(base, 'the helper site is scanned');
+  assert.doesNotMatch(base.why, /defined nowhere/);
+  assert.notEqual(hit(site(String.raw`regex(/[^;{}]*[;{]/)`)).resolved, base.resolved);
+});
+
 test('fingerprint: attempt, a consuming regex and a dispatch selector carry one', () => {
   const hit = body => scan(planted(body)).find(h => h.const === 'probe');
   assert.match(hit(`const probe = attempt(literal('a'));`).resolved, /^[0-9a-f]{16}$/);

@@ -609,14 +609,19 @@ export function grammarDefinitions(ts, rel, text) {
   };
 
   /*
-   * A grammar is defined at module scope or in its rules factory, one function
-   * deep. A `const` deeper than that is a reducer's or helper's local: the
-   * fingerprint never reads inside a function, so no grammar expression can name
-   * it, and indexing it lets a local `const node` stand in for parseman's `node`.
+   * A reducer — a function passed to parseman's `node(…)` — builds the value a
+   * rule returns and is never part of what a grammar reads. Its locals are not
+   * indexed, so a reducer's `const node = …` cannot stand in for `node` itself,
+   * and a reducer edit never moves a fingerprint. A helper that builds
+   * combinators is grammar, and its locals stay indexed.
    */
-  const visit = (node, depth = 0) => {
+  const visit = (node) => {
+    if (ts.isFunctionLike(node) && ts.isCallExpression(node.parent) && node.parent.arguments.includes(node)
+      && ts.isIdentifier(node.parent.expression) && node.parent.expression.text === 'node') {
+      return;
+    }
     const init = node.initializer && unwrap(ts, node.initializer);
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && init && depth <= 1 && isCombinatorShape(ts, init)) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && init && isCombinatorShape(ts, init)) {
       add(node.name.text, init);
     } else if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && /^[A-Z]/.test(node.name.text)) {
       add(node.name.text, init);
@@ -628,8 +633,7 @@ export function grammarDefinitions(ts, rel, text) {
         add(target.name.text, unwrap(ts, node.right));
       }
     }
-    const inner = ts.isFunctionLike(node) ? depth + 1 : depth;
-    ts.forEachChild(node, child => visit(child, inner));
+    ts.forEachChild(node, visit);
   };
   visit(ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, scriptKind(ts, rel)));
   return defs;
