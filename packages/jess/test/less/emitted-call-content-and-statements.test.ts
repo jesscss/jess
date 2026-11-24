@@ -177,6 +177,18 @@ describe('a call standing alone in statement position (P37)', () => {
     await expect(less(source)).rejects.toThrow(notAStatement);
   });
 
+  /*
+   * A statement call's keyword arguments read as a value call's do, so the call
+   * evaluates: to a colour, which is not statement-legal, or, missing an
+   * argument, to the call left as written (jess#657).
+   */
+  it('raises for a statement call with keyword arguments', async () => {
+    const colour = expect.objectContaining({ code: 'eval/invalid-statement', reason: expect.stringContaining('a Color `#cc0000`') });
+    await expect(less('.a { darken(@color: red, @amount: 10%) }')).rejects.toThrow(colour);
+    await expect(less('.a { darken(@color: red, @amount: 10%); }')).rejects.toThrow(colour);
+    await expect(less('.a { darken(@color: red) }')).rejects.toThrow(notAStatement);
+  });
+
   it('modern: an unimported Less built-in in statement position raises', async () => {
     await expect(less('@use "#less";\n@a: 2; @l: 1 2; a { each(@l, { v: @a; }); }')).rejects.toThrow(notAStatement);
     await expect(less('@use "#less";\na { if((true), { color: red; }); }')).rejects.toThrow(notAStatement);

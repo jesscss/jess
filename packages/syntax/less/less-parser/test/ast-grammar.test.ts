@@ -61,6 +61,26 @@ function parsesCompleteStylesheet(source: string): boolean {
   }
 }
 
+/** The first `FunctionCall` named `name` anywhere in `value`. */
+function statementCallNamed(value: unknown, name: string): unknown {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = statementCallNamed(item, name);
+      if (found !== undefined) {
+        return found;
+      }
+    }
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  if (value.type === 'FunctionCall' && value.name === name) {
+    return value;
+  }
+  return statementCallNamed(Object.values(value), name);
+}
+
 function expectExplicitListSeparators(value: unknown): void {
   if (Array.isArray(value)) {
     value.forEach(expectExplicitListSeparators);
@@ -1236,6 +1256,42 @@ describe('Less AST grammar facts', () => {
     ['.a { b: 1; if(true, { c: 1 }) }', '.a { b: 1; if(true, { c: 1 }); }']
   ])('reads the last call of a body without its `;` as the terminated statement: %s', (source, terminated) => {
     expect(bare(parse(source))).toEqual(bare(parse(terminated)));
+  });
+
+  /*
+   * A statement call reads its arguments with the value call's reader, so a
+   * keyword argument, a branch list and a doubled-quote argument parse there
+   * too, with or without the `;` (P45), and keep their names and branches.
+   */
+  const keyword = (name: string, value: unknown) => ({ name, sigil: '@', value });
+  const branches = {
+    value: {
+      type: 'List',
+      sep: ';',
+      value: [
+        { type: 'Branch', condition: { src: 'a' }, value: { src: 'b' } },
+        { type: 'Branch', condition: { src: 'c' }, value: { src: 'd' } }
+      ]
+    }
+  };
+  it.each([
+    ['.a { b: 1; darken(@color: red) }', '.a { b: 1; darken(@color: red); }', 'darken', [keyword('color', { src: 'red' })]],
+    ['.a { foo(@a: 1) }', '.a { foo(@a: 1); }', 'foo', [keyword('a', { src: '1' })]],
+    ['foo(@a: 1)', 'foo(@a: 1);', 'foo', [keyword('a', { src: '1' })]],
+    ['@r: { foo(@a: 1) }', '@r: { foo(@a: 1); }', 'foo', [keyword('a', { src: '1' })]],
+    ['.m({ foo(@a: 1) });', '.m({ foo(@a: 1); });', 'foo', [keyword('a', { src: '1' })]],
+    ['each(@l, { foo(@a: 1) });', 'each(@l, { foo(@a: 1); });', 'foo', [keyword('a', { src: '1' })]],
+    ['@media screen { foo(@a: 1) }', '@media screen { foo(@a: 1); }', 'foo', [keyword('a', { src: '1' })]],
+    ['@supports (a: b) { foo(@a: 1) }', '@supports (a: b) { foo(@a: 1); }', 'foo', [keyword('a', { src: '1' })]],
+    ['.a { b: 1; foo(1, @a: 2) }', '.a { b: 1; foo(1, @a: 2); }', 'foo', [{ value: { src: '1' } }, keyword('a', { src: '2' })]],
+    ['.a { b: 1; foo(a: b; c: d) }', '.a { b: 1; foo(a: b; c: d); }', 'foo', [branches]],
+    ['@r: { foo(a: b; c: d) }', '@r: { foo(a: b; c: d); }', 'foo', [branches]],
+    ['foo(a: b; c: d)', 'foo(a: b; c: d);', 'foo', [branches]],
+    ['.a { b: 1; foo(""x"") }', '.a { b: 1; foo(""x""); }', 'foo', [{ value: { type: 'Any', src: '""x""' } }]],
+    ['.a { b: 1; foo(@a: 1) /* c */ }', '.a { b: 1; foo(@a: 1); /* c */ }', 'foo', [keyword('a', { src: '1' })]]
+  ])('reads a statement call\'s keyword, branch and quoted arguments, with or without its `;`: %s', (source, terminated, name, args) => {
+    expect(bare(parse(source))).toEqual(bare(parse(terminated)));
+    expect(statementCallNamed(parse(source), name)).toMatchObject({ type: 'FunctionCall', name, args });
   });
 
   it('requires the Less each() opener to be glued', () => {
