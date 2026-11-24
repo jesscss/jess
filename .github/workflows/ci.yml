@@ -42,10 +42,13 @@ name: CI
 # lists each expected failure and scripts/vitest-ratchet.mjs fails on a new failure
 # AND on a listed test that starts passing, so the set only moves deliberately.
 #
-# NOTE: the standalone byte-identity oracles (oracle:less:byte-identity,
-# oracle:scss:byte-identity) are deliberately NOT gated here. They are snapshot
-# drift-detectors whose committed baselines require manual rebaseline as the
-# parsers evolve; run them by hand during focused parser work.
+# The byte-identity oracles (oracle:less:byte-identity, oracle:scss:byte-identity)
+# gate at the end of `verify`, each over a pinned corpus: the less.js commit the
+# Less baseline records, and the sass-spec commit scss-parser depends on. A
+# change to what either parser builds over its corpus re-records that baseline
+# under the policy in the oracle script's header; `pnpm oracle:<dialect>:byte-identity:write`
+# writes the candidate to `….baseline.json.new`, and the Less one needs the local
+# less.js at the recorded commit (moving it is its own `--corpus-move` re-record).
 #
 # Add this job to branch protection as a required check — a workflow can make
 # itself fail but cannot make itself required.
@@ -321,6 +324,33 @@ jobs:
       # site fails the PR instead of first surfacing in the release preflight.
       - name: Gate — parser runtime boundary
         run: pnpm run verify:parser-runtime-boundary
+
+      # Each corpus file's AST and CST, per dialect, hashed against the committed
+      # baseline. These run last because they repoint `node_modules/@less/test-data`
+      # (a `link:` to a less.js checkout) at the commit the Less baseline records,
+      # so a fixture push to less.js never moves the gate; re-recording the baseline
+      # moves it. SCSS reads the sass-spec commit pinned in its package.json.
+      - name: Less oracle corpus commit
+        id: oracle-corpus
+        run: |
+          sha=$(node -p "require('./packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json').lessTestData")
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the Less oracle baseline names no less.js commit (got '$sha')"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the Less oracle corpus at that commit
+        uses: actions/checkout@v4
+        with:
+          repository: matthew-dean/less.js
+          ref: ${{ steps.oracle-corpus.outputs.sha }}
+          path: oracle-corpus
+
+      - name: Gate — Less parser byte-identity oracle
+        run: |
+          ln -sfn "$GITHUB_WORKSPACE/oracle-corpus/packages/test-data" node_modules/@less/test-data
+          node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json
+
+      - name: Gate — SCSS parser byte-identity oracle
+        run: node packages/syntax/scss/scss-parser/test/oracle-byte-identity.mjs packages/syntax/scss/scss-parser/test/oracle-byte-identity.baseline.json
 
   # Capability contracts (COD, `capabilities/*/capability.json`): every
   # contract's review must be current, and its native checker must pass the real
