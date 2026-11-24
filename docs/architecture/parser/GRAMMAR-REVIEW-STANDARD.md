@@ -1071,8 +1071,9 @@ interpreter.
 The Less byte-identity oracle is `pnpm run oracle:less:byte-identity`, backed by
 the Less parser corpus under `packages/syntax/less/less-parser/test/`. CSS has
 its own since `test/byte-identity/` landed: `pnpm --filter @jesscss/css-parser
-oracle:byte-identity`, which runs in the package suite as well. `.scss` and
-`.jess` still have no equivalent.
+oracle:byte-identity`, which runs in the package suite as well. `.scss` has
+`pnpm run oracle:scss:byte-identity` over the sass-spec inputs; the Less and SCSS
+oracles both gate in CI, each over a pinned corpus. `.jess` still has no equivalent.
 
 The two are different instruments and neither substitutes for the other. The
 Less oracle is a **relative** differential — it digests parse output against a
@@ -1094,7 +1095,7 @@ change to CSS's value grammar therefore leaves every Less aggregate byte-
 identical while proving nothing. An unchanged oracle on a `css-parser` change
 is a null result, not a pass — say so rather than quoting it as evidence.
 
-For `.scss` and `.jess`, where no byte-identity script exists yet, an ad-hoc
+For `.jess`, where no byte-identity script exists yet, an ad-hoc
 `digestInto` differential is the substitute, and it needs a **negative control**:
 mutate the production under review in a way that must change output, and show
 the digest moves. A corpus that never exercises the production returns

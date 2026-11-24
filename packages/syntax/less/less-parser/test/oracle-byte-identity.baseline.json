@@ -1,23 +1,23 @@
 {
   "format": 1,
   "harness": "e542b69ede393b0c90021c7c5710e3eab01a86f451fbd7124158f26e3721c0f0",
-  "entries": 890,
+  "entries": 896,
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "bb6eea626dfbb76cc99f9c84607a5c2cd2a7a157a5456d76586330e82242e6fc",
+      "aggregate": "1efa245c72f1e0f5a8499c06524affd0066d80629e1a3cd4398069d93a4c0107",
       "threw": 103
     },
     {
       "name": "cst",
-      "aggregate": "bb565f813f7cc5328cd93df5334407ea44a7735698b301b4fbdea727b68e8398",
+      "aggregate": "4d35a89c4d5d9e27cee89e102ab6cc4e05a94a1e9cd258d47eeed2ecaec441ea",
       "threw": 0
     }
   ],
   "perEntry": {
     "node_modules/@less/test-data/tests-config/3rd-party/bootstrap4.css": {
-      "ast": "3d229ad22ee5a9f9",
-      "cst": "cfcf9f6342e2e887"
+      "ast": "1899c68e860bc0bb",
+      "cst": "b6b914f24400c72a"
     },
     "node_modules/@less/test-data/tests-config/3rd-party/bootstrap4.less": {
       "ast": "0d3cd855d9eeedfc",
@@ -192,8 +192,8 @@
       "cst": "db191a2fff75ff58"
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/mixins-args.css": {
-      "ast": "7e1e1833cbf95dc5",
-      "cst": "aab5776fff6abf44"
+      "ast": "7019103f95f673ce",
+      "cst": "3cfbfc1eab14a098"
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/new-division.css": {
       "ast": "25300fe3785bbb2b",
@@ -201,7 +201,7 @@
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/parens.css": {
       "ast": "733703c285609637",
-      "cst": "c8046903db95d4cb"
+      "cst": "3a584bd16e6b4af9"
     },
     "node_modules/@less/test-data/tests-config/math/strict/css.css": {
       "ast": "26fec1cf892854e1",
@@ -300,8 +300,8 @@
       "cst": "721a13cdf007c0fd"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.less": {
-      "ast": "f033a019804bd44f",
-      "cst": "482da1e40339cef1"
+      "ast": "d4914c4b18b00551",
+      "cst": "2e8efce7eb175fbb"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-functions.css": {
       "ast": "d2bf9a28fb308487",
@@ -318,6 +318,14 @@
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-media.less": {
       "ast": "89e6af7ae7a8b7ab",
       "cst": "2445a7f73e9244ed"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-mixin-reference.css": {
+      "ast": "21fca16a3c0a1c20",
+      "cst": "0b96c0a60ae32055"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-mixin-reference.less": {
+      "ast": "3746df6b2d1371da",
+      "cst": "ed3038cb4925e71d"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-operations.css": {
       "ast": "a431836146b59e37",
@@ -386,6 +394,14 @@
     "node_modules/@less/test-data/tests-config/root-registry/root.less": {
       "ast": "e87c3c5cc03720c6",
       "cst": "1da2f2809b297fbb"
+    },
+    "node_modules/@less/test-data/tests-config/rootpath-escape-interpolation/rootpath-escape-interpolation.css": {
+      "ast": "70da6b1606cc7237",
+      "cst": "641dc9b6797eb185"
+    },
+    "node_modules/@less/test-data/tests-config/rootpath-escape-interpolation/rootpath-escape-interpolation.less": {
+      "ast": "370bb6f3dee5bed9",
+      "cst": "d885353a0b1e24d8"
     },
     "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-all/folder/file.less": {
       "ast": "a717d6d0683a8d78",
@@ -500,8 +516,8 @@
       "cst": "dae3c79e1e9d7f89"
     },
     "node_modules/@less/test-data/tests-config/strict-imports/strict-imports.css": {
-      "ast": "8255ba9fc3688e37",
-      "cst": "62d0631f7078efaf"
+      "ast": "fc03277d4ecd98b4",
+      "cst": "af69937e05b8026a"
     },
     "node_modules/@less/test-data/tests-config/strict-imports/strict-imports.less": {
       "ast": "a4324c46b7852c35",
@@ -691,6 +707,10 @@
       "ast": "12064bc05124b92c",
       "cst": "395078fb2e5c365b"
     },
+    "node_modules/@less/test-data/tests-error/eval/mixin-as-value.less": {
+      "ast": "733703c285609637",
+      "cst": "6c5317bf04a96d2a"
+    },
     "node_modules/@less/test-data/tests-error/eval/mixin-not-defined-2.less": {
       "ast": "8897429e63d68db5",
       "cst": "972be1d8a9479108"
@@ -746,10 +766,6 @@
     "node_modules/@less/test-data/tests-error/eval/namespacing-2.less": {
       "ast": "2d7e3d700cb22d59",
       "cst": "0a63a64b76fb6a67"
-    },
-    "node_modules/@less/test-data/tests-error/eval/namespacing-3.less": {
-      "ast": "96d6c039bf67718e",
-      "cst": "c133169fdad4d13e"
     },
     "node_modules/@less/test-data/tests-error/eval/namespacing-4.less": {
       "ast": "d0e68b288a398b68",
@@ -1044,8 +1060,8 @@
       "cst": "95ab1ca603dcb204"
     },
     "node_modules/@less/test-data/tests-unit/calc/calc.css": {
-      "ast": "f780dfdb7ea293c3",
-      "cst": "f5a2e0a5a0e8c9f0"
+      "ast": "d65bd49fabfe05d2",
+      "cst": "f37648edf478fcc7"
     },
     "node_modules/@less/test-data/tests-unit/calc/calc.less": {
       "ast": "c766b17aedb581d7",
@@ -1176,8 +1192,8 @@
       "cst": "003fe3da61280f0b"
     },
     "node_modules/@less/test-data/tests-unit/container/container.css": {
-      "ast": "6970a7a9778f86f3",
-      "cst": "4c63037b75662911"
+      "ast": "501569d342916e3a",
+      "cst": "9c81d10eb9f51b83"
     },
     "node_modules/@less/test-data/tests-unit/container/container.less": {
       "ast": "b1cf9793451210a0",
@@ -1256,8 +1272,8 @@
       "cst": "fc5da9f5e7d783a2"
     },
     "node_modules/@less/test-data/tests-unit/extend-chaining/extend-chaining.css": {
-      "ast": "403ae91ec43fba02",
-      "cst": "16115852f865132b"
+      "ast": "30ffdfba9c370e4d",
+      "cst": "abbbde4616afb6cc"
     },
     "node_modules/@less/test-data/tests-unit/extend-chaining/extend-chaining.less": {
       "ast": "9f22fd31970a4924",
@@ -1304,8 +1320,8 @@
       "cst": "801be36c416a21e2"
     },
     "node_modules/@less/test-data/tests-unit/extend-nest/extend-nest.css": {
-      "ast": "173f9008b2faef8d",
-      "cst": "5ac9586b01fc11e9"
+      "ast": "dd8945852f0c93a4",
+      "cst": "16021b730836ef9a"
     },
     "node_modules/@less/test-data/tests-unit/extend-nest/extend-nest.less": {
       "ast": "803001a7b6f744ad",
@@ -1316,8 +1332,8 @@
       "cst": "91dd78a3ab9106cd"
     },
     "node_modules/@less/test-data/tests-unit/extend-selector/extend-selector.css": {
-      "ast": "93c21562c1b60aa6",
-      "cst": "80a2b45d3a838e1a"
+      "ast": "5c8a522e60d359a8",
+      "cst": "5b664ac7956ead3a"
     },
     "node_modules/@less/test-data/tests-unit/extend-selector/extend-selector.less": {
       "ast": "e7f20136ced62bc8",
@@ -1328,8 +1344,8 @@
       "cst": "0babb47628744a8e"
     },
     "node_modules/@less/test-data/tests-unit/extend/extend.css": {
-      "ast": "df130211c49650a5",
-      "cst": "97cc0dbecd113e3b"
+      "ast": "a9398f128897f324",
+      "cst": "84f36583cbb07c61"
     },
     "node_modules/@less/test-data/tests-unit/extend/extend.less": {
       "ast": "bd671b4a89b34f26",
@@ -1484,8 +1500,8 @@
       "cst": "624dd83792a56219"
     },
     "node_modules/@less/test-data/tests-unit/import/import.css": {
-      "ast": "57812484e8510905",
-      "cst": "024a28db72af9bb3"
+      "ast": "ad2ca5d4a2f4726d",
+      "cst": "d9b904f909877304"
     },
     "node_modules/@less/test-data/tests-unit/import/import.less": {
       "ast": "f72127643d8207c2",
@@ -1651,9 +1667,17 @@
       "ast": "f94e0efbc3ef067c",
       "cst": "f71fc64ea232ce12"
     },
+    "node_modules/@less/test-data/tests-unit/lookup-interpolation/lookup-interpolation.css": {
+      "ast": "a52e50c82d617219",
+      "cst": "0f0e04048f121031"
+    },
+    "node_modules/@less/test-data/tests-unit/lookup-interpolation/lookup-interpolation.less": {
+      "ast": "33eaf0a6ef969ce8",
+      "cst": "fcd55700773f5964"
+    },
     "node_modules/@less/test-data/tests-unit/math-css-vars/math-css-vars.css": {
-      "ast": "1c2a2e246e5f75c2",
-      "cst": "eab219cf56ba0bec"
+      "ast": "b424ce8e034d7f1b",
+      "cst": "1963851e679fca82"
     },
     "node_modules/@less/test-data/tests-unit/math-css-vars/math-css-vars.less": {
       "ast": "efb6cd7066582656",
@@ -1664,8 +1688,8 @@
       "cst": "2564923e591b8893"
     },
     "node_modules/@less/test-data/tests-unit/media/media.css": {
-      "ast": "796e53d16f44ead5",
-      "cst": "c11fc8eca86b8056"
+      "ast": "4ec920cdd98c00d3",
+      "cst": "3a7664885ce8dd83"
     },
     "node_modules/@less/test-data/tests-unit/media/media.less": {
       "ast": "fb2629d94a6ef744",
@@ -1844,8 +1868,8 @@
       "cst": "ea97262087e6918f"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations-advanced.css": {
-      "ast": "3490dad5c7559062",
-      "cst": "c2e7b81207837a55"
+      "ast": "6b031de21de7c837",
+      "cst": "86daff2da4dce5ac"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations-advanced.less": {
       "ast": "608e34b6bd3e6f0d",
@@ -1864,12 +1888,12 @@
       "cst": "38522dd4a387ee2a"
     },
     "node_modules/@less/test-data/tests-unit/parse-interpolation/parse-interpolation.css": {
-      "ast": "24dc8abee9c0c1f5",
-      "cst": "cc17d6ec79aa49e1"
+      "ast": "b1341fb89e2d8068",
+      "cst": "ba3d8c66cf536a00"
     },
     "node_modules/@less/test-data/tests-unit/parse-interpolation/parse-interpolation.less": {
-      "ast": "39df9b37ea1c2672",
-      "cst": "5a4f18859625044e"
+      "ast": "abcaaa24449fa52e",
+      "cst": "4f24ca529ee8075d"
     },
     "node_modules/@less/test-data/tests-unit/parser-property-interp/parser-property-interp.css": {
       "ast": "f597c792c549dc30",
@@ -1988,8 +2012,8 @@
       "cst": "1ee5ce8c7f15c860"
     },
     "node_modules/@less/test-data/tests-unit/selectors/selectors.css": {
-      "ast": "9298fc1bd3135fc8",
-      "cst": "b6ff973cfa949609"
+      "ast": "afa5030d6645fa63",
+      "cst": "0dba9290d31f5d59"
     },
     "node_modules/@less/test-data/tests-unit/selectors/selectors.less": {
       "ast": "f4296c49507a6fb8",
@@ -3575,5 +3599,7 @@
       "ast": "b99cf5c85984ede9",
       "cst": "01e34de92cadc2fc"
     }
-  }
+  },
+  "lessTestData": "e287ce64cb2abe1e6617c72f2cf696f031583586",
+  "lessTestDataTree": "7eb9959be4d662ea89e95d321ed73de1bb82007d"
 }
