@@ -43,9 +43,12 @@ name: CI
 # AND on a listed test that starts passing, so the set only moves deliberately.
 #
 # The byte-identity oracles (oracle:less:byte-identity, oracle:scss:byte-identity)
-# gate at the end of `verify`, each over a pinned corpus. A change to what the
-# Less or SCSS parser builds over it re-records the committed baseline
-# (`pnpm oracle:<dialect>:byte-identity:write`) in the same PR.
+# gate at the end of `verify`, each over a pinned corpus: the less.js commit the
+# Less baseline records, and the sass-spec commit scss-parser depends on. A
+# change to what either parser builds over its corpus re-records that baseline
+# under the policy in the oracle script's header; `pnpm oracle:<dialect>:byte-identity:write`
+# writes the candidate to `….baseline.json.new`, and the Less one needs the local
+# less.js at the recorded commit (moving it is its own `--corpus-move` re-record).
 #
 # Add this job to branch protection as a required check — a workflow can make
 # itself fail but cannot make itself required.
@@ -329,7 +332,10 @@ jobs:
       # moves it. SCSS reads the sass-spec commit pinned in its package.json.
       - name: Less oracle corpus commit
         id: oracle-corpus
-        run: echo "sha=$(node -p "require('./packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json').lessTestData")" >> "$GITHUB_OUTPUT"
+        run: |
+          sha=$(node -p "require('./packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json').lessTestData")
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the Less oracle baseline names no less.js commit (got '$sha')"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Checkout the Less oracle corpus at that commit
         uses: actions/checkout@v4
