@@ -40,6 +40,9 @@
  * that names every corpus change and proves the candidate against its exact
  * parent on the same set of entries. A fresh aggregate by itself can absorb a
  * real parser regression.
+ * The baseline names the less.js commit its `@less/test-data` corpus was read
+ * at (`lessTestData`); a run over any other commit fails as corpus drift, so a
+ * corpus move is its own reviewed re-record and never hides a parser change.
  *
  * WHY IT PARSES THE BUILT `lib/`, NOT `src/`
  * ------------------------------------------
@@ -64,12 +67,29 @@
  * error messages can cite `repo`-rooted paths; those make a digest
  * machine-specific).
  */
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, realpathSync } from 'node:fs';
 import { resolve, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { collapseChildrenAlias } from './identity-oracle/collapse-children-alias.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..');
+
+/**
+ * The less.js commit the `@less/test-data` roots are read from. That package is a
+ * `link:` to a less.js checkout, not a versioned install, so a baseline names
+ * the commit it was recorded on and CI checks out exactly that commit. A write
+ * refuses a checkout with uncommitted changes to the test data: its commit
+ * would not describe what was hashed.
+ */
+function lessTestDataCommit({ requireClean }) {
+  const dir = realpathSync(resolve(repo, 'node_modules/@less/test-data'));
+  const git = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+  if (requireClean && git('status', '--porcelain', '--', '.') !== '') {
+    throw new Error(`oracle: ${dir} has uncommitted changes; commit them or record against a clean less.js checkout.`);
+  }
+  return git('rev-parse', 'HEAD');
+}
 
 /**
  * Corpus roots — the same set the short-hash oracle (`ast-identity-oracle.mjs`)
@@ -210,6 +230,12 @@ async function main() {
   const baselineArg = process.argv[2];
   if (baselineArg) {
     const baseline = JSON.parse(readFileSync(baselineArg, 'utf8'));
+    const corpusCommit = lessTestDataCommit({ requireClean: false });
+    if (baseline.lessTestData !== corpusCommit) {
+      console.error(`\noracle: FAIL — corpus drift: the baseline was recorded on less.js ${baseline.lessTestData}, `
+        + `this run reads ${corpusCommit}. Check out that commit (CI does), or re-record in a reviewed change.`);
+      process.exit(2);
+    }
     const comparison = compareReports(baseline, report);
     console.error(`\n${formatComparison(comparison)}`);
     if (comparison.verdict === 'identical') {
@@ -229,7 +255,7 @@ async function main() {
   }
 
   // No baseline argument → write a fresh baseline to stdout as JSON, exit 0.
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ ...report, lessTestData: lessTestDataCommit({ requireClean: true }) }, null, 2)}\n`);
   console.error('oracle: wrote fresh baseline to stdout. Pipe to a file and commit.');
   process.exit(0);
 }
