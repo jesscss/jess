@@ -2071,6 +2071,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.FunctionArgument
   );
   /** A mixin call as a whole call argument (`foo(.m())`), kept as a reference to it (P37); last, after `#fff` / `.5px`. */
+  // TODO(jess#707): carry the called `MixinCall` itself once `FunctionCall.args` admits it; this zero-step reference reads as uncalled.
   const MixinCallArgument = node(
     'MixinReference',
     g.MixinCallValue,
