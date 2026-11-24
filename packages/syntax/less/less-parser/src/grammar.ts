@@ -2139,12 +2139,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     (children, _fields, _span, _rawChildren, _triviaLog, state) =>
       withFunctionScope(funcCall('%', children.slice(1, -1).filter(isLessValueSlotValue)), functionScopeOf(state))
   );
-  // A bare call is a Less statement only with its terminator.  Keep this
-  // distinct from Call, which is also a value piece and must not
-  // consume a declaration/list boundary.
+  // A bare call is a Less statement only with its terminator: its `;`, or,
+  // last in its body, the body's `}` or the end of input. Keep this distinct
+  // from Call, which is also a value piece and must not consume a
+  // declaration/list boundary.
+  const stylesheetEnd = not(regex(/[\s\S]/));
   const terminalFunctionBoundary = noTrivia(peek(sequence(
     optional(g.whitespace),
-    choice(literal('}'), not(regex(/[\s\S]/)))
+    choice(literal('}'), stylesheetEnd)
   )));
   /**
    * A call in statement position, read by the value call's argument reader
@@ -3724,7 +3726,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     declarationOrRuleFrom,
     { collapse: true }
   );
-  const stylesheetEnd = not(regex(/[\s\S]/));
   const rootDeclarationItem = node(
     'RootDeclarationItem',
     sequence(
