@@ -2,7 +2,8 @@ import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe
 import { WARN } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import type { ExportLane, ExportRef, ExportState } from './export-reads.js';
+import type { Context } from '../context.js';
+import { exportState, mixedReads, type ExportLane, type ExportRef, type ExportState } from './export-reads.js';
 import { funcCall, keyword, type CallValue, type VariableDeclaration } from './nodes.js';
 import type { BindingCell, Frame } from './serialize.js';
 import { emitValue, type EvalValue } from './value-eval.js';
@@ -177,5 +178,61 @@ export function writeReassign(e: ExportLane<Frame>, owner: Frame, node: Variable
   (owner.reassign ??= new Map()).set(node.name, node);
   if (e.s.exports.runtime !== undefined) {
     exposedWrite(e, node, owner, node.value, owner);
+  }
+}
+
+/** A compile's exports' state, made by {@link holdExports}, and the exports it holds as written. */
+export interface ExportHold {
+  readonly asWritten: ReadonlySet<string> | undefined;
+  exports: Pick<ExportState<unknown>, 'runtime'> | undefined;
+}
+
+/** The exports' state of the compile `hold` is for, holding `hold.asWritten` as written. */
+export function holdExports<F>(hold: ExportHold): ExportState<F> {
+  const exports = exportState<F>(hold.asWritten);
+  hold.exports = exports;
+  return exports;
+}
+
+/**
+ * `compile`, once more when it read an export both as a ratio and as written
+ * ({@link mixedReads}): one custom property holds one form, and which value
+ * each read sees is known only once the stylesheet is compiled (owner
+ * 2026-11-19, ledger A22). The second run reports the errors; the first
+ * run's warnings are kept and the second's muted, a fatal one excepted.
+ */
+export function compileHoldingMixed<R>(context: Context | undefined, compile: (hold: ExportHold) => MaybePromise<R>): MaybePromise<R> {
+  const errorsBefore = context?.errors.length ?? 0;
+  const first: ExportHold = { asWritten: undefined, exports: undefined };
+  return mapMaybe(compile(first), (result) => {
+    const mixed = first.exports === undefined ? undefined : mixedReads(first.exports);
+    if (mixed === undefined) {
+      return result;
+    }
+    context?.errors.splice(errorsBefore);
+    return withWarningsMuted(context, () => compile({ asWritten: mixed, exports: undefined }));
+  });
+}
+
+/** `run`, dropping the warnings it raises but a fatal one. */
+function withWarningsMuted<R>(context: Context | undefined, run: () => MaybePromise<R>): MaybePromise<R> {
+  if (context === undefined) {
+    return run();
+  }
+  const was = context.warningsMuted;
+  context.warningsMuted = true;
+  const restore = (): void => {
+    context.warningsMuted = was;
+  };
+  try {
+    const result = run();
+    if (isThenable(result)) {
+      return result.finally(restore);
+    }
+    restore();
+    return result;
+  } catch (error) {
+    restore();
+    throw error;
   }
 }

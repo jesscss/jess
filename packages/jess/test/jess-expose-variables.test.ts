@@ -191,6 +191,50 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
     expect(css).toBe('.a {\n  color: rgb(calc(var(--tint, 0.1) * 100%), 0, 0);\n}\n.b {\n  color: rgb(calc(var(--tint, 0.2) * 100%), 0, 0);\n}\n');
   });
 
+  /* Owner 2026-11-19 (A22): until Jess has types no read may assume one, so a variable assigned a percentage and a length holds each as written. */
+  it.each([
+    ['in its frame', '$r := 5px;\n'],
+    ['in a body', '.x { $r := 5px; }\n']
+  ])('holds a variable assigned values of two kinds as written, assigned %s', async (_where, later) => {
+    const { css, errors, runtime } = await compiled(`@-expose r;\n$r: 10%;\n.a { w: $r; }\n${later}.b { w: $r; }\n`, 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toContain('.a {\n  w: var(--r, 10%);\n}\n');
+    expect(css).toContain('.b {\n  w: var(--r, 5px);\n}\n');
+    expect(runtime?.ratios).toEqual([]);
+  });
+
+  it('holds a percentage an importer overrides with a length as written', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-expose-kinds-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'tokens.jess'), '$r: 10%;\n@-expose r;\n.a { w: $r; }\n');
+      const filePath = path.join(dir, 'entry.jess');
+      const source = '@-import "./tokens.jess";\n$r: 5px;\n.b { w: $r; }\n';
+      const { css, errors, warnings } = await new Compiler({}).renderToResult({ filePath, source, language: 'jess' });
+      expect(errors).toEqual([]);
+      expect(warnings).toEqual([]);
+      expect(css).toBe('.a {\n  w: var(--r, 10%);\n}\n.b {\n  w: var(--r, 5px);\n}\n');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('warns once for a variable it compiles again to hold as written', async () => {
+    const { warnings } = await compiled('@-expose r;\n$r: 10%;\n.a { w: $r; }\n$r := 5px;\n.b { w: $r; }\n', 'jess');
+    expect(warnings.map(warning => warning.code)).toEqual(['eval/expose-reassigned']);
+  });
+
+  it('still holds the ratio of a percentage computed, then assigned', async () => {
+    const { css, errors } = await compiled('@-expose r;\n$r: $(5% * 2);\n.a { w: $r; }\n$r := 20%;\n.b { w: $r; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  w: calc(var(--r, 0.1) * 100%);\n}\n.b {\n  w: calc(var(--r, 0.2) * 100%);\n}\n');
+  });
+
+  it('still holds the ratio of a percentage a body shadows with a length', async () => {
+    const { css, errors } = await compiled('@-expose r;\n$r: 10%;\n.x { $r: 5px; w: $r; }\n.a { w: $r; }\n', 'jess');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.x {\n  w: 5px;\n}\n.a {\n  w: calc(var(--r, 0.1) * 100%);\n}\n');
+  });
+
   /* Orchestrator 2026-11-19: an importer's override of a variable a file it imports declares is deliberate, so only a second assignment in one file warns. */
   it.each([
     ['less', '@brand: #c00;\n@expose brand;\n', '@import "./tokens.less";\n', '@brand'],

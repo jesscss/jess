@@ -214,7 +214,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { channelFunction, channelMath, channelOf, formChannels, isComputedColorCall, rejectChannelMath, resolveColorCall, type ChannelBinder, type ColorChannels, type FormChannels } from './css-color.js';
-import { argumentStatementKind, declareExpose, excluding, exportFinalDefaults, writeCell, writeReassign, exposedWritten, readsExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { compileHoldingMixed, holdExports, type ExportHold, argumentStatementKind, declareExpose, excluding, exportFinalDefaults, writeCell, writeReassign, exposedWritten, readsExport, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, exposedRead, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedAtRuleName, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation, laneSiteLocation } from './call-site-location.js';
@@ -7198,7 +7198,7 @@ function invokeValueLambda(
 
 /** The lane a built-in's CSS form is evaluated on (`css-form.ts`): its own, as the form is not in the document that called it. */
 export function formLane(evaluator: ValueEvaluator, compress: boolean): Lane {
-  return createRenderSession(stylesheet([]), { evaluator, compress }, undefined, null, { positions: null, plannedImportDocuments: null, plannedModuleImports: null, pendingPlannedModuleImports: undefined, preparedImportsOwnedByCaller: false });
+  return createRenderSession(stylesheet([]), { evaluator, compress }, undefined, null, { positions: null, plannedImportDocuments: null, plannedModuleImports: null, pendingPlannedModuleImports: undefined, preparedImportsOwnedByCaller: false, exports: exportState() });
 }
 
 /**
@@ -14083,7 +14083,7 @@ function createRenderSession(
   options: PrepareStaticImportsOptions | undefined,
   importDocument: SerializeOptions['importDocument'],
   rootFns: ReadonlyMap<string, Fn> | null,
-  entry: Pick<Emit, 'positions' | 'plannedImportDocuments'> & Pick<EvalSession, 'plannedModuleImports' | 'pendingPlannedModuleImports' | 'preparedImportsOwnedByCaller'>
+  entry: Pick<Emit, 'positions' | 'plannedImportDocuments'> & Pick<EvalSession, 'plannedModuleImports' | 'pendingPlannedModuleImports' | 'preparedImportsOwnedByCaller' | 'exports'>
 ): Emit {
   const compress = options?.compress ?? false;
   const policy = options?.modes === undefined ? options?.context?.options : undefined;
@@ -14114,7 +14114,7 @@ function createRenderSession(
       argumentSyntax: undefined,
       invalidArguments: new Map(),
       nestedPropertyOwners: undefined,
-      exports: exportState()
+      exports: entry.exports
     },
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: policy === undefined ? { ...(options?.modes ?? DEFAULT_MODES), compress } : modesOf(policy, compress),
@@ -14194,7 +14194,8 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     plannedImportDocuments: documents,
     plannedModuleImports: modules,
     pendingPlannedModuleImports: undefined,
-    preparedImportsOwnedByCaller: false
+    preparedImportsOwnedByCaller: false,
+    exports: exportState()
   });
   const rootFrame = makeRenderRootFrame(root, rootFns, e);
   const plannerRootFrame = makeRootFrame(root, rootFns, e);
@@ -14232,10 +14233,13 @@ function makeRenderRootFrame(root: Stylesheet, rootFns: Map<string, Fn> | null, 
   return frame;
 }
 
-export function serialize(root: Stylesheet, options?: SerializeOptions): SerializeReturn {
-  const pluginHost = options?.pluginHost;
+export const serialize = (root: Stylesheet, options?: SerializeOptions): SerializeReturn =>
+  compileHoldingMixed(options?.context, hold => serializeHolding(root, options, hold));
+
+/** {@link serialize}, its exports' state held in `hold` ({@link compileHoldingMixed}, ledger A22). */
+function serializeHolding(root: Stylesheet, options: SerializeOptions | undefined, hold: ExportHold): SerializeReturn {
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
-  const rootFns = globalScopedFns(pluginHost);
+  const rootFns = globalScopedFns(options?.pluginHost);
   const preparedModulePlan = options?.preparedImports === undefined
     ? null
     : preparedModules(options.preparedImports);
@@ -14248,7 +14252,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       ? (options?.context ? new Map() : null)
       : preparedModulePlan,
     pendingPlannedModuleImports: preparedModulePlan?.size,
-    preparedImportsOwnedByCaller: options?.preparedImports !== undefined
+    preparedImportsOwnedByCaller: options?.preparedImports !== undefined,
+    exports: holdExports(hold)
   });
   const rootFrame = makeRenderRootFrame(root, rootFns, e);
   forEachExpose(root.rules, node => activateVariableDeclaration(node, rootFrame, e, root.rules)); // [A20] bound before any read, written before or after it
