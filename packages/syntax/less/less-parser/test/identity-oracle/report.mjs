@@ -565,6 +565,20 @@ function assertFailureChannelsAreDisjoint() {
 
 assertFailureChannelsAreDisjoint();
 
+/**
+ * Who authorised a baseline re-record (owner 2026-11-25): the owner's OK for the
+ * moved entries no ruling covers, or the rulings that cover them. A write refuses
+ * without it and records it in the baseline as `authority`, so the review diff
+ * shows it. A compare ignores it.
+ */
+export function rebaselineAuthority() {
+  const authority = process.env.JESS_ORACLE_AUTHORITY?.trim();
+  if (!authority) {
+    throw new Error('oracle: refusing to write a baseline without JESS_ORACLE_AUTHORITY: the owner\'s OK for the moved entries no ruling covers, or the rulings that cover them.');
+  }
+  return authority;
+}
+
 /** Behavioural fingerprint of this harness, embedded in every report it makes. */
 export const HARNESS_DIGEST = hash(
   [`format:${DIGEST_FORMAT}`, ...canaryReport().map(s => `${s.name}:${s.aggregate}:${s.threw}`)].join('\n')

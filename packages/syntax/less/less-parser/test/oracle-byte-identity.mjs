@@ -26,9 +26,9 @@
  *
  * HOW TO RUN
  * ----------
- *   pnpm run oracle:less:byte-identity     # build + compare against the baseline
- *   node <this file>                       # write a fresh baseline to stdout
- *   node <this file> <baseline.json>       # compare; the exit code is the verdict
+ *   pnpm run oracle:less:byte-identity        # build + compare against the baseline
+ *   JESS_ORACLE_AUTHORITY=… node <this file>  # write a fresh baseline to stdout
+ *   node <this file> <baseline.json>          # compare; the exit code is the verdict
  *
  * Exit codes: 0 identical, 1 moved, 2 incomparable, 3 no verdict — either the
  * digest could not be computed or the harness itself failed. Only 0 and 1 are
@@ -40,6 +40,11 @@
  * that names every corpus change and proves the candidate against its exact
  * parent on the same set of entries. A fresh aggregate by itself can absorb a
  * real parser regression.
+ * Every moved entry is matched to the owner ruling that covers it (the ledger,
+ * its notes and the design docs). An entry no ruling covers needs the owner's
+ * OK, shown its input, old output, new output and why it changed. A write
+ * refuses without `JESS_ORACLE_AUTHORITY` naming that OK or those rulings, and
+ * records it in the baseline (see GRAMMAR-REVIEW-STANDARD, byte-identity).
  * The baseline names the less.js commit and test-data tree its `@less/test-data`
  * corpus was read at (`lessTestData`, `lessTestDataTree`). A run over any other
  * tree fails as corpus drift (exit 2), and a write refuses to record a different
@@ -186,7 +191,7 @@ async function requireDigestInto() {
 async function main() {
   await requireDigestInto();
   const { loadCorpus } = await import('./identity-oracle/corpus.mjs');
-  const { digestCorpus, compareReports, formatComparison, formatUndigested } =
+  const { digestCorpus, compareReports, formatComparison, formatUndigested, rebaselineAuthority } =
     await import('./identity-oracle/report.mjs');
   const { parse } = await import('../lib/index.js');
   const { parseLessCst } = await import('../lib/cst.js');
@@ -283,7 +288,7 @@ async function main() {
   }
 
   // No baseline argument → write a fresh baseline to stdout as JSON, exit 0.
-  process.stdout.write(`${JSON.stringify({ ...report, ...corpusToRecord(lessTestDataState()) }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ ...report, ...corpusToRecord(lessTestDataState()), authority: rebaselineAuthority() }, null, 2)}\n`);
   console.error('oracle: wrote fresh baseline to stdout. Pipe to a file and commit.');
   process.exit(0);
 }

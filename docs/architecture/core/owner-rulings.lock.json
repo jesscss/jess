@@ -180,6 +180,7 @@
     "P49": "be12b50c99c0c044",
     "P50": "329c762895305e21",
     "P51": "7deb3275e6924b2f",
+    "P56": "84e8746a6e8d6b75",
     "G31": "019f6e15f98d355d",
     "G32": "4785c83df5a67ff6",
     "G33": "9a0a8f97e506d754",
@@ -278,6 +279,7 @@
     "F12 (owner 2026-07-24): a custom property keeps its comments and trims edge whitespace": "5303faad314efb3e",
     "V34 (owner 2026-10-15): the parentheses around a call do not reach its arguments": "7254fc2933a28121",
     "V35 (owner 2026-10-16): the outermost when parens of a guard are not a math group; function arguments follow the math mode": "76bc22c6286339a3",
-    "P35 (owner 2026-09-23; parens owner 2026-10-06): math inside calc() keeps its authored parentheses": "537519cc5a3c4e5d"
+    "P35 (owner 2026-09-23; parens owner 2026-10-06): math inside calc() keeps its authored parentheses": "bc549fd1d08c717d",
+    "P56 (owner 2026-11-25): an @{…} interpolation body carries [ ] lookups wherever @{…} interpolates": "e625b115ea7b83c2"
   }
 }

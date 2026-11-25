@@ -257,4 +257,12 @@ describe('owner rulings (Less 5)', () => {
   it('P35 (owner 2026-09-23; parens owner 2026-10-06): math inside calc() keeps its authored parentheses', async () => {
     await expect(render('.a { b: calc(50% + (50vh / 2 - 20px)); }')).resolves.toBe('.a {\n  b: calc(50% + (50vh / 2 - 20px));\n}\n');
   });
+
+  it('P56 (owner 2026-11-25): an @{…} interpolation body carries [ ] lookups wherever @{…} interpolates', async () => {
+    const maps = '@sizes: { name: card; @name: hit; last: tail; }; @theme: { @nested: { name: inner; } }; @paths: { img: "/img"; }; @queries: { tablet: ~"(min-width: 768px)"; }; @which: name;\n';
+    await expect(render(`${maps}.q { a: "@{sizes[name]}"; b: "@{theme[@nested][name]}"; c: "@{sizes[@@which]}"; d: "@{sizes[]}"; e: url(@{paths[img]}/x.png); --f: @{paths[img]}; @{sizes[name]}: g; }`))
+      .resolves.toBe('.q {\n  a: "card";\n  b: "inner";\n  c: "hit";\n  d: "tail";\n  e: url(/img/x.png);\n  --f: /img;\n  card: g;\n}\n');
+    await expect(render(`${maps}.@{sizes[name]} { a: b; } @media @{queries[tablet]} { .r { c: d; } }`))
+      .resolves.toBe('.card {\n  a: b;\n}\n@media (min-width: 768px) {\n  .r {\n    c: d;\n  }\n}\n');
+  });
 });
