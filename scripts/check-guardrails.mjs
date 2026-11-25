@@ -648,15 +648,23 @@ if (!rulings.lock) {
  * what a dialect rejects is a diagnostic, and parsing continues. A grammar that
  * stops recognizing a shape is caught by the conformance tests and the review
  * (GRAMMAR-REVIEW-STANDARD item 17), not here. What this catches cheaply is the
- * other route: a new author-facing `throw` in a parser package. Invariant
+ * other route: a new author-facing rejection in a parser package, thrown or
+ * built for a caller to throw. Invariant
  * throws (`TypeError`, `Error`, `RangeError`: "the grammar produced an
  * impossible shape") are not counted. The baselined sites may only shrink.
  */
 const PARSER_SOURCE = /^packages\/(?:syntax\/[^/]+\/[^/]+-parser|parser-shared)\/src\/.+(?<!\.d)\.ts$/;
-const THROW_SITE = /\bthrow\s+(?:new\s+)?([A-Za-z_$][\w$]*)\s*\(/;
 
-// A rejection built and handed back to a caller that throws it (`return new LessParseError(…)`).
-const RETURNED_REJECTION = /\breturn\s+new\s+([A-Za-z_$][\w$]*Error)\s*\(/;
+// Every throw, whatever follows it (`throw unreadable;`, `throw recovered[0];`, `throw result.error;`).
+const THROW_SITE = /\bthrow\s+(?:new\s+)?([A-Za-z_$][\w$]*)?/;
+
+/*
+ * Any other rejection built, however it reaches a throw: returned, parenthesized,
+ * held in a const, chosen by a ternary. One passed straight to `reportRecovered(…)`
+ * or `.push(…)` is a diagnostic, and parsing continues.
+ */
+const BUILT_REJECTION = /\bnew\s+([A-Za-z_$][\w$]*Error)\s*\(/;
+const DIAGNOSTIC_ONLY = /(?:\breportRecovered|\.push)\(\s*new\s+[A-Za-z_$][\w$]*Error\s*\(/;
 const INVARIANT_THROW = new Set(['TypeError', 'Error', 'RangeError']);
 const NOT_WELL_FORMED = /NOT-WELL-FORMED:/;
 const PARSER_REJECTION_BASELINE = 'scripts/check-guardrails.parser-rejections.json';
@@ -665,7 +673,7 @@ const rejectionHits = [];
 for (const rel of gitFiles.filter(f => PARSER_SOURCE.test(f) && existsSync(join(root, f)))) {
   const lines = readFileSync(join(root, rel), 'utf8').split('\n');
   lines.forEach((line, i) => {
-    const m = THROW_SITE.exec(line) ?? RETURNED_REJECTION.exec(line);
+    const m = THROW_SITE.exec(line) ?? (DIAGNOSTIC_ONLY.test(line) ? null : BUILT_REJECTION.exec(line));
     if (!m || INVARIANT_THROW.has(m[1]) || /^\s*(?:\*|\/\/)/.test(line)
       || NOT_WELL_FORMED.test(line) || NOT_WELL_FORMED.test(lines[i - 1] ?? '')) {
       return;
