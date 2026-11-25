@@ -607,7 +607,19 @@ export function grammarDefinitions(ts, rel, text) {
     }
     defs.get(name).push(init);
   };
+
+  /*
+   * A reducer — a function passed to parseman's `node(…)` — builds the value a
+   * rule returns and is never part of what a grammar reads. Its locals are not
+   * indexed, so a reducer's `const node = …` cannot stand in for `node` itself,
+   * and a reducer edit never moves a fingerprint. A helper that builds
+   * combinators is grammar, and its locals stay indexed.
+   */
   const visit = (node) => {
+    if (ts.isFunctionLike(node) && ts.isCallExpression(node.parent) && node.parent.arguments.includes(node)
+      && ts.isIdentifier(node.parent.expression) && node.parent.expression.text === 'node') {
+      return;
+    }
     const init = node.initializer && unwrap(ts, node.initializer);
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && init && isCombinatorShape(ts, init)) {
       add(node.name.text, init);
