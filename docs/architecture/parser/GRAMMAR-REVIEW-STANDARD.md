@@ -984,8 +984,7 @@ byte-identity oracle works because `oracle-byte-identity.baseline.json` is a
 - **Baselines are NAMED CASES** — dialect × fixture — never one aggregate
   number. A single number cannot distinguish "nothing moved" from "one case got
   faster and another got slower".
-- **Rebaselining requires owner sign-off**, exactly as with the byte-identity
-  baseline. Without that rule an agent simply rebaselines the drift away and
+- **Rebaselining requires owner sign-off.** Without that rule an agent simply rebaselines the drift away and
   the ratchet is theatre. A commit that needs a new baseline is a commit that
   needs a decision, not a commit that needs a bigger number.
 - **Direction is signal even when magnitude is not.** A sub-noise result that
@@ -1086,6 +1085,22 @@ emitted output (the fixed-point channel), and it asserts four negative controls
 on every run — including one that drops a nested rule, which is the ident-start
 defect's signature. Its four open findings are recorded by file and construct in
 `test/byte-identity.divergences.json`; that file is a record, not an allowlist.
+
+**Rebaselining the Less or SCSS oracle needs the owner's OK for every moved
+entry no ruling covers.** Asked on 2026-11-25 whether output that moves needs
+their OK, the owner answered, verbatim: *"typically. i need to see source input and output and how
+it changed and why"*, *"unless it's a CATEGORY of thing i've ruled on and its
+just more cases that follow the same output"*, and *"i feel like you could more
+intelligently map the intended outputs vs ambiguous or unintended and only show
+me the latter"*. So a re-record matches every moved entry, a corpus move
+included, to the owner ruling that covers it: an entry is covered when its new
+output is the output that ruling prescribes, not merely when it falls in the
+ruling's area. Search the ledger, its notes and
+the design docs (`docs/design/`), not the ledger alone: an owner ruling can live
+in any of them. An entry no ruling covers goes to the owner with its input, old
+output, new output and why it changed, grouped by kind of change. The write
+refuses without `JESS_ORACLE_AUTHORITY`, which names the owner's OK or the
+covering rulings, and records it in the baseline as `authority`.
 
 A `css-parser` change is **not** covered by the Less oracle. Less composes
 `cssSyntax` from `@jesscss/parser-shared/recognition`, not from

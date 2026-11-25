@@ -1782,7 +1782,8 @@ see §8.1b. The residue after applying the mapping must be EMPTY).
 
 Reproducible: `pnpm run oracle:less:byte-identity` (this rebuilds less-parser
 then runs the gate against the committed baseline). Stage 3+ branches off `dev`
-can re-baseline by piping `pnpm run oracle:less:byte-identity:write` to a new
+can re-baseline by piping `JESS_ORACLE_AUTHORITY=… pnpm run
+oracle:less:byte-identity:write` (the owner's OK or the covering rulings) to a new
 JSON file and committing it in the same commit that moved the aggregate. The
 write reads the less.js commit the baseline already records (`lessTestData`) and
 refuses any other; moving the corpus is a separate `--corpus-move` re-record.

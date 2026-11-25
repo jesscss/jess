@@ -42,7 +42,8 @@
  * ----------
  *   pnpm --filter @jesscss/scss-parser build       # lib/ is what is measured
  *   pnpm run check:macro                           # a red macro gate INVALIDATES the run
- *   node <this file>                               # write a fresh baseline to stdout
+ *   JESS_ORACLE_AUTHORITY=… node <this file>       # write a fresh baseline to stdout (see
+ *                                                  # the Less oracle's BASELINE POLICY)
  *   node <this file> <baseline.json>               # compare; exit code is the verdict
  *
  * Exit codes match the Less oracle: 0 identical, 1 moved, 2 incomparable, 3 no
@@ -121,6 +122,9 @@ async function requireDigestInto() {
 
 async function main() {
   await requireDigestInto();
+  const writing = process.argv[2] === undefined;
+  const { rebaselineAuthority } = await import('../../../less/less-parser/test/identity-oracle/report.mjs');
+  const authority = writing ? rebaselineAuthority() : undefined;
   const { loadCorpus } = await import('../../../less/less-parser/test/identity-oracle/corpus.mjs');
   const { digestCorpus, compareReports, formatComparison, formatUndigested } =
     await import('../../../less/less-parser/test/identity-oracle/report.mjs');
@@ -202,7 +206,7 @@ async function main() {
     process.exit(2);
   }
 
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ ...report, authority }, null, 2)}\n`);
   console.error('oracle: wrote fresh baseline to stdout. Pipe to a file and commit.');
   process.exit(0);
 }

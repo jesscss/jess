@@ -46,7 +46,8 @@ name: CI
 # gate at the end of `verify`, each over a pinned corpus: the less.js commit the
 # Less baseline records, and the sass-spec commit scss-parser depends on. A
 # change to what either parser builds over its corpus re-records that baseline
-# under the policy in the oracle script's header; `pnpm oracle:<dialect>:byte-identity:write`
+# under the policy in the oracle script's header;
+# `JESS_ORACLE_AUTHORITY=… pnpm oracle:<dialect>:byte-identity:write`
 # writes the candidate to `….baseline.json.new`, and the Less one needs the local
 # less.js at the recorded commit (moving it is its own `--corpus-move` re-record).
 #
