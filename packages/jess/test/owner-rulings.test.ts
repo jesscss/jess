@@ -262,7 +262,7 @@ describe('owner rulings (Less 5)', () => {
     const maps = '@sizes: { name: card; @name: hit; last: tail; }; @theme: { @nested: { name: inner; } }; @paths: { img: "/img"; }; @queries: { tablet: ~"(min-width: 768px)"; }; @which: name;\n';
     await expect(render(`${maps}.q { a: "@{sizes[name]}"; b: "@{theme[@nested][name]}"; c: "@{sizes[@@which]}"; d: "@{sizes[]}"; e: url(@{paths[img]}/x.png); --f: @{paths[img]}; @{sizes[name]}: g; }`))
       .resolves.toBe('.q {\n  a: "card";\n  b: "inner";\n  c: "hit";\n  d: "tail";\n  e: url(/img/x.png);\n  --f: /img;\n  card: g;\n}\n');
-    await expect(render(`${maps}.@{sizes[name]} { a: b; } @media @{queries[tablet]} { .r { c: d; } }`))
-      .resolves.toBe('.card {\n  a: b;\n}\n@media (min-width: 768px) {\n  .r {\n    c: d;\n  }\n}\n');
+    await expect(render(`${maps}.@{sizes[name]} { a: b; } @media @{queries[tablet]} { .r { c: d; } } @keyframes @{sizes[name]} { to { e: f; } }`))
+      .resolves.toBe('.card {\n  a: b;\n}\n@media (min-width: 768px) {\n  .r {\n    c: d;\n  }\n}\n@keyframes card {\n  to {\n    e: f;\n  }\n}\n');
   });
 });

@@ -41,7 +41,8 @@
  * parent on the same set of entries. A fresh aggregate by itself can absorb a
  * real parser regression.
  * Every moved entry is matched to the owner ruling that covers it (the ledger,
- * its notes and the design docs). An entry no ruling covers needs the owner's
+ * its notes and the design docs): covered means its new output is the output
+ * that ruling prescribes. An entry no ruling covers needs the owner's
  * OK, shown its input, old output, new output and why it changed. A write
  * refuses without `JESS_ORACLE_AUTHORITY` naming that OK or those rulings, and
  * records it in the baseline (see GRAMMAR-REVIEW-STANDARD, byte-identity).
@@ -190,8 +191,11 @@ async function requireDigestInto() {
 
 async function main() {
   await requireDigestInto();
+  const writing = !process.argv.slice(2).some(arg => !arg.startsWith('--'));
+  const { rebaselineAuthority } = await import('./identity-oracle/report.mjs');
+  const authority = writing ? rebaselineAuthority() : undefined;
   const { loadCorpus } = await import('./identity-oracle/corpus.mjs');
-  const { digestCorpus, compareReports, formatComparison, formatUndigested, rebaselineAuthority } =
+  const { digestCorpus, compareReports, formatComparison, formatUndigested } =
     await import('./identity-oracle/report.mjs');
   const { parse } = await import('../lib/index.js');
   const { parseLessCst } = await import('../lib/cst.js');
@@ -288,7 +292,7 @@ async function main() {
   }
 
   // No baseline argument → write a fresh baseline to stdout as JSON, exit 0.
-  process.stdout.write(`${JSON.stringify({ ...report, ...corpusToRecord(lessTestDataState()), authority: rebaselineAuthority() }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ ...report, ...corpusToRecord(lessTestDataState()), authority }, null, 2)}\n`);
   console.error('oracle: wrote fresh baseline to stdout. Pipe to a file and commit.');
   process.exit(0);
 }
