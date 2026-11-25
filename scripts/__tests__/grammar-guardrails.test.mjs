@@ -481,6 +481,40 @@ test('fingerprint: any change to what a site reads moves it, past any clip; a co
   assert.notEqual(clipped('a'), clipped('b'));
 });
 
+test('fingerprint: a reducer-local const named like a combinator never stands in for it (jesscss/jess#645)', () => {
+  const site = (local, wide = String.raw`regex(/[-\w]+[ \t]*:/)`) => `${CLEAN}
+const grammar = (g) => {
+  const wide = ${wide};
+  const probe = not(choice(node('A', literal('a'), (children) => {
+    const node = ${local};
+    return node;
+  }), wide));
+  return { probe };
+};
+`;
+  const fingerprint = source => scan(source).find(h => h.const === 'probe').resolved;
+  const base = fingerprint(site(`sequence(literal('x'))`));
+  assert.equal(fingerprint(site(`sequence(literal('y'), literal('z'))`)), base);
+  assert.notEqual(fingerprint(site(`sequence(literal('x'))`, String.raw`regex(/[^;{}]*[;{]/)`)), base);
+});
+
+test('fingerprint: a combinator helper keeps its locals visible, so widening one still moves the site', () => {
+  const site = head => `${CLEAN}
+const grammar = (g) => {
+  const keywordAhead = (name) => {
+    const head = ${head};
+    return not(choice(literal(name), head));
+  };
+  return { probe: keywordAhead('a') };
+};
+`;
+  const hit = source => scan(source).find(h => h.rule === 'lookahead' && h.construct.includes('head'));
+  const base = hit(site(String.raw`regex(/[-\w]+[ \t]*:/)`));
+  assert.ok(base, 'the helper site is scanned');
+  assert.doesNotMatch(base.why, /defined nowhere/);
+  assert.notEqual(hit(site(String.raw`regex(/[^;{}]*[;{]/)`)).resolved, base.resolved);
+});
+
 test('fingerprint: attempt, a consuming regex and a dispatch selector carry one', () => {
   const hit = body => scan(planted(body)).find(h => h.const === 'probe');
   assert.match(hit(`const probe = attempt(literal('a'));`).resolved, /^[0-9a-f]{16}$/);
