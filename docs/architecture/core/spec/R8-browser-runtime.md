@@ -216,6 +216,8 @@ or needs JS) to decide what ships in the bundle.
   sits in `resolveVarRef`, which every variable read goes through, so a new
   read path is rejected by default; a probe that reads no value opts out with
   `READS_EXPORT`.
+  A read of any assignment of the variable, not only the last, raises it,
+  and the error ends the compile (A22, owner 2026-11-26).
   `isdefined()` in a value is not a read. In a guard, `isdefined()` evaluates
   its argument (so `isdefined(@missing)` there already raises "Name not
   found"), which makes it a read and an error for an exposed variable.
@@ -541,18 +543,6 @@ or needs JS) to decide what ships in the bundle.
 
 ## Open — needs the owner
 
-- **One exposed variable holding values of different kinds** (A22). `$r: 10%;
-  … $r: 5px;` or `$gap: 4px; … $gap: 1em;` compile with each read's own value,
-  but the runtime keeps one unit and one ratio contract per variable
-  (`units`, `ratios`), so after `set()` a read of the other kind gets a value
-  of the wrong kind. Should that be `eval/expose-unit-conflict`?
-- **A read of an earlier assignment outside a CSS value** (A22 with A20).
-  `@-expose brand; $brand: red; .a-${brand} { c: d; } $brand: blue;` or a
-  `$if ($n == 1)` over an exposed `$n` before a later assignment: the read is
-  of the exposed variable, so it raises `eval/expose-not-a-value`, which ends
-  the compile with no CSS; before A22 only a read of the last declaration did.
-  Is that error right for these reads, and should it be a diagnostic at its
-  span that lets the compile go on (P45)?
 - **Module configuration and the warning.** A `@-compose … with { $brand: blue; }`
   value seeds the module's variable without an assignment, so a later
   `$brand: green;` in the module does not warn `eval/expose-reassigned`.
