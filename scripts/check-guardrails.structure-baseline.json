@@ -52,7 +52,7 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9220
+    "statements": 9217
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -82,7 +82,7 @@
     "statements": 47
   },
   "packages/core/src/ast/serialize.ts#resolveReferenceResult": {
-    "statements": 211
+    "statements": 210
   },
   "packages/core/src/ast/serialize.ts#snapshotPreparedMixinValue": {
     "params": 7

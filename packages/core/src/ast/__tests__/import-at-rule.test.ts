@@ -1981,7 +1981,7 @@ describe('StyleImport', () => {
       }
     }))).rejects.toMatchObject({
       code: 'resolve/name-not-found',
-      reason: 'Symbol "@never" is undefined in this scope.'
+      reason: '"@never" is undefined in this scope.'
     });
     expect(loads).toBe(0);
   });
@@ -2011,7 +2011,7 @@ describe('StyleImport', () => {
       }
     }))).rejects.toMatchObject({
       code: 'resolve/name-not-found',
-      reason: 'Symbol "@never" is undefined in this scope.'
+      reason: '"@never" is undefined in this scope.'
     });
     expect(loads).toBe(0);
   });

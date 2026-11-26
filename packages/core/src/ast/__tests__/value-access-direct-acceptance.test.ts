@@ -351,7 +351,7 @@ describe('direct canonical value access', () => {
     expect(render(document(-1))).toBe('.entry {\n  value: second;\n}\n');
     expect(() => render(document(1))).toThrow(expect.objectContaining({
       code: 'resolve/name-not-found',
-      reason: 'Symbol ".pick()[1]" is undefined in this scope.'
+      reason: '"1" is undefined in ".pick()".'
     }));
   });
 

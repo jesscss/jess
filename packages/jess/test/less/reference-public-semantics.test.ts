@@ -121,22 +121,25 @@ describe('Less reference semantic contracts through the public AST route', () =>
   });
 
   /*
-   * A reference chain whose head is bound but whose members miss is a failed
-   * resolution: an eval error at the reference naming the head and the members
-   * it lacks, never its authored text in the CSS. A property's value has no
-   * members, so a lookup on one, in a string or out of it, always misses.
+   * A lookup that reads nothing is a failed resolution: an eval error at the
+   * reference, never its authored text in the CSS. The brackets are the lookup,
+   * so the error names the key they hold, or the key a variable in them holds,
+   * and what it was looked up in. A property's value has no keys, so a lookup on
+   * one, in a string or out of it, always misses.
    */
   it.each([
-    ['an index past the end of a list', '@list: 1 2; .entry { value: @list[5]; }', '@list', '[5]', 29],
-    ['a member of a value that has no members', '@map: { a: 1; } .entry { value: @map[a][b]; }', '@map', '[a][b]', 33],
-    ['a lookup on a property value in a string', '.entry { color: red; value: "${color[x]}"; }', '$color', '[x]', 30],
-    ['a lookup past the end of a list in a string', '@list: 1 2; .entry { value: "@{list[5]}"; }', '@list', '[5]', 30]
-  ])('reports %s as a missing member, where it was written', async (_label, source, symbol, member, column) => {
+    ['an index past the end of a list', '@list: 1 2; .entry { value: @list[5]; }', '5', '@list', 29],
+    ['a key the value it is read in lacks', '@map: { a: 1; } .entry { value: @map[a][b]; }', 'b', '@map[a]', 33],
+    ['a key a map lacks', '@map: { a: 1; } .entry { value: @map[b]; }', 'b', '@map', 33],
+    ['a key a variable holds that a map lacks', '@k: b; @map: { a: 1; } .entry { value: @map[@k]; }', 'b', '@map', 40],
+    ['a lookup on a property value in a string', '.entry { color: red; value: "${color[x]}"; }', 'x', '$color', 30],
+    ['a lookup past the end of a list in a string', '@list: 1 2; .entry { value: "@{list[5]}"; }', '5', '@list', 30]
+  ])('reports %s by its key, where it was written', async (_label, source, key, receiver, column) => {
     const compiler = new Compiler({ output: { collapseNesting: true } });
     await expect(compiler.renderString(source, {
       filePath: 'entry.less',
       extension: '.less'
-    })).rejects.toMatchObject({ code: 'resolve/member-not-found', reason: `"${symbol}" is defined, but its value has no member ${member}.`, line: 1, column });
+    })).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `"${key}" is undefined in "${receiver}".`, line: 1, column });
   });
 
   /* An unbound head is named as it was written, at the reference. */
@@ -147,7 +150,7 @@ describe('Less reference semantic contracts through the public AST route', () =>
   ])('names an unbound %s reference head as written, where it was written', async (extension, source, symbol, column) => {
     const compiler = new Compiler({ output: { collapseNesting: true } });
     await expect(compiler.renderString(source, { filePath: `entry${extension}`, extension }))
-      .rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `Symbol "${symbol}" is undefined in this scope.`, line: 1, column });
+      .rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `"${symbol}" is undefined in this scope.`, line: 1, column });
   });
 
   it.each([

@@ -72,7 +72,7 @@ describe('@compose module isolation', () => {
 
     // @foo is unbound, so the read is a failed resolution, never verbatim text.
     expect(css).not.toContain('@foo.colors.primary');
-    expect(errors.map(d => d.reason)).toEqual(['Symbol "@foo" is undefined in this scope.']);
+    expect(errors.map(d => d.reason)).toEqual(['"@foo" is undefined in this scope.']);
   });
 
   it('is non-transitive: a grandparent cannot reach a grandchild member', async () => {
