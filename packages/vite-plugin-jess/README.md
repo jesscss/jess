@@ -62,8 +62,8 @@ custom property, and its module exports `vars` and `set`:
 ```less
 // theme.less
 @use "#less";
-@expose brand;
 @brand: #c00;
+@expose brand;
 
 .button { border-color: @less.darken(@brand, 10%); }
 // .button { border-color: var(--brand-darken, #990000); }
@@ -83,8 +83,8 @@ their `$`, and its module has the same exports:
 ```jess
 // theme.jess
 @-use "#less";
-@-expose brand;
 $brand: #c00;
+@-expose brand;
 
 .button { border-color: $less.darken($brand, 10%); }
 ```

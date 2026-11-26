@@ -37,7 +37,7 @@ async function compileWithPartial(partial: string, a = '#c00') {
   const dir = mkdtempSync(join(tmpdir(), 'jess-export-partial-'));
   try {
     writeFileSync(join(dir, 'one.less'), partial);
-    return await new Compiler({}).renderToResult({ filePath: join(dir, 'entry.less'), source: `@expose a, b;\n@a: ${a};\n@b: #00c;\n@import "./one.less";`, language: 'less' });
+    return await new Compiler({}).renderToResult({ filePath: join(dir, 'entry.less'), source: `@a: ${a};\n@b: #00c;\n@expose a, b;\n@import "./one.less";`, language: 'less' });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -64,7 +64,7 @@ describe('the export runtime', () => {
   });
 
   it('says why a call failed over an export inside an argument', async () => {
-    await expect(compile('@use "#less";\n@expose a;\n@a: #c00;\n.a { x: @less.mix(foo(@a), bar(1), 150%); }').then(result => result.errors?.[0]?.reason))
+    await expect(compile('@use "#less";\n@a: #c00;\n@expose a;\n.a { x: @less.mix(foo(@a), bar(1), 150%); }').then(result => result.errors?.[0]?.reason))
       .resolves.toContain('no CSS form holds a weight of 150%');
   });
 
@@ -75,7 +75,7 @@ describe('the export runtime', () => {
     ['@less.alpha(@less.fade(@brand, 50%))', '#123456'],
     ['@less.lightness(@less.spin(@brand, 30))', '#123']
   ])('writes what a compile writes: %s with %s', async (expression, value) => {
-    const exported = await compile(`@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived }).vars({ brand: value });
     const [property] = Object.keys(derived);
@@ -85,14 +85,14 @@ describe('the export runtime', () => {
   });
 
   it('leaves a function with a CSS form to the browser', async () => {
-    const exported = await compile('@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.spin(@brand, 30); }');
+    const exported = await compile('@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: @less.spin(@brand, 30); }');
     expect(exported.css).toContain('v: hsl(from var(--brand, #c00) calc(h + 30) s l);');
     expect(exported.runtime!.derived).toEqual({});
     expect(exported.runtime!.defaults).toEqual({});
   });
 
   it.each(['10px', '"str"', 'foo'])('rejects an export whose own value a form cannot take: %s', async (value) => {
-    await expect(new Compiler({}).renderString(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: @less.darken(@brand, 10%); }`, { filePath: 'entry.less', extension: '.less' }))
+    await expect(new Compiler({}).renderString(`@use "#less";\n@brand: ${value};\n@expose brand;\n.a { v: @less.darken(@brand, 10%); }`, { filePath: 'entry.less', extension: '.less' }))
       .rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 
@@ -122,7 +122,7 @@ describe('the export runtime', () => {
     ['@less.tint(@brand, -13%)', '#c00', 'rgb(from var(--brand, #c00) clamp(0, (r * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (g * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) clamp(0, (b * alpha * 1.13 + -33.15) / (alpha * 1.13 + -0.13), 255) / calc(alpha * 1.13 + -0.13))'],
     ['@less.darken(color-mix(in srgb, @brand, red), 10%)', '#c00', 'hsl(from color-mix(in srgb, var(--brand, #c00), red) h s clamp(0, l - 10, 100))']
   ])('prints %s of %s over its var(), with no recipe', async (expression, value, printed) => {
-    const exported = await compile(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@brand: ${value};\n@expose brand;\n.a { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime!.derived).toEqual({});
   });
@@ -132,7 +132,7 @@ describe('the export runtime', () => {
     ['@less.rgb(@brand, 0, 0)', 'red'],
     ['@less.rgb(0, @brand, 0)', 'foo']
   ])('fails %s when the export is %s, which that slot cannot take', async (expression, value) => {
-    await expect(new Compiler({}).renderString(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`, { filePath: 'entry.less', extension: '.less' }))
+    await expect(new Compiler({}).renderString(`@use "#less";\n@brand: ${value};\n@expose brand;\n.a { v: ${expression}; }`, { filePath: 'entry.less', extension: '.less' }))
       .rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 
@@ -140,7 +140,7 @@ describe('the export runtime', () => {
     ['@less.contrast(#999, @brand, #eee)', '#111', '#222'],
     ['@less.lightness(@less.mix(@brand, red))', '#c00', '#08f']
   ])('runs %s of %s on the runtime, where no form holds it', async (expression, value, later) => {
-    const exported = await compile(`@use "#less";\n@expose brand;\n@brand: ${value};\n.a { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@brand: ${value};\n@expose brand;\n.a { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const [property] = Object.keys(derived);
     const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived }).vars({ brand: later });
@@ -149,17 +149,17 @@ describe('the export runtime', () => {
   });
 
   it('runs @less.mix((@a), (@b), 150%) on the runtime, as it does with no parens', async () => {
-    const exported = await compile('@use "#less";\n@expose a, b;\n@a: #c00;\n@b: #08f;\n.a { v: @less.mix((@a), (@b), 150%); }');
+    const exported = await compile('@use "#less";\n@a: #c00;\n@b: #08f;\n@expose a, b;\n.a { v: @less.mix((@a), (@b), 150%); }');
     expect(Object.keys(exported.runtime!.derived)).toEqual(['--a-mix']);
     expect(exported.css).toContain('v: var(--a-mix, ');
   });
 
   it('fails @less.contrast((@a)) of a number, as it does with no parens', async () => {
-    await expect(new Compiler({}).renderString('@use "#less";\n@expose a;\n@a: 1.5;\n.x { v: @less.contrast((@a)); }', { filePath: 'entry.less', extension: '.less' })).rejects.toMatchObject({ code: 'eval/invalid-function' });
+    await expect(new Compiler({}).renderString('@use "#less";\n@a: 1.5;\n@expose a;\n.x { v: @less.contrast((@a)); }', { filePath: 'entry.less', extension: '.less' })).rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 
   it('prints an exposed variable in parens as it prints one without', async () => {
-    const exported = await compile('@use "#less";\n@expose r;\n@r: 10;\n.a { v: @less.rgb((@r), 0, 0); }');
+    const exported = await compile('@use "#less";\n@r: 10;\n@expose r;\n.a { v: @less.rgb((@r), 0, 0); }');
     expect(exported.css).toContain('v: rgb(var(--r, 10), 0, 0);');
   });
 
@@ -168,17 +168,17 @@ describe('the export runtime', () => {
     ['@less.lightness(rgb(@o 0 0))', '200'],
     ['@less.multiply(rgb(@o 0 0), red)', '200']
   ])('names the exposed variable when %s fails', async (expression, value) => {
-    await expect(new Compiler({}).renderString(`@use "#less";\n@expose o;\n@o: ${value};\n.a { v: ${expression}; }`, { filePath: 'entry.less', extension: '.less' }))
+    await expect(new Compiler({}).renderString(`@use "#less";\n@o: ${value};\n@expose o;\n.a { v: ${expression}; }`, { filePath: 'entry.less', extension: '.less' }))
       .rejects.toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('@o is exposed') });
   });
 
   it('prints a form over a colour call that reads an exposed variable', async () => {
-    const exported = await compile('@use "#less";\n@expose o;\n@o: 200;\n.a { v: @less.darken(rgb(@o 0 0), 10%); }');
+    const exported = await compile('@use "#less";\n@o: 200;\n@expose o;\n.a { v: @less.darken(rgb(@o 0 0), 10%); }');
     expect(exported.css).toContain('v: hsl(from rgb(var(--o, 200) 0 0) h s clamp(0, l - 10, 100));');
   });
 
   it('runs a mix of two exports on the runtime beyond 100%, as no form holds it', async () => {
-    const exported = await compile('@use "#less";\n@expose a, b;\n@a: #336699;\n@b: red;\n.a { v: @less.mix(@a, @b, 150%); }');
+    const exported = await compile('@use "#less";\n@a: #336699;\n@b: red;\n@expose a, b;\n.a { v: @less.mix(@a, @b, 150%); }');
     expect(exported.css).toContain('v: var(--a-mix, #0099e6);');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived }).vars({ a: '#000', b: '#fff' })['--a-mix']).toBe('#000000');
@@ -192,7 +192,7 @@ describe('the export runtime', () => {
     ['@less.hue(@less.difference(@a, rebeccapurple))', '#c00', '#123'],
     ['@less.alpha(@less.mix(@a, Transparent, 50%))', '#c00', '#08f']
   ])('runs %s for @a: %s then %s as the compile of that value does, reading no names', async (expression, initial, value) => {
-    const source = (a: string): string => `@use "#less";\n@expose a;\n@a: ${a};\n.x { v: ${expression}; }`;
+    const source = (a: string): string => `@use "#less";\n@a: ${a};\n@expose a;\n.x { v: ${expression}; }`;
     const exported = await compile(source(initial));
     expect(exported.runtime!.names).toBe(false);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
@@ -204,7 +204,7 @@ describe('the export runtime', () => {
   });
 
   it('runs rgb() as a recipe inside a function with no CSS form', async () => {
-    const exported = await compile('@use "#less";\n@expose r;\n@r: 200;\n.a { v: @less.lightness(@less.rgb(@r, 0, 0)); }');
+    const exported = await compile('@use "#less";\n@r: 200;\n@expose r;\n.a { v: @less.lightness(@less.rgb(@r, 0, 0)); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived }).vars({ r: '100' });
     expect(vars['--r-lightness']).toBe('19.607843137%');
@@ -216,13 +216,13 @@ describe('the export runtime', () => {
     '@less.contrast(rgb(1 2 3), @a)',
     '@less.contrast(rgba(1, 2, 3, .5), @a)'
   ])('compiles %s beside what it cannot read, and says so if the export is set', async (expression) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: #c00;\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@a: #c00;\n@expose a;\n.x { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived }).vars({ a: '#333' })).toThrow('The runtime computes from CSS literals');
   });
 
   it('holds a percentage as its ratio, which every read multiplies back', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.fade(#333, @a); w: @a; }');
+    const exported = await compile('@use "#less";\n@a: 25%;\n@expose a;\n.x { v: @less.fade(#333, @a); w: @a; }');
     expect(exported.css).toContain('v: rgb(from #333 r g b / calc(var(--a, 0.25) * 100%));');
     expect(exported.css).toContain('w: calc(var(--a, 0.25) * 100%);');
     expect(exported.runtime!.derived).toEqual({});
@@ -233,7 +233,7 @@ describe('the export runtime', () => {
   });
 
   it('writes a percentage\'s ratio in the digits of its compile-time fallback', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: 33.333333333333%;\n.x { w: @a; }');
+    const exported = await compile('@use "#less";\n@a: 33.333333333333%;\n@expose a;\n.x { w: @a; }');
     const fallback = /var\(--a, ([^)]+)\)/.exec(exported.css)?.[1];
     const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived: {} });
     expect(fallback).toBe('0.3333333333');
@@ -260,7 +260,7 @@ describe('the export runtime', () => {
     ['50%', '@less.sqrt((@a + 1%))', 'calc(sqrt(var(--a, 0.5) * 100 + 1) * 1%)', '28.5625px on width in a 400px box, as 7.1414284%'],
     ['50%', '(@a / 1%)', 'calc(var(--a, 0.5) * 100)', '50 on z-index']
   ])('prints @a: %s in %s as the CSS measured in Chrome', async (value, expression, printed, _measured) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@a: ${value};\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime!.units).toEqual({ a: '%' });
     expect(exported.runtime!.ratios).toEqual(['a']);
@@ -270,7 +270,7 @@ describe('the export runtime', () => {
   });
 
   it('holds a percentage that is another export\'s read as that one\'s ratio', async () => {
-    const exported = await compile('@use "#less";\n@expose a, b;\n@a: 25%;\n@b: @a;\n.x { v: @b; w: @less.unit(@b, px); }');
+    const exported = await compile('@use "#less";\n@a: 25%;\n@b: @a;\n@expose a, b;\n.x { v: @b; w: @less.unit(@b, px); }');
 
     /* Chrome 156.0.8078.75: w is 25px on height with the fallback alone, 50px with --b: 0.5. */
     expect(exported.css).toContain('v: calc(var(--b, var(--a, 0.25)) * 100%);');
@@ -281,7 +281,7 @@ describe('the export runtime', () => {
   });
 
   it('holds a percentage only a recipe reads as its ratio too', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: 50%;\n.x { v: @less.ispercentage(@a); }');
+    const exported = await compile('@use "#less";\n@a: 50%;\n@expose a;\n.x { v: @less.ispercentage(@a); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived });
     expect(runtime.vars({ a: '20%' })).toEqual({ '--a': '0.2', '--a-ispercentage': 'true' });
@@ -289,7 +289,7 @@ describe('the export runtime', () => {
   });
 
   it('takes the unit a form reads an export of no known unit in, as it is', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: var(--y);\n.x { color: @less.fade(#c00, @a); }');
+    const exported = await compile('@use "#less";\n@a: var(--y);\n@expose a;\n.x { color: @less.fade(#c00, @a); }');
     expect(exported.css).toContain('color: rgb(from #c00 r g b / calc(var(--a, var(--y)) / 100%));');
     expect(exported.runtime!.ratios).toEqual([]);
     const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived: {} });
@@ -303,7 +303,7 @@ describe('the export runtime', () => {
     ['@a: 50%;', '@less.ceil((@a + 1px))'],
     ['@a: 5px;', '@less.unit((@a + 1%), px)']
   ])('has no form for a sum of two units over an export, as the known value has none: %s %s', async (declared, expression) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n${declared}\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n${declared}\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.errors?.[0]?.code).toBe('eval/expose-not-a-value');
   });
 
@@ -315,7 +315,7 @@ describe('the export runtime', () => {
     ['@less.spin(#c00, @a)', 'hsl(from #c00 calc(h + var(--a, var(--y))) s l)'],
     ['@less.unit(@a, px)', 'calc(var(--a, var(--y)) * 1px)']
   ])('takes a number for an export of no known unit a number slot reads: %s', async (expression, printed) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: var(--y);\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@a: var(--y);\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime!.units).toEqual({ a: '' });
     const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived: {} });
@@ -329,7 +329,7 @@ describe('the export runtime', () => {
     ['@less.min(@a, 5px)', 'less.min() reads it as a value in px, and less.fade() as a percentage'],
     ['@less.mod(@a, 3px)', 'less.mod() reads it as a value in px, and less.fade() as a percentage']
   ])('has no runtime value for an export of no known unit a fade amount and %s read in two units', async (expression, reason) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: var(--y);\n.x { color: @less.fade(#c00, @a); background: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@a: var(--y);\n@expose a;\n.x { color: @less.fade(#c00, @a); background: ${expression}; }`);
     expect(exported.errors?.[0]).toMatchObject({ code: 'eval/expose-unit-conflict', message: expect.stringContaining('Exposed variable @a read with two units'), reason: expect.stringContaining(reason) });
   });
 
@@ -341,26 +341,26 @@ describe('the export runtime', () => {
     ['@less.mod(@a, 3px)', 'rem(var(--a, var(--y)), 3px)', 'px'],
     ['@less.min((@a * 1px), 5px)', 'min((var(--a, var(--y)) * 1px), 5px)', '']
   ])('takes the unit a CSS math function reads an export of no known unit in: %s', async (expression, printed, unit) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: var(--y);\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@a: var(--y);\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime!.units).toEqual({ a: unit });
   });
 
   /* Chrome 156.0.8078.75: both are `auto` on z-index, and `0px` on height times 1px, with --a: 0.5 and with the fallback alone. */
   it('keeps the division in a calc() an author wrote, as over the known value', async () => {
-    expect((await compile('@use "#less";\n@expose a;\n@a: 50%;\n.x { v: calc(@a / 1%); }')).css).toContain('v: calc(var(--a, 0.5) * 100% / 1%);');
+    expect((await compile('@use "#less";\n@a: 50%;\n@expose a;\n.x { v: calc(@a / 1%); }')).css).toContain('v: calc(var(--a, 0.5) * 100% / 1%);');
     expect((await compile('@use "#less";\n@a: 50%;\n.x { v: calc(@a / 1%); }')).css).toContain('v: calc(50% / 1%);');
   });
 
   it('has no form for a sum over a percentage a term of which does not fold', async () => {
-    const exported = await compile('@use "#less";\n@expose a, n;\n@a: 50%;\n@n: 2;\n.x { v: @less.unit((@a + 1% * @n), px); }');
+    const exported = await compile('@use "#less";\n@a: 50%;\n@n: 2;\n@expose a, n;\n.x { v: @less.unit((@a + 1% * @n), px); }');
     expect(exported.errors?.[0]).toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('divides a percentage') });
   });
 
   it.each([
-    ['@expose a;\n@a: 5px;', '@less.unit((@a * 2), em)', { a: 'px' }, { a: '2em' }],
-    ['@expose a;\n@a: 5;', '@less.darken(#c00, (@a * 2))', { a: '' }, { a: '5%' }],
-    ['@expose a, b;\n@a: 5px;\n@b: 1;', '@less.round(@a, (@b * 2))', { a: 'px', b: '' }, { b: '2px' }]
+    ['@a: 5px;\n@expose a;', '@less.unit((@a * 2), em)', { a: 'px' }, { a: '2em' }],
+    ['@a: 5;\n@expose a;', '@less.darken(#c00, (@a * 2))', { a: '' }, { a: '5%' }],
+    ['@a: 5px;\n@b: 1;\n@expose a, b;', '@less.round(@a, (@b * 2))', { a: 'px', b: '' }, { b: '2px' }]
   ])('takes only the unit a form reads an export in inside a larger argument: %s %s', async (declared, expression, units, refused) => {
     const exported = await compile(`@use "#less";\n${declared}\n.x { v: ${expression}; }`);
     expect(exported.runtime!.units).toEqual(units);
@@ -369,33 +369,33 @@ describe('the export runtime', () => {
   });
 
   it('holds a percentage read only as written as its ratio too, whatever reads it first', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: 50%;\n.x { w: @a; }\n.y { v: @less.unit(@a, px); }');
+    const exported = await compile('@use "#less";\n@a: 50%;\n@expose a;\n.x { w: @a; }\n.y { v: @less.unit(@a, px); }');
     expect(exported.css).toContain('w: calc(var(--a, 0.5) * 100%);');
     expect(exported.css).toContain('v: calc(var(--a, 0.5) * 100 * 1px);');
     expect(exported.runtime!.units).toEqual({ a: '%' });
   });
 
   it('needs no recipe where the form holds the export', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: 25%;\n.x { v: @less.darken(var(--x), @a); }');
+    const exported = await compile('@use "#less";\n@a: 25%;\n@expose a;\n.x { v: @less.darken(var(--x), @a); }');
     expect(exported.css).toContain('hsl(from var(--x) h s clamp(0, l - var(--a, 0.25) * 100, 100))');
     expect(exported.runtime!.derived).toEqual({});
   });
 
   it.each([
-    ['@expose gap;\n@gap: 2px;', '@less.min(var(--max), @gap)', 'min(var(--max), var(--gap, 2px))', { gap: '4px' }],
-    ['@expose a;\n@a: 2px;', '@less.max(@a, var(--x))', 'max(var(--a, 2px), var(--x))', { a: '4px' }],
-    ['@expose a, b;\n@a: 1px;\n@b: 2px;', '@less.min(@a, @b)', 'min(var(--a, 1px), var(--b, 2px))', { a: '4px' }],
-    ['@expose a;\n@a: 2;', '@less.pow(var(--x), @a)', 'pow(var(--x), var(--a, 2))', { a: '3' }],
-    ['@expose a, b;\n@a: var(--y);\n@b: 2;', '@less.pow(@a, @b)', 'pow(var(--a, var(--y)), var(--b, 2))', { b: '3' }],
-    ['@expose a;\n@a: 16;', '@less.sqrt(@a)', 'sqrt(var(--a, 16))', { a: '25' }],
-    ['@expose a;\n@a: 16;', '@less.sqrt((@a * 2))', 'sqrt((var(--a, 16) * 2))', { a: '25' }],
-    ['@expose a;\n@a: .5;', '@less.asin(@a)', 'asin(var(--a, 0.5))', { a: '1' }],
-    ['@expose a;\n@a: .5;', '@less.acos(@a)', 'acos(var(--a, 0.5))', { a: '1' }],
-    ['@expose a;\n@a: .5;', '@less.atan(@a)', 'atan(var(--a, 0.5))', { a: '1' }],
-    ['@expose a;\n@a: 30deg;', '@less.sin(@a)', 'sin(var(--a, 30deg))', { a: '60deg' }],
-    ['@expose a;\n@a: 1;', '@less.cos(@a)', 'cos(var(--a, 1))', { a: '2' }],
-    ['@expose a;\n@a: .5turn;', '@less.tan(@a)', 'tan(var(--a, 0.5turn))', { a: '0.25turn' }],
-    ['@expose a;\n@a: -2px;', '@less.abs(@a)', 'abs(var(--a, -2px))', { a: '-3px' }]
+    ['@gap: 2px;\n@expose gap;', '@less.min(var(--max), @gap)', 'min(var(--max), var(--gap, 2px))', { gap: '4px' }],
+    ['@a: 2px;\n@expose a;', '@less.max(@a, var(--x))', 'max(var(--a, 2px), var(--x))', { a: '4px' }],
+    ['@a: 1px;\n@b: 2px;\n@expose a, b;', '@less.min(@a, @b)', 'min(var(--a, 1px), var(--b, 2px))', { a: '4px' }],
+    ['@a: 2;\n@expose a;', '@less.pow(var(--x), @a)', 'pow(var(--x), var(--a, 2))', { a: '3' }],
+    ['@a: var(--y);\n@b: 2;\n@expose a, b;', '@less.pow(@a, @b)', 'pow(var(--a, var(--y)), var(--b, 2))', { b: '3' }],
+    ['@a: 16;\n@expose a;', '@less.sqrt(@a)', 'sqrt(var(--a, 16))', { a: '25' }],
+    ['@a: 16;\n@expose a;', '@less.sqrt((@a * 2))', 'sqrt((var(--a, 16) * 2))', { a: '25' }],
+    ['@a: .5;\n@expose a;', '@less.asin(@a)', 'asin(var(--a, 0.5))', { a: '1' }],
+    ['@a: .5;\n@expose a;', '@less.acos(@a)', 'acos(var(--a, 0.5))', { a: '1' }],
+    ['@a: .5;\n@expose a;', '@less.atan(@a)', 'atan(var(--a, 0.5))', { a: '1' }],
+    ['@a: 30deg;\n@expose a;', '@less.sin(@a)', 'sin(var(--a, 30deg))', { a: '60deg' }],
+    ['@a: 1;\n@expose a;', '@less.cos(@a)', 'cos(var(--a, 1))', { a: '2' }],
+    ['@a: .5turn;\n@expose a;', '@less.tan(@a)', 'tan(var(--a, 0.5turn))', { a: '0.25turn' }],
+    ['@a: -2px;\n@expose a;', '@less.abs(@a)', 'abs(var(--a, -2px))', { a: '-3px' }]
   ])('needs no recipe where the CSS function holds the export: %s %s', async (declared, expression, printed, values) => {
     const exported = await compile(`@use "#less";\n${declared}\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
@@ -408,7 +408,7 @@ describe('the export runtime', () => {
     ['@a: 1rad;', '@less.spin(#333, @a)', '57deg', 'rad'],
     ['@a: .5;', '@less.fade(#333, @a)', '50%', 'a number']
   ])('refuses a unit a CSS form would read differently: %s %s set to %s', async (declared, expression, set, unit) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n${declared}\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n${declared}\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.runtime!.derived).toEqual({});
     const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived: {} });
     expect(() => runtime.vars({ a: set })).toThrow(`a is read by a CSS form in ${unit}`);
@@ -416,13 +416,13 @@ describe('the export runtime', () => {
   });
 
   it('takes any unit for an export only read as written or by a recipe', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: 5px;\n.x { v: @a; w: @less.sin(@a); }');
+    const exported = await compile('@use "#less";\n@a: 5px;\n@expose a;\n.x { v: @a; w: @less.sin(@a); }');
     expect(exported.runtime!.units).toEqual({});
     expect(() => createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived: {} }).vars({ a: '2em' })).not.toThrow();
   });
 
   it('recomputes @less.sin(@a) where the CSS function does not take a length', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: 0px;\n.x { v: @less.sin(@a); }');
+    const exported = await compile('@use "#less";\n@a: 0px;\n@expose a;\n.x { v: @less.sin(@a); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     expect(Object.values(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived }).vars({ a: '0px' }))).toContain('0');
   });
@@ -430,7 +430,7 @@ describe('the export runtime', () => {
   it.each([
     ['16px', '@less.sin((@a * 2))']
   ])('has no value for @a: %s in %s', async (value, expression) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@a: ${value};\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.errors?.[0]?.code).toBe('eval/expose-not-a-value');
   });
 
@@ -438,7 +438,7 @@ describe('the export runtime', () => {
     ['red', '50%', '#eee'],
     ['#c00', '50%', '#eee']
   ])('recomputes beside a fixed argument it can read: %s', async (color, set, printed) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: 1%;\n.x { v: @less.contrast(${color}, #111, #eee, @a); }`);
+    const exported = await compile(`@use "#less";\n@a: 1%;\n@expose a;\n.x { v: @less.contrast(${color}, #111, #eee, @a); }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     expect(Object.values(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived }).vars({ a: set }))).toContain(printed);
   });
@@ -448,7 +448,7 @@ describe('the export runtime', () => {
     ['@less.hsl(@a, 50%)', '#c00', 'var(--a-hsl, hsla(0, 100%, 40%, 0.5))'],
     ['@less.hsl(#333, @a)', '5%', 'var(--a-hsl, hsla(0, 0%, 20%, 0.05))']
   ])('keeps the recipe of %s when the export is %s, which no form reads there', async (expression, value, printed) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@a: ${value};\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(Object.keys(exported.runtime!.derived)).toHaveLength(1);
   });
@@ -468,7 +468,7 @@ describe('the export runtime', () => {
     ['50%', '@less.percentage((@a + 1%))', 'calc((var(--a, 0.5) * 100 + 1) * 100%)'],
     ['50%', '@less.percentage((@a - 1%))', 'calc((var(--a, 0.5) * 100 - 1) * 100%)']
   ])('keeps the form over a percentage held as its ratio: @a: %s in %s', async (value, expression, printed) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@a: ${value};\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime!.derived).toEqual({});
     expect(exported.runtime!.units).toEqual({ a: '%' });
@@ -481,7 +481,7 @@ describe('the export runtime', () => {
     ['@less.rgb(var(--r), 1px, 0)', 'rgb(var(--r), 1, 0)'],
     ['@less.rgb(@a, 1px, 0)', 'rgb(var(--a, 200), 1, 0)']
   ])('writes the number of a fixed channel in a unit CSS does not take: %s', async (expression, printed) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: 200;\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@a: 200;\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
   });
 
@@ -510,7 +510,7 @@ describe('the export runtime', () => {
     ['16px', '@less.ceil((@a * 2))', 'round(up, (var(--a, 16px) * 2), 1px)'],
     ['5', '@less.min(@a, 1px)', 'min(var(--a, 5) * 1px, 1px)']
   ])('converts @a: %s in %s to what that slot means, with no recipe', async (value, expression, printed) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n@a: ${value};\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n@a: ${value};\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime!.derived).toEqual({});
   });
@@ -532,7 +532,7 @@ describe('the export runtime', () => {
     ['@a: 25%;', '@less.hsv(var(--h), 50%, @a)', 'hwb(var(--h) calc(0.5 * var(--a, 0.25) * 100%) calc(100% - var(--a, 0.25) * 100%))'],
     ['@a: .5;', '@less.hsva(120, 50%, 75%, @a)', 'hwb(120 37.5% 25% / var(--a, 0.5))']
   ])('prints %s %s as the CSS it is', async (declaration, expression, printed) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n${declaration}\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n${declaration}\n@expose a;\n.x { v: ${expression}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime!.derived).toEqual({});
   });
@@ -542,34 +542,34 @@ describe('the export runtime', () => {
     ['@a: 0 1px 2px rgba(0, 0, 0, .5);', '@less.extract(@a, 4)', { a: '0 1px 2px #000' }, '#000'],
     ['@a: var(--p), var(--q);', '@less.length(@a)', { a: '1, 2, 3' }, '3']
   ])('runs a recipe of one export whose default holds a call: %s %s', async (declaration, expression, values, result) => {
-    const exported = await compile(`@use "#less";\n@expose a;\n${declaration}\n.x { v: ${expression}; }`);
+    const exported = await compile(`@use "#less";\n${declaration}\n@expose a;\n.x { v: ${expression}; }`);
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived }).vars(values);
     expect(Object.values(vars)).toContain(result);
   });
 
   it('recomputes a string with parens as a compile does', async () => {
-    const exported = await compile('@use "#less";\n@expose a;\n@a: c;\n.x { v: @less.replace("a(b)", "b", @a); }');
+    const exported = await compile('@use "#less";\n@a: c;\n@expose a;\n.x { v: @less.replace("a(b)", "b", @a); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const vars = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived }).vars({ a: 'z' });
     expect(Object.values(vars)).toContain('"a(z)"');
   });
 
   it('leaves nothing behind for a form over a form', async () => {
-    const exported = await compile('@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.darken(@less.spin(@brand, 30), 10%); }');
+    const exported = await compile('@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: @less.darken(@less.spin(@brand, 30), 10%); }');
     expect(exported.css).toContain('v: hsl(from hsl(from var(--brand, #c00) calc(h + 30) s l) h s clamp(0, l - 10, 100));');
     expect(exported.runtime!.derived).toEqual({});
     expect(exported.runtime!.defaults).toEqual({});
   });
 
   it('computes only what reads a given export', async () => {
-    const exported = await compile('@use "#less";\n@expose a, b;\n@a: #c00;\n@b: #00c;\n.x { v: @less.lightness(@a); w: @less.lightness(@b); }');
+    const exported = await compile('@use "#less";\n@a: #c00;\n@b: #00c;\n@expose a, b;\n.x { v: @less.lightness(@a); w: @less.lightness(@b); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     expect(createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived }).vars({ b: '#fff' })).toEqual({ '--b': '#fff', '--b-lightness': '100%' });
   });
 
   it('takes each value by its JavaScript key, the name with dash-case turned to camelCase', async () => {
-    const exported = await compile('@use "#less";\n@expose brand-color;\n@brand-color: #c00;\n.a { v: @less.lightness(@brand-color); }');
+    const exported = await compile('@use "#less";\n@brand-color: #c00;\n@expose brand-color;\n.a { v: @less.lightness(@brand-color); }');
     const derived = Object.fromEntries(Object.entries(exported.runtime!.derived).map(([name, recipe]) => [name, toRuntime(recipe)]));
     const runtime = createRuntime({ keys: exported.runtime!.keys, defaults: exported.runtime!.defaults, units: exported.runtime!.units, ratios: exported.runtime!.ratios, hold: holdRatio, emit: emitValue, read: readNamed, derived });
     expect(runtime.vars({ brandColor: '#000' })).toEqual({ '--brand-color': '#000', '--brand-color-lightness': '0%' });

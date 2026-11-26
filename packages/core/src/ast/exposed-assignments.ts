@@ -1,10 +1,10 @@
 import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { WARN } from '../error/diagnostics.js';
+import { ERR, WARN } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Context } from '../context.js';
-import { exportState, mixedReads, type ExportLane, type ExportRef, type ExportState } from './export-reads.js';
-import { funcCall, keyword, type CallValue, type VariableDeclaration } from './nodes.js';
+import { exportState, mixedReads, type ExposeScope, type ExportLane, type ExportRef, type ExportState } from './export-reads.js';
+import { funcCall, keyword, type CallValue, type VariableDeclaration, type VariableExpose } from './nodes.js';
 import type { BindingCell, Frame } from './serialize.js';
 import { emitValue, type EvalValue } from './value-eval.js';
 
@@ -168,6 +168,9 @@ export function excluding<F>(e: { readonly excluded: Set<CallValue>; readonly s:
 /** Sets `name`'s live cell in `owner`'s `cells`, an assignment of the exposed variable when it is one ({@link exposedWrite}). */
 export function writeCell(e: ExportLane<Frame>, cells: Map<string, BindingCell>, cell: BindingCell, owner: Frame): void {
   cells.set(cell.declaration.name, cell);
+  if (owner.parent === null) {
+    noteTopLevelDeclaration(e.s.exports, owner, cell.declaration.name);
+  }
   if (e.s.exports.runtime !== undefined) {
     exposedWrite(e, cell.declaration, owner, cell.value, cell.valueFrame ?? owner);
   }
@@ -234,5 +237,49 @@ function withWarningsMuted<R>(context: Context | undefined, run: () => MaybeProm
   } catch (error) {
     restore();
     throw error;
+  }
+}
+
+/** Records a declaration at a top level as the render walk reaches it ({@link writeCell}), so an `@expose` after it may name it ({@link requireDeclaredBefore}). */
+function noteTopLevelDeclaration<F>(x: ExportState<F>, frame: F, name: string): void {
+  let names = x.declaredSoFar.get(frame);
+  if (names === undefined) {
+    names = new Set();
+    x.declaredSoFar.set(frame, names);
+  }
+  names.add(name);
+}
+
+/**
+ * A variable is exposed after it is declared (owner 2026-11-26, ledger A20):
+ * when the render walk reaches an `@expose`, each name it lists has a
+ * declaration already walked in its frame, written there, by a file
+ * imported before it or by a mixin called before it. A name with none yet is
+ * marked, and rejected when it resolves (export-reads.ts `settle`), so one
+ * nothing declares stays `eval/expose-not-declared`; one a read already
+ * resolved is rejected here.
+ */
+export function requireDeclaredBefore<F>(node: VariableExpose, frame: F, { own, leaks }: Pick<ExposeScope<F>, 'own' | 'leaks'>, e: ExportLane<F>): void {
+  if (own !== undefined) {
+    return; // the root's, bound before the walk; checked when the walk reaches it
+  }
+  const x = e.s.exports;
+  const names = x.declaredSoFar.get(frame);
+  for (const exported of node.names) {
+    const name = exported.name;
+    if (names?.has(name) === true || leaks(name)) {
+      continue;
+    }
+    if (x.bound.has(name)) {
+      throw ERR.exposeBeforeDeclaration({ node: exported, ...callSiteLocation(exported, e.s), meta: { ...node.spelling, name } });
+    }
+    x.early.add(exported);
+  }
+}
+
+/** Rejects an exposed name {@link requireDeclaredBefore} marked, once it resolves to a declaration. */
+export function rejectEarly(early: ReadonlySet<object>, node: VariableExpose, exported: VariableExpose['names'][number], where: ReturnType<typeof callSiteLocation>): void {
+  if (early.has(exported)) {
+    throw ERR.exposeBeforeDeclaration({ node: exported, ...where, meta: { ...node.spelling, name: exported.name } });
   }
 }

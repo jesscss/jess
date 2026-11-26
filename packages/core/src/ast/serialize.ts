@@ -3681,7 +3681,7 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExpose,
    * `@expose`'s file's top level, where the caller knows it.
    */
   if (node.type === 'VariableExpose') {
-    return declareExpose(node, frame.parent !== null, frame, { resolve: name => resolveVarRef(frame, name, 'scoped', e, READS_EXPORT), own }, e);
+    return declareExpose(node, frame.parent !== null, frame, { resolve: name => resolveVarRef(frame, name, 'scoped', e, READS_EXPORT), own, leaks: name => frame.activation?.leaked?.has(name) === true }, e);
   }
   if (
     !('scope' in node.write)

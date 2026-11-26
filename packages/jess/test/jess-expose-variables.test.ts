@@ -28,14 +28,14 @@ async function outcome(source: string, language: Language) {
 const LESS_FUNCTIONS = jessFunctions();
 
 const EXPOSED: ReadonlyArray<readonly [string, string]> = [
-  ['a value and a computed value', '@use "#less";\n@expose brand;\n@brand: #c00;\n.button { color: @brand; opacity: @less.lightness(@brand); }\n'],
-  ['two names in calc()', '@expose brand, gap;\n@brand: #c00;\n@gap: 4px;\n.a { color: @brand; margin: calc(@gap * 2); }\n'],
+  ['a value and a computed value', '@use "#less";\n@brand: #c00;\n@expose brand;\n.button { color: @brand; opacity: @less.lightness(@brand); }\n'],
+  ['two names in calc()', '@brand: #c00;\n@gap: 4px;\n@expose brand, gap;\n.a { color: @brand; margin: calc(@gap * 2); }\n'],
   ['a read written before the @expose', '@brand: #c00;\n.a { color: @brand; }\n@expose brand;\n'],
   ['a read written before a later declaration', '@brand: red;\n.a { color: @brand; }\n@brand: blue;\n@expose brand;\n'],
-  ['a percentage read as its ratio', '@use "#less";\n@expose r;\n@r: 10%;\n.x { v: rgb(@r, 0, 0); }\n'],
-  ['an export of an export', '@use "#less";\n@expose a, b;\n@a: 10%;\n@b: @a;\n.x { v: rgb(@b, 0%, 0%); }\n'],
-  ['functions with a CSS form', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { color: @less.fade(@brand, 50%); background: @less.darken(@brand, 10%); }\n'],
-  ['a slash list a built-in reads', '@use "#less";\n@expose a;\n@a: 1/2;\n.x { b: @less.percentage(@a); c: @less.ceil(@a); }\n'],
+  ['a percentage read as its ratio', '@use "#less";\n@r: 10%;\n@expose r;\n.x { v: rgb(@r, 0, 0); }\n'],
+  ['an export of an export', '@use "#less";\n@a: 10%;\n@b: @a;\n@expose a, b;\n.x { v: rgb(@b, 0%, 0%); }\n'],
+  ['functions with a CSS form', '@use "#less";\n@brand: #c00;\n@expose brand;\n.a { color: @less.fade(@brand, 50%); background: @less.darken(@brand, 10%); }\n'],
+  ['a slash list a built-in reads', '@use "#less";\n@a: 1/2;\n@expose a;\n.x { b: @less.percentage(@a); c: @less.ceil(@a); }\n']
 ];
 
 const REJECTED: ReadonlyArray<readonly [string, string]> = [
@@ -73,6 +73,14 @@ describe('.jess @-expose (A20)', () => {
   ] as const)('names an undeclared exposed variable in %s spelling', async (language, source, text) => {
     const { errors } = await compiled(source, language);
     expect(errors).toEqual([expect.objectContaining({ code: 'eval/expose-not-declared', ...text })]);
+  });
+
+  it('rejects an @-expose above the declaration it names', async () => {
+    const { css, errors } = await compiled('@-expose brand;\n$brand: red;\n.a { color: $brand; }\n', 'jess');
+    expect({ css, errors }).toMatchObject({
+      css: '',
+      errors: [{ code: 'eval/expose-before-declaration', message: '@-expose names $brand before it is declared', fix: 'Move the @-expose below the declaration of $brand.' }]
+    });
   });
 
   /* Each statement is named as its own file writes it, so a .jess file that imports a .less one names both spellings. */
@@ -113,16 +121,16 @@ describe('.jess @-expose (A20)', () => {
 
   it.each([
     [
-      '@use "#less";\n@expose brand;\n@brand: #c00;\n.button { color: @brand; opacity: @less.lightness(@brand); }\n',
-      '@-use "#less";\n@-expose brand;\n$brand: #c00;\n.button { color: $brand; opacity: $less.lightness($brand); }\n'
+      '@use "#less";\n@brand: #c00;\n@expose brand;\n.button { color: @brand; opacity: @less.lightness(@brand); }\n',
+      '@-use "#less";\n$brand: #c00;\n@-expose brand;\n.button { color: $brand; opacity: $less.lightness($brand); }\n'
     ],
     [
-      '@expose brand, gap;\n@brand: #c00;\n@gap: 4px;\n.a { color: @brand; margin: calc(@gap * 2); }\n',
-      '@-expose brand, gap;\n$brand: #c00;\n$gap: 4px;\n.a { color: $brand; margin: calc($gap * 2); }\n'
+      '@brand: #c00;\n@gap: 4px;\n@expose brand, gap;\n.a { color: @brand; margin: calc(@gap * 2); }\n',
+      '$brand: #c00;\n$gap: 4px;\n@-expose brand, gap;\n.a { color: $brand; margin: calc($gap * 2); }\n'
     ],
     [
-      '@use "#less";\n@expose brand;\n@brand: #c00;\n.button { color: @brand; border-color: @less.darken(@brand, 10%); }\n',
-      '@-use "#less";\n@-expose brand;\n$brand: #c00;\n.button { color: $brand; border-color: $less.darken($brand, 10%); }\n'
+      '@use "#less";\n@brand: #c00;\n@expose brand;\n.button { color: @brand; border-color: @less.darken(@brand, 10%); }\n',
+      '@-use "#less";\n$brand: #c00;\n@-expose brand;\n.button { color: $brand; border-color: $less.darken($brand, 10%); }\n'
     ]
   ])('a .jess stylesheet with live reads compiles as the Less one does', async (less, jess) => {
     const written = await outcome(jess, 'jess');
@@ -144,27 +152,27 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
   const REASSIGNED = { code: 'eval/expose-reassigned', message: '$brand is exposed and assigned more than once; set() sets its value for every read' };
 
   it('reads the variable before a later declaration of it', async () => {
-    const { css, errors, warnings } = await compiled('@-expose brand;\n$brand: red;\n.button { color: $brand; }\n$brand: blue;\n.link { color: $brand; }\n', 'jess');
+    const { css, errors, warnings } = await compiled('$brand: red;\n@-expose brand;\n.button { color: $brand; }\n$brand: blue;\n.link { color: $brand; }\n', 'jess');
     expect(errors).toEqual([]);
     expect(css).toBe('.button {\n  color: var(--brand, red);\n}\n.link {\n  color: var(--brand, blue);\n}\n');
     expect(warned(warnings)).toEqual([REASSIGNED]);
   });
 
   it('reads the variable after a := reassignment of it, in a ruleset or at the top level', async () => {
-    const { css, errors } = await compiled('@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n.dark { $brand := #f66; color: $brand; }\n.link { color: $brand; }\n', 'jess');
+    const { css, errors } = await compiled('$brand: #c00;\n@-expose brand;\n.button { color: $brand; }\n.dark { $brand := #f66; color: $brand; }\n.link { color: $brand; }\n', 'jess');
     expect(errors).toEqual([]);
     expect(css).toBe('.button {\n  color: var(--brand, #c00);\n}\n.dark {\n  color: var(--brand, #f66);\n}\n.link {\n  color: var(--brand, #f66);\n}\n');
   });
 
   it('computes a reassignment in terms of itself from the value it reaches', async () => {
-    const { css, errors, runtime } = await compiled('@-expose size;\n$size: 10px;\n.a { width: $size; }\n$size := $($size * 2);\n.b { width: $size; }\n', 'jess');
+    const { css, errors, runtime } = await compiled('$size: 10px;\n@-expose size;\n.a { width: $size; }\n$size := $($size * 2);\n.b { width: $size; }\n', 'jess');
     expect(errors).toEqual([]);
     expect(css).toBe('.a {\n  width: var(--size, 10px);\n}\n.b {\n  width: var(--size, 20px);\n}\n');
     expect(runtime?.exports).toEqual(['size']);
   });
 
   it('reads the variable into a computed value before a later declaration, with the final value as the runtime default', async () => {
-    const { css, errors, runtime } = await compiled('@-use "#less";\n@-expose brand;\n$brand: #c00;\n.button { opacity: $less.lightness($brand); }\n$brand: #f80;\n.link { color: $brand; }\n', 'jess');
+    const { css, errors, runtime } = await compiled('@-use "#less";\n$brand: #c00;\n@-expose brand;\n.button { opacity: $less.lightness($brand); }\n$brand: #f80;\n.link { color: $brand; }\n', 'jess');
     expect(errors).toEqual([]);
     expect(css).toBe('.button {\n  opacity: var(--brand-lightness, 40%);\n}\n.link {\n  color: var(--brand, #f80);\n}\n');
     // eslint-disable-next-line @typescript-eslint/naming-convention -- custom property names
@@ -178,7 +186,7 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
     ['a := in a ruleset', '$brand: #c00;\n.button { color: $brand; }\n.dark { $brand := #f66; color: $brand; }\n.link { border-color: $brand; }\n'],
     ['a ::= in a ruleset', '$brand: #c00;\n.button { color: $brand; }\n.dark { $brand ::= #f66; color: $brand; }\n.link { border-color: $brand; }\n']
   ])('writes the CSS the stylesheet compiles to without @-expose, read through var(), after %s', async (_name, source) => {
-    const exposed = await compiled(`@-expose brand;\n${source}`, 'jess');
+    const exposed = await compiled(source.replace('\n', '\n@-expose brand;\n'), 'jess');
     const plain = await compiled(source, 'jess');
     expect(exposed.errors).toEqual([]);
     expect(exposed.css).toContain('var(--brand, ');
@@ -186,7 +194,7 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
   });
 
   it('holds the ratio each read of a percentage sees', async () => {
-    const { css, errors } = await compiled('@-use "#less";\n@-expose tint;\n$tint: 10%;\n.a { color: rgb($tint, 0, 0); }\n$tint := 20%;\n.b { color: rgb($tint, 0, 0); }\n', 'jess');
+    const { css, errors } = await compiled('@-use "#less";\n$tint: 10%;\n@-expose tint;\n.a { color: rgb($tint, 0, 0); }\n$tint := 20%;\n.b { color: rgb($tint, 0, 0); }\n', 'jess');
     expect(errors).toEqual([]);
     expect(css).toBe('.a {\n  color: rgb(calc(var(--tint, 0.1) * 100%), 0, 0);\n}\n.b {\n  color: rgb(calc(var(--tint, 0.2) * 100%), 0, 0);\n}\n');
   });
@@ -196,7 +204,7 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
     ['in its frame', '$r := 5px;\n'],
     ['in a body', '.x { $r := 5px; }\n']
   ])('holds a variable assigned values of two kinds as written, assigned %s', async (_where, later) => {
-    const { css, errors, runtime } = await compiled(`@-expose r;\n$r: 10%;\n.a { w: $r; }\n${later}.b { w: $r; }\n`, 'jess');
+    const { css, errors, runtime } = await compiled(`$r: 10%;\n@-expose r;\n.a { w: $r; }\n${later}.b { w: $r; }\n`, 'jess');
     expect(errors).toEqual([]);
     expect(css).toContain('.a {\n  w: var(--r, 10%);\n}\n');
     expect(css).toContain('.b {\n  w: var(--r, 5px);\n}\n');
@@ -219,18 +227,18 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
   });
 
   it('warns once for a variable it compiles again to hold as written', async () => {
-    const { warnings } = await compiled('@-expose r;\n$r: 10%;\n.a { w: $r; }\n$r := 5px;\n.b { w: $r; }\n', 'jess');
+    const { warnings } = await compiled('$r: 10%;\n@-expose r;\n.a { w: $r; }\n$r := 5px;\n.b { w: $r; }\n', 'jess');
     expect(warnings.map(warning => warning.code)).toEqual(['eval/expose-reassigned']);
   });
 
   it('still holds the ratio of a percentage computed, then assigned', async () => {
-    const { css, errors } = await compiled('@-expose r;\n$r: $(5% * 2);\n.a { w: $r; }\n$r := 20%;\n.b { w: $r; }\n', 'jess');
+    const { css, errors } = await compiled('$r: $(5% * 2);\n@-expose r;\n.a { w: $r; }\n$r := 20%;\n.b { w: $r; }\n', 'jess');
     expect(errors).toEqual([]);
     expect(css).toBe('.a {\n  w: calc(var(--r, 0.1) * 100%);\n}\n.b {\n  w: calc(var(--r, 0.2) * 100%);\n}\n');
   });
 
   it('still holds the ratio of a percentage a body shadows with a length', async () => {
-    const { css, errors } = await compiled('@-expose r;\n$r: 10%;\n.x { $r: 5px; w: $r; }\n.a { w: $r; }\n', 'jess');
+    const { css, errors } = await compiled('$r: 10%;\n@-expose r;\n.x { $r: 5px; w: $r; }\n.a { w: $r; }\n', 'jess');
     expect(errors).toEqual([]);
     expect(css).toBe('.x {\n  w: 5px;\n}\n.a {\n  w: calc(var(--r, 0.1) * 100%);\n}\n');
   });
@@ -257,15 +265,15 @@ describe('.jess reads of an exposed variable assigned more than once (A22)', () 
   });
 
   it('leaves a nested shadow of the name its own value, with no warning', async () => {
-    const { css, errors, warnings } = await compiled('@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n.dark { $brand: #f66; color: $brand; }\n', 'jess');
+    const { css, errors, warnings } = await compiled('$brand: #c00;\n@-expose brand;\n.button { color: $brand; }\n.dark { $brand: #f66; color: $brand; }\n', 'jess');
     expect(errors).toEqual([]);
     expect(css).toBe('.button {\n  color: var(--brand, #c00);\n}\n.dark {\n  color: #f66;\n}\n');
     expect(warnings).toEqual([]);
   });
 
   it.each([
-    ['less', '@expose brand;\n@brand: #c00;\n.button { color: @brand; }\n@brand: #f80;\n', '@brand', '#f80'],
-    ['jess', '@-expose brand;\n$brand: #c00;\n.button { color: $brand; }\n$brand := #f80;\n', '$brand', '#c00']
+    ['less', '@brand: #c00;\n@expose brand;\n.button { color: @brand; }\n@brand: #f80;\n', '@brand', '#f80'],
+    ['jess', '$brand: #c00;\n@-expose brand;\n.button { color: $brand; }\n$brand := #f80;\n', '$brand', '#c00']
   ] as const)('warns once that a %s exposed variable is assigned more than once, and writes the same CSS', async (language, source, symbol, read) => {
     const { css, errors, warnings } = await compiled(source, language);
     expect(errors).toEqual([]);

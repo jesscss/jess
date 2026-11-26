@@ -959,6 +959,13 @@ export const ERR = {
       ...args
     });
   },
+  exposeBeforeDeclaration(args: Common & { meta: ExposeSpelling & { name: string } }) {
+    return makeJessError({
+      code: 'eval/expose-before-declaration',
+      phase: 'eval',
+      ...args
+    });
+  },
   exposeConflict(args: Common & { meta: ExposeSpelling & { name: string; other: string; otherKeyword: string } }) {
     return makeJessError({
       code: 'eval/expose-conflict',

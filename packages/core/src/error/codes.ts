@@ -63,6 +63,7 @@ export type JessErrorCode =
   | 'eval/expose-not-a-value'
   | 'eval/expose-not-top-level'
   | 'eval/expose-not-declared'
+  | 'eval/expose-before-declaration'
   | 'eval/expose-conflict'
   | 'eval/expose-key-conflict'
   | 'eval/expose-unit-conflict'
@@ -445,6 +446,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '${keyword} names ${sigil}${name}, which is not visible at the top level of this file',
       reason: '${keyword} ${name} publishes the variable ${sigil}${name} a read at the top level of this file sees: one declared there, by a file it imports or by a mixin it calls there. A variable declared only in a nested block is not one.',
       fix: 'Declare ${sigil}${name} at the top level of this file, or remove ${name} from the ${keyword}.'
+    }
+  ],
+  [
+    'eval/expose-before-declaration',
+    {
+      summary: '${keyword} names ${sigil}${name} before it is declared',
+      reason: 'A variable is exposed after it is declared: ${keyword} ${name} comes before every declaration of ${sigil}${name} at the top level of this file, and before any file it imports or mixin it calls that declares one.',
+      fix: 'Move the ${keyword} below the declaration of ${sigil}${name}.'
     }
   ],
   [

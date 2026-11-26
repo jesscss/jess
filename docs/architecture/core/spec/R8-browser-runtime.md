@@ -188,14 +188,21 @@ or needs JS) to decide what ships in the bundle.
   that frame resolves to: declared there, by a file imported there (the last
   declaration wins, so the importer's override of an imported exposed
   variable is the one exposed) or by a mixin called there. A name nothing there declares raises
-  `eval/expose-not-declared`, located at the name. A binding is its value in the
+  `eval/expose-not-declared`, located at the name. The `@expose` comes after
+  a declaration of each name it lists: one written above it in that frame, in
+  a file imported above it, or in a mixin called above it. One written before
+  all of them raises `eval/expose-before-declaration`, located at the name
+  (`exposed-assignments.ts` `requireDeclaredBefore`; owner 2026-11-26: *"should
+  be an error to expose brand before it's declared IMO"*, *"should be exposed
+  at declare time or exposed after declaration"*). A binding is its value in the
   frame it was bound in, so a nested shadow, or another call of the mixin, is not
   the exposed variable. A composed module's exposed variable is read as its member (`@tokens.brand`).
 - **When it binds.** The names resolve once the frame is complete: at the first
   read of one of them, or at the end of the render (`export-reads.ts`
   `declareExpose`, `settle`). The render activates the root's `@expose`s before
   it starts and the import planner a top-level file's, so a read written before
-  the `@expose` or the `@import` is an exposed variable read too.
+  the `@expose` (after the declaration) or the `@import` is an exposed variable
+  read too.
 - **`(reference)` imports** (owner 2026-11-02): an `@expose` in a
   `(reference)`-imported file does nothing, with no message. The importer can
   still expose that file's variables by naming them in its own `@expose`.
@@ -543,6 +550,9 @@ or needs JS) to decide what ships in the bundle.
 
 ## Open — needs the owner
 
+- **Exposing at declaration.** The owner allows a variable to be *"exposed at
+  declare time"* as well as after it. No syntax exposes a variable in its
+  declaration yet. What should it be?
 - **Module configuration and the warning.** A `@-compose … with { $brand: blue; }`
   value seeds the module's variable without an assignment, so a later
   `$brand: green;` in the module does not warn `eval/expose-reassigned`.
