@@ -5,7 +5,7 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "1efa245c72f1e0f5a8499c06524affd0066d80629e1a3cd4398069d93a4c0107",
+      "aggregate": "f8a8edb6eb44ad4e90a82c1d68dd6d938786943610a2d4c9c6925333bc2b99f1",
       "threw": 103
     },
     {
@@ -28,7 +28,7 @@
       "cst": "79e39eb85dd2da6f"
     },
     "node_modules/@less/test-data/tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less": {
-      "ast": "889dd37d18088b0a",
+      "ast": "9c68cb8cd787bb3d",
       "cst": "a566ab681f32d0c3"
     },
     "node_modules/@less/test-data/tests-config/at-rules-compressed/at-rules-compressed.css": {
@@ -44,7 +44,7 @@
       "cst": "3e103a2ac5be98c7"
     },
     "node_modules/@less/test-data/tests-config/compression/compression.less": {
-      "ast": "309b7d551d549547",
+      "ast": "1633a2cbdc6d8c82",
       "cst": "fecd7b0ab7d9410f"
     },
     "node_modules/@less/test-data/tests-config/debug/all/linenumbers-all.css": {
@@ -300,7 +300,7 @@
       "cst": "721a13cdf007c0fd"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.less": {
-      "ast": "d4914c4b18b00551",
+      "ast": "037e9dd19f8e4d7c",
       "cst": "2e8efce7eb175fbb"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-functions.css": {
@@ -392,7 +392,7 @@
       "cst": "2738f68eac067bf2"
     },
     "node_modules/@less/test-data/tests-config/root-registry/root.less": {
-      "ast": "e87c3c5cc03720c6",
+      "ast": "aebb0cd980b29b43",
       "cst": "1da2f2809b297fbb"
     },
     "node_modules/@less/test-data/tests-config/rootpath-escape-interpolation/rootpath-escape-interpolation.css": {
@@ -400,7 +400,7 @@
       "cst": "641dc9b6797eb185"
     },
     "node_modules/@less/test-data/tests-config/rootpath-escape-interpolation/rootpath-escape-interpolation.less": {
-      "ast": "370bb6f3dee5bed9",
+      "ast": "7063263d6652e865",
       "cst": "d885353a0b1e24d8"
     },
     "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-all/folder/file.less": {
@@ -472,7 +472,7 @@
       "cst": "cc9b4d7894fac72c"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-variable-selector/basic.less": {
-      "ast": "c24f6d89aa8e213a",
+      "ast": "d1176ffa916bf62e",
       "cst": "a64f8b097966531c"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-variable-selector/vars.less": {
@@ -488,7 +488,7 @@
       "cst": "e67db46f35e9a3d4"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/comprehensive/comprehensive.less": {
-      "ast": "b3a48731ae039f69",
+      "ast": "11b0b08548de7df9",
       "cst": "330203e5e66b94f9"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/custom-props.less": {
@@ -580,11 +580,11 @@
       "cst": "98d3e1aa5dad737c"
     },
     "node_modules/@less/test-data/tests-error/eval/ampersand-merge-template-invalid.less": {
-      "ast": "88629939a5081b17",
+      "ast": "ec4e4d94f7b60194",
       "cst": "90280ba86512ea53"
     },
     "node_modules/@less/test-data/tests-error/eval/at-rules-undefined-var.less": {
-      "ast": "415d3002c0d77972",
+      "ast": "33eb7008d4082ed6",
       "cst": "afe9b688fe5a7665"
     },
     "node_modules/@less/test-data/tests-error/eval/color-func-invalid-color-2.less": {
@@ -804,7 +804,7 @@
       "cst": "44cdab0958228386"
     },
     "node_modules/@less/test-data/tests-error/eval/property-interp-not-defined.less": {
-      "ast": "fbe01e4a095a27c6",
+      "ast": "ef4805df215e511e",
       "cst": "a82b37d3abc2809e"
     },
     "node_modules/@less/test-data/tests-error/eval/property-undefined.less": {
@@ -984,7 +984,7 @@
       "cst": "f088d992688c0477"
     },
     "node_modules/@less/test-data/tests-unit/at-rule-variable-interpolation/at-rule-variable-interpolation.less": {
-      "ast": "e0e9c2ccfa9ac0e8",
+      "ast": "53bafc837329d1d9",
       "cst": "7be5be90996844d2"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-bubbling/at-rules-bubbling.css": {
@@ -1172,7 +1172,7 @@
       "cst": "2f6e6005dc33997d"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments.less": {
-      "ast": "d5c680a33dba71f5",
+      "ast": "1fa7e6a478149ea1",
       "cst": "7bfe1d9485e7e779"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments2.css": {
@@ -1196,7 +1196,7 @@
       "cst": "9c81d10eb9f51b83"
     },
     "node_modules/@less/test-data/tests-unit/container/container.less": {
-      "ast": "b1cf9793451210a0",
+      "ast": "398a1d536df5b909",
       "cst": "f77e9dbdefd87311"
     },
     "node_modules/@less/test-data/tests-unit/container/legacy/container.css": {
@@ -1336,7 +1336,7 @@
       "cst": "5b664ac7956ead3a"
     },
     "node_modules/@less/test-data/tests-unit/extend-selector/extend-selector.less": {
-      "ast": "e7f20136ced62bc8",
+      "ast": "9ad051f44ec73305",
       "cst": "ca2cab3af1a271a5"
     },
     "node_modules/@less/test-data/tests-unit/extend-selector/legacy/extend-selector.css": {
@@ -1372,7 +1372,7 @@
       "cst": "0cbf0d4eb4b94ad4"
     },
     "node_modules/@less/test-data/tests-unit/functions-each/functions-each.less": {
-      "ast": "792341f4bcdc6df4",
+      "ast": "36345503fb58a7e8",
       "cst": "3239ccbde166fc71"
     },
     "node_modules/@less/test-data/tests-unit/functions/functions.css": {
@@ -1380,7 +1380,7 @@
       "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-unit/functions/functions.less": {
-      "ast": "86a7d0fc1fe17f09",
+      "ast": "44518c234a156333",
       "cst": "aeb3de7d6692b279"
     },
     "node_modules/@less/test-data/tests-unit/functions/legacy/functions.css": {
@@ -1420,7 +1420,7 @@
       "cst": "e8a26ef9c93be418"
     },
     "node_modules/@less/test-data/tests-unit/import/import-interpolation.less": {
-      "ast": "4b1868410b575f67",
+      "ast": "e4cae33ee27c6690",
       "cst": "091d0ce1c0416af8"
     },
     "node_modules/@less/test-data/tests-unit/import/import-module.css": {
@@ -1540,7 +1540,7 @@
       "cst": "425235a3c2097237"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-interpolation.less": {
-      "ast": "4b48b06da0bd2587",
+      "ast": "d6d315d8dd5d53ad",
       "cst": "fb6d55dedc7bdb3f"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-interpolation2.less": {
@@ -1552,7 +1552,7 @@
       "cst": "78b776e7d691fd81"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-reference.less": {
-      "ast": "008801e3241164df",
+      "ast": "e4d2d54612e75ae3",
       "cst": "47794046e8a4e1ed"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-test-a.less": {
@@ -1588,7 +1588,7 @@
       "cst": "cbf7b3f3fb21e9d5"
     },
     "node_modules/@less/test-data/tests-unit/import/import/interpolation-vars.less": {
-      "ast": "47ad9d322b813850",
+      "ast": "96e6b0a0332e6c9a",
       "cst": "637088d40acf8115"
     },
     "node_modules/@less/test-data/tests-unit/import/import/invalid-css.less": {
@@ -1652,7 +1652,7 @@
       "cst": "b1900a9ec3bed240"
     },
     "node_modules/@less/test-data/tests-unit/layer/layer.less": {
-      "ast": "7d8281936d7d6fe5",
+      "ast": "1b020b6e942a27bb",
       "cst": "92d67b26575f6b2a"
     },
     "node_modules/@less/test-data/tests-unit/layer/legacy/layer.css": {
@@ -1672,7 +1672,7 @@
       "cst": "0f0e04048f121031"
     },
     "node_modules/@less/test-data/tests-unit/lookup-interpolation/lookup-interpolation.less": {
-      "ast": "33eaf0a6ef969ce8",
+      "ast": "053c74151cd304b0",
       "cst": "fcd55700773f5964"
     },
     "node_modules/@less/test-data/tests-unit/math-css-vars/math-css-vars.css": {
@@ -1692,7 +1692,7 @@
       "cst": "3a7664885ce8dd83"
     },
     "node_modules/@less/test-data/tests-unit/media/media.less": {
-      "ast": "fb2629d94a6ef744",
+      "ast": "1392b70a21fdebbc",
       "cst": "a7029385f0b2e53a"
     },
     "node_modules/@less/test-data/tests-unit/merge/merge.css": {
@@ -1768,7 +1768,7 @@
       "cst": "f0be642b8714aa51"
     },
     "node_modules/@less/test-data/tests-unit/mixins-interpolated/mixins-interpolated.less": {
-      "ast": "cf60705bbf59ea52",
+      "ast": "a86a888b0f6febe7",
       "cst": "8053cde526e02131"
     },
     "node_modules/@less/test-data/tests-unit/mixins-named-args/mixins-named-args.css": {
@@ -1828,7 +1828,7 @@
       "cst": "e383e0fee59eeda3"
     },
     "node_modules/@less/test-data/tests-unit/mixins/mixins.less": {
-      "ast": "2cf6beee71dffc28",
+      "ast": "e921c99d92251b5b",
       "cst": "24b210d7f70844cc"
     },
     "node_modules/@less/test-data/tests-unit/namespace-targeted/namespace-targeted.css": {
@@ -1892,7 +1892,7 @@
       "cst": "ba3d8c66cf536a00"
     },
     "node_modules/@less/test-data/tests-unit/parse-interpolation/parse-interpolation.less": {
-      "ast": "abcaaa24449fa52e",
+      "ast": "ef8eb77364a82b7e",
       "cst": "4f24ca529ee8075d"
     },
     "node_modules/@less/test-data/tests-unit/parser-property-interp/parser-property-interp.css": {
@@ -1900,7 +1900,7 @@
       "cst": "6cafac901866c16d"
     },
     "node_modules/@less/test-data/tests-unit/parser-property-interp/parser-property-interp.less": {
-      "ast": "d188bbaab6c4f835",
+      "ast": "210de6fe04f98817",
       "cst": "c1b477af80ff14b3"
     },
     "node_modules/@less/test-data/tests-unit/parser-slashed-combinator/parser-slashed-combinator.css": {
@@ -1960,7 +1960,7 @@
       "cst": "bb68e382be48e040"
     },
     "node_modules/@less/test-data/tests-unit/property-accessors/property-accessors.less": {
-      "ast": "d75f0a9d47f4a2ef",
+      "ast": "e664ef11915f06ae",
       "cst": "74af450be57c86ab"
     },
     "node_modules/@less/test-data/tests-unit/property-name-interp/legacy/property-name-interp.css": {
@@ -1972,7 +1972,7 @@
       "cst": "e118469957166ab1"
     },
     "node_modules/@less/test-data/tests-unit/property-name-interp/property-name-interp.less": {
-      "ast": "5bc60c23e47a1415",
+      "ast": "a8114e797d39b60b",
       "cst": "4d52748183f88028"
     },
     "node_modules/@less/test-data/tests-unit/property-targeted/legacy/property-targeted.css": {
@@ -2016,7 +2016,7 @@
       "cst": "0dba9290d31f5d59"
     },
     "node_modules/@less/test-data/tests-unit/selectors/selectors.less": {
-      "ast": "f4296c49507a6fb8",
+      "ast": "1b43482705459ef0",
       "cst": "201da5da2a801926"
     },
     "node_modules/@less/test-data/tests-unit/starting-style/starting-style.css": {
@@ -2032,7 +2032,7 @@
       "cst": "027b09518f60c205"
     },
     "node_modules/@less/test-data/tests-unit/strings/strings.less": {
-      "ast": "fd366bccebfc97b9",
+      "ast": "b369ec464960e368",
       "cst": "9d47bac85d9d099a"
     },
     "node_modules/@less/test-data/tests-unit/tailwind/tailwind.css": {
@@ -2088,7 +2088,7 @@
       "cst": "0ecacd3ee13b9f96"
     },
     "node_modules/@less/test-data/tests-unit/urls/urls.less": {
-      "ast": "106fd3fe8caace66",
+      "ast": "50e3f8f51c74a420",
       "cst": "a0952e22504f9c4b"
     },
     "node_modules/@less/test-data/tests-unit/variables-in-at-rules/variables-in-at-rules.css": {
@@ -2096,7 +2096,7 @@
       "cst": "332a3763fb470850"
     },
     "node_modules/@less/test-data/tests-unit/variables-in-at-rules/variables-in-at-rules.less": {
-      "ast": "1628a63c3166fb5f",
+      "ast": "be35ea1a741d454d",
       "cst": "b1524e2628a67782"
     },
     "node_modules/@less/test-data/tests-unit/variables/legacy/variable-advanced.css": {
@@ -2108,7 +2108,7 @@
       "cst": "ee736648803d708d"
     },
     "node_modules/@less/test-data/tests-unit/variables/variable-advanced.less": {
-      "ast": "1f64e7d4d10c61eb",
+      "ast": "8d5cdc30ef6562b7",
       "cst": "678a21d096fe70a6"
     },
     "node_modules/@less/test-data/tests-unit/variables/variables.css": {
@@ -2116,7 +2116,7 @@
       "cst": "b49603d9a272085b"
     },
     "node_modules/@less/test-data/tests-unit/variables/variables.less": {
-      "ast": "273aace5d7a114b1",
+      "ast": "10421cb33453463a",
       "cst": "a1411bae202328c8"
     },
     "node_modules/@less/test-data/tests-unit/whitespace/legacy/whitespace.css": {
@@ -2132,11 +2132,11 @@
       "cst": "992ee3cf1968d7a3"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_alert.less": {
-      "ast": "576f3a61f301fb7f",
+      "ast": "2ff0f986a8eb41cc",
       "cst": "252067dfc2ce0064"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_badge.less": {
-      "ast": "1c2fc0a55f35a15d",
+      "ast": "fee47380e3af5612",
       "cst": "fbe21484983fbbca"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_breadcrumb.less": {
@@ -2148,7 +2148,7 @@
       "cst": "c45e6fb011a434b9"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_buttons.less": {
-      "ast": "0e778278a87b399b",
+      "ast": "519e137105330ee2",
       "cst": "33f420f3c00b8aba"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_card.less": {
@@ -2168,11 +2168,11 @@
       "cst": "4796cb0b5eef9e68"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_custom-forms.less": {
-      "ast": "291bf9529d1b3405",
+      "ast": "adc879e2de3d4089",
       "cst": "e511836c703bc600"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_dropdown.less": {
-      "ast": "41bad08f85eff6d9",
+      "ast": "3bdaf0f46a274715",
       "cst": "ee730ff2f197cbda"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_forms.less": {
@@ -2184,7 +2184,7 @@
       "cst": "392b9ae1229ed748"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_grid.less": {
-      "ast": "609feb015bc76439",
+      "ast": "0894b75f1d2967c4",
       "cst": "670865859ea88219"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_images.less": {
@@ -2200,7 +2200,7 @@
       "cst": "55675a1ed6413679"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_list-group.less": {
-      "ast": "188c88bba1b5f919",
+      "ast": "ef3e7a315ae57eae",
       "cst": "7ead01bbf285347b"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_media.less": {
@@ -2220,7 +2220,7 @@
       "cst": "2e183fa2d72144cb"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_navbar.less": {
-      "ast": "05c0d7d3a7f7016d",
+      "ast": "3a0a41884c8de67e",
       "cst": "31b7c99b66e873d5"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_pagination.less": {
@@ -2244,7 +2244,7 @@
       "cst": "30dbb1e147b9fefd"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_root.less": {
-      "ast": "bd3908a0c894325f",
+      "ast": "9b0df89dbb82bd2d",
       "cst": "f7925e2fc3b3e452"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_spinners.less": {
@@ -2252,7 +2252,7 @@
       "cst": "daddd6667180385b"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_tables.less": {
-      "ast": "5288d073f98d0b44",
+      "ast": "eb29f09138d7e729",
       "cst": "1f87438637d8b18e"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_toasts.less": {
@@ -2276,7 +2276,7 @@
       "cst": "1bf68199014628ee"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_variables.less": {
-      "ast": "144777943bdd970a",
+      "ast": "14bbf2ae8d5efc5f",
       "cst": "83d881c7125f5c6c"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/bootstrap-grid.less": {
@@ -2296,7 +2296,7 @@
       "cst": "16c7d816676f83f9"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_background-variant.less": {
-      "ast": "286637f3f1480d4e",
+      "ast": "4e6b987486fc079c",
       "cst": "30f85f08a913bbdb"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_badge.less": {
@@ -2328,7 +2328,7 @@
       "cst": "227a285bcaf6c36d"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_deprecate.less": {
-      "ast": "c2c5aacd88741c0d",
+      "ast": "15d82d5b338a7709",
       "cst": "51bf678f458eb9fc"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_float.less": {
@@ -2336,7 +2336,7 @@
       "cst": "a8b730a22ea41e23"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_forms.less": {
-      "ast": "0cdbc4e8ffbf16d5",
+      "ast": "99b28ac5d577b61c",
       "cst": "cf7d28221b60d29c"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_gradients.less": {
@@ -2344,7 +2344,7 @@
       "cst": "4ca872950201814d"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_grid-framework.less": {
-      "ast": "92454c5a8838651b",
+      "ast": "233eedfdd7960b31",
       "cst": "77aaf66c4acc64d5"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_grid.less": {
@@ -2360,7 +2360,7 @@
       "cst": "772a47c43649666a"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_list-group.less": {
-      "ast": "0ea769bf57235fc1",
+      "ast": "480bd8a1fd8a7b9e",
       "cst": "c291bfd928b67bec"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_lists.less": {
@@ -2392,11 +2392,11 @@
       "cst": "f01ccfa11c3fa51f"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_table-row.less": {
-      "ast": "59b294041d076ea9",
+      "ast": "61238de74074a7b3",
       "cst": "617182e83ed7c2b5"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_text-emphasis.less": {
-      "ast": "63840ee5a6274f14",
+      "ast": "d0bd87fd81a13217",
       "cst": "b0276e020b92c909"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_text-hide.less": {
@@ -2420,11 +2420,11 @@
       "cst": "10a69e4d64c28211"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_background.less": {
-      "ast": "34ced3ae4c09d6fb",
+      "ast": "6e54237506755b42",
       "cst": "d693b40b4b9cb3ca"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_borders.less": {
-      "ast": "c4ae37371acd519b",
+      "ast": "b20f846c3edd319f",
       "cst": "f4657f8ba4784c3f"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_clearfix.less": {
@@ -2432,31 +2432,31 @@
       "cst": "92a43e41f66ae396"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_display.less": {
-      "ast": "18f2f053e89b028a",
+      "ast": "1de8e960036c6bca",
       "cst": "e4d38a7a9a066603"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_embed.less": {
-      "ast": "6f9f10b00e9ab9e6",
+      "ast": "de67acd23fdde999",
       "cst": "75aa57c0054f019f"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_flex.less": {
-      "ast": "13b81fcb4130c223",
+      "ast": "79dcc00d6127385a",
       "cst": "a160a65b1e463dce"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_float.less": {
-      "ast": "57fb590191418fe4",
+      "ast": "b444fa8ca930557a",
       "cst": "5cd4a95870d42533"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_interactions.less": {
-      "ast": "6d37eb475aa8a257",
+      "ast": "bb8a55351f84e049",
       "cst": "e9330463c52b6cf0"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_overflow.less": {
-      "ast": "375dfd401b7527f9",
+      "ast": "f3bfbea21b3ac63f",
       "cst": "ac181dcfa483d987"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_position.less": {
-      "ast": "958dc90b0bda3f31",
+      "ast": "ec00b538d31bd3ba",
       "cst": "f6801110dc187436"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_screenreaders.less": {
@@ -2468,11 +2468,11 @@
       "cst": "a7377ecc0fe24cd4"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_sizing.less": {
-      "ast": "b7f8826cabda84ad",
+      "ast": "41e070968bc6e25d",
       "cst": "76ba8a3ce6e3be89"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_spacing.less": {
-      "ast": "f0aa9562e8449aad",
+      "ast": "3870cd07377ac5a3",
       "cst": "3a4c8fffc6d229ff"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_stretched-link.less": {
@@ -2480,7 +2480,7 @@
       "cst": "fa7ba3307343d1d5"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_text.less": {
-      "ast": "bd2788d95a1bc7d9",
+      "ast": "be9b0e2745a366d3",
       "cst": "a70e4439f80eb660"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_visibility.less": {
@@ -2488,7 +2488,7 @@
       "cst": "1869731118106649"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/vendor/_rfs.less": {
-      "ast": "80b46f5e67755497",
+      "ast": "b5d3a856f09e325f",
       "cst": "dd5f992d0498275b"
     },
     "packages/jess/test/files/import-func.css": {
@@ -2520,7 +2520,7 @@
       "cst": "35bdfbabb8cd8db1"
     },
     "packages/jess/test/fixtures/sourcemap/async-slots.less": {
-      "ast": "e1cde92b1c125f8f",
+      "ast": "214207fee4f3e905",
       "cst": "70e84d9ffcb37203"
     },
     "packages/jess/test/fixtures/sourcemap/entry.less": {
@@ -2680,15 +2680,15 @@
       "cst": "0107d07a3d00962b"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/imported-mixin-extend.less": {
-      "ast": "a0d7b16c9f6c6d76",
+      "ast": "cc806200f280d5b3",
       "cst": "b59d5b770b300de7"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/interp-base.less": {
-      "ast": "3154345f40f98eeb",
+      "ast": "dc6786ad96401840",
       "cst": "ac202737b7b72978"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/interp-child-base.less": {
-      "ast": "80be1496b3497cc8",
+      "ast": "0ecdfe57176590f0",
       "cst": "10186425c7c9ec1e"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/interp-child-main.less": {
@@ -2700,7 +2700,7 @@
       "cst": "ad30c73827e3cdd9"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/interp-nested-base.less": {
-      "ast": "28d0c0956ce44bc7",
+      "ast": "623022e64bc51110",
       "cst": "6367964c89f87ada"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/interp-nested-main.less": {
@@ -2964,7 +2964,7 @@
       "cst": "581ac403728ad592"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/root-loop-main.less": {
-      "ast": "104cfff87f6a18c2",
+      "ast": "bab2701e0e91a36a",
       "cst": "d5abcc129ce26cd1"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/root-mixin-before-main.less": {
@@ -2992,11 +2992,11 @@
       "cst": "1996f65fd75a7a0d"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/ruleset-interp-path-main.less": {
-      "ast": "e1d12aab320c2bc8",
+      "ast": "94544dfac51de252",
       "cst": "f7c4cd0b94f3ea99"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/ruleset-local-interp-path-main.less": {
-      "ast": "761af58747932a21",
+      "ast": "d20cc48995e1218d",
       "cst": "84afcc839b8e4071"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/ruleset-multiple-then-plain-extend-main.less": {
@@ -3048,7 +3048,7 @@
       "cst": "a9936d2a1848e156"
     },
     "packages/jess/test/less/fixtures/import-media-query/interpolated-media.less": {
-      "ast": "eb69175e55b00e9b",
+      "ast": "a73a4fd3e46ace09",
       "cst": "e704d4a2227616ac"
     },
     "packages/jess/test/less/fixtures/import-media-query/main.less": {
@@ -3084,7 +3084,7 @@
       "cst": "09d0d954912ad4d4"
     },
     "packages/jess/test/less/fixtures/reference-mixin-trivia/nested/merge-library.less": {
-      "ast": "61288ce912c7cb7e",
+      "ast": "eef19183319ee55d",
       "cst": "7c01eee1f986eb56"
     },
     "packages/jess/test/less/fixtures/reference-mixin-trivia/reject-main.less": {
@@ -3601,5 +3601,6 @@
     }
   },
   "lessTestData": "e287ce64cb2abe1e6617c72f2cf696f031583586",
-  "lessTestDataTree": "7eb9959be4d662ea89e95d321ed73de1bb82007d"
+  "lessTestDataTree": "7eb9959be4d662ea89e95d321ed73de1bb82007d",
+  "authority": "owner 2026-11-26: \"yes, if we have positions now, then that's fine to record them\" — interpolation references gain source spans (AST surface only, 76 entries; position-stripped ASTs identical; CST unchanged)"
 }
