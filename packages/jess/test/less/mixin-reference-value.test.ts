@@ -86,11 +86,7 @@ describe('a mixin reference held in a Less variable', () => {
     expect(result.errors[0]).toMatchObject({ code: 'eval/uncalled-mixin-reference', phase: 'eval' });
   });
 
-  /*
-   * An interpolated reference carries no source span, so its error, like
-   * `resolve/name-not-found` for `@{nope}`, is placed at the start of the file.
-   */
-  it.fails('places an interpolation error at the interpolation', async () => {
+  it('places an interpolation error at the interpolation', async () => {
     const result = await render(mixin + '@foo: .a;\n.b { b: "@{foo}"; }');
 
     expect(result.errors[0]).toMatchObject({ line: 4, column: 10 });

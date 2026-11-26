@@ -867,6 +867,13 @@ export const ERR = {
       ...args
     });
   },
+  memberNotFound(args: Common & { meta: { symbol: string; member: string } }) {
+    return makeJessError({
+      code: 'resolve/member-not-found',
+      phase: 'resolve',
+      ...args
+    });
+  },
   ambiguousMember(args: Common & { meta: { symbol: string } }) {
     return makeJessError({
       code: 'resolve/ambiguous-member',

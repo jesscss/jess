@@ -7731,19 +7731,27 @@ function evalModuleReferenceCall(
  * A value reference that resolved to nothing is a failed resolution: an eval
  * error unless the read is optional, which gets its authored text as the
  * sentinel. The error names an unbound head by itself, as it was written
- * (`@nope`, `$nope`, `$^nope`), and any other unresolvable chain (`@list[5]`,
- * a member of a memberless value) whole. It is placed at the reference, or at
- * its head when only the head carries a source span.
+ * (`@nope`, `$nope`, `$^nope`); a bound variable or property head whose chain
+ * misses (`@list[5]`, `$color[x]`) is `resolve/member-not-found`, naming the head
+ * and the members it lacks; any other chain is named whole. It is placed at the
+ * reference, or at its head when only the head carries a source span.
  */
 function unresolvedReference(node: Reference, frame: Frame | null, e: Lane): EvalValue {
   if (!e.optional) {
     const base = node.base;
-    let symbol = node.raw;
-    if (!isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
-      && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
-      symbol = node.raw.slice(0, node.raw.indexOf(base.name) + base.name.length);
+    const at = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(base) ? base : node;
+    if (!isValueSlotArray(base) && base.type === 'Lookup' && typeof base.name === 'string'
+      && (base.kind === 'var' || base.kind === 'prop')) {
+      const symbol = node.raw.slice(0, node.raw.indexOf(base.name) + base.name.length);
+      const bound = base.kind === 'var'
+        ? resolveVarRef(frame, base.name, base.scope, e) !== undefined
+        : resolvePropRef(frame, base.name, e) !== undefined;
+      if (!bound) {
+        unresolvedSymbol(at, symbol, e);
+      }
+      throw ERR.memberNotFound({ node: at, ...callSiteLocation(at, e.s), meta: { symbol, member: node.raw.slice(symbol.length) } });
     }
-    unresolvedSymbol(sourceStartOf(node) === NO_SPAN && !isValueSlotArray(base) ? base : node, symbol, e);
+    unresolvedSymbol(at, node.raw, e);
   }
   return literal(node.raw);
 }

@@ -259,7 +259,7 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 ## P56
 
 - 2026-07-18 — implementation (agent), `0de1e56db`: the Less parser builds `@{head[key]}` into an accessor node that the AST evaluator resolves; built the day the owner named the accessor as a later extension, and unruled until P56.
-- 2026-11-25 — open (agent): `${…}` takes a lookup step too. `"${color[x]}"` parses to a property `Lookup` with a `[x]` step, and rendering it fails the compile with a bare `Name not found` and no location. P56 rules only `@{…}`; whether `${…}` takes lookups, and the error it gives otherwise, is not ruled.
+- 2026-11-26 — implementation (agent): `${…}` parses a lookup step as `@{…}` does, and it can never resolve: `${color}` reads the property `color`, and a property's value has no members. So `"${color[x]}"` failing the compile is correct; it is not an open question. Its error was wrong: `resolve/name-not-found` at 1:1, calling the defined `$color` undefined. It is now `resolve/member-not-found` at the `${`, naming `$color` and the member `[x]` it lacks; every `@{…}`/`${…}` reference now carries its source span.
 
 ## A11
 

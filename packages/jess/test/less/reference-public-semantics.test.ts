@@ -121,18 +121,22 @@ describe('Less reference semantic contracts through the public AST route', () =>
   });
 
   /*
-   * A reference chain that resolves to nothing is a failed resolution: an eval
-   * error at the reference, never its authored text in the CSS.
+   * A reference chain whose head is bound but whose members miss is a failed
+   * resolution: an eval error at the reference naming the head and the members
+   * it lacks, never its authored text in the CSS. A property's value has no
+   * members, so a lookup on one, in a string or out of it, always misses.
    */
   it.each([
-    ['an index past the end of a list', '@list: 1 2; .entry { value: @list[5]; }', '@list[5]'],
-    ['a member of a value that has no members', '@map: { a: 1; } .entry { value: @map[a][b]; }', '@map[a][b]']
-  ])('reports %s as an unresolved reference', async (_label, source, symbol) => {
+    ['an index past the end of a list', '@list: 1 2; .entry { value: @list[5]; }', '@list', '[5]', 29],
+    ['a member of a value that has no members', '@map: { a: 1; } .entry { value: @map[a][b]; }', '@map', '[a][b]', 33],
+    ['a lookup on a property value in a string', '.entry { color: red; value: "${color[x]}"; }', '$color', '[x]', 30],
+    ['a lookup past the end of a list in a string', '@list: 1 2; .entry { value: "@{list[5]}"; }', '@list', '[5]', 30]
+  ])('reports %s as a missing member, where it was written', async (_label, source, symbol, member, column) => {
     const compiler = new Compiler({ output: { collapseNesting: true } });
     await expect(compiler.renderString(source, {
       filePath: 'entry.less',
       extension: '.less'
-    })).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `Symbol "${symbol}" is undefined in this scope.`, line: 1 });
+    })).rejects.toMatchObject({ code: 'resolve/member-not-found', reason: `"${symbol}" is defined, but its value has no member ${member}.`, line: 1, column });
   });
 
   /* An unbound head is named as it was written, at the reference. */

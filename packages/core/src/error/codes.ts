@@ -40,6 +40,7 @@ export type JessErrorCode =
   | 'parse/arithmetic-outside-expression'
   | 'parse/deprecated-if-function'
   | 'resolve/name-not-found'
+  | 'resolve/member-not-found'
   | 'resolve/ambiguous-member'
   | 'resolve/namespace-shadowed'
   | 'import/circular-compose'
@@ -347,6 +348,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Name not found',
       reason: 'Symbol "${symbol}" is undefined in this scope.',
       fix: 'Define "${symbol}" or import a file that provides it.'
+    }
+  ],
+  [
+    'resolve/member-not-found',
+    {
+      summary: 'Member not found',
+      reason: '"${symbol}" is defined, but its value has no member ${member}.',
+      fix: 'Read a member the value defines. A property\'s value, such as `$color`, has no members.'
     }
   ],
   [

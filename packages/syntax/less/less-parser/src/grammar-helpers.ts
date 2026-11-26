@@ -623,11 +623,11 @@ function interpolationFactFromChildren(children: readonly unknown[], span: Sourc
   for (const child of children.slice(2, -1)) {
     src += `[${requireInterpolationAccessorFact(child).src}]`;
   }
-  const ref = referenceWithBracketLookups(
+  const ref = withSourceSpan(referenceWithBracketLookups(
     opener === '@{' ? variableReference(head, 'scoped') : propertyReference(head),
     `${opener === '@{' ? '@' : '$'}${head}`,
     children.slice(2, -1)
-  );
+  ), span);
   return { ref, src: `${src}}` };
 }
 
