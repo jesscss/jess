@@ -175,13 +175,15 @@ export function chainNotFound(
 }
 
 /**
- * What a bracket's variable holds, for the message only. A value with no text
- * (a ruleset) or a key that fails to evaluate (a mixin reference) keeps the key
- * as written, so the miss is never replaced by another error.
+ * What a bracket's variable holds, for the message only, a string by its
+ * text (`@k: "b"` → `b`). A value with no text (a ruleset) or a key that fails
+ * to evaluate (a mixin reference) keeps the key as written, so the miss is
+ * never replaced by another error.
  */
 function heldKey(keyOf: (key: ValueNode) => string | undefined, key: ValueNode): string | undefined {
   try {
-    return keyOf(key) || undefined;
+    const text = keyOf(key);
+    return (text !== undefined && isQuote(text[0]) && stringEnd(text, 0) === text.length - 1 ? text.slice(1, -1) : text) || undefined;
   } catch {
     return undefined;
   }
