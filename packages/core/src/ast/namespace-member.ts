@@ -1,7 +1,8 @@
 /**
  * Module namespaces at a member read: how a read tells a namespace binding from
  * a variable or property of the same name (ledger R17, R18), and the coded
- * diagnostics it raises when it cannot (R7). The reader is the serializer's
+ * diagnostics it raises when it cannot (R7), and the diagnostic for a variable
+ * or property chain that reads nothing. The reader is the serializer's
  * reference resolution; this module holds the decisions so the resolver only
  * calls them.
  *
@@ -108,6 +109,19 @@ export function hiddenNamespace<L extends NamespaceLane>(read: MemberRead<L>, st
 export function memberNotFound<L extends NamespaceLane>(read: MemberRead<L>, stepIndex: number, symbol: string, e: L): never {
   hiddenNamespace(read, stepIndex, e);
   throw ERR.nameNotFound({ node: read.node, ...callSiteLocation(read.node, e.s), meta: { symbol } });
+}
+
+/**
+ * A variable or property reference with lookup steps that read nothing. An
+ * unbound head is `resolve/name-not-found`, naming the head as written
+ * (`@nope`, `$^nope`); a bound head is `resolve/member-not-found`, naming the
+ * head and the steps its value lacks (`@list` and `[5]`, `$color` and `[x]`).
+ */
+export function chainNotFound(node: object, raw: string, name: string, bound: boolean, e: NamespaceLane): never {
+  const symbol = raw.slice(0, raw.indexOf(name) + name.length);
+  throw bound
+    ? ERR.memberNotFound({ node, ...callSiteLocation(node, e.s), meta: { symbol, member: raw.slice(symbol.length) } })
+    : ERR.nameNotFound({ node, ...callSiteLocation(node, e.s), meta: { symbol } });
 }
 
 /** Whether a call is spelled `ns.fn(…)`, which only `.scss` parses as one name. An escaped dot is part of an identifier. */

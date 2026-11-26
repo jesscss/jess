@@ -225,7 +225,7 @@ import { makeAny, makeBlock, makeCalc, makeCollection, makeDimension, makeKeywor
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { cssFilterCall, mayBeFilter } from './filter-position.js';
-import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, moduleReferenceCallNode, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
+import { ambiguousMember, chainNotFound, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, moduleReferenceCallNode, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { isGluedCall, isSupportsCall, mathOperand, negatedCall, slashOperated, testedCall, writtenMath, writtenPercent } from './math-operand.js';
@@ -7742,14 +7742,9 @@ function unresolvedReference(node: Reference, frame: Frame | null, e: Lane): Eva
     const at = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(base) ? base : node;
     if (!isValueSlotArray(base) && base.type === 'Lookup' && typeof base.name === 'string'
       && (base.kind === 'var' || base.kind === 'prop')) {
-      const symbol = node.raw.slice(0, node.raw.indexOf(base.name) + base.name.length);
-      const bound = base.kind === 'var'
-        ? resolveVarRef(frame, base.name, base.scope, e) !== undefined
-        : resolvePropRef(frame, base.name, e) !== undefined;
-      if (!bound) {
-        unresolvedSymbol(at, symbol, e);
-      }
-      throw ERR.memberNotFound({ node: at, ...callSiteLocation(at, e.s), meta: { symbol, member: node.raw.slice(symbol.length) } });
+      chainNotFound(at, node.raw, base.name, (base.kind === 'var'
+        ? resolveVarRef(frame, base.name, base.scope, e)
+        : resolvePropRef(frame, base.name, e)) !== undefined, e);
     }
     unresolvedSymbol(at, node.raw, e);
   }
