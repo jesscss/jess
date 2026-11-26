@@ -189,9 +189,12 @@ or needs JS) to decide what ships in the bundle.
   declaration wins, so the importer's override of an imported exposed
   variable is the one exposed) or by a mixin called there. A name nothing there declares raises
   `eval/expose-not-declared`, located at the name. The `@expose` comes after
-  a declaration of each name it lists: one written above it in that frame, in
-  a file imported above it, or in a mixin called above it. One written before
-  all of them raises `eval/expose-before-declaration`, located at the name
+  a declaration of each name it lists: the name is bound in that frame when
+  the render reaches the `@expose`, by a declaration written above it, a file
+  imported or a module composed (`as *`) above it, the module's configuration
+  (`with`/`set`), or a mixin called above it. One reached before that raises
+  `eval/expose-before-declaration`, located at the name, and like the other
+  expose errors it ends the compile
   (`exposed-assignments.ts` `requireDeclaredBefore`; owner 2026-11-26: *"should
   be an error to expose brand before it's declared IMO"*, *"should be exposed
   at declare time or exposed after declaration"*). A binding is its value in the

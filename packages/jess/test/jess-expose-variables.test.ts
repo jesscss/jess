@@ -83,6 +83,22 @@ describe('.jess @-expose (A20)', () => {
     });
   });
 
+  /* A module's configuration and a composed module's members bind the name above the @-expose (owner 2026-11-26, ledger A20). */
+  it.each([
+    ['a configured module that exposes its optional variable', '$brand?: red;\n@-expose brand;\n', '@-compose "./m.jess" with { $brand: blue; }\n.a { color: $m.brand; }\n'],
+    ['a module composed as * above the @-expose', '$brand: red;\n', '@-compose "./m.jess" as *;\n@-expose brand;\n.a { color: $brand; }\n']
+  ] as const)('exposes a name bound above it: %s', async (_name, module, entry) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-expose-bound-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'm.jess'), module);
+      fs.writeFileSync(path.join(dir, 'entry.jess'), entry);
+      const { errors } = await new Compiler({}).renderToResult(path.join(dir, 'entry.jess'));
+      expect(errors).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   /* Each statement is named as its own file writes it, so a .jess file that imports a .less one names both spellings. */
   it('names both expose statements of one name that name different variables, each in its own spelling', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-expose-conflict-'));
