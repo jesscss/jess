@@ -7747,9 +7747,9 @@ function unresolvedReference(node: Reference, frame: Frame | null, e: Lane): Eva
       lookup && (base.kind === 'var' ? resolveVarRef(frame, base.name, base.scope, e) : resolvePropRef(frame, base.name, e)) === undefined
         ? base.name
         : undefined,
-      key => key.type === 'Lookup' && key.kind === 'var' && typeof key.name === 'string' && resolveVarRef(frame, key.name, key.scope, e) === undefined
-        ? undefined
-        : emitValue(settled(evalTypedSlot(key, frame, e, true), 'collection member key', key, e)),
+      key => key.type === 'Lookup' && key.kind === 'var' && typeof key.name === 'string' && resolveVarRef(frame, key.name, key.scope, e) !== undefined
+        ? emitValue(settled(evalTypedSlot(key, frame, e, true), 'collection member key', key, e))
+        : undefined,
       e);
   }
   return literal(node.raw);

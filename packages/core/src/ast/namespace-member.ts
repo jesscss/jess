@@ -146,8 +146,8 @@ export function receiverMissed<L extends NamespaceLane>(read: MemberRead<L>, ste
  * A reference that read nothing, as `resolve/name-not-found`: an unbound
  * variable or property head (`unbound`) is named as written (`@nope`,
  * `$^nope`); a lookup step that missed names its key and what it was read in
- * ({@link keyNotFound}), a computed key by what `keyOf` evaluates it to
- * (`[@k]` with `@k: b` → `b`; `undefined` keeps it as written); any other
+ * ({@link keyNotFound}), a bound `[@k]` by what `keyOf` evaluates it to
+ * (`@k: b` → `b`; `undefined` keeps it as written, as for `[$p]`); any other
  * reference is named whole.
  */
 export function chainNotFound(
@@ -168,10 +168,23 @@ export function chainNotFound(
     keyNotFound(at, {
       node,
       step: missed.step,
-      key: missed.key ?? (step?.type === 'LookupStep' && typeof step.name === 'object' ? keyOf(step.name) : undefined)
+      key: missed.key ?? (step?.type === 'LookupStep' && typeof step.name === 'object' ? heldKey(keyOf, step.name) : undefined)
     }, node.raw, e);
   }
   throw ERR.nameNotFound({ node: at, ...callSiteLocation(at, e.s), meta: { symbol: node.raw } });
+}
+
+/**
+ * What a bracket's variable holds, for the message only. A value with no text
+ * (a ruleset) or a key that fails to evaluate (a mixin reference) keeps the key
+ * as written, so the miss is never replaced by another error.
+ */
+function heldKey(keyOf: (key: ValueNode) => string | undefined, key: ValueNode): string | undefined {
+  try {
+    return keyOf(key) || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
