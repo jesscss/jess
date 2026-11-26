@@ -15,7 +15,7 @@ import { callSiteLocation } from './call-site-location.js';
 import { isQuote, stringEnd } from './css-syntax.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import { declarationReference, funcCall, lookupStep, reference, referenceCall } from './nodes.js';
-import type { CallArg, CallValue, FunctionCall, Reference, ValueSlot } from './nodes.js';
+import type { CallArg, CallValue, FunctionCall, Reference, ValueNode, ValueSlot } from './nodes.js';
 import { NO_SPAN, sourceEndOf, sourceStartOf, withSourceSpan } from './provenance.js';
 import type { Frame } from './serialize.js';
 
@@ -144,17 +144,32 @@ export function receiverMissed<L extends NamespaceLane>(read: MemberRead<L>, ste
 
 /**
  * A reference that read nothing, as `resolve/name-not-found`: an unbound
- * variable or property `head` is named as written (`@nope`, `$^nope`); a
- * lookup step that missed names its key and what it was read in
- * ({@link keyNotFound}); any other reference is named whole.
+ * variable or property head (`unbound`) is named as written (`@nope`,
+ * `$^nope`); a lookup step that missed names its key and what it was read in
+ * ({@link keyNotFound}), a computed key by what `keyOf` evaluates it to
+ * (`[@k]` with `@k: b` → `b`; `undefined` keeps it as written); any other
+ * reference is named whole.
  */
-export function chainNotFound(at: object, node: Reference, head: string | undefined, bound: boolean, e: NamespaceLane): never {
-  if (head !== undefined && !bound) {
-    throw ERR.nameNotFound({ node: at, ...callSiteLocation(at, e.s), meta: { symbol: node.raw.slice(0, node.raw.indexOf(head) + head.length) } });
+export function chainNotFound(
+  at: object,
+  node: Reference,
+  unbound: string | undefined,
+  keyOf: (key: ValueNode) => string | undefined,
+  e: NamespaceLane
+): never {
+  const head = unbound === undefined ? -1 : node.raw.indexOf(unbound);
+  if (unbound !== undefined) {
+    throw ERR.nameNotFound({ node: at, ...callSiteLocation(at, e.s), meta: { symbol: head < 0 ? node.raw : node.raw.slice(0, head + unbound.length) } });
   }
   const missed = e.s.missedStep;
+  e.s.missedStep = undefined;
   if (missed?.node === node) {
-    keyNotFound(at, missed, node.raw, e);
+    const step = node.steps[missed.step];
+    keyNotFound(at, {
+      node,
+      step: missed.step,
+      key: missed.key ?? (step?.type === 'LookupStep' && typeof step.name === 'object' ? keyOf(step.name) : undefined)
+    }, node.raw, e);
   }
   throw ERR.nameNotFound({ node: at, ...callSiteLocation(at, e.s), meta: { symbol: node.raw } });
 }

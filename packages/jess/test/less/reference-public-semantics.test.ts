@@ -132,6 +132,7 @@ describe('Less reference semantic contracts through the public AST route', () =>
     ['a key the value it is read in lacks', '@map: { a: 1; } .entry { value: @map[a][b]; }', 'b', '@map[a]', 33],
     ['a key a map lacks', '@map: { a: 1; } .entry { value: @map[b]; }', 'b', '@map', 33],
     ['a key a variable holds that a map lacks', '@k: b; @map: { a: 1; } .entry { value: @map[@k]; }', 'b', '@map', 40],
+    ['a key a variable holds, on a value with no keys', '@k: b; @x: red; .entry { value: @x[@k]; }', 'b', '@x', 33],
     ['a lookup on a property value in a string', '.entry { color: red; value: "${color[x]}"; }', 'x', '$color', 30],
     ['a lookup past the end of a list in a string', '@list: 1 2; .entry { value: "@{list[5]}"; }', '5', '@list', 30]
   ])('reports %s by its key, where it was written', async (_label, source, key, receiver, column) => {
@@ -140,6 +141,13 @@ describe('Less reference semantic contracts through the public AST route', () =>
       filePath: 'entry.less',
       extension: '.less'
     })).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `"${key}" is undefined in "${receiver}".`, line: 1, column });
+  });
+
+  /* A `.jess` dot member is a lookup too: the key after the dot, in what comes before it. */
+  it('reports a .jess dot member a map lacks by its key, where it was written', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString('$m: #{a: 1}; .entry { value: $m.a.b; }', { filePath: 'entry.jess', extension: '.jess' }))
+      .rejects.toMatchObject({ code: 'resolve/name-not-found', reason: '"b" is undefined in "$m.a".', line: 1, column: 30 });
   });
 
   /* An unbound head is named as it was written, at the reference. */

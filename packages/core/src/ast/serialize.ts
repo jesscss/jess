@@ -7743,8 +7743,14 @@ function unresolvedReference(node: Reference, frame: Frame | null, e: Lane): Eva
     const base = node.base;
     const lookup = !isValueSlotArray(base) && base.type === 'Lookup' && typeof base.name === 'string'
       && (base.kind === 'var' || base.kind === 'prop');
-    chainNotFound(sourceStartOf(node) === NO_SPAN && !isValueSlotArray(base) ? base : node, node, lookup ? base.name : undefined,
-      lookup && (base.kind === 'var' ? resolveVarRef(frame, base.name, base.scope, e) : resolvePropRef(frame, base.name, e)) !== undefined, e);
+    chainNotFound(sourceStartOf(node) === NO_SPAN && !isValueSlotArray(base) ? base : node, node,
+      lookup && (base.kind === 'var' ? resolveVarRef(frame, base.name, base.scope, e) : resolvePropRef(frame, base.name, e)) === undefined
+        ? base.name
+        : undefined,
+      key => key.type === 'Lookup' && key.kind === 'var' && typeof key.name === 'string' && resolveVarRef(frame, key.name, key.scope, e) === undefined
+        ? undefined
+        : emitValue(settled(evalTypedSlot(key, frame, e, true), 'collection member key', key, e)),
+      e);
   }
   return literal(node.raw);
 }
