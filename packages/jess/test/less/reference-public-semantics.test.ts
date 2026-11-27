@@ -133,6 +133,10 @@ describe('Less reference semantic contracts through the public AST route', () =>
     ['a key a map lacks', '@map: { a: 1; } .entry { value: @map[b]; }', 'b', '@map', 33],
     ['a variable a map lacks, though the caller has one', '@k: a; @map: { @a: 1; } .entry { value: @map[@k]; }', '@k', '@map', 41],
     ['a variable, on a value with no keys', '@k: b; @x: red; .entry { value: @x[@k]; }', '@k', '@x', 33],
+    ['a variable a namespace lacks, though an outer scope has one', '@x: 5; #ns { @y: 1; } .entry { value: #ns[@x]; }', '@x', '#ns', 39],
+    ['a variable a mixin call lacks, though an outer scope has one', '@x: 5; .m() { @y: 1; } .entry { value: .m()[@x]; }', '@x', '.m()', 40],
+    ['a variable a namespaced mixin call lacks, though an outer scope has one', '@x: 5; #ns { .m() { @y: 1; } } .entry { value: #ns.m()[@x]; }', '@x', '#ns .m()', 48],
+    ['an indirect variable a namespace lacks, though an outer scope has one', '@x: 5; @k: x; #ns { @y: 1; } .entry { value: #ns[@@k]; }', '@x', '#ns', 46],
     ['a lookup on a property value in a string', '.entry { color: red; value: "${color[x]}"; }', 'x', '$color', 30],
     ['a lookup past the end of a list in a string', '@list: 1 2; .entry { value: "@{list[5]}"; }', '5', '@list', 30]
   ])('reports %s by its key, where it was written', async (_label, source, key, receiver, column) => {
@@ -147,6 +151,28 @@ describe('Less reference semantic contracts through the public AST route', () =>
   it('reads a bracket variable in the map, and an indirect one by the caller\'s value', async () => {
     await expect(parseAndRender('@k: a; @map: { @a: 1; @k: 2; } .entry { own: @map[@k]; named: @map[@@k]; }'))
       .resolves.toBe('.entry {\n  own: 2;\n  named: 1;\n}\n');
+  });
+
+  /*
+   * A mixin call's variable members are its own: its body's variables (in the
+   * `if()` branch taken too), the ones its calls leak into it, and its bound
+   * parameters, `@arguments` among them; never an outer variable of the same name.
+   */
+  it('reads a mixin call\'s own variables and parameters, never an outer one', async () => {
+    await expect(parseAndRender(`
+      @x: 5; @k: 1; @leaked: 5; @arguments: 5;
+      .inner() { @leaked: 9; }
+      .m(@k; @d: 7; @rest...) { @x: 2; .inner(); if((@k = 3), { @arm: 8; }); }
+      .entry {
+        own: .m(3; 4; 5; 6)[@x];
+        param: .m(3)[@k];
+        default: .m(3)[@d];
+        rest: .m(3; 4; 5; 6)[@rest];
+        arguments: .m(3; 4)[@arguments];
+        leaked: .m(3)[@leaked];
+        arm: .m(3)[@arm];
+      }
+    `)).resolves.toBe('.entry {\n  own: 2;\n  param: 3;\n  default: 7;\n  rest: 5 6;\n  arguments: 3 4;\n  leaked: 9;\n  arm: 8;\n}\n');
   });
 
   /* `.jess` `[$k]` is a variable key, like JS: `$k` is read where the lookup is written. */

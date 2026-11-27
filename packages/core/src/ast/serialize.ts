@@ -6719,8 +6719,10 @@ function mapForKind(map: DeclMap, kind: 'var' | 'prop'): Map<string, DeclEntry> 
 }
 
 /** [namespace-accessor] Read a `@name` member from a mixin-dispatch base's callee
- *  scope frame(s) — the mixin's local / nested-leaked variables, which are not part
- *  of its emitted-declaration output. Last matching frame wins (source order). */
+ *  scope frame(s) — the mixin's local / nested-leaked variables and bound
+ *  parameters, which are not part of its emitted-declaration output. A member is
+ *  the callee's own: an `@name` its scope only inherits is no member of it (P56).
+ *  Last matching frame wins (source order). */
 function lookupVarMember(map: DeclMap, name: string, e: Lane): DeclEntry | undefined {
   const frames = map.varFrames;
   if (!frames) {
@@ -6728,17 +6730,28 @@ function lookupVarMember(map: DeclMap, name: string, e: Lane): DeclEntry | undef
   }
   let hit: DeclEntry | undefined;
   for (const f of frames) {
-    const resolved = resolveVarRef(f, name, 'scoped', e);
-    const bound = resolved?.value;
+    /*
+     * The resolve selects a control-flow body's declarations, so the frame's own
+     * names are read after it. A name the frame holds only because a call in its
+     * body leaked it is read from that leak, never from an outer `@name` the
+     * scoped walk reaches first.
+     */
+    const scoped = resolveVarRef(f, name, 'scoped', e);
+    const resolved = f.reassign?.has(name) === true
+      || (f.activation?.selectedDeclIndex ?? f.declIndex)?.byName.has(name) === true
+      ? scoped
+      : f.activation?.leaked?.has(name) === true
+        ? exportChecked(carriedMap(e.s, lookupLeakedBinding(f, name, e)), name, 'scoped', e, undefined)
+        : undefined;
 
     /*
      * Retain callable bindings as typed members so a later Reference Call step
      * can dispatch them; serialization still decides whether the final result
      * is renderable.
      */
-    if (bound) {
+    if (resolved?.value) {
       hit = {
-        name, value: bound, frame: resolved.frame, evaluated: resolved.evaluated, important: false
+        name, value: resolved.value, frame: resolved.frame, evaluated: resolved.evaluated, important: false
       };
     }
   }
