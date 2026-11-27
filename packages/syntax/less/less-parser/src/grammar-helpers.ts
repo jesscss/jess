@@ -35,7 +35,8 @@ type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
 type IndirectRef = Lookup & { readonly name: ValueNode };
 type InterpolationFact = { readonly ref: ValueNode; readonly src: string };
-type InterpolationAccessorFact = { readonly key: ValueNode | number; readonly keyKind: 'var' | 'prop' | 'index'; readonly src: string };
+/** A `[@name]` key is the variable member `name` itself, so it carries the name, never a read of `@name`. */
+type InterpolationAccessorFact = { readonly key: ValueNode | number | string; readonly keyKind: 'var' | 'prop' | 'index'; readonly src: string };
 /** A typed continuation of a left-associated public Reference chain. */
 type ReferenceTailFact = { readonly step: Reference['steps'][number]; readonly src: string };
 type ComplexTailFact = { readonly fact: 'complexTail'; readonly combinator: ' ' | '>' | '+' | '~' | '|' | '||'; readonly term: SelectorTerm };
@@ -452,7 +453,7 @@ function isReference(value: unknown): value is Reference {
 
 function isInterpolationAccessorFact(value: unknown): value is InterpolationAccessorFact {
   return typeof value === 'object' && value !== null
-    && 'key' in value && (typeof value.key === 'number' || isValueNode(value.key))
+    && 'key' in value && (typeof value.key === 'number' || typeof value.key === 'string' || isValueNode(value.key))
     && 'keyKind' in value && (value.keyKind === 'var' || value.keyKind === 'prop' || value.keyKind === 'index')
     && 'src' in value && typeof value.src === 'string';
 }
@@ -623,11 +624,11 @@ function interpolationFactFromChildren(children: readonly unknown[], span: Sourc
   for (const child of children.slice(2, -1)) {
     src += `[${requireInterpolationAccessorFact(child).src}]`;
   }
-  const ref = referenceWithBracketLookups(
+  const ref = withSourceSpan(referenceWithBracketLookups(
     opener === '@{' ? variableReference(head, 'scoped') : propertyReference(head),
     `${opener === '@{' ? '@' : '$'}${head}`,
     children.slice(2, -1)
-  );
+  ), span);
   return { ref, src: `${src}}` };
 }
 

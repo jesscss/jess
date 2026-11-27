@@ -1165,7 +1165,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         return { key, keyKind: 'var', src: `@@${nameRef.name}` };
       }
       if (isVarRef(key)) {
-        return { key, keyKind: 'var', src: `@${key.name}` };
+        return { key: key.name, keyKind: 'var', src: `@${key.name}` };
       }
       if (isPropRef(key)) {
         return { key, keyKind: 'prop', src: key.raw };

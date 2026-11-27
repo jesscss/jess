@@ -29,7 +29,7 @@ exports[`import byte probe > less, no loader 1`] = `
 
 --- "@import \\"@{name}.css\\";"
 !! error resolve/name-not-found [resolve] (unknown) — Name not found
-Reason: Symbol "@name" is undefined in this scope.
+Reason: "@name" is undefined in this scope.
 Fix: Define "@name" or import a file that provides it.
 --- "@import \\"a\\" screen and (min-width: 100px);"
 @media screen and (min-width: 100px) {
@@ -100,7 +100,7 @@ RAW_BYTES
 
 --- "@import \\"@{name}.css\\";"
 !! error resolve/name-not-found [resolve] (unknown) — Name not found
-Reason: Symbol "@name" is undefined in this scope.
+Reason: "@name" is undefined in this scope.
 Fix: Define "@name" or import a file that provides it.
 --- "@import \\"a\\" screen and (min-width: 100px);"
 @media screen and (min-width: 100px) {

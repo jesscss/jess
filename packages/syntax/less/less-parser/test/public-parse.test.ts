@@ -2463,11 +2463,7 @@ describe('public Less parse()', () => {
                 },
                 steps: [
                   {
-                    type: 'LookupStep', name: {
-                      type: 'Lookup', kind: 'var',
-                      name: 'default-color',
-                      raw: '@default-color',
-                      scope: 'scoped' },
+                    type: 'LookupStep', name: 'default-color',
                     kind: 'var'
                   }
                 ],

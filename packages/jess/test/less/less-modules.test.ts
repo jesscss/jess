@@ -84,7 +84,7 @@ describe('Less @use script and data modules', () => {
 
   it('reports a missing export', async () => {
     const { errors } = await render('@use "./fns.js";\n.a { v: @fns.nope(1); }', functions);
-    expect(errors).toEqual(['Symbol "nope" is undefined in this scope.']);
+    expect(errors).toEqual(['"nope" is undefined in "@fns".']);
   });
 
   /* A namespaced call is never CSS, so a throwing function cannot be written out as-is (jess#280). */
@@ -123,7 +123,7 @@ describe('Less @compose stylesheet modules', () => {
 
   it('isolates the module from the importer scope', async () => {
     const { errors } = await render('@primary: green;\n@compose "./iso.less";\n', [['iso.less', '.iso { c: @primary; }\n']]);
-    expect(errors).toEqual(['Symbol "@primary" is undefined in this scope.']);
+    expect(errors).toEqual(['"@primary" is undefined in this scope.']);
   });
 
   it('a per-edge `with` configures the module output AND its namespace members', async () => {
@@ -177,7 +177,7 @@ describe('Less @compose stylesheet modules', () => {
       expect(errors).toEqual([memberCall(member)]);
       expect(css).toBe('');
     }
-    expect((await render('@compose "./scale.less";\n.a { v: @scale.nope(4); }', [scale])).errors).toEqual(['Symbol "nope" is undefined in this scope.']);
+    expect((await render('@compose "./scale.less";\n.a { v: @scale.nope(4); }', [scale])).errors).toEqual(['"nope" is undefined in "@scale".']);
     expect((await render('@compose "./ids.less";\n.a { v: @ids.idd(4); }', [['ids.less', '#idd(@x) { a: @x; }\n']])).errors).toEqual([memberCall('idd')]);
   });
 
@@ -208,7 +208,7 @@ describe('Less @compose stylesheet modules', () => {
       const result = await compiler.renderToResult(path.join(directory, 'entry.less'));
       const errors = (result as { errors?: { reason?: string; line?: number; column?: number }[] }).errors ?? [];
       expect(errors.map(error => [error.reason, error.line, error.column]))
-        .toEqual([['Symbol ".lift()" is undefined in this scope.', 3, 3]]);
+        .toEqual([['".lift()" is undefined in this scope.', 3, 3]]);
     } finally {
       compiler.dispose();
     }
@@ -217,7 +217,7 @@ describe('Less @compose stylesheet modules', () => {
   it('keeps a spaced `@name .member(…);` an at-rule, and an unknown member an error', async () => {
     const elevate: SourceFile = ['elevate.less', '.lift(@d) { box-shadow: 0 @d 0 black; }\n'];
     expect((await render('@compose "./elevate.less";\n.a { @elevate.sink(3px); }', [elevate])).errors)
-      .toEqual(['Symbol "sink" is undefined in this scope.']);
+      .toEqual(['"sink" is undefined in "@elevate".']);
     expect((await render('.a { @elevate .lift(3px); }')).css)
       .toBe('.a {\n  @elevate .lift(3px);\n}\n');
   });
@@ -334,7 +334,7 @@ describe('Less @compose stylesheet modules', () => {
 
   it('still reports a namespace that is bound nowhere', async () => {
     const { css, errors } = await render('.a { c: @nope.primary; }\n@compose "./theme.less";');
-    expect(errors).toEqual(['Symbol "@nope" is undefined in this scope.']);
+    expect(errors).toEqual(['"@nope" is undefined in this scope.']);
     expect(css).not.toContain('@nope.primary');
   });
 
@@ -356,6 +356,6 @@ describe('Less @compose stylesheet modules', () => {
 
   it('reports an unknown member', async () => {
     expect((await render('@compose "./theme.less";\n.a { v: @theme.nope; }')).errors)
-      .toEqual(['Symbol "nope" is undefined in this scope.']);
+      .toEqual(['"nope" is undefined in "@theme".']);
   });
 });

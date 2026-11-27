@@ -1,7 +1,8 @@
 /**
  * Module namespaces at a member read: how a read tells a namespace binding from
  * a variable or property of the same name (ledger R17, R18), and the coded
- * diagnostics it raises when it cannot (R7). The reader is the serializer's
+ * diagnostics it raises when it cannot (R7), and the diagnostic for a reference
+ * that reads nothing. The reader is the serializer's
  * reference resolution; this module holds the decisions so the resolver only
  * calls them.
  *
@@ -11,9 +12,10 @@
 import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
+import { isQuote, stringEnd } from './css-syntax.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import { declarationReference, funcCall, lookupStep, reference, referenceCall } from './nodes.js';
-import type { CallArg, CallValue, FunctionCall, Reference, ValueSlot } from './nodes.js';
+import type { CallArg, CallValue, FunctionCall, Reference, ValueNode, ValueSlot } from './nodes.js';
 import { NO_SPAN, sourceEndOf, sourceStartOf, withSourceSpan } from './provenance.js';
 import type { Frame } from './serialize.js';
 
@@ -22,6 +24,16 @@ export interface NamespaceSession {
   /** Each module namespace binding (`@use … as ns`, `@-compose … as ns`) → the import that bound it. */
   namespaceImports: WeakMap<object, object> | undefined;
   readonly context: Context | undefined;
+
+  /** The last lookup step that read nothing, noted where the resolver returns no value (see {@link stepMissed}). */
+  missedStep: StepMiss | undefined;
+}
+
+/** A reference's lookup step that read nothing; `key` is the key it evaluated to (`[@k]`), when it was not written literally. */
+export interface StepMiss {
+  readonly node: Reference;
+  readonly step: number;
+  readonly key: string | undefined;
 }
 
 /** The serializer's variable read (`resolveVarRef`). */
@@ -79,7 +91,7 @@ export function hiddenNamespace<L extends NamespaceLane>(read: MemberRead<L>, st
   }
   const head = base.kind === 'var' && stepIndex === 0 ? base : base.kind === 'entry' && stepIndex === 1 ? node.steps[0] : undefined;
   const member = node.steps[stepIndex];
-  if (head?.type === 'Call' || typeof head?.name !== 'string' || member?.type !== 'LookupStep' || typeof member.name !== 'string'
+  if (head?.type === 'Call' || typeof head?.name !== 'string' || member?.type !== 'LookupStep' || member.kind !== 'member' || typeof member.name !== 'string'
     || node.steps[stepIndex + 1]?.type === 'Call') {
     return null;
   }
@@ -104,10 +116,131 @@ export function hiddenNamespace<L extends NamespaceLane>(read: MemberRead<L>, st
   });
 }
 
-/** A member read that found nothing: {@link hiddenNamespace} when it applies, else `resolve/name-not-found` at the read. */
-export function memberNotFound<L extends NamespaceLane>(read: MemberRead<L>, stepIndex: number, symbol: string, e: L): never {
+/**
+ * A member read that found nothing: {@link hiddenNamespace} when it applies,
+ * else {@link keyNotFound} at the read, or `symbol` when its key cannot be
+ * read from the written chain.
+ */
+export function memberNotFound<L extends NamespaceLane>(read: MemberRead<L>, stepIndex: number, key: string | undefined, symbol: string, e: L): never {
   hiddenNamespace(read, stepIndex, e);
-  throw ERR.nameNotFound({ node: read.node, ...callSiteLocation(read.node, e.s), meta: { symbol } });
+  keyNotFound(read.node, { node: read.node, step: stepIndex, key }, symbol, e);
+}
+
+/**
+ * Notes that `node`'s lookup `step` read nothing, so its error can name the key.
+ * The resolver returns this `null` wherever such a read ends; a later read that
+ * misses overwrites it, and {@link chainNotFound} reads it only for its own node.
+ */
+export function stepMissed(s: NamespaceSession, node: Reference, step: number, key?: string): null {
+  s.missedStep = { node, step, key };
+  return null;
+}
+
+/** A member read on a value with no members to read: {@link hiddenNamespace} when it applies, else the noted miss. */
+export function receiverMissed<L extends NamespaceLane>(read: MemberRead<L>, stepIndex: number, e: L): null {
+  hiddenNamespace(read, stepIndex, e);
+  return stepMissed(e.s, read.node, stepIndex);
+}
+
+/**
+ * A reference that read nothing, as `resolve/name-not-found`: an unbound
+ * variable or property head (`unbound`) is named as written (`@nope`,
+ * `$^nope`); a lookup step that missed names its key and what it was read in
+ * ({@link keyNotFound}), a bound `[@k]` by what `keyOf` evaluates it to
+ * (`@k: b` → `b`; `undefined` keeps it as written, as for `[$p]`); any other
+ * reference is named whole.
+ */
+export function chainNotFound(
+  at: object,
+  node: Reference,
+  unbound: string | undefined,
+  keyOf: (key: ValueNode) => string | undefined,
+  e: NamespaceLane
+): never {
+  const head = unbound === undefined ? -1 : node.raw.indexOf(unbound);
+  if (unbound !== undefined) {
+    throw ERR.nameNotFound({ node: at, ...callSiteLocation(at, e.s), meta: { symbol: head < 0 ? node.raw : node.raw.slice(0, head + unbound.length) } });
+  }
+  const missed = e.s.missedStep;
+  e.s.missedStep = undefined;
+  if (missed?.node === node) {
+    const step = node.steps[missed.step];
+    keyNotFound(at, {
+      node,
+      step: missed.step,
+      key: missed.key ?? (step?.type === 'LookupStep' && typeof step.name === 'object' ? heldKey(keyOf, step.name) : undefined)
+    }, node.raw, e);
+  }
+  throw ERR.nameNotFound({ node: at, ...callSiteLocation(at, e.s), meta: { symbol: node.raw } });
+}
+
+/**
+ * What a bracket's variable holds, for the message only, a string by its
+ * text (`@k: "b"` → `b`). A value with no text (a ruleset) or a key that fails
+ * to evaluate (a mixin reference) keeps the key as written, so the miss is
+ * never replaced by another error.
+ */
+function heldKey(keyOf: (key: ValueNode) => string | undefined, key: ValueNode): string | undefined {
+  try {
+    const text = keyOf(key);
+    return (text !== undefined && isQuote(text[0]) && stringEnd(text, 0) === text.length - 1 ? text.slice(1, -1) : text) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A lookup step read nothing: `"b" is undefined in "@map[a]"`. The brackets or
+ * dot are the lookup, so the key is what they hold as written, or the key it
+ * evaluated to (`[@k]` with `@k: b` → `b`). A chain whose steps its written
+ * text does not show is named by `fallback`.
+ */
+function keyNotFound(at: object, { node, step, key }: StepMiss, fallback: string, e: NamespaceLane): never {
+  const starts = segmentStarts(node.raw);
+  let shown = node.steps.length;
+  while (shown > step + 1 && node.steps[shown - 1]?.type === 'Call' && !node.raw.endsWith(')')) {
+    shown--;
+  }
+  const first = starts.length - shown;
+  const start = starts[first + step];
+  if (first < 0 || !start) {
+    throw ERR.nameNotFound({ node: at, ...callSiteLocation(at, e.s), meta: { symbol: key ?? fallback } });
+  }
+  const written = node.raw.slice(start, starts[first + step + 1] ?? node.raw.length);
+  throw ERR.nameNotFound({
+    node: at,
+    ...callSiteLocation(at, e.s),
+    meta: { symbol: key ?? (written.charCodeAt(0) === 91 ? written.slice(1, -1).trim() : written.slice(1)), in: node.raw.slice(0, start) }
+  });
+}
+
+/**
+ * Where each segment of an authored chain starts: the head at 0, then each `[`,
+ * `(` or `.` outside brackets, quotes and escapes. Its last segments are the
+ * reference's steps.
+ * ponytail: steps carry no source text, so the message splits `raw`; when the
+ * parser records a span per step, read that instead.
+ */
+function segmentStarts(raw: string): number[] {
+  const starts = [0];
+  let depth = 0;
+  for (let i = 1; i < raw.length; i++) {
+    const c = raw[i];
+    if (c === '\\') {
+      i++;
+    } else if (isQuote(c)) {
+      i = stringEnd(raw, i);
+    } else if (c === '[' || c === '(') {
+      if (depth++ === 0) {
+        starts.push(i);
+      }
+    } else if (c === ']' || c === ')') {
+      depth--;
+    } else if (c === '.' && depth === 0) {
+      starts.push(i);
+    }
+  }
+  return starts;
 }
 
 /** Whether a call is spelled `ns.fn(…)`, which only `.scss` parses as one name. An escaped dot is part of an identifier. */
