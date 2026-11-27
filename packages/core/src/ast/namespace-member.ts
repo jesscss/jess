@@ -91,7 +91,7 @@ export function hiddenNamespace<L extends NamespaceLane>(read: MemberRead<L>, st
   }
   const head = base.kind === 'var' && stepIndex === 0 ? base : base.kind === 'entry' && stepIndex === 1 ? node.steps[0] : undefined;
   const member = node.steps[stepIndex];
-  if (head?.type === 'Call' || typeof head?.name !== 'string' || member?.type !== 'LookupStep' || typeof member.name !== 'string'
+  if (head?.type === 'Call' || typeof head?.name !== 'string' || member?.type !== 'LookupStep' || member.kind !== 'member' || typeof member.name !== 'string'
     || node.steps[stepIndex + 1]?.type === 'Call') {
     return null;
   }

@@ -149,6 +149,20 @@ describe('Less reference semantic contracts through the public AST route', () =>
       .resolves.toBe('.entry {\n  own: 2;\n  named: 1;\n}\n');
   });
 
+  /* `.jess` `[$k]` is a variable key, like JS: `$k` is read where the lookup is written. */
+  it('reads a .jess bracket variable where the lookup is written', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString('$k: a; $m: #{a: 1; b: 2}; .entry { $k: b; value: $m[$k]; }', { filePath: 'entry.jess', extension: '.jess' }))
+      .resolves.toBe('.entry {\n  value: 2;\n}\n');
+  });
+
+  /* A call through `[@name]` calls that variable member, never a module function of the same name. */
+  it('does not call a module function through a bracket variable', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString('@use "#less"; .entry { value: @less[@percentage](0.5); }', { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'resolve/name-not-found', reason: '"@percentage" is undefined in "@less".' });
+  });
+
   /* A `.jess` dot member is a lookup too: the key after the dot, in what comes before it. */
   it('reports a .jess dot member a map lacks by its key, where it was written', async () => {
     const compiler = new Compiler({ output: { collapseNesting: true } });

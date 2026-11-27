@@ -5,7 +5,7 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "f8a8edb6eb44ad4e90a82c1d68dd6d938786943610a2d4c9c6925333bc2b99f1",
+      "aggregate": "08d7ed08a6634de788dfda422e4d59dde1851e6c7eef5772365c8a5db6c5d225",
       "threw": 103
     },
     {
@@ -244,7 +244,7 @@
       "cst": "2af9e12d65b8b33a"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-1.less": {
-      "ast": "4b21d0a8ff04b8fb",
+      "ast": "60050f15c6f4edd5",
       "cst": "a656453533545eb0"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-2.css": {
@@ -252,7 +252,7 @@
       "cst": "ae66f5bcbd603d77"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-2.less": {
-      "ast": "cc467fee91a6068f",
+      "ast": "b343087c146fcfbb",
       "cst": "261e15a219c7b8aa"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-3.css": {
@@ -260,7 +260,7 @@
       "cst": "378f80217a9a32bc"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-3.less": {
-      "ast": "56f8fd2907c202a1",
+      "ast": "3050b2394e4dfbac",
       "cst": "a7072b1598f226aa"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-4.css": {
@@ -268,7 +268,7 @@
       "cst": "0726c24f856735b9"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-4.less": {
-      "ast": "c39dd2cb291f0dcd",
+      "ast": "fe9aa8819a916555",
       "cst": "f25efa215c8c8c74"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-5.css": {
@@ -292,7 +292,7 @@
       "cst": "09b1e8425f744e1b"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-7.less": {
-      "ast": "4905d3ed9ae61932",
+      "ast": "62f63b431a35495a",
       "cst": "d7e8fe9eea28211f"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.css": {
@@ -308,7 +308,7 @@
       "cst": "af9f3a5e436d7a9f"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-functions.less": {
-      "ast": "6aec0bec8332301b",
+      "ast": "b7b4efab4d86ac7b",
       "cst": "a9c8df5200abc0da"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-media.css": {
@@ -316,7 +316,7 @@
       "cst": "68180cf2bcab8641"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-media.less": {
-      "ast": "89e6af7ae7a8b7ab",
+      "ast": "6ae0fe6c0f51f5bd",
       "cst": "2445a7f73e9244ed"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-mixin-reference.css": {
@@ -332,7 +332,7 @@
       "cst": "f60c24e22f1c90fb"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-operations.less": {
-      "ast": "8fb7b94b670209a1",
+      "ast": "65a6753fd8c2dc0c",
       "cst": "275f6630df9daa08"
     },
     "node_modules/@less/test-data/tests-config/no-js-errors/no-js-errors.less": {
@@ -760,7 +760,7 @@
       "cst": "f56b52cdaad77989"
     },
     "node_modules/@less/test-data/tests-error/eval/namespace-variable-not-found.less": {
-      "ast": "9392a99ef77d32b6",
+      "ast": "83c3d9bdeb9d6f56",
       "cst": "c5888f8e4e804968"
     },
     "node_modules/@less/test-data/tests-error/eval/namespacing-2.less": {
@@ -768,7 +768,7 @@
       "cst": "0a63a64b76fb6a67"
     },
     "node_modules/@less/test-data/tests-error/eval/namespacing-4.less": {
-      "ast": "d0e68b288a398b68",
+      "ast": "de20ff1a636433a0",
       "cst": "f21246c1257a46dd"
     },
     "node_modules/@less/test-data/tests-error/eval/percentage-css-var.less": {
@@ -1372,7 +1372,7 @@
       "cst": "0cbf0d4eb4b94ad4"
     },
     "node_modules/@less/test-data/tests-unit/functions-each/functions-each.less": {
-      "ast": "36345503fb58a7e8",
+      "ast": "761489166bc1b9af",
       "cst": "3239ccbde166fc71"
     },
     "node_modules/@less/test-data/tests-unit/functions/functions.css": {
@@ -1672,7 +1672,7 @@
       "cst": "0f0e04048f121031"
     },
     "node_modules/@less/test-data/tests-unit/lookup-interpolation/lookup-interpolation.less": {
-      "ast": "053c74151cd304b0",
+      "ast": "68128eec3e5284e1",
       "cst": "fcd55700773f5964"
     },
     "node_modules/@less/test-data/tests-unit/math-css-vars/math-css-vars.css": {
@@ -3602,5 +3602,5 @@
   },
   "lessTestData": "e287ce64cb2abe1e6617c72f2cf696f031583586",
   "lessTestDataTree": "7eb9959be4d662ea89e95d321ed73de1bb82007d",
-  "authority": "owner 2026-11-26: \"yes, if we have positions now, then that's fine to record them\" — interpolation references gain source spans (AST surface only, 76 entries; position-stripped ASTs identical; CST unchanged)"
+  "authority": "owner 2026-11-27: \"[$k] is a variable key in .jess (like JS). In Less, it's less intuitive and [@k] is the literal variable named \\\"k\\\"\" — Less [@k] lookup steps carry the member name k instead of a Lookup node (AST surface only, 12 entries, every one a live [@name]; CST unchanged)"
 }

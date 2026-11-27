@@ -7532,7 +7532,8 @@ function resolveReferenceResult(
          */
         matched = map.byProp.get(propKey);
       } else if (typeof step.name === 'object') {
-        const evaluatedKey = evalTypedSlot(step.name, valueFrame, e, true);
+        /* A computed key is read where the lookup is written, as `[@@k]`'s name is: `.jess` `[$k]` is a variable key, like JS (owner 2026-11-27). */
+        const evaluatedKey = evalTypedSlot(step.name, frame ?? valueFrame, e, true);
         if (isThenable(evaluatedKey)) {
           observeRejectedThenable(evaluatedKey);
           throw ERR.asyncInSyncPosition({
@@ -7683,7 +7684,7 @@ function moduleReferenceCall(
   }
   for (; stepIndex < node.steps.length - 1; stepIndex++) {
     const step = node.steps[stepIndex]!;
-    if (step.type !== 'LookupStep' || typeof step.name !== 'string') {
+    if (step.type !== 'LookupStep' || step.kind !== 'member' || typeof step.name !== 'string') {
       return undefined;
     }
     name += `.${step.name}`;
