@@ -32,7 +32,7 @@ describe('positions confined to the synchronous lane', () => {
   it('pass a settled value through without suspending the render', () => {
     expect(render(parseLess('#ns when (true) { .m() { color: red; } }\n.a { #ns > .m(); }'))).toBe('.a {\n  color: red;\n}\n');
     expect(render(parseLess('.ns() { .m() { color: red; } }\n.a { .ns > .m(); }'))).toBe('.a {\n  color: red;\n}\n');
-    expect(render(parseLess('.m() { a: 1px; }\n@kk: a;\n@k: kk;\n.b { w: .m[@@k]; }'))).toBe('.b {\n  w: a;\n}\n');
+    expect(render(parseLess('.m() { a: 1px; @kk: a; }\n@k: kk;\n.b { w: .m[@@k]; }'))).toBe('.b {\n  w: a;\n}\n');
     expect(render(parseScss('$i: 0;\n@while $i < 2 { .w-#{$i} { a: $i; } $i: $i + 1; }\n@if $i == 2 { .ok { b: 1; } } @else { .no { b: 0; } }\n.v { c: if(true, 1, 2); }')))
       .toBe('.w-0 {\n  a: 0;\n}\n.w-1 {\n  a: 1;\n}\n.ok {\n  b: 1;\n}\n.v {\n  c: 1;\n}\n');
   });
