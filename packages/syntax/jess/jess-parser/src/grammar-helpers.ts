@@ -338,40 +338,25 @@ function declarationMemberReferenceFromVariableBase(
   );
 }
 
+function liveVariable(name: string, span?: { readonly start: number; readonly end: number }): Lookup {
+  const ref = variableReference(name, 'live', `$${name}`);
+  return span ? withSourceSpan(ref, span) : ref;
+}
+
 function interpolationFromChildren(
   children: readonly unknown[],
   span?: { readonly start: number; readonly end: number }
 ): Interpolation {
   const first = requireToken(children[1]).value;
   if (first === '$') {
-    const ref = variableReference(
-      requireToken(children[2]).value,
-      'live',
-      `$${requireToken(children[2]).value}`
-    );
-    if (span) {
-      withSourceSpan(
-        ref,
-        span
-      );
-    }
+    const ref = liveVariable(requireToken(children[2]).value, span);
     return interpolation([{ ref: variableReference(
       ref,
       'live'
     ), unquote: true }]);
   }
   if (children.length === 3) {
-    const ref = variableReference(
-      first,
-      'live',
-      `$${first}`
-    );
-    if (span) {
-      withSourceSpan(
-        ref,
-        span
-      );
-    }
+    const ref = liveVariable(first, span);
     return interpolation([{ ref, unquote: true }]);
   }
   const text = first === '"' || first === '\'' ? requireToken(children[2]).value : first;
@@ -397,32 +382,12 @@ function dollarBraceInterpolation(
   span?: { readonly start: number; readonly end: number }
 ): Interpolation {
   if (requireToken(children[1]).value !== '[') {
-    const ref = variableReference(
-      requireToken(children[1]).value,
-      'live',
-      `$${requireToken(children[1]).value}`
-    );
-    if (span) {
-      withSourceSpan(
-        ref,
-        span
-      );
-    }
+    const ref = liveVariable(requireToken(children[1]).value, span);
     return interpolation([{ ref, unquote: true }]);
   }
   const head = requireToken(children[2]).value;
   if (head === '$') {
-    const named = variableReference(
-      requireToken(children[3]).value,
-      'live',
-      `$${requireToken(children[3]).value}`
-    );
-    if (span) {
-      withSourceSpan(
-        named,
-        span
-      );
-    }
+    const named = liveVariable(requireToken(children[3]).value, span);
     return interpolation([{ ref: variableReference(
       named,
       'live'
@@ -1312,6 +1277,7 @@ export {
   declarationMemberReferenceFromVariableBase,
   interpolationFromChildren,
   dollarBraceInterpolation,
+  liveVariable,
   referenceArgSource,
   tokenSource,
   sourceFromState,

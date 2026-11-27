@@ -71,6 +71,7 @@ import {
   declarationMemberReferenceFromVariableBase,
   interpolationFromChildren,
   dollarBraceInterpolation,
+  liveVariable,
   referenceArgSource,
   tokenSource,
   sourceFromState,
@@ -5805,11 +5806,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         throw new TypeError('Jess reference call lost its name span.');
       }
       return withSourceSpan(reference(
-        withSourceSpan(variableReference(
-          name,
-          'live',
-          `$${name}`
-        ), { start: span.start, end: nameToken.span.end }),
+        liveVariable(name, { start: span.start, end: nameToken.span.end }),
         [referenceCall([])],
         `$${name}()`
       ), span);
