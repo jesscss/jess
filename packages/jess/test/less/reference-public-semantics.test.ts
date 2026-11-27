@@ -146,6 +146,24 @@ describe('Less reference semantic contracts through the public AST route', () =>
       .rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `Symbol "${symbol}" is undefined in this scope.`, line: 1, column });
   });
 
+  /* An unbound variable is named as it was written, whatever the dialect's sigil. */
+  it.each([
+    ['.less', '.e { v: @nope; }', '@nope'],
+    ['.less', '@m: { a: 1; } .e { v: @m[@nope]; }', '@nope'],
+    ['.less', '.e { @nope(); }', '@nope'],
+    ['.jess', '.e { v: $nope; }', '$nope'],
+    ['.jess', '.e { v: $^nope; }', '$^nope'],
+    ['.jess', '$m: #{ a: 1; }; .e { v: $m[$nope]; }', '$nope'],
+    ['.jess', '.e { v: $(^nope + 1); }', '^nope'],
+    ['.jess', '.e { v: "${nope}"; }', '$nope'],
+    ['.jess', '.e { $nope(); }', '$nope'],
+    ['.scss', '.e { v: $nope; }', '$nope']
+  ])('names an unbound %s variable as written: %s', async (extension, source, symbol) => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString(source, { filePath: `entry${extension}`, extension }))
+      .rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `Symbol "${symbol}" is undefined in this scope.` });
+  });
+
   it.each([
     ['recursive variable', '@bodyColor: darken(@bodyColor, 30%); .entry { color: @bodyColor; }', '@bodyColor'],
     ['recursive property', '.entry { color: darken($color, 10%); }', '$color']

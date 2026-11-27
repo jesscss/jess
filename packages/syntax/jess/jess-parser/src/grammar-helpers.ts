@@ -346,7 +346,8 @@ function interpolationFromChildren(
   if (first === '$') {
     const ref = variableReference(
       requireToken(children[2]).value,
-      'live'
+      'live',
+      `$${requireToken(children[2]).value}`
     );
     if (span) {
       withSourceSpan(
@@ -362,7 +363,8 @@ function interpolationFromChildren(
   if (children.length === 3) {
     const ref = variableReference(
       first,
-      'live'
+      'live',
+      `$${first}`
     );
     if (span) {
       withSourceSpan(
@@ -397,7 +399,8 @@ function dollarBraceInterpolation(
   if (requireToken(children[1]).value !== '[') {
     const ref = variableReference(
       requireToken(children[1]).value,
-      'live'
+      'live',
+      `$${requireToken(children[1]).value}`
     );
     if (span) {
       withSourceSpan(
@@ -411,7 +414,8 @@ function dollarBraceInterpolation(
   if (head === '$') {
     const named = variableReference(
       requireToken(children[3]).value,
-      'live'
+      'live',
+      `$${requireToken(children[3]).value}`
     );
     if (span) {
       withSourceSpan(

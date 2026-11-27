@@ -17,7 +17,7 @@ import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import serializerNodes, { type CallValue, type MixinCall, type Reference } from './nodes.js';
+import serializerNodes, { type CallValue, type Lookup, type MixinCall, type Reference } from './nodes.js';
 import type { Any } from './value-eval.js';
 import { NO_SPAN, sourceEndOf, sourceStartOf } from './provenance.js';
 import { makeAny } from './value-factory.js';
@@ -108,6 +108,13 @@ export function readMixinReference(e: ReadLane, reader: object, held: CallValue)
 function spelling(read: object): string {
   return 'raw' in read && typeof read.raw === 'string' ? read.raw : '';
 }
+
+/**
+ * A variable read as it was written (`@x`, `$x`, `$^x`). An indirect `@@x`
+ * names the variable its name resolved to, which only Less spells.
+ */
+export const writtenVariable = (node: Lookup, name: string): string =>
+  typeof node.name === 'string' ? node.raw : `@${name}`;
 
 /**
  * The mixin a reference call (`@foo();`) reached through a variable, placed at

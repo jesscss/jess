@@ -226,7 +226,7 @@ import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { cssFilterCall, mayBeFilter } from './filter-position.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, moduleReferenceCallNode, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
-import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
+import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached, writtenVariable } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { isGluedCall, isSupportsCall, mathOperand, negatedCall, slashOperated, testedCall, writtenMath, writtenPercent } from './math-operand.js';
 import { groupItems } from './value-list.js';
@@ -4069,9 +4069,9 @@ const literalName = (node: Lookup): string => typeof node.name === 'string' ? no
 
 function unresolvedRef(node: Lookup, name: string, e: Lane): EvalValue {
   if (!e.optional) {
-    unresolvedSymbol(node, `@${name}`, e);
+    unresolvedSymbol(node, writtenVariable(node, name), e);
   }
-  return literal(`@${name}`);
+  return literal(writtenVariable(node, name));
 }
 
 /**
@@ -5120,7 +5120,7 @@ function evalTyped(
           : resolveVarRef(frame, nm, node.scope, e, node);
         if (!hit) {
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
-            recursiveReference(node, `@${nm}`, 'Variable', e);
+            recursiveReference(node, writtenVariable(node, nm), 'Variable', e);
           }
           return force(unresolvedRef(node, nm, e));
         }
@@ -5985,7 +5985,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
           const hit = resolveVarRef(frame, nm, node.scope, e, node);
           if (!hit) {
             if (hasExcludedVarRef(frame, nm, node.scope, e)) {
-              recursiveReference(node, `@${nm}`, 'Variable', e);
+              recursiveReference(node, writtenVariable(node, nm), 'Variable', e);
             }
             return unresolvedRef(node, nm, e);
           }
@@ -7503,7 +7503,7 @@ function resolveReferenceResult(
         value.type === 'MixinCall' || !resolveVarRef(valueFrame, step.name.name, step.name.scope, e)
       )) {
         const keyName = step.name.name;
-        missingSymbol = `@${keyName}`;
+        missingSymbol = step.name.raw;
 
         /*
          * A namespace/mixin-call accessor is a callee result: `#ns.m[@key]`
@@ -17948,7 +17948,7 @@ function expandReferenceCall(
      * not a cross-frame read. Every OTHER unresolved reference is still a hard miss.
      */
     if (call.base.type === 'Lookup' && call.base.kind === 'var' && call.base.name !== 'content') {
-      unresolvedSymbol(call, `@${call.base.name}`, e);
+      unresolvedSymbol(call, writtenVariable(call.base, literalName(call.base)), e);
     }
     return;
   }
@@ -21886,7 +21886,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
         const hit = resolveVarRef(frame, nm, node.scope, e, node);
         if (!hit) {
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
-            recursiveReference(node, `@${nm}`, 'Variable', e);
+            recursiveReference(node, writtenVariable(node, nm), 'Variable', e);
           }
           return mapMaybe(evalBytes(node, frame, e), leaf);
         }

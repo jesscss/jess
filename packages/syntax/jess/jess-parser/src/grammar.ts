@@ -965,7 +965,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children, _fields, span) => withSourceSpan(
       variableReference(
         requireToken(children.at(-1)).value,
-        requireToken(children[0]).value === '$^' ? 'scoped' : 'live'
+        requireToken(children[0]).value === '$^' ? 'scoped' : 'live',
+        tokenSource(children)
       ),
       span
     )
@@ -979,7 +980,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children, _fields, span) => withSourceSpan(
       variableReference(
         requireToken(children[1]).value,
-        'scoped'
+        'scoped',
+        tokenSource(children)
       ),
       span
     )
@@ -3279,7 +3281,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       const raw = requireToken(children[0]).value;
       const scoped = raw.startsWith('$^');
       return withSourceSpan(
-        variableReference(raw.slice(scoped ? 2 : 1), scoped ? 'scoped' : 'live'),
+        variableReference(raw.slice(scoped ? 2 : 1), scoped ? 'scoped' : 'live', raw),
         span
       );
     }
@@ -5805,7 +5807,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return withSourceSpan(reference(
         withSourceSpan(variableReference(
           name,
-          'live'
+          'live',
+          `$${name}`
         ), { start: span.start, end: nameToken.span.end }),
         [referenceCall([])],
         `$${name}()`
