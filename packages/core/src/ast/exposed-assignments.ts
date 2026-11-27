@@ -78,7 +78,7 @@ export function exposedWrite<F>(e: ExportLane<F>, node: VariableDeclaration, own
   if (files === null) {
     return;
   }
-  const file = e.s.context?.fileOfNode(node) ?? e.s.context?.sourceContext?.file;
+  const file = e.s.context?.documentOfNode(node)?.file ?? e.s.context?.sourceContext?.file;
   const earlier = files?.get(file);
   if (files === undefined) {
     x.assignedIn.set(name, new Map([[file, node]]));
