@@ -175,15 +175,13 @@ export function chainNotFound(
 }
 
 /**
- * What a bracket's variable holds, for the message only, a string by its
- * text (`@k: "b"` → `b`). A value with no text (a ruleset) or a key that fails
- * to evaluate (a mixin reference) keeps the key as written, so the miss is
- * never replaced by another error.
+ * What a bracket's variable holds, for the message only. A value with no text
+ * (a ruleset) or a key that fails to evaluate (a mixin reference) keeps the key
+ * as written, so the miss is never replaced by another error.
  */
 function heldKey(keyOf: (key: ValueNode) => string | undefined, key: ValueNode): string | undefined {
   try {
-    const text = keyOf(key);
-    return (text !== undefined && isQuote(text[0]) && stringEnd(text, 0) === text.length - 1 ? text.slice(1, -1) : text) || undefined;
+    return keyOf(key) || undefined;
   } catch {
     return undefined;
   }
@@ -192,10 +190,14 @@ function heldKey(keyOf: (key: ValueNode) => string | undefined, key: ValueNode):
 /**
  * A lookup step read nothing: `"b" is undefined in "@map[a]"`. The brackets or
  * dot are the lookup, so the key is what they hold as written, or the key it
- * evaluated to (`[@k]` with `@k: b` → `b`). A chain whose steps its written
- * text does not show is named by `fallback`.
+ * evaluated to (`[@k]` with `@k: b` → `b`; a string by its text, `@k: "b"` →
+ * `b`). A chain whose steps its written text does not show is named by
+ * `fallback`.
  */
-function keyNotFound(at: object, { node, step, key }: StepMiss, fallback: string, e: NamespaceLane): never {
+function keyNotFound(at: object, { node, step, key: evaluated }: StepMiss, fallback: string, e: NamespaceLane): never {
+  const key = evaluated !== undefined && isQuote(evaluated[0]) && stringEnd(evaluated, 0) === evaluated.length - 1
+    ? evaluated.slice(1, -1) || undefined
+    : evaluated;
   const starts = segmentStarts(node.raw);
   let shown = node.steps.length;
   while (shown > step + 1 && node.steps[shown - 1]?.type === 'Call' && !node.raw.endsWith(')')) {
