@@ -492,22 +492,6 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "0a0d5401e21cc046",
-      "ordinal": 0,
-      "snippet": "node.raw.slice(0, node.raw.indexOf(base.name) + base.name.length)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "f060d2c675736141",
-      "ordinal": 0,
-      "snippet": "node.raw.indexOf(base.name)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-node-keyed-side-map",
       "fingerprint": "bc9f264ef5c5e392",
       "ordinal": 0,
