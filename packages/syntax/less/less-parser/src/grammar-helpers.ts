@@ -103,7 +103,17 @@ type MixinDefinitionFact = {
   readonly extensions: readonly ExtendInstruction[];
   readonly bodySpan: SourceSpan | undefined;
 };
-type MixinCallFact = { readonly fact: 'mixinCall'; readonly args: readonly MixinCallArgument[]; readonly important: boolean };
+/**
+ * `chain` is a mixin-call statement's glued lookup/call chain (`.m()[@k]();`):
+ * where its `.m()` base ends, its steps, and the parse state its own reducer
+ * was handed, so only a chained call reads the base's authored spelling.
+ */
+type MixinCallFact = {
+  readonly fact: 'mixinCall';
+  readonly args: readonly MixinCallArgument[];
+  readonly important: boolean;
+  readonly chain: { readonly baseEnd: number; readonly tails: readonly ReferenceTailFact[]; readonly state: unknown } | null;
+};
 type BareMixinCallFact = { readonly fact: 'bareMixinCall'; readonly important: boolean };
 type MixinStatementFact = MixinDefinitionFact | MixinCallFact;
 type RulesetTailFact = {
@@ -1506,10 +1516,10 @@ function isMixinCall(value: unknown): value is MixinCall {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinCall';
 }
 
-/** A statement call `@name…(…);`: a variable's lookup/call chain ending in a call. */
+/** A statement call `@name…(…);` or `.m()[key]();`: a variable's or mixin call's lookup/call chain ending in a call. */
 function isReferenceCall(value: unknown): value is Reference {
   return typeof value === 'object' && value !== null && 'type' in value
-    && value.type === 'Reference' && 'base' in value && isVarRef(value.base)
+    && value.type === 'Reference' && 'base' in value && (isVarRef(value.base) || isMixinCall(value.base))
     && 'steps' in value && Array.isArray(value.steps)
     && value.steps.length > 0 && value.steps[value.steps.length - 1]?.type === 'Call';
 }
@@ -2127,7 +2137,8 @@ function functionConditionSource(value: ValueSlot): string {
   const node = requireValueNode(value);
   switch (node.type) {
     case 'Keyword': case 'Color': case 'Quoted': case 'Any': case 'Dimension': case 'Condition': return node.src;
-    case 'Lookup': return node.kind === 'var'
+    /* A lookup/call chain (`@map[k]`, `#ns.m()[k]`) carries its chain spelled glued (`@map[ k ]` reads `@map[k]`). */
+    case 'Lookup': case 'Reference': return node.type === 'Lookup' && node.kind === 'var'
       ? `@${typeof node.name === 'string' ? node.name : functionConditionSource(node.name)}`
       : node.raw;
     case 'FunctionCall': return `${node.name}(${node.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${functionConditionSource(argument.value)}`).join(', ')})`;

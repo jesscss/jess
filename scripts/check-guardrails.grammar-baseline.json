@@ -399,39 +399,6 @@
     },
     {
       "rule": "lookahead",
-      "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 4637,
-      "const": "styleQueryContents",
-      "construct": "ifTestHead",
-      "resolved": "e17d7e86dc2fd50d",
-      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
-      "issue": "jesscss/jess#576",
-      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan."
-    },
-    {
-      "rule": "lookahead",
-      "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 4759,
-      "const": "supportsTestOperand",
-      "construct": "ifTestHead",
-      "resolved": "e17d7e86dc2fd50d",
-      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
-      "issue": "jesscss/jess#576",
-      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan."
-    },
-    {
-      "rule": "lookahead",
-      "file": "packages/syntax/css/css-parser/src/grammar.ts",
-      "line": 4791,
-      "const": "supportsTestContents",
-      "construct": "ifTestHead",
-      "resolved": "e17d7e86dc2fd50d",
-      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
-      "issue": "jesscss/jess#576",
-      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan."
-    },
-    {
-      "rule": "lookahead",
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
       "line": 839,
       "const": "ampersandAppendPayload",
@@ -624,7 +591,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 680,
+      "line": 679,
       "const": "staticDataUrlText",
       "construct": "regex(/data:(?:[^\"'()\\\\\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+?(?=[ \\t\\n\\r\\f]*\\))/i)",
       "resolved": "64be9389f42eacd4",
@@ -634,7 +601,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 798,
+      "line": 797,
       "const": "lessSupportedVariableName",
       "construct": "lessSupportedVariableName",
       "why": "rule name `lessSupportedVariableName`",
@@ -643,7 +610,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 799,
+      "line": 798,
       "const": "lessUnsupportedNumericVariableName",
       "construct": "lessUnsupportedNumericVariableName",
       "why": "rule name `lessUnsupportedNumericVariableName`",
@@ -652,7 +619,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 805,
+      "line": 804,
       "const": "lessDashVariableName",
       "construct": "lessDashVariableName",
       "why": "rule name `lessDashVariableName`",
@@ -661,7 +628,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 809,
+      "line": 808,
       "const": "lessVariableName",
       "construct": "lessVariableName",
       "why": "rule name `lessVariableName`",
@@ -670,7 +637,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 934,
+      "line": 933,
       "const": "lessDimensionUnit",
       "construct": "lessDimensionUnit",
       "why": "rule name `lessDimensionUnit`",
@@ -679,7 +646,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 957,
+      "line": 956,
       "const": "lessOwnAtKeyword",
       "construct": "lessOwnAtKeyword",
       "why": "rule name `lessOwnAtKeyword`",
@@ -688,7 +655,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 983,
+      "line": 982,
       "const": "syntaxTypeOpen",
       "construct": "regex(/<(?=-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*>)/)",
       "resolved": "0e7433a09e4636a3",
@@ -698,7 +665,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1062,
+      "line": 1061,
       "const": "lessWord",
       "construct": "lessWord",
       "why": "rule name `lessWord`",
@@ -707,7 +674,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1063,
+      "line": 1062,
       "const": "lessCaseWord",
       "construct": "lessCaseWord",
       "why": "rule name `lessCaseWord`",
@@ -716,7 +683,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1290,
+      "line": 1311,
       "const": "plainUrlArgument",
       "construct": "field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))",
       "resolved": "5347feb07d71a200",
@@ -726,7 +693,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1308,
+      "line": 1329,
       "const": "UrlInterpolation",
       "construct": "staticUrlText",
       "resolved": "e904a69713183236",
@@ -736,7 +703,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1309,
+      "line": 1330,
       "const": "UrlInterpolation",
       "construct": "staticUrlText",
       "resolved": "e904a69713183236",
@@ -746,7 +713,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1366,
+      "line": 1387,
       "const": "ImportTailParen",
       "construct": "staticTailText",
       "resolved": "884b0d6df850866d",
@@ -756,7 +723,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1371,
+      "line": 1392,
       "const": "ImportTailText",
       "construct": "staticTailText",
       "resolved": "884b0d6df850866d",
@@ -766,18 +733,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1694,
-      "const": "inlineJavaScriptFollowingDeclaration",
-      "construct": "peek(choice(literal('}'), sequence(choice(variableName, g.PunctuationMapKeyToken, sequence(choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPr…",
-      "resolved": "2550129f8d5f3f08",
-      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` named like a grammar definition (it skips the reducers passed to `node(…)`), so this site stopped reading such locals. The site reads the same grammar.",
-      "why": "`variableNameEscape` — a sequence of more than one token",
-      "issue": "jesscss/jess#576"
-    },
-    {
-      "rule": "lookahead",
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1798,
+      "line": 1819,
       "const": "MixinReferenceValue",
       "construct": "not(regex(/#[0-9a-fA-F]+[ \\t\\n\\r\\f]*[;}!]/))",
       "resolved": "153861d1e1f7e19f",
@@ -787,7 +743,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 1992,
+      "line": 2013,
       "const": "functionConditionNotAhead",
       "construct": "peek(choice(parser({ trivia: functionTrivia }, sequence(functionConditionNot, literal('('))), noTrivia(sequence(functionConditionNot, whitespaceRun, regex(/[^,…",
       "resolved": "a626decc44fbd3c4",
@@ -797,7 +753,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 2002,
+      "line": 2023,
       "const": "keywordArgumentKey",
       "construct": "regex(/@[-_a-zA-Z\\u0080-\\uffff][-\\w\\u0080-\\uffff]*(?=[ \\t\\n\\r\\f]*:(?!:))/)",
       "resolved": "f11e009f72f3c432",
@@ -807,18 +763,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 2280,
-      "const": "BacktickJavaScript",
-      "construct": "{ gate: state => contextOf(state) === 'at-rule-javascript', combinator: atRuleInlineJavaScriptBody }",
-      "resolved": "93f5d772fb7c8865",
-      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` named like a grammar definition (it skips the reducers passed to `node(…)`), so this site stopped reading such locals. The site reads the same grammar.",
-      "why": "this arm starts by reading past one token: `scanTo(literal('`'), { recoverAt: inlineJavaScriptRecoveryBoundary, stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration), skip:…`",
-      "issue": "jesscss/jess#576"
-    },
-    {
-      "rule": "lookahead",
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 2633,
+      "line": 2654,
       "const": "valueRunEndAhead",
       "construct": "nestedAtRuleValueStart",
       "resolved": "e1d2d18bc7601514",
@@ -828,7 +773,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 2636,
+      "line": 2657,
       "const": "combinator",
       "construct": "not(syntaxTypeOpen)",
       "resolved": "157fb6080ac90af4",
@@ -838,7 +783,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 2652,
+      "line": 2673,
       "const": "valueTriviaBoundary",
       "construct": "not(valueRunEndAhead)",
       "resolved": "bfe540cf522e14d9",
@@ -848,7 +793,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3062,
+      "line": 3083,
       "const": "interpolatedPropertyAhead",
       "construct": "peek(regex(/[^:;{}]*[@$]\\{/))",
       "resolved": "5f96cccf796d5635",
@@ -858,17 +803,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3375,
-      "const": "ReferenceTailFromDelimiter",
-      "construct": "choice(literal('[]'), literal('['), literal('.'), literal('('))",
-      "resolved": "0ec4cb5461eee774",
-      "why": "its selector looks past one token: its text \"[]\" spans more than one token",
-      "issue": "jesscss/jess#576"
-    },
-    {
-      "rule": "lookahead",
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3563,
+      "line": 3490,
       "const": "MixinGuardOperand",
       "construct": "mixinGuardDefaultOperand",
       "resolved": "88d09d40a9f2d506",
@@ -878,7 +813,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3602,
+      "line": 3529,
       "const": "unparenthesizedMixinGuard",
       "construct": "sequence(optional(lessCaseWord('not')), choice(mixinGuardDefaultOperand, g.Call), optional(sequence(mixinGuardOperator, g.MixinGuardOperand)))",
       "resolved": "51dcff31a8d807fa",
@@ -889,7 +824,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3604,
+      "line": 3531,
       "const": "unparenthesizedMixinGuard",
       "construct": "mixinGuardDefaultOperand",
       "resolved": "88d09d40a9f2d506",
@@ -899,7 +834,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3733,
+      "line": 3660,
       "const": "rulesetNotDeclaration",
       "construct": "not(regex(/[-\\w]+[ \\t]*:[ \\t\\n\\r\\f]/))",
       "resolved": "d8a53b22591bbad7",
@@ -909,7 +844,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3839,
+      "line": 3766,
       "const": "CallArgumentValue",
       "construct": "attempt(g.FlatMixinCall)",
       "resolved": "6ee21eb8f22909ca",
@@ -919,7 +854,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3961,
+      "line": 3888,
       "const": "enclosedRaw",
       "construct": "enclosedText",
       "resolved": "4d87586bf3fdbcc3",
@@ -929,7 +864,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 3983,
+      "line": 3910,
       "const": "enclosedContentItems",
       "construct": "enclosedRaw",
       "resolved": "aa60bac2a3f11be6",
@@ -937,19 +872,9 @@
       "issue": "jesscss/jess#576"
     },
     {
-      "rule": "attempt",
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4253,
-      "const": "MediaTypeTerm",
-      "construct": "attempt(g.MixinReferenceChain)",
-      "resolved": "33cd9d2e2b6c1582",
-      "why": "attempt() tries a parse and rolls it back on failure: backtracking",
-      "issue": "jesscss/jess#576"
-    },
-    {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4394,
+      "line": 4321,
       "const": "ContainerName",
       "construct": "not(g.QueryFunctionOpen)",
       "resolved": "8d6968a1ce5b22eb",
@@ -959,7 +884,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4722,
+      "line": 4649,
       "const": "lessUnknownAtPreludeText",
       "construct": "lessUnknownAtPreludeText",
       "why": "rule name `lessUnknownAtPreludeText`",
@@ -968,7 +893,7 @@
     {
       "rule": "dialect-prefix",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4723,
+      "line": 4650,
       "const": "lessUnknownAtPreludeCapture",
       "construct": "lessUnknownAtPreludeCapture",
       "why": "rule name `lessUnknownAtPreludeCapture`",
@@ -977,7 +902,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4767,
+      "line": 4694,
       "const": "genericAtRuleBlockTail",
       "construct": "attempt(sequence(// The typed header first; interpolation and parenthesized forms fall to // the byte prelude in the arm below. attempt(g.AtRulePreludeValue), …",
       "resolved": "76fec0deaa0e5fec",
@@ -988,7 +913,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 4770,
+      "line": 4697,
       "const": "genericAtRuleBlockTail",
       "construct": "attempt(g.AtRulePreludeValue)",
       "resolved": "e0abc396ddbe685d",
@@ -998,7 +923,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5011,
+      "line": 4938,
       "const": "AtRuleStatement",
       "construct": "attempt(sequence(g.AtRulePreludeValue, literal(';')))",
       "resolved": "8061cb32f134b20e",
@@ -1008,7 +933,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5224,
+      "line": 5151,
       "const": "capturedArgument",
       "construct": "InvalidSelectorCaptureArgument",
       "resolved": "9588caa03f4a83d5",
@@ -1018,7 +943,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5346,
+      "line": 5273,
       "const": "pseudo",
       "construct": "pseudoOpen",
       "resolved": "cb60ab284602ba2e",
@@ -1029,7 +954,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5369,
+      "line": 5296,
       "const": "staticPseudoDispatch",
       "construct": "pseudoOpen",
       "resolved": "cb60ab284602ba2e",
@@ -1040,7 +965,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5687,
+      "line": 5614,
       "const": "extendAllFlagAhead",
       "construct": "regex(/[ \\t\\n\\r\\f]*!?all(?=[ \\t\\n\\r\\f]*(?:,|\\)))/i)",
       "resolved": "4c82090aa268fdb8",
@@ -1050,7 +975,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5705,
+      "line": 5632,
       "const": "ExtendComplex",
       "construct": "not(extendAllFlagAhead)",
       "resolved": "09f891154e9019d7",
@@ -1061,7 +986,7 @@
     {
       "rule": "lookahead",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5716,
+      "line": 5643,
       "const": "ExtendTargetComplex",
       "construct": "not(extendAllFlagAhead)",
       "resolved": "09f891154e9019d7",
@@ -1071,7 +996,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5850,
+      "line": 5777,
       "const": "RulesetWithExtends",
       "construct": "attempt(selectorListWithExtends, { contain: true })",
       "resolved": "6fdfb1e5636c6cf1",
@@ -1081,7 +1006,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5863,
+      "line": 5790,
       "const": "NestedRulesetWithExtends",
       "construct": "attempt(relativeSelectorListWithExtends, { contain: true })",
       "resolved": "156835c69d5fc606",
@@ -1091,7 +1016,7 @@
     {
       "rule": "attempt",
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "line": 5915,
+      "line": 5864,
       "const": "MixinStatementTail",
       "construct": "attempt(MixinDefinitionContinuation)",
       "resolved": "e500feb61b55ad19",
@@ -1346,6 +1271,72 @@
       "construct": "ScssGenericAtRuleName",
       "why": "rule name `ScssGenericAtRuleName`",
       "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 4637,
+      "const": "styleQueryContents",
+      "construct": "ifTestHead",
+      "resolved": "218ca6d936b8fe9b",
+      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
+      "issue": "jesscss/jess#576",
+      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan. It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more."
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 4759,
+      "const": "supportsTestOperand",
+      "construct": "ifTestHead",
+      "resolved": "218ca6d936b8fe9b",
+      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
+      "issue": "jesscss/jess#576",
+      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan. It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more."
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/css/css-parser/src/grammar.ts",
+      "line": 4791,
+      "const": "supportsTestContents",
+      "construct": "ifTestHead",
+      "resolved": "218ca6d936b8fe9b",
+      "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
+      "issue": "jesscss/jess#576",
+      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan. It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more."
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 1694,
+      "const": "inlineJavaScriptFollowingDeclaration",
+      "construct": "peek(choice(literal('}'), sequence(choice(variableName, g.PunctuationMapKeyToken, sequence(choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPr…",
+      "resolved": "73333a7a17820a01",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` named like a grammar definition (it skips the reducers passed to `node(…)`), so this site stopped reading such locals. The site reads the same grammar. It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more.",
+      "why": "`variableNameEscape` — a sequence of more than one token",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 2280,
+      "const": "BacktickJavaScript",
+      "construct": "{ gate: state => contextOf(state) === 'at-rule-javascript', combinator: atRuleInlineJavaScriptBody }",
+      "resolved": "6c2171b853efd76c",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` named like a grammar definition (it skips the reducers passed to `node(…)`), so this site stopped reading such locals. The site reads the same grammar. It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more.",
+      "why": "this arm starts by reading past one token: `scanTo(literal('`'), { recoverAt: inlineJavaScriptRecoveryBoundary, stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration), skip:…`",
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "attempt",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 4253,
+      "const": "MediaTypeTerm",
+      "construct": "attempt(g.MixinReferenceChain)",
+      "resolved": "910a9c276e973859",
+      "why": "attempt() tries a parse and rolls it back on failure: backtracking",
+      "issue": "jesscss/jess#576",
+      "changed": "It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more."
     }
   ],
   "undocumentedRules": {
@@ -1723,7 +1714,6 @@
       "VariableReference",
       "BareVariableInterpolation",
       "PropertyReference",
-      "InterpolationAccessor",
       "VariableReferenceChain",
       "MixinPathTail",
       "UnsupportedDashVariableInterpolation",
@@ -1802,15 +1792,6 @@
       "ReferenceDotTail",
       "ReferenceCallTail",
       "ReferenceTail",
-      "InterpolationLastAccessorFromRouted",
-      "InterpolationIndexAccessorFromRouted",
-      "InterpolationPropertyVariableAccessorFromRouted",
-      "InterpolationReferenceAccessorFromRouted",
-      "ReferenceLastTailFromRouted",
-      "ReferenceBracketTailFromRouted",
-      "ReferenceDotTailFromRouted",
-      "ReferenceCallTailFromRouted",
-      "ReferenceTailFromDelimiter",
       "FlatMixinCall",
       "NamespacedMixinCall",
       "MixinReferenceBase",
