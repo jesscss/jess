@@ -82,6 +82,20 @@ const EXCEPTIONS = [
       + 'an operand is often a computed value the parser never saw, so there is no node fact to read. '
       + 'Exact base-10 arithmetic (ledger V6) needs that spelling; each operation reads one string of at most 24 characters once.'
   })),
+  ...[
+    'node.raw.indexOf(unbound)',
+    'node.raw.slice(0, head + unbound.length)',
+    'text.slice(1, -1)',
+    'node.raw.slice(start, starts[first + step + 1] ?? node.raw.length)',
+    'node.raw.slice(0, start)'
+  ].map(snippet => ({
+    file: 'packages/core/src/ast/namespace-member.ts',
+    rule: 'no-source-text-rescan',
+    snippet,
+    reason: 'chainNotFound, heldKey and keyNotFound build the message of the resolve/name-not-found error they throw, '
+      + 'and run only after a read has already failed: a read that finds its value never reaches them. '
+      + 'The message quotes the reference as written, which only its source text holds.'
+  })),
   {
     file: 'packages/core/src/ast/serialize.ts',
     rule: 'no-loop-invariant-accessor',

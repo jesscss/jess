@@ -860,11 +860,16 @@ export const ERR = {
   },
 
   // Resolve/Import
-  nameNotFound(args: Common & { meta: { symbol: string } }) {
+  /** A name, or with `in` a key looked up in a value (`"b"` in `"@map[a]"`), that reads nothing. */
+  nameNotFound(args: Common & { meta: { symbol: string; in?: string } }) {
+    const { symbol, in: inside } = args.meta;
     return makeJessError({
       code: 'resolve/name-not-found',
       phase: 'resolve',
-      ...args
+      ...args,
+      meta: inside === undefined
+        ? { symbol, where: 'this scope', fix: `Define "${symbol}" or import a file that provides it.` }
+        : { symbol, in: inside, where: `"${inside}"`, fix: `Read a key that "${inside}" has.` }
     });
   },
   ambiguousMember(args: Common & { meta: { symbol: string } }) {

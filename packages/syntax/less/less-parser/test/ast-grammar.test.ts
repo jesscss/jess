@@ -5976,7 +5976,7 @@ describe('Less AST grammar facts', () => {
             steps: [
               {
                 type: 'LookupStep', kind: 'var',
-                name: { type: 'Lookup', kind: 'var', name: 'max', raw: '@max' }
+                name: 'max'
               }
             ]
           }
@@ -7189,7 +7189,7 @@ describe('Less AST grammar facts', () => {
                 steps: [
                   {
                     type: 'LookupStep', kind: 'var',
-                    name: { type: 'Lookup', kind: 'var', name: 'return', raw: '@return' }
+                    name: 'return'
                   }
                 ],
                 raw: '#library .add-one(1px)[@return]'
@@ -7234,11 +7234,7 @@ describe('Less AST grammar facts', () => {
                 steps: [
                   {
                     type: 'LookupStep', kind: 'var',
-                    name: {
-                      type: 'Lookup', kind: 'var',
-                      name: 'next',
-                      raw: '@next',
-                      scope: 'scoped' }
+                    name: 'next'
                   },
                   {
                     type: 'Call',
@@ -7424,11 +7420,7 @@ describe('Less AST grammar facts', () => {
                     steps: [
                       {
                         type: 'LookupStep', kind: 'var',
-                        name: {
-                          type: 'Lookup', kind: 'var',
-                          name: 'options',
-                          raw: '@options',
-                          scope: 'scoped' }
+                        name: 'options'
                       },
                       {
                         type: 'LookupStep', kind: 'prop',
@@ -7845,11 +7837,7 @@ describe('Less AST grammar facts', () => {
             steps: [
               {
                 type: 'LookupStep', kind: 'var',
-                name: {
-                  type: 'Lookup', kind: 'var',
-                  name: 'options',
-                  raw: '@options',
-                  scope: 'scoped' }
+                name: 'options'
               },
               {
                 type: 'LookupStep', kind: 'prop',

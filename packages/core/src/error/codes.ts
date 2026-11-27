@@ -345,8 +345,8 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     'resolve/name-not-found',
     {
       summary: 'Name not found',
-      reason: 'Symbol "${symbol}" is undefined in this scope.',
-      fix: 'Define "${symbol}" or import a file that provides it.'
+      reason: '"${symbol}" is undefined in ${where}.',
+      fix: '${fix}'
     }
   ],
   [

@@ -225,7 +225,7 @@ import { makeAny, makeBlock, makeCalc, makeCollection, makeDimension, makeKeywor
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { cssFilterCall, mayBeFilter } from './filter-position.js';
-import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, isNamespaceCall, memberNotFound, moduleReferenceCallNode, namespaceMemberCall, readsNamespaceMember, recordNamespace } from './namespace-member.js';
+import { ambiguousMember, chainNotFound, deriveModuleNamespace, isNamespaceCall, memberNotFound, moduleReferenceCallNode, namespaceMemberCall, readsNamespaceMember, receiverMissed, recordNamespace, stepMissed, type StepMiss } from './namespace-member.js';
 import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { isGluedCall, isSupportsCall, mathOperand, negatedCall, slashOperated, testedCall, writtenMath, writtenPercent } from './math-operand.js';
@@ -4390,6 +4390,9 @@ interface EvalSession {
   /** Each module namespace binding (`@use … as ns`, `@-compose … as ns`) → the import that bound it. */
   namespaceImports: WeakMap<object, object> | undefined;
 
+  /** The last lookup step that read nothing, for its error (`stepMissed`). */
+  missedStep: StepMiss | undefined;
+
   /** Compile-loaded script/data modules keyed by their canonical import fact. */
   plannedModuleImports: Map<ModuleImport, PreparedModule> | null | undefined;
 
@@ -7410,7 +7413,7 @@ function resolveReferenceResult(
           : step.indexBase === 0 ? step.name : step.name - 1;
         const item = evaluatedItems[index];
         if (item === undefined) {
-          return null;
+          return stepMissed(e.s, node, stepIndex);
         }
         value = EVALUATED_BINDING;
         evaluated = item;
@@ -7424,25 +7427,25 @@ function resolveReferenceResult(
       } else if (value.type === 'Sequence') {
         items = value.parts;
       } else {
-        return null;
+        return stepMissed(e.s, node, stepIndex);
       }
       const index = step.name < 0
         ? items.length + step.name
         : step.indexBase === 0 ? step.name : step.name - 1;
       const item = items[index];
       if (item === undefined) {
-        return null;
+        return stepMissed(e.s, node, stepIndex);
       }
       value = item;
       evaluated = null;
       continue;
     }
     if (isValueSlotArray(value)) {
-      return null;
+      return stepMissed(e.s, node, stepIndex);
     }
     const map = resolveBaseDeclMap(value, valueFrame, e, evaluated);
     if (!map) {
-      return hiddenNamespace({ node, frame, lookup: resolveVarRef, optional: e.optional }, stepIndex, e);
+      return receiverMissed({ node, frame, lookup: resolveVarRef, optional: e.optional }, stepIndex, e);
     }
     const calleeMember = value.type === 'MixinCall';
 
@@ -7470,6 +7473,9 @@ function resolveReferenceResult(
     let matched: DeclEntry | undefined;
     let missingSymbol = node.raw;
 
+    /* The key a computed bracket evaluated to (`[@k]`), which its error names instead of the written key. */
+    let missingKey: string | undefined;
+
     /*
      * [loose-key] The KEY a value-equality rescan would use, captured by the
      * name-keyed branches only. See {@link looseMemberLookup} — this is the
@@ -7478,7 +7484,14 @@ function resolveReferenceResult(
     let looseKey: string | undefined;
     let looseValueKey: ValueGroup | undefined;
     let looseKind: 'var' | 'prop' | 'member' | undefined;
-    if (step.type === 'LookupStep' && typeof step.name === 'string') {
+    if (step.type === 'LookupStep' && typeof step.name === 'string' && step.kind === 'var') {
+      /*
+       * Less `[@name]` is the variable member named `name`, never a read of a
+       * caller's `@name` (owner 2026-11-27); `[@@name]` is the indirection.
+       */
+      missingSymbol = `@${step.name}`;
+      matched = mapForKind(map, 'var').get(step.name) ?? lookupVarMember(map, step.name, e);
+    } else if (step.type === 'LookupStep' && typeof step.name === 'string') {
       missingSymbol = step.name;
       looseKey = step.name;
       looseValueKey = makeKeyword(step.name);
@@ -7492,27 +7505,7 @@ function resolveReferenceResult(
       }
       matched = prop ?? variable;
     } else if (step.kind !== 'index' && typeof step.name !== 'number') {
-      /*
-       * `[@name]` names a variable member of the evaluated map/call result.
-       * In particular, a mixin-call base must resolve `[@return]` from every
-       * selected callee frame, rather than evaluating `@return` in the caller.
-       * Other bracket keys remain dynamic value expressions in the current frame.
-       */
       if (step.kind === 'var' && typeof step.name === 'object' && step.name.type === 'Lookup'
-        && step.name.kind === 'var' && typeof step.name.name === 'string' && (
-        value.type === 'MixinCall' || !resolveVarRef(valueFrame, step.name.name, step.name.scope, e)
-      )) {
-        const keyName = step.name.name;
-        missingSymbol = `@${keyName}`;
-
-        /*
-         * A namespace/mixin-call accessor is a callee result: `#ns.m[@key]`
-         * names that result's `@key` member even if the caller has an `@key`.
-         * A detached map with no caller binding has the same member spelling;
-         * only a bound caller key is a dynamic detached-map lookup.
-         */
-        matched = mapForKind(map, 'var').get(keyName) ?? lookupVarMember(map, keyName, e);
-      } else if (step.kind === 'var' && typeof step.name === 'object' && step.name.type === 'Lookup'
         && step.name.kind === 'var' && typeof step.name.name === 'object') {
         /*
          * `[@@name]` is a map-variable indirection: evaluate only its first
@@ -7524,7 +7517,7 @@ function resolveReferenceResult(
          * root/detached closure while `@name` is an each/mixin-local binding.
          */
         const name = settled(lookupName(step.name, frame ?? valueFrame, e), 'map member name', step.name, e);
-        missingSymbol = `@${name}`;
+        missingKey = missingSymbol = `@${name}`;
         matched = map.valueEntries?.get(makeKeyword(name))
           ?? mapForKind(map, 'var').get(name)
           ?? lookupVarMember(map, name, e);
@@ -7539,7 +7532,8 @@ function resolveReferenceResult(
          */
         matched = map.byProp.get(propKey);
       } else if (typeof step.name === 'object') {
-        const evaluatedKey = evalTypedSlot(step.name, valueFrame, e, true);
+        /* A computed key is read where the lookup is written, as `[@@k]`'s name is: `.jess` `[$k]` is a variable key, like JS (owner 2026-11-27). */
+        const evaluatedKey = evalTypedSlot(step.name, frame ?? valueFrame, e, true);
         if (isThenable(evaluatedKey)) {
           observeRejectedThenable(evaluatedKey);
           throw ERR.asyncInSyncPosition({
@@ -7586,12 +7580,8 @@ function resolveReferenceResult(
             }
           }
         }
-        if (matched === undefined && key === undefined) {
-          key = emitValue(evaluatedKey);
-          missingSymbol = step.kind === 'var'
-            ? `@${key}`
-            : step.kind === 'prop' ? `$${key}` : key;
-        } else if (matched === undefined && key !== undefined) {
+        if (matched === undefined) {
+          missingKey = key ??= emitValue(evaluatedKey);
           missingSymbol = step.kind === 'var'
             ? `@${key}`
             : step.kind === 'prop' ? `$${key}` : key;
@@ -7605,7 +7595,7 @@ function resolveReferenceResult(
       const i = idx < 0 ? map.list.length + idx : idx - (step.indexBase ?? 1);
       matched = map.list[i] ?? (idx === -1 && map.list.length === 0 ? lastVarMember(map, e) : undefined);
       if (!matched) {
-        return null;
+        return stepMissed(e.s, node, stepIndex);
       }
     }
     if (!matched && looseKey !== undefined && looseKind !== undefined) {
@@ -7620,7 +7610,7 @@ function resolveReferenceResult(
       }
     }
     if (!matched) {
-      memberNotFound({ node, frame, lookup: resolveVarRef, optional: false }, stepIndex, missingSymbol, e);
+      memberNotFound({ node, frame, lookup: resolveVarRef, optional: false }, stepIndex, missingKey, missingSymbol, e);
     }
     if (matched.important) {
       if (e.importantSink) {
@@ -7694,7 +7684,7 @@ function moduleReferenceCall(
   }
   for (; stepIndex < node.steps.length - 1; stepIndex++) {
     const step = node.steps[stepIndex]!;
-    if (step.type !== 'LookupStep' || typeof step.name !== 'string') {
+    if (step.type !== 'LookupStep' || step.kind !== 'member' || typeof step.name !== 'string') {
       return undefined;
     }
     name += `.${step.name}`;
@@ -7731,19 +7721,24 @@ function evalModuleReferenceCall(
  * A value reference that resolved to nothing is a failed resolution: an eval
  * error unless the read is optional, which gets its authored text as the
  * sentinel. The error names an unbound head by itself, as it was written
- * (`@nope`, `$nope`, `$^nope`), and any other unresolvable chain (`@list[5]`,
- * a member of a memberless value) whole. It is placed at the reference, or at
- * its head when only the head carries a source span.
+ * (`@nope`, `$nope`, `$^nope`); a lookup step that read nothing by its key and
+ * what it was read in (`"5"` in `"@list"`, `"x"` in `"$color"`: a property's
+ * value has no keys); any other reference whole. It is placed at the
+ * reference, or at its head when only the head carries a source span.
  */
 function unresolvedReference(node: Reference, frame: Frame | null, e: Lane): EvalValue {
   if (!e.optional) {
     const base = node.base;
-    let symbol = node.raw;
-    if (!isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
-      && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
-      symbol = node.raw.slice(0, node.raw.indexOf(base.name) + base.name.length);
-    }
-    unresolvedSymbol(sourceStartOf(node) === NO_SPAN && !isValueSlotArray(base) ? base : node, symbol, e);
+    const lookup = !isValueSlotArray(base) && base.type === 'Lookup' && typeof base.name === 'string'
+      && (base.kind === 'var' || base.kind === 'prop');
+    chainNotFound(sourceStartOf(node) === NO_SPAN && !isValueSlotArray(base) ? base : node, node,
+      lookup && (base.kind === 'var' ? resolveVarRef(frame, base.name, base.scope, e) : resolvePropRef(frame, base.name, e)) === undefined
+        ? base.name
+        : undefined,
+      key => key.type === 'Lookup' && key.kind === 'var' && typeof key.name === 'string' && resolveVarRef(frame, key.name, key.scope, e) !== undefined
+        ? emitValue(settled(evalTypedSlot(key, frame, e, true), 'collection member key', key, e))
+        : undefined,
+      e);
   }
   return literal(node.raw);
 }
@@ -10993,6 +10988,7 @@ function scratchEmit(e: Lane): Emit {
       moduleFns: e.s.moduleFns,
       moduleReferenceValues: e.s.moduleReferenceValues,
       namespaceImports: e.s.namespaceImports,
+      missedStep: undefined,
       plannedModuleImports: e.s.plannedModuleImports,
       pendingPlannedModuleImports: undefined,
       preparedImportsOwnedByCaller: false,
@@ -14103,6 +14099,7 @@ function createRenderSession(
       moduleFns: undefined,
       moduleReferenceValues: undefined,
       namespaceImports: undefined,
+      missedStep: undefined,
       plannedModuleImports: entry.plannedModuleImports,
       pendingPlannedModuleImports: entry.pendingPlannedModuleImports,
       preparedImportsOwnedByCaller: entry.preparedImportsOwnedByCaller,

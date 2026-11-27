@@ -45,12 +45,12 @@ describe('.scss ns.fn() calls the member of the module `ns`', () => {
   });
 
   it.each([
-    ['a member the module does not have', '@use "sass:math";\na { b: math.nope(1); }', 'nope'],
-    ['a module no @use bound', 'a { b: color.adjust(#c00, $red: 1); }', 'color'],
-    ['a glued minus, which is part of the namespace', '@use "sass:math";\na { b: -math.div(1, 2); }', '-math'],
-    ['inside a call written out as-is', 'a { b: fn(foo.bar(1)); }', 'foo']
-  ])('%s is resolve/name-not-found', async (_, source, symbol) => {
-    await expect(renderScss(source)).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `Symbol "${symbol}" is undefined in this scope.` });
+    ['a member the module does not have', '@use "sass:math";\na { b: math.nope(1); }', 'nope', '"math"'],
+    ['a module no @use bound', 'a { b: color.adjust(#c00, $red: 1); }', 'color', 'this scope'],
+    ['a glued minus, which is part of the namespace', '@use "sass:math";\na { b: -math.div(1, 2); }', '-math', 'this scope'],
+    ['inside a call written out as-is', 'a { b: fn(foo.bar(1)); }', 'foo', 'this scope']
+  ])('%s is resolve/name-not-found', async (_, source, symbol, where) => {
+    await expect(renderScss(source)).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `"${symbol}" is undefined in ${where}.` });
   });
 
   it('calls a stylesheet module\'s @function, and a member it lacks is resolve/name-not-found', async () => {
@@ -60,7 +60,7 @@ describe('.scss ns.fn() calls the member of the module `ns`', () => {
       ['missing.scss', '@use "sizes";\na { b: sizes.nope(1); }\n']
     ]);
     await expect(render(dir, 'input.scss')).resolves.toBe('a {\n  b: 4px;\n  c: 6px;\n  d: 5px;\n}\n');
-    await expect(render(dir, 'missing.scss')).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: 'Symbol "nope" is undefined in this scope.' });
+    await expect(render(dir, 'missing.scss')).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: '"nope" is undefined in "sizes".' });
   });
 
   it('hands a demanded read the typed value of a stylesheet module\'s @function', async () => {
