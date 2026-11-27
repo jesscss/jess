@@ -123,16 +123,16 @@ describe('Less reference semantic contracts through the public AST route', () =>
   /*
    * A lookup that reads nothing is a failed resolution: an eval error at the
    * reference, never its authored text in the CSS. The brackets are the lookup,
-   * so the error names the key they hold, or the key a variable in them holds,
-   * and what it was looked up in. A property's value has no keys, so a lookup on
-   * one, in a string or out of it, always misses.
+   * so the error names the key they hold and what it was looked up in. A
+   * property's value has no keys, so a lookup on one, in a string or out of
+   * it, always misses.
    */
   it.each([
     ['an index past the end of a list', '@list: 1 2; .entry { value: @list[5]; }', '5', '@list', 29],
     ['a key the value it is read in lacks', '@map: { a: 1; } .entry { value: @map[a][b]; }', 'b', '@map[a]', 33],
     ['a key a map lacks', '@map: { a: 1; } .entry { value: @map[b]; }', 'b', '@map', 33],
-    ['a key a variable holds that a map lacks', '@k: b; @map: { a: 1; } .entry { value: @map[@k]; }', 'b', '@map', 40],
-    ['a key a variable holds, on a value with no keys', '@k: b; @x: red; .entry { value: @x[@k]; }', 'b', '@x', 33],
+    ['a variable a map lacks, though the caller has one', '@k: a; @map: { @a: 1; } .entry { value: @map[@k]; }', '@k', '@map', 41],
+    ['a variable, on a value with no keys', '@k: b; @x: red; .entry { value: @x[@k]; }', '@k', '@x', 33],
     ['a lookup on a property value in a string', '.entry { color: red; value: "${color[x]}"; }', 'x', '$color', 30],
     ['a lookup past the end of a list in a string', '@list: 1 2; .entry { value: "@{list[5]}"; }', '5', '@list', 30]
   ])('reports %s by its key, where it was written', async (_label, source, key, receiver, column) => {
@@ -141,6 +141,12 @@ describe('Less reference semantic contracts through the public AST route', () =>
       filePath: 'entry.less',
       extension: '.less'
     })).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `"${key}" is undefined in "${receiver}".`, line: 1, column });
+  });
+
+  /* `[@k]` is the map's own variable `@k`, never a read of the caller's; `[@@k]` uses the caller's value as the name. */
+  it('reads a bracket variable in the map, and an indirect one by the caller\'s value', async () => {
+    await expect(parseAndRender('@k: a; @map: { @a: 1; @k: 2; } .entry { own: @map[@k]; named: @map[@@k]; }'))
+      .resolves.toBe('.entry {\n  own: 2;\n  named: 1;\n}\n');
   });
 
   /* A `.jess` dot member is a lookup too: the key after the dot, in what comes before it. */

@@ -22,22 +22,22 @@ const render = async (source: string): Promise<string> => {
 
 describe('bracket lookup keys compare by value', () => {
   it('finds an unquoted member through a QUOTED key', async () => {
-    expect(await render('@k: "one";\n@foo: { @one: bar; }\n.a { k: @foo[@k]; }'))
+    expect(await render('@k: "one";\n@foo: { @one: bar; }\n.a { k: @foo[@@k]; }'))
       .toBe('.a { k: bar; }');
   });
 
   it('finds it through an escaped key too (the byte fast path still hits)', async () => {
-    expect(await render('@k: ~"one";\n@foo: { @one: bar; }\n.a { k: @foo[@k]; }'))
+    expect(await render('@k: ~"one";\n@foo: { @one: bar; }\n.a { k: @foo[@@k]; }'))
       .toBe('.a { k: bar; }');
   });
 
   it('does not invent a member that no key names', async () => {
-    await expect(render('@k: "nope";\n@foo: { @one: bar; }\n.a { k: @foo[@k]; }'))
+    await expect(render('@k: "nope";\n@foo: { @one: bar; }\n.a { k: @foo[@@k]; }'))
       .rejects.toThrow();
   });
 
   it('keeps the two namespaces disjoint — a `@var` key never finds a property member', async () => {
-    await expect(render('@k: "one";\n@foo: { one: bar; }\n.a { k: @foo[@k]; }'))
+    await expect(render('@k: "one";\n@foo: { one: bar; }\n.a { k: @foo[@@k]; }'))
       .rejects.toThrow();
   });
 

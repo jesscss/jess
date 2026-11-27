@@ -7484,7 +7484,14 @@ function resolveReferenceResult(
     let looseKey: string | undefined;
     let looseValueKey: ValueGroup | undefined;
     let looseKind: 'var' | 'prop' | 'member' | undefined;
-    if (step.type === 'LookupStep' && typeof step.name === 'string') {
+    if (step.type === 'LookupStep' && typeof step.name === 'string' && step.kind === 'var') {
+      /*
+       * Less `[@name]` is the variable member named `name`, never a read of a
+       * caller's `@name` (owner 2026-11-27); `[@@name]` is the indirection.
+       */
+      missingSymbol = `@${step.name}`;
+      matched = mapForKind(map, 'var').get(step.name) ?? lookupVarMember(map, step.name, e);
+    } else if (step.type === 'LookupStep' && typeof step.name === 'string') {
       missingSymbol = step.name;
       looseKey = step.name;
       looseValueKey = makeKeyword(step.name);
@@ -7498,27 +7505,7 @@ function resolveReferenceResult(
       }
       matched = prop ?? variable;
     } else if (step.kind !== 'index' && typeof step.name !== 'number') {
-      /*
-       * `[@name]` names a variable member of the evaluated map/call result.
-       * In particular, a mixin-call base must resolve `[@return]` from every
-       * selected callee frame, rather than evaluating `@return` in the caller.
-       * Other bracket keys remain dynamic value expressions in the current frame.
-       */
       if (step.kind === 'var' && typeof step.name === 'object' && step.name.type === 'Lookup'
-        && step.name.kind === 'var' && typeof step.name.name === 'string' && (
-        value.type === 'MixinCall' || !resolveVarRef(valueFrame, step.name.name, step.name.scope, e)
-      )) {
-        const keyName = step.name.name;
-        missingSymbol = `@${keyName}`;
-
-        /*
-         * A namespace/mixin-call accessor is a callee result: `#ns.m[@key]`
-         * names that result's `@key` member even if the caller has an `@key`.
-         * A detached map with no caller binding has the same member spelling;
-         * only a bound caller key is a dynamic detached-map lookup.
-         */
-        matched = mapForKind(map, 'var').get(keyName) ?? lookupVarMember(map, keyName, e);
-      } else if (step.kind === 'var' && typeof step.name === 'object' && step.name.type === 'Lookup'
         && step.name.kind === 'var' && typeof step.name.name === 'object') {
         /*
          * `[@@name]` is a map-variable indirection: evaluate only its first

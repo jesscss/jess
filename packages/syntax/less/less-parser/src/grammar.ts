@@ -1158,7 +1158,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           return { key, keyKind: 'var', src: `@@${nameRef.name}` };
         }
         if (isVarRef(key)) {
-          return { key, keyKind: 'var', src: `@${key.name}` };
+          return { key: key.name, keyKind: 'var', src: `@${key.name}` };
         }
         if (isPropRef(key)) {
           return { key, keyKind: 'prop', src: key.raw };
@@ -3325,7 +3325,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         if (!isVarRef(key)) {
           throw new TypeError('Less variable map key must retain its variable reference.');
         }
-        return { key, keyKind: 'var', src: `@${key.name}` };
+        return { key: key.name, keyKind: 'var', src: `@${key.name}` };
       }
     ),
     node(

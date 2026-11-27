@@ -2058,7 +2058,7 @@ describe('StyleImport', () => {
     const document = stylesheet([
       authoredImport('@import', quoted('"library.less"', 'library.less', '"', false)),
       rule('#library', [mixinDef('.add-one', [{ name: 'value' }], [variableDeclaration('return', dimension(3, 'px', '3px'), { mode: 'declare' })])]),
-      rule('.bar', [decl('height', reference(importedCall, [{ type: 'LookupStep', kind: 'var', name: variableReference('return', 'scoped') }], '#library.add-one(1px)[@return]'))])
+      rule('.bar', [decl('height', reference(importedCall, [{ type: 'LookupStep', kind: 'var', name: 'return' }], '#library.add-one(1px)[@return]'))])
     ]);
 
     await expect(serialize(document, {
@@ -2080,7 +2080,7 @@ describe('StyleImport', () => {
     const document = stylesheet([
       authoredImport('@import', quoted('"library.less"', 'library.less', '"', false)),
       rule('.bar', [decl('height', reference(importedCall, [
-        { type: 'LookupStep', kind: 'var', name: variableReference('return', 'scoped') }
+        { type: 'LookupStep', kind: 'var', name: 'return' }
       ], '#library.add-one(1px)[@return]'))])
     ]);
 

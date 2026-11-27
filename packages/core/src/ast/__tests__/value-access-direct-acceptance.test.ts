@@ -289,7 +289,7 @@ describe('direct canonical value access', () => {
   });
 
   it('reads namespace call variable members from the callee, not a caller shadow', () => {
-    const member = (name: string) => [{ type: 'LookupStep' as const, name: variableReference(name, 'scoped'), kind: 'var' as const }];
+    const member = (name: string) => [{ type: 'LookupStep' as const, name, kind: 'var' as const }];
     const namespaceCall = mixinCall('#ns1');
     const libraryCall = {
       type: 'MixinCall' as const,
