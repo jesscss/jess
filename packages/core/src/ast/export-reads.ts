@@ -20,6 +20,7 @@ import { makeDimension, makeKeyword, makeList, withFields } from './value-factor
 import { assignmentRef, exposedRef, type ExposedWrite } from './exposed-assignments.js';
 
 export { compileHoldingMixed, excluding, exportFinalDefaults, holdExports, writeCell, writeReassign, type ExportHold } from './exposed-assignments.js';
+import { rejectEarly, requireDeclaredBefore } from './exposed-assignments.js';
 import { cancelPercent, exposedOperand, insideParens, keepAsWritten, mathOnDeferred, ratioOf } from './value-operate.js';
 
 /**
@@ -256,6 +257,9 @@ export interface ExportState<F> {
   pending: Array<PendingExpose<F>>;
   readonly pendingNames: Set<string>;
 
+  /** The names of `@expose`s the walk reached before any declaration of them, which {@link settle} rejects if one resolves. */
+  readonly early: Set<VariableExpose['names'][number]>;
+
   /** By name, the top-level statements of the first file to declare and expose it, and where. */
   readonly owners: Map<string, { readonly own: readonly Statement[]; readonly site: string; readonly keyword: string }>;
 
@@ -297,6 +301,9 @@ interface PendingExpose<F> {
 export interface ExposeScope<F> {
   readonly resolve: PendingExpose<F>['resolve'];
   readonly own: readonly Statement[] | undefined;
+
+  /** Whether the name is bound there yet: by a declaration the walk reached, a file imported or a module composed above, a module's configuration, or a mixin called above. */
+  readonly bound: (name: string) => boolean;
 }
 
 /**
@@ -338,7 +345,7 @@ export const READS_EXPORT = {};
 
 /** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
 export function exportState<F>(asWritten: ReadonlySet<string> = NONE): ExportState<F> {
-  return { asWritten, refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), owners: new Map(), homes: new Map(), writes: new Map(), assigned: new Map(), assignedIn: new Map(), last: new Map(), within: new Map() };
+  return { asWritten, refs: new Map(), behind: new Map(), inputs: undefined, callReads: undefined, knownReads: false, writtenRead: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set(), early: new Set(), owners: new Map(), homes: new Map(), writes: new Map(), assigned: new Map(), assignedIn: new Map(), last: new Map(), within: new Map() };
 }
 
 const NONE: ReadonlySet<string> = new Set();
@@ -388,10 +395,14 @@ export function forEachExpose(statements: readonly Statement[], declare: (node: 
  * written before the `@expose` is an export read too; the render activates the
  * root's before it starts, and the import planner a top-level sheet's.
  */
-export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F, { resolve, own }: ExposeScope<F>, e: ExportLane<F>): void {
+export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F, { resolve, own, bound }: ExposeScope<F>, e: ExportLane<F>): void {
   rejectNestedExpose(node, nested, e);
   const x = e.s.exports;
-  if ((e.referenceImportDepth ?? 0) !== 0 || x.declared.some(declared => declared.node === node && declared.frame === frame)) {
+  if ((e.referenceImportDepth ?? 0) !== 0) {
+    return;
+  }
+  requireDeclaredBefore(node, { own, bound }, e);
+  if (x.declared.some(declared => declared.node === node && declared.frame === frame)) {
     return;
   }
   x.declared.push({ node, frame });
@@ -434,6 +445,7 @@ function settle<F>(x: ExportState<F>): void {
       if (hit === undefined) {
         throw ERR.exposeNotDeclared({ node: exported, ...where, meta: { ...node.spelling, name } });
       }
+      rejectEarly(x.early, node, exported, where);
       const bound = x.bound.get(name);
       if (bound !== undefined && (bound.value !== hit.value || bound.frame !== hit.frame)) {
         throw ERR.exposeConflict({ node: exported, ...where, meta: { ...node.spelling, name, other: bound.site, otherKeyword: bound.keyword } });

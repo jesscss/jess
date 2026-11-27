@@ -79,7 +79,7 @@ describe('vite-plugin-jess', () => {
   it('bundles the CSS and the runtime of a .jess stylesheet that exposes variables', async () => {
     await inProject([
       ['main.js', `export { set, vars } from './theme.jess';\n`],
-      ['theme.jess', `@-use "#less";\n@-expose brand;\n$brand: #c00;\n.button { color: $brand; opacity: $less.lightness($brand); }\n`]
+      ['theme.jess', `@-use "#less";\n$brand: #c00;\n@-expose brand;\n.button { color: $brand; opacity: $less.lightness($brand); }\n`]
     ], async (root) => {
       const { css, js } = await built(root);
       expect(css).toContain('color:var(--brand, #c00)');
@@ -97,7 +97,7 @@ describe('vite-plugin-jess', () => {
   it('sets the exposed variable for a read written before a later declaration of it', async () => {
     await inProject([
       ['main.js', `export { set, vars } from './theme.jess';\n`],
-      ['theme.jess', `@-use "#less";\n@-expose brand;\n$brand: #c00;\n.button { color: $brand; opacity: $less.lightness($brand); }\n$brand: #f80;\n.link { color: $brand; }\n`]
+      ['theme.jess', `@-use "#less";\n$brand: #c00;\n@-expose brand;\n.button { color: $brand; opacity: $less.lightness($brand); }\n$brand: #f80;\n.link { color: $brand; }\n`]
     ], async (root) => {
       const { css, js } = await built(root);
       expect(css).toContain('color:var(--brand, #c00)');
@@ -114,7 +114,7 @@ describe('vite-plugin-jess', () => {
   it('bundles a function with a CSS form that the runtime has to run', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose brand;\n@brand: #c00;\n.a { line-height: @less.lightness(@less.spin(@brand, 30)); }\n`]
+      ['theme.less', `@use "#less";\n@brand: #c00;\n@expose brand;\n.a { line-height: @less.lightness(@less.spin(@brand, 30)); }\n`]
     ], async (root) => {
       const { js } = await built(root);
       const file = path.join(root, 'main.mjs');
@@ -127,7 +127,7 @@ describe('vite-plugin-jess', () => {
   it('bundles a function with no CSS form without the evaluator a form runs on', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose brand;\n@brand: #c00;\n.a { opacity: @less.lightness(@brand); }\n`]
+      ['theme.less', `@use "#less";\n@brand: #c00;\n@expose brand;\n.a { opacity: @less.lightness(@brand); }\n`]
     ], async (root) => {
       const { js } = await built(root);
 
@@ -149,7 +149,7 @@ describe('vite-plugin-jess', () => {
   ])('bundles no evaluator for %s', async (call, printed) => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose brand;\n@brand: #c00;\n.a { color: ${call}; }\n`]
+      ['theme.less', `@use "#less";\n@brand: #c00;\n@expose brand;\n.a { color: ${call}; }\n`]
     ], async (root) => {
       const { css, js } = await built(root);
       expect(css).toContain(printed);
@@ -168,7 +168,7 @@ describe('vite-plugin-jess', () => {
   ] as const)('takes a colour name for @brand: %s with %o only when names are on', async (own, options, names) => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose brand;\n@brand: ${own};\n.a { opacity: @less.lightness(@brand); }\n`]
+      ['theme.less', `@use "#less";\n@brand: ${own};\n@expose brand;\n.a { opacity: @less.lightness(@brand); }\n`]
     ], async (root) => {
       const { js } = await built(root, options);
       const file = path.join(root, 'main.mjs');
@@ -191,7 +191,7 @@ describe('vite-plugin-jess', () => {
   it('bundles no colour-name table for a name a recipe argument writes', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lightness(@less.multiply(@brand, gray)); }\n`]
+      ['theme.less', `@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: @less.lightness(@less.multiply(@brand, gray)); }\n`]
     ], async (root) => {
       const { js } = await built(root, {});
       expect(js).not.toContain('aliceblue');
@@ -206,7 +206,7 @@ describe('vite-plugin-jess', () => {
   it('rejects a colour name for an export passed through extract(), and bundles no name table', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose brand, l;\n@brand: #c00;\n@l: #f00 #00f;\n.a { v: @less.lightness(@less.multiply(@brand, #888)); w: @less.luma(@less.extract(@l, 1)); }\n`]
+      ['theme.less', `@use "#less";\n@brand: #c00;\n@l: #f00 #00f;\n@expose brand, l;\n.a { v: @less.lightness(@less.multiply(@brand, #888)); w: @less.luma(@less.extract(@l, 1)); }\n`]
     ], async (root) => {
       const { js } = await built(root, {});
       expect(js).not.toContain('aliceblue');
@@ -223,7 +223,7 @@ describe('vite-plugin-jess', () => {
   it('reads a list given for a colour export a recipe passes through another function', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose list;\n@list: #c00;\n.a { opacity: @less.luma(@less.extract(@list, @less.length(@list))); }\n`]
+      ['theme.less', `@use "#less";\n@list: #c00;\n@expose list;\n.a { opacity: @less.luma(@less.extract(@list, @less.length(@list))); }\n`]
     ], async (root) => {
       const { js } = await built(root, {});
       const file = path.join(root, 'main.mjs');
@@ -238,7 +238,7 @@ describe('vite-plugin-jess', () => {
   it('reads a quoted hex given for a colour export a recipe passes through color()', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose a;\n@a: #c00;\n.a { v: @less.lightness(@less.color(@a)); }\n`]
+      ['theme.less', `@use "#less";\n@a: #c00;\n@expose a;\n.a { v: @less.lightness(@less.color(@a)); }\n`]
     ], async (root) => {
       const { js } = await built(root, {});
       const file = path.join(root, 'main.mjs');
@@ -251,7 +251,7 @@ describe('vite-plugin-jess', () => {
   it('rejects a colour name in any item of a hex-checked export, though the page reads its own names', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose b;\n@b: #f00 #00f;\n.a { v: @less.luma(@less.extract(@b, 2)); w: @less.isunit(@b, red); }\n`]
+      ['theme.less', `@use "#less";\n@b: #f00 #00f;\n@expose b;\n.a { v: @less.luma(@less.extract(@b, 2)); w: @less.isunit(@b, red); }\n`]
     ], async (root) => {
       const { js } = await built(root, {});
       const file = path.join(root, 'main.mjs');
@@ -267,7 +267,7 @@ describe('vite-plugin-jess', () => {
   it('holds a percentage a computed value reads as its ratio, and checks its unit', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose a;\n@a: 50%;\n.x { v: @less.ispercentage(@a); }\n`]
+      ['theme.less', `@use "#less";\n@a: 50%;\n@expose a;\n.x { v: @less.ispercentage(@a); }\n`]
     ], async (root) => {
       const { js } = await built(root);
       const file = path.join(root, 'main.mjs');
@@ -283,7 +283,7 @@ describe('vite-plugin-jess', () => {
   it('bundles no evaluator for rgb() over an exposed channel', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose r;\n@r: 10;\n.a { color: @less.rgb(@r, 0, 0); }\n`]
+      ['theme.less', `@use "#less";\n@r: 10;\n@expose r;\n.a { color: @less.rgb(@r, 0, 0); }\n`]
     ], async (root) => {
       const { css, js } = await built(root);
       expect(css).toContain('rgb(var(--r, 10),0,0)');
@@ -301,7 +301,7 @@ describe('vite-plugin-jess', () => {
   it('adds no function to the runtime of a page that prints only CSS forms', async () => {
     await inProject([
       ['main.js', `export { vars } from './theme.less';\n`],
-      ['theme.less', `@use "#less";\n@expose brand;\n@brand: #c00;\n.a { color: @less.fade(@brand, 50%); background: @less.darken(@brand, 10%); }\n`]
+      ['theme.less', `@use "#less";\n@brand: #c00;\n@expose brand;\n.a { color: @less.fade(@brand, 50%); background: @less.darken(@brand, 10%); }\n`]
     ], async (root) => {
       const { css, js } = await built(root);
       expect(css).toContain('rgb(from var(--brand, #c00) r g b / .5)');

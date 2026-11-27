@@ -1,10 +1,10 @@
 import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { WARN } from '../error/diagnostics.js';
+import { ERR, WARN } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Context } from '../context.js';
-import { exportState, mixedReads, type ExportLane, type ExportRef, type ExportState } from './export-reads.js';
-import { funcCall, keyword, type CallValue, type VariableDeclaration } from './nodes.js';
+import { exportState, mixedReads, type ExposeScope, type ExportLane, type ExportRef, type ExportState } from './export-reads.js';
+import { funcCall, keyword, type CallValue, type VariableDeclaration, type VariableExpose } from './nodes.js';
 import type { BindingCell, Frame } from './serialize.js';
 import { emitValue, type EvalValue } from './value-eval.js';
 
@@ -234,5 +234,39 @@ function withWarningsMuted<R>(context: Context | undefined, run: () => MaybeProm
   } catch (error) {
     restore();
     throw error;
+  }
+}
+
+/**
+ * A variable is exposed after it is declared (owner 2026-11-26, ledger A20):
+ * when the render walk reaches an `@expose`, each name it lists is already
+ * bound in its frame (`bound`: a declaration written above it, in a file
+ * imported or a module composed above it, a module's configuration, or a
+ * mixin called above it). A name not bound yet is
+ * marked, and rejected when it resolves (export-reads.ts `settle`), so one
+ * nothing declares stays `eval/expose-not-declared`; one a read already
+ * resolved is rejected here.
+ */
+export function requireDeclaredBefore<F>(node: VariableExpose, { own, bound }: Pick<ExposeScope<F>, 'own' | 'bound'>, e: ExportLane<F>): void {
+  if (own !== undefined) {
+    return; // the root's, bound before the walk; checked when the walk reaches it
+  }
+  const x = e.s.exports;
+  for (const exported of node.names) {
+    const name = exported.name;
+    if (bound(name)) {
+      continue;
+    }
+    if (x.bound.has(name)) {
+      throw ERR.exposeBeforeDeclaration({ node: exported, ...callSiteLocation(exported, e.s), meta: { ...node.spelling, name } });
+    }
+    x.early.add(exported);
+  }
+}
+
+/** Rejects an exposed name {@link requireDeclaredBefore} marked, once it resolves to a declaration. */
+export function rejectEarly(early: ReadonlySet<object>, node: VariableExpose, exported: VariableExpose['names'][number], where: ReturnType<typeof callSiteLocation>): void {
+  if (early.has(exported)) {
+    throw ERR.exposeBeforeDeclaration({ node: exported, ...where, meta: { ...node.spelling, name: exported.name } });
   }
 }

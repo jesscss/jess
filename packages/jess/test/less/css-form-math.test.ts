@@ -427,11 +427,11 @@ describe('a group of math in a call written out', () => {
     ['spin', ', 5', 'hsl(from hsl(calc(var(--h, 10) + 1) 50% 50%) calc(h + 5) s l)'],
     ['greyscale', '', 'hsl(from hsl(calc(var(--h, 10) + 1) 50% 50%) h 0 l)']
   ])('in a colour channel an exposed variable reaches: %s', async (name, rest, form) => {
-    await expect(css(`@use "#less"; @expose h; @h: 10; .x { v: @less.${name}(hsl((@h + 1) 50% 50%)${rest}); }`)).resolves.toContain(`v: ${form};`);
+    await expect(css(`@use "#less"; @h: 10; @expose h; .x { v: @less.${name}(hsl((@h + 1) 50% 50%)${rest}); }`)).resolves.toContain(`v: ${form};`);
   });
 
   it('in a colour channel `fade` reads', async () => {
-    await expect(css('@use "#less"; @expose h; @h: 10; .x { v: @less.fade(hsl((@h + 1) 50% 50%), 50%); }')).resolves.toContain('v: rgb(from hsl(calc(var(--h, 10) + 1) 50% 50%) r g b / 0.5);');
+    await expect(css('@use "#less"; @h: 10; @expose h; .x { v: @less.fade(hsl((@h + 1) 50% 50%), 50%); }')).resolves.toContain('v: rgb(from hsl(calc(var(--h, 10) + 1) 50% 50%) r g b / 0.5);');
     await expect(css('@use "#less"; .x { v: @less.fade(hsl((var(--h) + 1) 50% 50%), 50%); }')).resolves.toContain('v: rgb(from hsl(calc(var(--h) + 1) 50% 50%) r g b / 0.5);');
   });
 
@@ -476,7 +476,7 @@ describe('a glued minus in a slot of a form is the math it means', () => {
 });
 
 describe('an export inside a larger argument, by what the slot holds at compile time', () => {
-  const exposed = (held: string, source: string): string => `@use "#less"; @expose a; @a: ${held}; .x { v: ${source}; }`;
+  const exposed = (held: string, source: string): string => `@use "#less"; @a: ${held}; @expose a; .x { v: ${source}; }`;
 
   it.each([
     ['5px', '@less.sin((@a * 2))']
@@ -512,18 +512,18 @@ describe('an export inside a larger argument, by what the slot holds at compile 
     ['@a: 5px; @b: 3px;', '@less.mod((@a * 2), @b)', 'rem((var(--a, 5px) * 2), var(--b, 3px))'],
     ['@a: 5px; @b: 3px;', '@less.mod((@a), (@b))', 'rem(var(--a, 5px), var(--b, 3px))']
   ])('%s %s reads the known value in each slot', async (held, source, form) => {
-    const result = await new Compiler({}).renderToResult({ ...options, source: `@use "#less"; @expose a, b; ${held} .x { v: ${source}; }` });
+    const result = await new Compiler({}).renderToResult({ ...options, source: `@use "#less"; ${held} @expose a, b; .x { v: ${source}; }` });
     expect(result.css).toContain(`v: ${form};`);
     expect(result.runtime?.derived).toEqual({});
   });
 
   it('a recipe has no fixed argument that holds an export', async () => {
-    await expect(css('@use "#less"; @expose a, b; @a: #c00; @b: 3%; .x { v: @less.contrast(@a, #111, #eee, (@b * 2)); }'))
+    await expect(css('@use "#less"; @a: #c00; @b: 3%; @expose a, b; .x { v: @less.contrast(@a, #111, #eee, (@b * 2)); }'))
       .rejects.toMatchObject({ code: 'eval/expose-not-a-value', reason: expect.stringContaining('inside a larger argument') });
   });
 
   it('a recipe keeps a plain `var()` as its fixed argument', async () => {
-    const result = await new Compiler({}).renderToResult({ ...options, source: '@use "#less"; @expose b; @b: #c00; .x { v: @less.contrast(var(--x), @b); }' });
+    const result = await new Compiler({}).renderToResult({ ...options, source: '@use "#less"; @b: #c00; @expose b; .x { v: @less.contrast(var(--x), @b); }' });
     expect(Object.values(result.runtime?.derived ?? {})).toEqual([{ fn: { module: '@jesscss/fns/less', name: 'contrast' }, args: ['var(--x)', { export: 'b' }] }]);
   });
 
@@ -536,7 +536,7 @@ describe('an export inside a larger argument, by what the slot holds at compile 
     ['5px', '@less.floor((@p * 2))', 'round(down, (var(--a, 5px) * 2), 1px)'],
     ['5%', '@less.mix(#c00, #fff, (@p * 2))', 'rgb(from #c00 clamp(0, (r * alpha * var(--a, 0.05) * 2 + 255 * (1 - var(--a, 0.05) * 2)) / (alpha * var(--a, 0.05) * 2 + 1 * (1 - var(--a, 0.05) * 2)), 255) clamp(0, (g * alpha * var(--a, 0.05) * 2 + 255 * (1 - var(--a, 0.05) * 2)) / (alpha * var(--a, 0.05) * 2 + 1 * (1 - var(--a, 0.05) * 2)), 255) clamp(0, (b * alpha * var(--a, 0.05) * 2 + 255 * (1 - var(--a, 0.05) * 2)) / (alpha * var(--a, 0.05) * 2 + 1 * (1 - var(--a, 0.05) * 2)), 255) / calc(alpha * var(--a, 0.05) * 2 + 1 * (1 - var(--a, 0.05) * 2)))']
   ])('a mixin parameter holding `@a: %s` that fits: %s', async (held, body, form) => {
-    await expect(css(`@use "#less"; @expose a; @a: ${held}; .m(@p) { v: ${body}; } .x { .m(@a); }`)).resolves.toContain(`v: ${form};`);
+    await expect(css(`@use "#less"; @a: ${held}; @expose a; .m(@p) { v: ${body}; } .x { .m(@a); }`)).resolves.toContain(`v: ${form};`);
   });
 
   it.each([
@@ -547,7 +547,7 @@ describe('an export inside a larger argument, by what the slot holds at compile 
     const dir = mkdtempSync(join(tmpdir(), 'jess-form-plugin-'));
     try {
       writeFileSync(join(dir, 'theme.js'), 'export const nx = () => 5; export const pct = () => 10;');
-      const result = await new Compiler({ output: { collapseNesting: true } }).renderToResult({ ...options, filePath: join(dir, 'entry.less'), source: `@use "./theme.js"; @use "#less"; @expose a; @a: ${held}; .x { v: ${source}; }` });
+      const result = await new Compiler({ output: { collapseNesting: true } }).renderToResult({ ...options, filePath: join(dir, 'entry.less'), source: `@use "./theme.js"; @use "#less"; @a: ${held}; @expose a; .x { v: ${source}; }` });
       expect(result.errors ?? []).toEqual([]);
       expect(result.css).toContain(`v: ${form};`);
     } finally {
@@ -572,7 +572,7 @@ describe('known gap: an all-known math function written out under `@use`', () =>
     '.x { v: @less.rgba(#c00, min(1%, 2vw)); }',
     '.x { v: @less.darken(#c00, clamp(1%, 2vw, 3%)); }'
   ])('is neither a number the compile reads nor a value a form takes: %s', async (source) => {
-    await expect(css(`@use "#less"; @expose a; ${source}`)).rejects.toMatchObject({ code: 'eval/invalid-function' });
+    await expect(css(`@use "#less"; ${source.startsWith('@a:') ? source.replace(/^(@a:[^;]+;)/, `$1 @expose a;`) : `@expose a; ${source}`}`)).rejects.toMatchObject({ code: 'eval/invalid-function' });
   });
 });
 

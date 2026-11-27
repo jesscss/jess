@@ -125,7 +125,7 @@ describe('Less modern mode (P36)', () => {
     it('reads the call inside a paren group', async () => {
       await expect(less('@use "#less";\na { color: @less.lighten((var(--x)), 5%); }'))
         .resolves.toContain('color: hsl(from var(--x) h s clamp(0, l + 5, 100));');
-      await expect(less('@use "#less";\n@expose brand;\n@brand: #c00;\na { color: @less.darken((@brand), 10%); }'))
+      await expect(less('@use "#less";\n@brand: #c00;\n@expose brand;\na { color: @less.darken((@brand), 10%); }'))
         .resolves.toContain('color: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));');
       await expect(compiler().renderString('@-use "#less";\na {\n  color: $less.lighten((var(--x)), 5%);\n}\n', { extension: '.jess' }))
         .resolves.toContain('color: hsl(from var(--x) h s clamp(0, l + 5, 100));');
@@ -134,7 +134,7 @@ describe('Less modern mode (P36)', () => {
     it('prints the alpha family as relative rgb(), and computes it over any known spelling', async () => {
       await expect(less('@use "#less";\na { color: @less.fade(var(--x), 50%); }'))
         .resolves.toContain('color: rgb(from var(--x) r g b / 0.5);');
-      await expect(less('@use "#less";\n@expose brand;\n@brand: #c00;\na { color: @less.fade(@brand, 50%); }'))
+      await expect(less('@use "#less";\n@brand: #c00;\n@expose brand;\na { color: @less.fade(@brand, 50%); }'))
         .resolves.toContain('color: rgb(from var(--brand, #c00) r g b / 0.5);');
       for (const color of ['#010203', 'rgb(1, 2, 3)', 'rgb(1 2 3)', 'rgb(from rgb(1 2 3) r g b)']) {
         await expect(less(`@use "#less";\na { color: @less.red(@less.fade(${color}, 50%)); }`)).resolves.toContain('color: 1;');

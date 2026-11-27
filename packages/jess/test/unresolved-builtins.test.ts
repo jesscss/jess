@@ -81,7 +81,7 @@ describe('unresolvedBuiltins: a namespaced built-in that did not compute', () =>
       ['a recipe', '@less.unit(5px, @a)', 'em', 'var(--a-unit, 5em)'],
       ['a value only the browser knows', '@less.fade(#333, @a)', 'var(--y)', 'rgb(from #333 r g b / calc(var(--a, var(--y)) / 100%))']
     ])('an exposed variable, keeping %s', async (_name, call, value, printed) => {
-      const { result, reports } = await less(`.x { v: ${call}; }\n@expose a;\n@a: ${value};`, 'error');
+      const { result, reports } = await less(`.x { v: ${call}; }\n@a: ${value};\n@expose a;`, 'error');
       expect(reports).toEqual([]);
       expect(result.css).toContain(`v: ${printed};`);
     });
@@ -106,16 +106,16 @@ describe('unresolvedBuiltins: a namespaced built-in that did not compute', () =>
     ['-@a'],
     ['calc(@a * 2)']
   ])('does not count math over an exposed variable alone: %s', async (amount) => {
-    expect((await less(`.x { v: @less.fade(#333, ${amount}); }\n@expose a;\n@a: 25%;`, 'error')).reports).toEqual([]);
+    expect((await less(`.x { v: @less.fade(#333, ${amount}); }\n@a: 25%;\n@expose a;`, 'error')).reports).toEqual([]);
   });
 
   it('does not count math over an exposed variable through a variable or a mixin argument', async () => {
-    expect((await less('@b: @a * 2;\n.x { v: @less.fade(#333, @b); }\n@expose a;\n@a: 25%;', 'error')).reports).toEqual([]);
-    expect((await less('.m(@c) { v: @less.fade(#333, @c * 2); }\n.x { .m(@a); }\n@expose a;\n@a: 25%;', 'error')).reports).toEqual([]);
+    expect((await less('@b: @a * 2;\n.x { v: @less.fade(#333, @b); }\n@a: 25%;\n@expose a;', 'error')).reports).toEqual([]);
+    expect((await less('.m(@c) { v: @less.fade(#333, @c * 2); }\n.x { .m(@a); }\n@a: 25%;\n@expose a;', 'error')).reports).toEqual([]);
   });
 
   it('counts math over an exposed variable and a real unknown', async () => {
-    const { reports } = await less('.x { v: @less.fade(#333, @a * var(--x)); }\n@expose a;\n@a: 25%;', 'warn');
+    const { reports } = await less('.x { v: @less.fade(#333, @a * var(--x)); }\n@a: 25%;\n@expose a;', 'warn');
     expect(reports).toHaveLength(1);
   });
 
@@ -188,7 +188,7 @@ describe('unresolvedBuiltins: a namespaced built-in that did not compute', () =>
   });
 
   it('counts a real unknown beside an exposed variable, naming the output', async () => {
-    const { reports } = await less('.x { v: @less.fade(var(--x), @a); }\n@expose a;\n@a: 25%;', 'warn');
+    const { reports } = await less('.x { v: @less.fade(var(--x), @a); }\n@a: 25%;\n@expose a;', 'warn');
     expect(reports).toHaveLength(1);
     expect(reports[0]!.reason).toContain('It printed rgb(from var(--x) r g b / calc(var(--a, 0.25) * 100%)),');
   });

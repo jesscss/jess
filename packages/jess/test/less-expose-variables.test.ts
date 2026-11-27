@@ -40,7 +40,7 @@ describe('Less @expose variables (A4)', () => {
     ['@b: 5px; .x { v: @less.mod(10em, @b); }', 'v: rem(10em, var(--b, 5px) / 1px * 1em);']
   ])('one slot field answers whether a form holds the value: %s', async (source, written) => {
     const name = /@(\w+):/.exec(source)?.[1];
-    await expect(render(`@use "#less";\n@expose ${name};\n${source}`)).resolves.toContain(written);
+    await expect(render(`@use "#less";\n${source.replace(/^[^;]+;/, `$&\n@expose ${name};`)}`)).resolves.toContain(written);
   });
 
   /* The runtime sets a `%` export as its ratio (`vars({ r: '50%' })` is `--r: 0.5`), so a colour written as CSS reads it as every other value does. */
@@ -52,13 +52,13 @@ describe('Less @expose variables (A4)', () => {
     ['', 'rgb(@r, 0, 0)', 'rgb(calc(var(--r, 0.1) * 100%), 0, 0)'],
     ['', 'hsl(120, @r, 50%)', 'hsl(120, calc(var(--r, 0.1) * 100%), 50%)']
   ])('a colour written as CSS reads an exposed percentage as its ratio: %s%s', async (use, written, printed) => {
-    const exported = await result(`${use}@expose r;\n@r: 10%;\n.x { v: ${written}; }`);
+    const exported = await result(`${use}@r: 10%;\n@expose r;\n.x { v: ${written}; }`);
     expect(exported.css).toContain(`v: ${printed};`);
     expect(exported.runtime?.ratios).toEqual(['r']);
   });
 
   it('a colour written as CSS reads an export of an exposed percentage as its ratio', async () => {
-    await expect(render('@use "#less";\n@expose a, b;\n@a: 10%;\n@b: @a;\n.x { v: rgb(@b, 0%, 0%); }')).resolves.toContain('v: rgb(calc(var(--b, var(--a, 0.1)) * 100%), 0%, 0%);');
+    await expect(render('@use "#less";\n@a: 10%;\n@b: @a;\n@expose a, b;\n.x { v: rgb(@b, 0%, 0%); }')).resolves.toContain('v: rgb(calc(var(--b, var(--a, 0.1)) * 100%), 0%, 0%);');
   });
 
   it.each([
@@ -72,25 +72,25 @@ describe('Less @expose variables (A4)', () => {
   });
 
   it('a built-in reading an exposed slash list keeps its recipe', async () => {
-    const css = await render('@use "#less";\n@expose a;\n@a: 1/2;\n.x { b: @less.percentage(@a); c: @less.ceil(@a); }');
+    const css = await render('@use "#less";\n@a: 1/2;\n@expose a;\n.x { b: @less.percentage(@a); c: @less.ceil(@a); }');
     expect(css).toContain('b: var(--a-percentage, 50%);');
     expect(css).toContain('c: var(--a-ceil, 1);');
   });
 
   it.each([
-    ['@expose brand;\n@brand: #c00;\n.btn { color: @brand; }', 'color: var(--brand, #c00);'],
-    ['@-expose brand;\n@brand: #c00;\n.btn { color: @brand; }', 'color: var(--brand, #c00);'],
-    ['@expose brand;\n@brand: #c00;\n.btn { border: 1px solid @brand; }', 'border: 1px solid var(--brand, #c00);'],
-    ['@expose brand;\n@brand: #c00;\n@accent: @brand;\n.btn { color: @accent; }', 'color: var(--brand, #c00);'],
-    ['.btn { color: @brand; }\n@expose brand;\n@brand: #c00;', 'color: var(--brand, #c00);'],
-    ['@expose fonts;\n@fonts: Inter, sans-serif;\nbody { font-family: @fonts; }', 'font-family: var(--fonts, Inter, sans-serif);'],
-    ['@expose gap;\n@gap: 8px;\n.grid { gap: calc(@gap * 2); }', 'gap: calc(var(--gap, 8px) * 2);'],
-    ['@expose gap;\n@gap: 8px;\n.grid { gap: @gap * 2; }', 'gap: calc(var(--gap, 8px) * 2);'],
-    ['@expose brand;\n@brand: #c00;\n.btn { background: color-mix(in srgb, @brand, white); }', 'background: color-mix(in srgb, var(--brand, #c00), white);'],
-    ['@expose brand;\n@brand: #c00 !important;\n.btn { color: @brand; }', 'color: var(--brand, #c00) !important;'],
-    ['@expose gap;\n@gap: 8px;\n.grid { gap: @{gap}; }', 'gap: var(--gap, 8px);'],
-    ['@expose gap;\n@gap: 8px;\n.grid { gap: foo(@gap); }', 'gap: foo(var(--gap, 8px));'],
-    ['@expose brand;\n@brand: #c00;\n.btn { color: isdefined(@brand); }', 'color: true;']
+    ['@brand: #c00;\n@expose brand;\n.btn { color: @brand; }', 'color: var(--brand, #c00);'],
+    ['@brand: #c00;\n@-expose brand;\n.btn { color: @brand; }', 'color: var(--brand, #c00);'],
+    ['@brand: #c00;\n@expose brand;\n.btn { border: 1px solid @brand; }', 'border: 1px solid var(--brand, #c00);'],
+    ['@brand: #c00;\n@expose brand;\n@accent: @brand;\n.btn { color: @accent; }', 'color: var(--brand, #c00);'],
+    ['.btn { color: @brand; }\n@brand: #c00;\n@expose brand;', 'color: var(--brand, #c00);'],
+    ['@fonts: Inter, sans-serif;\n@expose fonts;\nbody { font-family: @fonts; }', 'font-family: var(--fonts, Inter, sans-serif);'],
+    ['@gap: 8px;\n@expose gap;\n.grid { gap: calc(@gap * 2); }', 'gap: calc(var(--gap, 8px) * 2);'],
+    ['@gap: 8px;\n@expose gap;\n.grid { gap: @gap * 2; }', 'gap: calc(var(--gap, 8px) * 2);'],
+    ['@brand: #c00;\n@expose brand;\n.btn { background: color-mix(in srgb, @brand, white); }', 'background: color-mix(in srgb, var(--brand, #c00), white);'],
+    ['@brand: #c00 !important;\n@expose brand;\n.btn { color: @brand; }', 'color: var(--brand, #c00) !important;'],
+    ['@gap: 8px;\n@expose gap;\n.grid { gap: @{gap}; }', 'gap: var(--gap, 8px);'],
+    ['@gap: 8px;\n@expose gap;\n.grid { gap: foo(@gap); }', 'gap: foo(var(--gap, 8px));'],
+    ['@brand: #c00;\n@expose brand;\n.btn { color: isdefined(@brand); }', 'color: true;']
   ])('writes a read of the exposed variable as var(): %s', async (source, expected) => {
     await expect(render(source)).resolves.toContain(expected);
   });
@@ -110,114 +110,114 @@ describe('Less @expose variables (A4)', () => {
     ['rotate(@a / 2)', 'rotate(var(--a, 2px) / 2)'],
     ['translate(@b * 2, 0)', 'translate(6px, 0)']
   ])('writes math on an exposed variable in a call written out as the top level does: %s', async (written, expected) => {
-    await expect(render(`@expose a;\n@a: 2px;\n@b: 3px;\n.x { transform: ${written}; }`)).resolves.toContain(`transform: ${expected};`);
+    await expect(render(`@a: 2px;\n@expose a;\n@b: 3px;\n.x { transform: ${written}; }`)).resolves.toContain(`transform: ${expected};`);
   });
 
   it('writes math on an exposed colour in a call written out as the top level does (V39)', async () => {
     const colour = 'rgb(from var(--c, #f00) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255))';
-    expect(await render('@expose c;\n@c: #f00;\n.x { color: @c * 2; }')).toContain(`color: ${colour};`);
-    expect(await render('@expose c;\n@c: #f00;\n.x { transform: translate(@c * 2, 0); }')).toContain(`transform: translate(${colour}, 0);`);
+    expect(await render('@c: #f00;\n@expose c;\n.x { color: @c * 2; }')).toContain(`color: ${colour};`);
+    expect(await render('@c: #f00;\n@expose c;\n.x { transform: translate(@c * 2, 0); }')).toContain(`transform: translate(${colour}, 0);`);
   });
 
   it('writes a compressed var() in compressed output', async () => {
-    await expect(render('@expose brand;\n@brand: #c00;\n.btn { color: @brand; }', true)).resolves.toBe('.btn{color:var(--brand,#c00)}');
+    await expect(render('@brand: #c00;\n@expose brand;\n.btn { color: @brand; }', true)).resolves.toBe('.btn{color:var(--brand,#c00)}');
   });
 
   it('leaves a nested shadow of the name its own value', async () => {
-    await expect(render('@expose brand;\n@brand: #c00;\n.btn { @brand: blue; color: @brand; }')).resolves.toContain('color: blue;');
+    await expect(render('@brand: #c00;\n@expose brand;\n.btn { @brand: blue; color: @brand; }')).resolves.toContain('color: blue;');
   });
 
   /* jesscss/jess#568: the declaration behind a read's var() is excluded while it evaluates. */
   it('reads the earlier declaration when an exposed variable is redeclared in terms of itself', async () => {
-    await expect(result('@brand: 1px;\n@expose brand;\n.a { c: @brand; }\n@brand: @brand + 1;'))
+    await expect(result('@brand: 1px;\n.a { c: @brand; }\n@brand: @brand + 1;\n@expose brand;'))
       .resolves.toMatchObject({ css: '.a {\n  c: var(--brand, 2px);\n}\n', errors: [] });
   });
 
   it('is a no-op when nothing reads the exposed variable', async () => {
-    await expect(render('@expose brand;\n@brand: #c00;\n.btn { color: red; }')).resolves.toBe('.btn {\n  color: red;\n}\n');
+    await expect(render('@brand: #c00;\n@expose brand;\n.btn { color: red; }')).resolves.toBe('.btn {\n  color: red;\n}\n');
   });
 
   it('puts the document in modern mode (P36)', async () => {
-    await expect(render('@expose brand;\n@brand: #c00;\n.btn { width: round(1.5px); }')).resolves.toContain('width: round(1.5px);');
+    await expect(render('@brand: #c00;\n@expose brand;\n.btn { width: round(1.5px); }')).resolves.toContain('width: round(1.5px);');
   });
 
   it.each([
-    ['a selector', '@expose size;\n@size: lg;\n.btn-@{size} { padding: 0; }'],
-    ['a media query', '@expose bp;\n@bp: 640px;\n@media (min-width: @bp) { .a { b: c; } }'],
-    ['a guard', '@expose theme;\n@theme: dark;\n.a when (@theme = dark) { b: c; }'],
-    ['a string', '@expose icon;\n@icon: star;\n.a { content: "@{icon}"; }'],
-    ['a url', '@expose icon;\n@icon: star;\n.a { background: url("@{icon}.svg"); }'],
-    ['a guard on a mixin argument', '@expose brand;\n@brand: #c00;\n.tint(@c) when (iscolor(@c)) { color: @c; }\n.btn { .tint(@brand); }'],
-    ['a guard, computed', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a when (@less.lightness(@brand) > 10%) { b: c; }'],
-    ['text spliced around it', '@expose n;\n@n: 2;\n.a { width: @{n}px; }'],
-    ['a larger argument of a computed function', '@use "#less";\n@expose w;\n@w: 8px;\n@a: @w 2;\n.a { v: @less.length(@a); }'],
-    ['a larger mixin argument a computed function reads', '@use "#less";\n@expose w;\n@w: 8px;\n.m(@a) { v: @less.length(@a); }\n.a { .m(@w 2); }'],
-    ['a guard on a computed mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@l) when (@l > 10%) { v: yes; }\n.a { .m(@less.lightness(@brand)); }'],
-    ['a selector from a computed mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@l) { .x-@{l} { v: 1; } }\n.a { .m(@less.lightness(@brand)); }'],
-    ['a string from a computed mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@l) { content: "@{l}"; }\n.a { .m(@less.lightness(@brand)); }'],
-    ['a selector from a rest parameter', '@expose size;\n@size: lg;\n.m(@rest...) { .x-@{rest} { v: 1; } }\n.a { .m(@size); }'],
-    ['a string from a rest parameter', '@expose icon;\n@icon: star;\n.m(@rest...) { content: "@{rest}"; }\n.a { .m(@icon); }'],
-    ['a selector from @arguments', '@expose size;\n@size: lg;\n.m(@a) { .x-@{arguments} { v: 1; } }\n.a { .m(@size); }'],
-    ['a guard on a rest parameter', '@expose w;\n@w: 8px;\n.m(@rest...) when (@rest > 10%) { v: yes; }\n.a { .m(@w); }'],
-    ['a guard on @arguments', '@expose w;\n@w: 8px;\n.m(@a) when (@arguments > 10%) { v: yes; }\n.a { .m(@w); }'],
-    ['a type guard on a rest parameter', '@expose brand;\n@brand: #c00;\n.m(@rest...) when (iscolor(@rest)) { v: yes; }\n.a { .m(@brand); }'],
-    ['a computed function of a rest parameter among others', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@rest...) { v: @less.length(@rest); }\n.a { .m(@brand; 2); }']
+    ['a selector', '@size: lg;\n@expose size;\n.btn-@{size} { padding: 0; }'],
+    ['a media query', '@bp: 640px;\n@expose bp;\n@media (min-width: @bp) { .a { b: c; } }'],
+    ['a guard', '@theme: dark;\n@expose theme;\n.a when (@theme = dark) { b: c; }'],
+    ['a string', '@icon: star;\n@expose icon;\n.a { content: "@{icon}"; }'],
+    ['a url', '@icon: star;\n@expose icon;\n.a { background: url("@{icon}.svg"); }'],
+    ['a guard on a mixin argument', '@brand: #c00;\n@expose brand;\n.tint(@c) when (iscolor(@c)) { color: @c; }\n.btn { .tint(@brand); }'],
+    ['a guard, computed', '@use "#less";\n@brand: #c00;\n@expose brand;\n.a when (@less.lightness(@brand) > 10%) { b: c; }'],
+    ['text spliced around it', '@n: 2;\n@expose n;\n.a { width: @{n}px; }'],
+    ['a larger argument of a computed function', '@use "#less";\n@w: 8px;\n@expose w;\n@a: @w 2;\n.a { v: @less.length(@a); }'],
+    ['a larger mixin argument a computed function reads', '@use "#less";\n@w: 8px;\n@expose w;\n.m(@a) { v: @less.length(@a); }\n.a { .m(@w 2); }'],
+    ['a guard on a computed mixin argument', '@use "#less";\n@brand: #c00;\n@expose brand;\n.m(@l) when (@l > 10%) { v: yes; }\n.a { .m(@less.lightness(@brand)); }'],
+    ['a selector from a computed mixin argument', '@use "#less";\n@brand: #c00;\n@expose brand;\n.m(@l) { .x-@{l} { v: 1; } }\n.a { .m(@less.lightness(@brand)); }'],
+    ['a string from a computed mixin argument', '@use "#less";\n@brand: #c00;\n@expose brand;\n.m(@l) { content: "@{l}"; }\n.a { .m(@less.lightness(@brand)); }'],
+    ['a selector from a rest parameter', '@size: lg;\n@expose size;\n.m(@rest...) { .x-@{rest} { v: 1; } }\n.a { .m(@size); }'],
+    ['a string from a rest parameter', '@icon: star;\n@expose icon;\n.m(@rest...) { content: "@{rest}"; }\n.a { .m(@icon); }'],
+    ['a selector from @arguments', '@size: lg;\n@expose size;\n.m(@a) { .x-@{arguments} { v: 1; } }\n.a { .m(@size); }'],
+    ['a guard on a rest parameter', '@w: 8px;\n@expose w;\n.m(@rest...) when (@rest > 10%) { v: yes; }\n.a { .m(@w); }'],
+    ['a guard on @arguments', '@w: 8px;\n@expose w;\n.m(@a) when (@arguments > 10%) { v: yes; }\n.a { .m(@w); }'],
+    ['a type guard on a rest parameter', '@brand: #c00;\n@expose brand;\n.m(@rest...) when (iscolor(@rest)) { v: yes; }\n.a { .m(@brand); }'],
+    ['a computed function of a rest parameter among others', '@use "#less";\n@brand: #c00;\n@expose brand;\n.m(@rest...) { v: @less.length(@rest); }\n.a { .m(@brand; 2); }']
   ])('rejects a read in %s', async (_where, source) => {
     await expect(render(source)).rejects.toMatchObject({ code: 'eval/expose-not-a-value' });
   });
 
   it.each([
-    ['a mixin argument', '@expose brand;\n@brand: #c00;\n.tint(@c) { color: @c; }\n.btn { .tint(@brand); }', 'color: var(--brand, #c00);'],
-    ['a mixin argument in a list', '@expose w;\n@w: 8px;\n.m(@a) { margin: @a; }\n.a { .m(@w 2px); }', 'margin: var(--w, 8px) 2px;'],
-    ['a mixin default', '@expose brand;\n@brand: #c00;\n.tint(@c: @brand) { color: @c; }\n.btn { .tint(); }', 'color: var(--brand, #c00);'],
-    ['a computed function', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lightness(@brand); }', 'v: var(--brand-lightness, 40%);'],
-    ['a computed function of a list', '@use "#less";\n@expose list;\n@list: a, b, c;\n.a { v: @less.length(@list); }', 'v: var(--list-length, 3);'],
-    ['a computed function of a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.tint(@c) { color: @less.lightness(@c); }\n.btn { .tint(@brand); }', 'color: var(--brand-lightness, 40%);'],
-    ['nested computed functions', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.luma(@less.multiply(@brand, #888)); }', 'v: var(--brand-luma, 3.2512099914%);'],
-    ['a computed mixin argument a computed function reads', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @less.lightness(@c); }\n.a { .m(@less.darken(@brand, 10%)); }', 'v: var(--brand-lightness, 30%);'],
-    ['a direct mixin argument', '@expose brand;\n@brand: #c00;\n.m(@c) { color: @c; }\n.a { .m(@brand); }', 'color: var(--brand, #c00);'],
-    ['a rest parameter', '@expose w;\n@w: 8px;\n.m(@rest...) { margin: @rest; }\n.a { .m(@w); }', 'margin: var(--w, 8px);'],
-    ['@arguments', '@expose w;\n@w: 8px;\n.m(@a) { margin: @arguments; }\n.a { .m(@w); }', 'margin: var(--w, 8px);'],
-    ['a computed function of a rest parameter', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@rest...) { v: @less.lightness(@rest); }\n.a { .m(@brand); }', 'v: var(--brand-lightness, 40%);'],
-    ['a computed function in calc()', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: calc(@less.lightness(@brand) * 2); }', 'v: calc(var(--brand-lightness, 40%) * 2);'],
-    ['a function with a CSS form', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.darken(@brand, 10%); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
-    ['nested CSS forms', '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lighten(@less.darken(@brand, 10%), 5%); }', 'v: hsl(from hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100)) h s clamp(0, l + 5, 100));'],
-    ['a CSS form as a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @c; }\n.a { .m(@less.darken(@brand, 10%)); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
-    ['a CSS form of a mixin argument', '@use "#less";\n@expose brand;\n@brand: #c00;\n.m(@c) { v: @less.darken(@c, 10%); }\n.a { .m(@brand); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
-    ['a unit, which picks no form', '@use "#less";\n@expose u;\n@u: em;\n.b { v: @less.unit(5px, @u); }', 'v: var(--u-unit, 5em);'],
-    ['a method, which picks no form', '@use "#less";\n@expose m;\n@m: relative;\n.b { v: @less.darken(#c00, 10%, @m); }', 'v: var(--m-darken, #b80000);']
+    ['a mixin argument', '@brand: #c00;\n@expose brand;\n.tint(@c) { color: @c; }\n.btn { .tint(@brand); }', 'color: var(--brand, #c00);'],
+    ['a mixin argument in a list', '@w: 8px;\n@expose w;\n.m(@a) { margin: @a; }\n.a { .m(@w 2px); }', 'margin: var(--w, 8px) 2px;'],
+    ['a mixin default', '@brand: #c00;\n@expose brand;\n.tint(@c: @brand) { color: @c; }\n.btn { .tint(); }', 'color: var(--brand, #c00);'],
+    ['a computed function', '@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: @less.lightness(@brand); }', 'v: var(--brand-lightness, 40%);'],
+    ['a computed function of a list', '@use "#less";\n@list: a, b, c;\n@expose list;\n.a { v: @less.length(@list); }', 'v: var(--list-length, 3);'],
+    ['a computed function of a mixin argument', '@use "#less";\n@brand: #c00;\n@expose brand;\n.tint(@c) { color: @less.lightness(@c); }\n.btn { .tint(@brand); }', 'color: var(--brand-lightness, 40%);'],
+    ['nested computed functions', '@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: @less.luma(@less.multiply(@brand, #888)); }', 'v: var(--brand-luma, 3.2512099914%);'],
+    ['a computed mixin argument a computed function reads', '@use "#less";\n@brand: #c00;\n@expose brand;\n.m(@c) { v: @less.lightness(@c); }\n.a { .m(@less.darken(@brand, 10%)); }', 'v: var(--brand-lightness, 30%);'],
+    ['a direct mixin argument', '@brand: #c00;\n@expose brand;\n.m(@c) { color: @c; }\n.a { .m(@brand); }', 'color: var(--brand, #c00);'],
+    ['a rest parameter', '@w: 8px;\n@expose w;\n.m(@rest...) { margin: @rest; }\n.a { .m(@w); }', 'margin: var(--w, 8px);'],
+    ['@arguments', '@w: 8px;\n@expose w;\n.m(@a) { margin: @arguments; }\n.a { .m(@w); }', 'margin: var(--w, 8px);'],
+    ['a computed function of a rest parameter', '@use "#less";\n@brand: #c00;\n@expose brand;\n.m(@rest...) { v: @less.lightness(@rest); }\n.a { .m(@brand); }', 'v: var(--brand-lightness, 40%);'],
+    ['a computed function in calc()', '@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: calc(@less.lightness(@brand) * 2); }', 'v: calc(var(--brand-lightness, 40%) * 2);'],
+    ['a function with a CSS form', '@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: @less.darken(@brand, 10%); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
+    ['nested CSS forms', '@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: @less.lighten(@less.darken(@brand, 10%), 5%); }', 'v: hsl(from hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100)) h s clamp(0, l + 5, 100));'],
+    ['a CSS form as a mixin argument', '@use "#less";\n@brand: #c00;\n@expose brand;\n.m(@c) { v: @c; }\n.a { .m(@less.darken(@brand, 10%)); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
+    ['a CSS form of a mixin argument', '@use "#less";\n@brand: #c00;\n@expose brand;\n.m(@c) { v: @less.darken(@c, 10%); }\n.a { .m(@brand); }', 'v: hsl(from var(--brand, #c00) h s clamp(0, l - 10, 100));'],
+    ['a unit, which picks no form', '@use "#less";\n@u: em;\n@expose u;\n.b { v: @less.unit(5px, @u); }', 'v: var(--u-unit, 5em);'],
+    ['a method, which picks no form', '@use "#less";\n@m: relative;\n@expose m;\n.b { v: @less.darken(#c00, 10%, @m); }', 'v: var(--m-darken, #b80000);']
   ])('follows the exposed variable through %s', async (_what, source, expected) => {
     await expect(render(source)).resolves.toContain(expected);
   });
 
   it.each([
-    ['an amount', '@use "#less";\n@expose a;\n@a: 10%;\n.b { v: @less.darken(#c00, @a); }', 'v: hsl(from #c00 h s clamp(0, l - var(--a, 0.1) * 100, 100));'],
-    ['a percentage turned into a length', '@use "#less";\n@expose a;\n@a: 50%;\n.b { v: @less.unit(@a, px); }', 'v: calc(var(--a, 0.5) * 100 * 1px);'],
-    ['a number', '@use "#less";\n@expose a;\n@a: 0.5;\n.b { v: @less.percentage(@a); }', 'v: calc(var(--a, 0.5) * 100%);'],
-    ['a divisor in the dividend\'s unit', '@use "#less";\n@expose a;\n@a: 2px;\n.b { v: @less.mod(5px, @a); }', 'v: rem(5px, var(--a, 2px));'],
-    ['a divisor in the dividend\'s unit, in any case', '@use "#less";\n@expose a;\n@a: 2px;\n.b { v: @less.mod(5PX, @a); }', 'v: rem(5PX, var(--a, 2px));'],
-    ['decimal places on a length', '@use "#less";\n@expose a;\n@a: 2;\n.b { v: @less.round(1px, @a); }', 'v: calc(sign(1px) * round(abs(1px), pow(10, -1 * clamp(0, round(to-zero, var(--a, 2), 1), 292)) * 1px));']
+    ['an amount', '@use "#less";\n@a: 10%;\n@expose a;\n.b { v: @less.darken(#c00, @a); }', 'v: hsl(from #c00 h s clamp(0, l - var(--a, 0.1) * 100, 100));'],
+    ['a percentage turned into a length', '@use "#less";\n@a: 50%;\n@expose a;\n.b { v: @less.unit(@a, px); }', 'v: calc(var(--a, 0.5) * 100 * 1px);'],
+    ['a number', '@use "#less";\n@a: 0.5;\n@expose a;\n.b { v: @less.percentage(@a); }', 'v: calc(var(--a, 0.5) * 100%);'],
+    ['a divisor in the dividend\'s unit', '@use "#less";\n@a: 2px;\n@expose a;\n.b { v: @less.mod(5px, @a); }', 'v: rem(5px, var(--a, 2px));'],
+    ['a divisor in the dividend\'s unit, in any case', '@use "#less";\n@a: 2px;\n@expose a;\n.b { v: @less.mod(5PX, @a); }', 'v: rem(5PX, var(--a, 2px));'],
+    ['decimal places on a length', '@use "#less";\n@a: 2;\n@expose a;\n.b { v: @less.round(1px, @a); }', 'v: calc(sign(1px) * round(abs(1px), pow(10, -1 * clamp(0, round(to-zero, var(--a, 2), 1), 292)) * 1px));']
   ])('takes the exposed variable in a form that holds its value: %s', async (_what, source, expected) => {
     await expect(render(source)).resolves.toContain(expected);
   });
 
   it.each([
-    ['a colour', '@expose c;\n@c: #c00;\n.a { v: (@c * 2); }', 'v: rgb(from var(--c, #c00) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255));'],
-    ['a colour keyword', '@expose c;\n@c: red;\n.a { v: (@c * 2); }', 'v: rgb(from var(--c, red) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255));'],
-    ['a colour bound as a mixin argument', '@expose c;\n@c: #c00;\n.m(@p) { v: (@p * 2); }\n.a { .m(@c); }', 'v: rgb(from var(--c, #c00) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255));'],
-    ['a colour beside a known colour', '@expose c;\n@c: #c00;\n.a { v: @c + #111; }', 'v: rgb(from var(--c, #c00) clamp(0, r + 17, 255) clamp(0, g + 17, 255) clamp(0, b + 17, 255) / 1);'],
-    ['a colour after a known colour', '@expose c;\n@c: #c00;\n.a { v: #111 - @c; }', 'v: rgb(from var(--c, #c00) clamp(0, 17 - r, 255) clamp(0, 17 - g, 255) clamp(0, 17 - b, 255) / 1);'],
-    ['a colour beside a translucent colour', '@expose c;\n@c: #c00;\n.a { v: @c + #00000080; }', 'v: rgb(from var(--c, #c00) clamp(0, r + 0, 255) clamp(0, g + 0, 255) clamp(0, b + 0, 255) / calc(alpha * 0.4980392157 + 0.5019607843));'],
-    ['a colour after a number', '@expose c;\n@c: #c00;\n.a { v: (2 - @c); }', 'v: rgb(from var(--c, #c00) clamp(0, 2 - r, 255) clamp(0, 2 - g, 255) clamp(0, 2 - b, 255) / 1);'],
-    ['a colour under %', '@expose c;\n@c: #c00;\n.a { v: (@c % 2); }', 'v: rgb(from var(--c, #c00) clamp(0, rem(r, 2), 255) clamp(0, rem(g, 2), 255) clamp(0, rem(b, 2), 255));'],
+    ['a colour', '@c: #c00;\n@expose c;\n.a { v: (@c * 2); }', 'v: rgb(from var(--c, #c00) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255));'],
+    ['a colour keyword', '@c: red;\n@expose c;\n.a { v: (@c * 2); }', 'v: rgb(from var(--c, red) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255));'],
+    ['a colour bound as a mixin argument', '@c: #c00;\n@expose c;\n.m(@p) { v: (@p * 2); }\n.a { .m(@c); }', 'v: rgb(from var(--c, #c00) clamp(0, r * 2, 255) clamp(0, g * 2, 255) clamp(0, b * 2, 255));'],
+    ['a colour beside a known colour', '@c: #c00;\n@expose c;\n.a { v: @c + #111; }', 'v: rgb(from var(--c, #c00) clamp(0, r + 17, 255) clamp(0, g + 17, 255) clamp(0, b + 17, 255) / 1);'],
+    ['a colour after a known colour', '@c: #c00;\n@expose c;\n.a { v: #111 - @c; }', 'v: rgb(from var(--c, #c00) clamp(0, 17 - r, 255) clamp(0, 17 - g, 255) clamp(0, 17 - b, 255) / 1);'],
+    ['a colour beside a translucent colour', '@c: #c00;\n@expose c;\n.a { v: @c + #00000080; }', 'v: rgb(from var(--c, #c00) clamp(0, r + 0, 255) clamp(0, g + 0, 255) clamp(0, b + 0, 255) / calc(alpha * 0.4980392157 + 0.5019607843));'],
+    ['a colour after a number', '@c: #c00;\n@expose c;\n.a { v: (2 - @c); }', 'v: rgb(from var(--c, #c00) clamp(0, 2 - r, 255) clamp(0, 2 - g, 255) clamp(0, 2 - b, 255) / 1);'],
+    ['a colour under %', '@c: #c00;\n@expose c;\n.a { v: (@c % 2); }', 'v: rgb(from var(--c, #c00) clamp(0, rem(r, 2), 255) clamp(0, rem(g, 2), 255) clamp(0, rem(b, 2), 255));'],
     ['a number beside a known colour', '.a { v: #111 * var(--k); }', 'v: rgb(clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255));'],
     ['a number before a translucent colour', '.a { v: var(--k) - #11111180; }', 'v: rgb(clamp(0, var(--k) - 17, 255) clamp(0, var(--k) - 17, 255) clamp(0, var(--k) - 17, 255));'],
     ['a number beside a translucent colour', '.a { v: #11111180 * var(--k); }', 'v: rgb(clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) clamp(0, 17 * var(--k), 255) / 0.5019607843);'],
-    ['a chain, clamped once at its output', '@expose c;\n@c: #c00;\n.a { v: ((@c * 2) - #111); }', 'v: rgb(from var(--c, #c00) clamp(0, (r * 2) - 17, 255) clamp(0, (g * 2) - 17, 255) clamp(0, (b * 2) - 17, 255) / 1);'],
+    ['a chain, clamped once at its output', '@c: #c00;\n@expose c;\n.a { v: ((@c * 2) - #111); }', 'v: rgb(from var(--c, #c00) clamp(0, (r * 2) - 17, 255) clamp(0, (g * 2) - 17, 255) clamp(0, (b * 2) - 17, 255) / 1);'],
     ['a chain over a number', '.a { v: (#111 * var(--k)) + #222; }', 'v: rgb(clamp(0, (17 * var(--k)) + 34, 255) clamp(0, (17 * var(--k)) + 34, 255) clamp(0, (17 * var(--k)) + 34, 255));'],
-    ['a chain of translucent colours', '@expose c;\n@c: #c00;\n.a { v: (@c + #00000080) + #00000080; }', 'v: rgb(from var(--c, #c00) clamp(0, (r + 0) + 0, 255) clamp(0, (g + 0) + 0, 255) clamp(0, (b + 0) + 0, 255) / calc((alpha * 0.4980392157 + 0.5019607843) * 0.4980392157 + 0.5019607843));'],
-    ['an exposed length, its unit unread', '@expose n;\n@n: 2px;\n.a { v: #111 * @n; }', 'v: rgb(clamp(0, 17 * (var(--n, 2px) / 1px), 255) clamp(0, 17 * (var(--n, 2px) / 1px), 255) clamp(0, 17 * (var(--n, 2px) / 1px), 255));'],
-    ['an exposed percentage, its unit unread', '@expose n;\n@n: 50%;\n.a { v: #111 * @n; }', 'v: rgb(clamp(0, 17 * ((var(--n, 0.5) * 100%) / 1%), 255) clamp(0, 17 * ((var(--n, 0.5) * 100%) / 1%), 255) clamp(0, 17 * ((var(--n, 0.5) * 100%) / 1%), 255));'],
+    ['a chain of translucent colours', '@c: #c00;\n@expose c;\n.a { v: (@c + #00000080) + #00000080; }', 'v: rgb(from var(--c, #c00) clamp(0, (r + 0) + 0, 255) clamp(0, (g + 0) + 0, 255) clamp(0, (b + 0) + 0, 255) / calc((alpha * 0.4980392157 + 0.5019607843) * 0.4980392157 + 0.5019607843));'],
+    ['an exposed length, its unit unread', '@n: 2px;\n@expose n;\n.a { v: #111 * @n; }', 'v: rgb(clamp(0, 17 * (var(--n, 2px) / 1px), 255) clamp(0, 17 * (var(--n, 2px) / 1px), 255) clamp(0, 17 * (var(--n, 2px) / 1px), 255));'],
+    ['an exposed percentage, its unit unread', '@n: 50%;\n@expose n;\n.a { v: #111 * @n; }', 'v: rgb(clamp(0, 17 * ((var(--n, 0.5) * 100%) / 1%), 255) clamp(0, 17 * ((var(--n, 0.5) * 100%) / 1%), 255) clamp(0, 17 * ((var(--n, 0.5) * 100%) / 1%), 255));'],
     ['math only the browser knows', '.a { v: #111 + -var(--a); }', 'v: rgb(clamp(0, 17 + (-1 * var(--a)), 255) clamp(0, 17 + (-1 * var(--a)), 255) clamp(0, 17 + (-1 * var(--a)), 255));'],
     ['a calc()', '.a { v: #111 + calc(var(--a) * 2); }', 'v: rgb(clamp(0, 17 + (var(--a) * 2), 255) clamp(0, 17 + (var(--a) * 2), 255) clamp(0, 17 + (var(--a) * 2), 255));']
   ])('writes colour maths with one side only the browser knows as a relative colour (V39): %s', async (_what, source, expected) => {
@@ -231,12 +231,12 @@ describe('Less @expose variables (A4)', () => {
   });
 
   it('writes colour maths over an unknown side with compressed numbers and commas', async () => {
-    await expect(render('@expose c;\n@c: #c00;\n.a { v: @c + #11111180; }', true)).resolves.toBe('.a{v:rgb(from var(--c,#c00) clamp(0,r + 17,255) clamp(0,g + 17,255) clamp(0,b + 17,255) / calc(alpha * .4980392157 + .5019607843))}');
+    await expect(render('@c: #c00;\n@expose c;\n.a { v: @c + #11111180; }', true)).resolves.toBe('.a{v:rgb(from var(--c,#c00) clamp(0,r + 17,255) clamp(0,g + 17,255) clamp(0,b + 17,255) / calc(alpha * .4980392157 + .5019607843))}');
   });
 
   it.each([
-    ['two colours', '@expose c, d;\n@c: #c00;\n@d: #111;\n.a { v: @c + @d; }'],
-    ['a colour and a number', '@expose c;\n@c: #c00;\n.a { v: @c + var(--k); }']
+    ['two colours', '@c: #c00;\n@d: #111;\n@expose c, d;\n.a { v: @c + @d; }'],
+    ['a colour and a number', '@c: #c00;\n@expose c;\n.a { v: @c + var(--k); }']
   ])('fails colour maths with both sides only the browser knows: %s', async (_what, source) => {
     await expect(render(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
@@ -245,21 +245,21 @@ describe('Less @expose variables (A4)', () => {
     const strict = async (source: string): Promise<string> =>
       String(await new Compiler({ language: { less: { unitMode: 'strict' } } }).renderString(source, { filePath: 'entry.less', extension: '.less' }));
     expect(await strict('.a { v: #111 * (2px * 3px); }')).toContain('v: #666666;');
-    expect(await strict('@expose c;\n@c: #c00;\n.a { v: @c * (2px * 3px); }')).toContain('v: rgb(from var(--c, #c00) clamp(0, r * 6, 255) clamp(0, g * 6, 255) clamp(0, b * 6, 255));');
+    expect(await strict('@c: #c00;\n@expose c;\n.a { v: @c * (2px * 3px); }')).toContain('v: rgb(from var(--c, #c00) clamp(0, r * 6, 255) clamp(0, g * 6, 255) clamp(0, b * 6, 255));');
   });
 
   it.each([
-    ['a keyword', '@expose c;\n@c: foo;\n.a { v: (@c * 2); }'],
-    ['a string', '@expose c;\n@c: "s";\n.a { v: (@c * 2); }'],
-    ['a list', '@expose c;\n@c: 1px 2px;\n.a { v: (@c * 2); }']
+    ['a keyword', '@c: foo;\n@expose c;\n.a { v: (@c * 2); }'],
+    ['a string', '@c: "s";\n@expose c;\n.a { v: (@c * 2); }'],
+    ['a list', '@c: 1px 2px;\n@expose c;\n.a { v: (@c * 2); }']
   ])('fails math on an exposed variable of a known wrong type: %s', async (_what, source) => {
     await expect(render(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 
   it.each([
-    ['a number', '@expose g;\n@g: 8;\n.a { v: @g + 1; }', 'v: calc(var(--g, 8) + 1);'],
-    ['what only the browser knows', '@expose g;\n@g: var(--z);\n.a { v: (@g * 2); }', 'v: calc(var(--g, var(--z)) * 2);'],
-    ['a mixin argument', '@expose g;\n@g: 8px;\n.m(@p) { v: (@p * 2); }\n.a { .m(@g); }', 'v: calc(var(--g, 8px) * 2);']
+    ['a number', '@g: 8;\n@expose g;\n.a { v: @g + 1; }', 'v: calc(var(--g, 8) + 1);'],
+    ['what only the browser knows', '@g: var(--z);\n@expose g;\n.a { v: (@g * 2); }', 'v: calc(var(--g, var(--z)) * 2);'],
+    ['a mixin argument', '@g: 8px;\n@expose g;\n.m(@p) { v: (@p * 2); }\n.a { .m(@g); }', 'v: calc(var(--g, 8px) * 2);']
   ])('keeps math on an exposed variable holding %s as calc()', async (_what, source, expected) => {
     await expect(render(source)).resolves.toContain(expected);
   });
@@ -283,7 +283,7 @@ describe('Less @expose variables (A4)', () => {
 
     /* The runtime cannot read files; these functions carry no marker yet (jesscss/jess#554). */
     it.fails('rejects an exposed variable it reads', async () => {
-      await expect(renderBesideImage('@use "#less";\n@expose img;\n@img: "a.png";\n.a { v: @less.unit(@less.image-width(@img)); }'))
+      await expect(renderBesideImage('@use "#less";\n@img: "a.png";\n@expose img;\n.a { v: @less.unit(@less.image-width(@img)); }'))
         .rejects.toMatchObject({ code: 'eval/expose-not-a-value' });
     });
 
@@ -292,17 +292,17 @@ describe('Less @expose variables (A4)', () => {
       ['a string', '.m(@l) { content: "@{l}"; }'],
       ['a guard', '.m(@l) when (@l > 1px) { v: yes; }']
     ])('rejects an exposed variable it computes with in a mixin argument read in %s', async (_where, mixin) => {
-      await expect(renderBesideImage(`@use "#less";\n@expose w;\n@w: 8px;\n${mixin}\n.a { .m(@less.max(@w, @less.image-width("a.png"))); }`))
+      await expect(renderBesideImage(`@use "#less";\n@w: 8px;\n@expose w;\n${mixin}\n.a { .m(@less.max(@w, @less.image-width("a.png"))); }`))
         .rejects.toMatchObject({ code: 'eval/expose-not-a-value' });
     });
 
     it('follows an exposed variable it computes with through a mixin argument', async () => {
-      await expect(renderBesideImage('@use "#less";\n@expose w;\n@w: 8px;\n.m(@l) { v: @l; }\n.a { .m(@less.max(@w, @less.image-width("a.png"))); }'))
+      await expect(renderBesideImage('@use "#less";\n@w: 8px;\n@expose w;\n.m(@l) { v: @l; }\n.a { .m(@less.max(@w, @less.image-width("a.png"))); }'))
         .resolves.toContain('v: max(var(--w, 8px), 17px);');
     });
 
     it('follows an exposed variable beside it', async () => {
-      await expect(renderBesideImage('@use "#less";\n@expose w;\n@w: 8px;\n.a { v: @less.max(@w, @less.image-width("a.png")); }'))
+      await expect(renderBesideImage('@use "#less";\n@w: 8px;\n@expose w;\n.a { v: @less.max(@w, @less.image-width("a.png")); }'))
         .resolves.toContain('v: max(var(--w, 8px), 17px);');
     });
   });
@@ -312,18 +312,18 @@ describe('Less @expose variables (A4)', () => {
   });
 
   it('names one generated property per computation', async () => {
-    const css = await render('@use "#less";\n@expose brand;\n@brand: #c00;\n@l: @less.lightness(@brand);\n.a { v: @l; w: @less.lightness(@brand); x: @less.lightness(@less.multiply(@brand, #888)); }');
+    const css = await render('@use "#less";\n@brand: #c00;\n@expose brand;\n@l: @less.lightness(@brand);\n.a { v: @l; w: @less.lightness(@brand); x: @less.lightness(@less.multiply(@brand, #888)); }');
     expect(css).toContain('v: var(--brand-lightness, 40%);');
     expect(css).toContain('w: var(--brand-lightness, 40%);');
     expect(css).toContain('x: var(--brand-lightness-2, ');
   });
 
   it('names a generated property by the function as written', async () => {
-    await expect(render('@use "#less";\n@expose w;\n@w: 8px;\n.a { v: @less.get-unit(@w); }')).resolves.toContain('v: var(--w-get-unit, px);');
+    await expect(render('@use "#less";\n@w: 8px;\n@expose w;\n.a { v: @less.get-unit(@w); }')).resolves.toContain('v: var(--w-get-unit, px);');
   });
 
   it('names a computation once, however the call is spelled', async () => {
-    const source = '@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lightness(@brand); w: @less.LIGHTNESS(@brand); x: @less.Lightness(@brand); }';
+    const source = '@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: @less.lightness(@brand); w: @less.LIGHTNESS(@brand); x: @less.Lightness(@brand); }';
     const css = await render(source);
     expect(css).toContain('v: var(--brand-lightness, 40%);');
     expect(css).toContain('w: var(--brand-lightness, 40%);');
@@ -333,13 +333,13 @@ describe('Less @expose variables (A4)', () => {
   });
 
   it('names a generated property apart from every exposed variable', async () => {
-    const css = await render('@use "#less";\n@expose brand;\n@brand: #c00;\n@expose brand-lightness;\n@brand-lightness: 99%;\n.a { v: @less.lightness(@brand); w: @brand-lightness; }');
+    const css = await render('@use "#less";\n@brand: #c00;\n@expose brand;\n@brand-lightness: 99%;\n@expose brand-lightness;\n.a { v: @less.lightness(@brand); w: @brand-lightness; }');
     expect(css).toContain('v: var(--brand-lightness-2, 40%);');
     expect(css).toContain('w: calc(var(--brand-lightness, 0.99) * 100%);');
   });
 
   it('returns what the runtime is generated from', async () => {
-    await expect(runtime('@use "#less";\n@expose brand;\n@brand: #c00;\n@expose gap;\n@gap: 8px;\n.a { color: @brand; v: @less.lightness(@less.multiply(@brand, #888)); }')).resolves.toEqual({
+    await expect(runtime('@use "#less";\n@brand: #c00;\n@expose brand;\n@gap: 8px;\n@expose gap;\n.a { color: @brand; v: @less.lightness(@less.multiply(@brand, #888)); }')).resolves.toEqual({
       exports: ['brand', 'gap'],
       keys: { brand: 'brand', gap: 'gap' },
       defaults: { brand: '#c00' },
@@ -364,11 +364,11 @@ describe('Less @expose variables (A4)', () => {
     ['red', '#888', true],
     ['#c00', 'gray', false]
   ])('reads colour names at runtime for @brand: %s and a %s argument only when the stylesheet writes one: %s', async (own, other, names) => {
-    await expect(runtime(`@use "#less";\n@expose brand;\n@brand: ${own};\n.a { v: @less.lightness(@less.multiply(@brand, ${other})); }`)).resolves.toMatchObject({ names });
+    await expect(runtime(`@use "#less";\n@brand: ${own};\n@expose brand;\n.a { v: @less.lightness(@less.multiply(@brand, ${other})); }`)).resolves.toMatchObject({ names });
   });
 
   it('reads a colour name a recipe writes for a colour parameter at compile time', async () => {
-    await expect(runtime('@use "#less";\n@expose brand;\n@brand: #c00;\n.a { v: @less.lightness(@less.multiply(@brand, gray)); }')).resolves.toMatchObject({
+    await expect(runtime('@use "#less";\n@brand: #c00;\n@expose brand;\n.a { v: @less.lightness(@less.multiply(@brand, gray)); }')).resolves.toMatchObject({
       // eslint-disable-next-line @typescript-eslint/naming-convention -- a custom property name
       derived: { '--brand-lightness': { args: [{ args: [{ export: 'brand' }, { color: 'gray', rgb: [128, 128, 128], alpha: 1 }] }] } },
       names: false
@@ -377,13 +377,13 @@ describe('Less @expose variables (A4)', () => {
 
   /* Owner, 2026-11-13: "I agree with the reco" (gate a colour export passed through extract() too). */
   it('counts an export as a colour export when it reaches a colour parameter, through another function too, and its value holds a colour', async () => {
-    await expect(runtime('@use "#less";\n@expose l;\n@l: #f00 #00f;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: ['l'], names: false, direct: false });
-    await expect(runtime('@use "#less";\n@expose l;\n@l: red #00f;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: ['l'], names: true });
-    await expect(runtime('@use "#less";\n@expose b;\n@b: rgb(0 0 255);\n.a { v: @less.luma(@b); }')).resolves.toMatchObject({ colors: ['b'], names: false, ownNames: false, direct: true });
-    await expect(runtime('@use "#less";\n@expose b;\n@b: blue;\n.a { v: @less.luma(@b); }')).resolves.toMatchObject({ colors: ['b'], names: true, ownNames: true });
-    await expect(runtime('@use "#less";\n@expose l;\n@l: 1px 2px;\n.a { v: @less.unit(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: [], names: false });
-    await expect(runtime('@use "#less";\n@expose b;\n@b: #00f;\n.a { v: @less.length(@b); }')).resolves.toMatchObject({ colors: [], names: false });
-    await expect(runtime('@use "#less";\n@expose b, c;\n@b: #00f;\n@c: red;\n.a { v: @less.luma(@b); w: @less.length(@c); }')).resolves.toMatchObject({ colors: ['b'], names: false, ownNames: false });
+    await expect(runtime('@use "#less";\n@l: #f00 #00f;\n@expose l;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: ['l'], names: false, direct: false });
+    await expect(runtime('@use "#less";\n@l: red #00f;\n@expose l;\n.a { v: @less.luma(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: ['l'], names: true });
+    await expect(runtime('@use "#less";\n@b: rgb(0 0 255);\n@expose b;\n.a { v: @less.luma(@b); }')).resolves.toMatchObject({ colors: ['b'], names: false, ownNames: false, direct: true });
+    await expect(runtime('@use "#less";\n@b: blue;\n@expose b;\n.a { v: @less.luma(@b); }')).resolves.toMatchObject({ colors: ['b'], names: true, ownNames: true });
+    await expect(runtime('@use "#less";\n@l: 1px 2px;\n@expose l;\n.a { v: @less.unit(@less.extract(@l, 1)); }')).resolves.toMatchObject({ colors: [], names: false });
+    await expect(runtime('@use "#less";\n@b: #00f;\n@expose b;\n.a { v: @less.length(@b); }')).resolves.toMatchObject({ colors: [], names: false });
+    await expect(runtime('@use "#less";\n@b: #00f;\n@c: red;\n@expose b, c;\n.a { v: @less.luma(@b); w: @less.length(@c); }')).resolves.toMatchObject({ colors: ['b'], names: false, ownNames: false });
   });
 
   it('returns no runtime for a document that exposes nothing', async () => {
@@ -400,6 +400,23 @@ describe('Less @expose variables (A4)', () => {
       css: '',
       errors: [{ code: 'eval/expose-not-declared', message: expect.stringContaining('@brand'), line: 2, column: 14 }]
     });
+  });
+
+  /* Owner 2026-11-26: a variable is exposed after it is declared (ledger A20). */
+  it.each([
+    ['above its declaration', '@expose brand;\n@brand: red;\n.a { color: @brand; }'],
+    ['above the mixin call that declares it', '.m() { @brand: red; }\n@expose brand;\n.m();\n.a { color: @brand; }'],
+    ['above its declaration, after a read of it', '.a { color: @brand; }\n@expose brand;\n@brand: red;']
+  ])('rejects an @expose %s, at its name', async (_name, source) => {
+    await expect(result(source)).resolves.toMatchObject({
+      css: '',
+      errors: [{ code: 'eval/expose-before-declaration', message: '@expose names @brand before it is declared', line: source.split('\n').findIndex(line => line.startsWith('@expose')) + 1, column: 9 }]
+    });
+  });
+
+  it('exposes a variable the mixin called above it declares', async () => {
+    await expect(render('.m() { @brand: red; }\n.m();\n@expose brand;\n.a { color: @brand; }'))
+      .resolves.toBe('.a {\n  color: var(--brand, red);\n}\n');
   });
 
   describe.each(['@expose', '@-expose'])('%s', (keyword) => {
@@ -438,7 +455,7 @@ describe('Less @expose variables (A4)', () => {
       }
     }
 
-    const TOKENS = '@expose brand;\n@brand: #c00;\n.x { color: @brand; }\n';
+    const TOKENS = '@brand: #c00;\n@expose brand;\n.x { color: @brand; }\n';
 
     it('exposes what an imported file exposes, in its rules and the importer\'s', async () => {
       await expect(resultBeside(TOKENS, '@import "tokens.less";\n.a { color: @brand; }')).resolves.toMatchObject({
@@ -493,7 +510,7 @@ describe('Less @expose variables (A4)', () => {
       await expect(resultBeside(TOKENS, '@compose "tokens.less" as tokens;\n@brand: #00f;\n@expose brand;\n.a { color: @brand; }'))
         .resolves.toMatchObject({
           css: '',
-          errors: [{ code: 'eval/expose-conflict', message: expect.stringContaining('entry.less:3:9'), file: { name: 'tokens.less' }, line: 1, column: 9 }]
+          errors: [{ code: 'eval/expose-conflict', message: expect.stringContaining('entry.less:3:9'), file: { name: 'tokens.less' }, line: 2, column: 9 }]
         });
     });
 
@@ -524,10 +541,10 @@ describe('Less @expose variables (A4)', () => {
     });
 
     it('rejects two exposed names with one JavaScript key, naming both', async () => {
-      await expect(resultBeside('@expose brand-color;\n@brand-color: #c00;\n', '@import "tokens.less";\n@brandColor: #00f;\n@expose brandColor;'))
+      await expect(resultBeside('@brand-color: #c00;\n@expose brand-color;\n', '@import "tokens.less";\n@brandColor: #00f;\n@expose brandColor;'))
         .resolves.toMatchObject({
           css: '',
-          errors: [{ code: 'eval/expose-key-conflict', message: expect.stringContaining('entry.less:3:9'), file: { name: 'tokens.less' }, line: 1, column: 9 }]
+          errors: [{ code: 'eval/expose-key-conflict', message: expect.stringContaining('entry.less:3:9'), file: { name: 'tokens.less' }, line: 2, column: 9 }]
         });
     });
   });
