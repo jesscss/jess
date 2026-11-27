@@ -80,7 +80,7 @@ describe('Jess calc()', () => {
       rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: {
         type: 'FunctionCall',
         name: 'calc',
-        args: [{ value: { type: 'Operation', operator: '+', left: { type: 'Lookup', kind: 'var', name: 'w', raw: '$w' }, right: { type: 'Dimension', number: 1, unit: 'px' } } }]
+        args: [{ value: { type: 'Operation', operator: '+', left: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w' }, right: { type: 'Dimension', number: 1, unit: 'px' } } }]
       } }] }]
     });
   });

@@ -45,7 +45,7 @@ export type { FnOrigin } from './ast/module-values.js';
 export type { BodyOrigin } from './ast/functions/types.js';
 
 /** Print a parsed stylesheet as `.jess` source (no evaluation). */
-export { emitJess, NoJessSpelling } from './ast/emit-jess.js';
+export { emitJess, jessVariable, NoJessSpelling } from './ast/emit-jess.js';
 export type { EmitJessOptions, JessSpellingGap } from './ast/emit-jess.js';
 
 /** Construct the typed value evaluator used by the canonical AST-v2 execution path. */

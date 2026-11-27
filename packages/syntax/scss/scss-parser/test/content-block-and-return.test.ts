@@ -64,8 +64,8 @@ describe('blocker 6 — @content', () => {
     const tree = shape(parse('@mixin m { @content($type); }')) as { rules: [{ rules: [unknown] }] };
     expect(tree.rules[0].rules[0]).toEqual({
       type: 'Reference',
-      base: { type: 'Lookup', scope: 'live', kind: 'var', name: 'content', raw: '$content' },
-      steps: [{ type: 'Call', args: [{ spread: false, value: { type: 'Lookup', scope: 'live', kind: 'var', name: 'type', raw: '$type' } }] }],
+      base: { type: 'Lookup', scope: 'live', kind: 'var', name: 'content', raw: '@content' },
+      steps: [{ type: 'Call', args: [{ spread: false, value: { type: 'Lookup', scope: 'live', kind: 'var', name: 'type', raw: '@type' } }] }],
       raw: '$content($type)'
     });
   });

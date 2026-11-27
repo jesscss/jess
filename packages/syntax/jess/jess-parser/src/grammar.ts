@@ -71,7 +71,6 @@ import {
   declarationMemberReferenceFromVariableBase,
   interpolationFromChildren,
   dollarBraceInterpolation,
-  liveVariable,
   referenceArgSource,
   tokenSource,
   sourceFromState,
@@ -966,8 +965,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children, _fields, span) => withSourceSpan(
       variableReference(
         requireToken(children.at(-1)).value,
-        requireToken(children[0]).value === '$^' ? 'scoped' : 'live',
-        tokenSource(children)
+        requireToken(children[0]).value === '$^' ? 'scoped' : 'live'
       ),
       span
     )
@@ -981,8 +979,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children, _fields, span) => withSourceSpan(
       variableReference(
         requireToken(children[1]).value,
-        'scoped',
-        tokenSource(children)
+        'scoped'
       ),
       span
     )
@@ -3282,7 +3279,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       const raw = requireToken(children[0]).value;
       const scoped = raw.startsWith('$^');
       return withSourceSpan(
-        variableReference(raw.slice(scoped ? 2 : 1), scoped ? 'scoped' : 'live', raw),
+        variableReference(raw.slice(scoped ? 2 : 1), scoped ? 'scoped' : 'live'),
         span
       );
     }
@@ -5806,7 +5803,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         throw new TypeError('Jess reference call lost its name span.');
       }
       return withSourceSpan(reference(
-        liveVariable(name, { start: span.start, end: nameToken.span.end }),
+        withSourceSpan(variableReference(
+          name,
+          'live'
+        ), { start: span.start, end: nameToken.span.end }),
         [referenceCall([])],
         `$${name}()`
       ), span);

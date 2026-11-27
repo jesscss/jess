@@ -38,7 +38,7 @@ import type {
   AnonymousMixin, Block, CallArg, CallValue, Collection, ComplexSelector, CompoundSelector,
   Declaration, Expression, ExtendInstruction, FunctionCall, IfValue, Interpolation, Lookup, LookupStep, MixinCall,
   MixinDefinition, Operation, Param, PseudoSelector, Quoted, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
-  SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
+  SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration, VariableLookup
 } from './nodes.js';
 import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
 import { isFilterProperty, writtenAsFilter } from './filter-position.js';
@@ -894,7 +894,7 @@ class JessPrinter {
             ? `\`${node.kind}\` lookup outside a reference chain`
             : 'indirect `@@name`: `.jess` `$[$n]` reads the live store only');
     }
-    return `$${node.scope === 'scoped' ? '^' : ''}${node.name}`;
+    return jessVariable(node.name, node.scope);
   }
 
   /** `DollarValue` / `ExpressionAtom` reference chains. */
@@ -1215,6 +1215,9 @@ class JessPrinter {
  * Print a parsed stylesheet as `.jess` source. Throws {@link NoJessSpelling}
  * (carrying every gap in `gaps`) when any node has no `.jess` spelling.
  */
+/** How `.jess` writes a read of the variable `name`: `$name` (live), `$^name` (scoped). */
+export const jessVariable = (name: string, scope: VariableLookup): string => `$${scope === 'scoped' ? '^' : ''}${name}`;
+
 export function emitJess(root: Stylesheet, options: EmitJessOptions = {}): string {
   const printer = new JessPrinter(root, options);
   const out = printer.body(root.rules, 'root', '', 0, sourceEndOf(root));

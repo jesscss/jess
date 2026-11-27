@@ -338,25 +338,38 @@ function declarationMemberReferenceFromVariableBase(
   );
 }
 
-function liveVariable(name: string, span?: { readonly start: number; readonly end: number }): Lookup {
-  const ref = variableReference(name, 'live', `$${name}`);
-  return span ? withSourceSpan(ref, span) : ref;
-}
-
 function interpolationFromChildren(
   children: readonly unknown[],
   span?: { readonly start: number; readonly end: number }
 ): Interpolation {
   const first = requireToken(children[1]).value;
   if (first === '$') {
-    const ref = liveVariable(requireToken(children[2]).value, span);
+    const ref = variableReference(
+      requireToken(children[2]).value,
+      'live'
+    );
+    if (span) {
+      withSourceSpan(
+        ref,
+        span
+      );
+    }
     return interpolation([{ ref: variableReference(
       ref,
       'live'
     ), unquote: true }]);
   }
   if (children.length === 3) {
-    const ref = liveVariable(first, span);
+    const ref = variableReference(
+      first,
+      'live'
+    );
+    if (span) {
+      withSourceSpan(
+        ref,
+        span
+      );
+    }
     return interpolation([{ ref, unquote: true }]);
   }
   const text = first === '"' || first === '\'' ? requireToken(children[2]).value : first;
@@ -382,12 +395,30 @@ function dollarBraceInterpolation(
   span?: { readonly start: number; readonly end: number }
 ): Interpolation {
   if (requireToken(children[1]).value !== '[') {
-    const ref = liveVariable(requireToken(children[1]).value, span);
+    const ref = variableReference(
+      requireToken(children[1]).value,
+      'live'
+    );
+    if (span) {
+      withSourceSpan(
+        ref,
+        span
+      );
+    }
     return interpolation([{ ref, unquote: true }]);
   }
   const head = requireToken(children[2]).value;
   if (head === '$') {
-    const named = liveVariable(requireToken(children[3]).value, span);
+    const named = variableReference(
+      requireToken(children[3]).value,
+      'live'
+    );
+    if (span) {
+      withSourceSpan(
+        named,
+        span
+      );
+    }
     return interpolation([{ ref: variableReference(
       named,
       'live'
@@ -1277,7 +1308,6 @@ export {
   declarationMemberReferenceFromVariableBase,
   interpolationFromChildren,
   dollarBraceInterpolation,
-  liveVariable,
   referenceArgSource,
   tokenSource,
   sourceFromState,

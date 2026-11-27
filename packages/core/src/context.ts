@@ -1127,6 +1127,11 @@ export class Context {
    * a diagnostic is raised after it entered, and nothing on a compile that raises none.
    */
   fileOfNode(node: object): DocumentContext['file'] | undefined {
+    return this.documentOfNode(node)?.file;
+  }
+
+  /** The document that parsed a node; see {@link fileOfNode}. */
+  documentOfNode(node: object): DocumentContext | undefined {
     if (this.indexedDocuments < this.documentContexts.size) {
       let position = 0;
       for (const [document, owner] of this.documentContexts) {
@@ -1136,7 +1141,7 @@ export class Context {
       }
       this.indexedDocuments = this.documentContexts.size;
     }
-    return this.nodeDocuments.get(node)?.file;
+    return this.nodeDocuments.get(node);
   }
 
   /** The document that recorded `body` (a root definition's body or a root variable's value), if one did. */

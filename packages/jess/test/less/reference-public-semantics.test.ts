@@ -188,7 +188,8 @@ describe('Less reference semantic contracts through the public AST route', () =>
     ['.jess', '.e { v: $nope; }', '$nope'],
     ['.jess', '.e { v: $^nope; }', '$^nope'],
     ['.jess', '$m: #{ a: 1; }; .e { v: $m[$nope]; }', '$nope'],
-    ['.jess', '.e { v: $(^nope + 1); }', '^nope'],
+    ['.jess', '.e { v: $(^nope + 1); }', '$^nope'],
+    ['.jess', '$k: nope; .e { v: $[$k]; }', '$nope'],
     ['.jess', '.e { v: "${nope}"; }', '$nope'],
     ['.jess', '.e { $nope(); }', '$nope'],
     ['.scss', '.e { v: $nope; }', '$nope']

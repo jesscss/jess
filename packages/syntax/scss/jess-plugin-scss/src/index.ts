@@ -40,6 +40,10 @@ type ScssDialectDefaults = Required<Pick<
 export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
+
+  writeVariable(name: string): string {
+    return `$${name}`;
+  }
   readonly valueEvaluator: ValueEvaluator = sassValueEvaluator;
   readonly jessFunctions = jessFunctions;
   readonly #dialectDefaults: ScssDialectDefaults;

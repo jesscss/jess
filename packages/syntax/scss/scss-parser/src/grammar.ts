@@ -715,8 +715,7 @@ const scssFactory = (g: ScssInputRules) => {
     scssVarSigilName,
     children => variableReference(
       requireToken(children[1]).value,
-      'live',
-      `$${requireToken(children[1]).value}`
+      'live'
     )
   );
 
@@ -3016,8 +3015,7 @@ const scssFactory = (g: ScssInputRules) => {
       return reference(
         variableReference(
           'content',
-          'live',
-          '$content'
+          'live'
         ),
         [referenceCall(args)],
         `$content(${args.map(arg => contentArgRaw(arg)).join(', ')})`
