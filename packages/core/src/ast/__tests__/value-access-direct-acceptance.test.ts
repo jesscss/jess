@@ -289,7 +289,7 @@ describe('direct canonical value access', () => {
   });
 
   it('reads namespace call variable members from the callee, not a caller shadow', () => {
-    const member = (name: string) => [{ type: 'LookupStep' as const, name: variableReference(name, 'scoped'), kind: 'var' as const }];
+    const member = (name: string) => [{ type: 'LookupStep' as const, name, kind: 'var' as const }];
     const namespaceCall = mixinCall('#ns1');
     const libraryCall = {
       type: 'MixinCall' as const,
@@ -351,7 +351,7 @@ describe('direct canonical value access', () => {
     expect(render(document(-1))).toBe('.entry {\n  value: second;\n}\n');
     expect(() => render(document(1))).toThrow(expect.objectContaining({
       code: 'resolve/name-not-found',
-      reason: 'Symbol ".pick()[1]" is undefined in this scope.'
+      reason: '"1" is undefined in ".pick()".'
     }));
   });
 

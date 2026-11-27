@@ -2545,7 +2545,7 @@ describe('Jess AST grammar facts', () => {
     expect(missingPath).toMatchObject({
       code: 'resolve/name-not-found',
       phase: 'resolve',
-      reason: 'Symbol "$path" is undefined in this scope.'
+      reason: '"$path" is undefined in this scope.'
     });
     if (!(missingPath instanceof JessError) || !missingPath.node) {
       throw new Error('expected a JessError with parser provenance');

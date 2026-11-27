@@ -73,7 +73,7 @@ describe('R16 hermetic body scoping — every read form', () => {
     const src = '@dr: { c: @x; }\n.a { @x: red; @dr(); }\n';
     expect(() => render(src)).toThrow(expect.objectContaining({
       code: 'resolve/name-not-found',
-      reason: 'Symbol "@x" is undefined in this scope.'
+      reason: '"@x" is undefined in this scope.'
     }));
     expect(render(src, true)).toBe('.a {\n  c: red;\n}\n');
   });
