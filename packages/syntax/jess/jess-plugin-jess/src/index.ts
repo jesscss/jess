@@ -2,7 +2,6 @@ import {
   AbstractPlugin,
   buildEvaluator,
   createFnRegistry,
-  jessVariable,
   parserDiagnostic,
   type ISafeParseResult,
   type ModuleConfigRejection,
@@ -69,7 +68,6 @@ const JESS_DIALECT_DEFAULTS = Object.freeze({ unitMode: 'strict' as const });
 export class JessPlugin extends AbstractPlugin {
   name = 'jess';
   supportedExtensions = ['.jess'];
-  readonly writeVariable = jessVariable;
   readonly valueEvaluator: ValueEvaluator = jessValueEvaluator;
 
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {

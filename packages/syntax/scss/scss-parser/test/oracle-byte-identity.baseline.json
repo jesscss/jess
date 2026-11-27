@@ -5,7 +5,7 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "45dc86c5be0186c349bfa85a1ba30a899ae036e9c9ed6a44b06b7370b549ae5b",
+      "aggregate": "7d3105615ea5a4e53e9df841bbe15cae53d736543ca6e93432340b9af1caf64b",
       "threw": 462
     },
     {
@@ -160,7 +160,7 @@
       "cst": "914e27c2de2054c0"
     },
     "packages/syntax/css/css-parser/test/css/errors/atrule-no-semicolon.css": {
-      "ast": "ad0c24e1ed1f91e0",
+      "ast": "f84f21f98f1e5302",
       "cst": "543ddebb67dba710"
     },
     "packages/syntax/css/css-parser/test/css/errors/atrule-numeric-name.css": {
@@ -552,7 +552,7 @@
       "cst": "a4983afc46eca893"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0160297a55c04440.scss": {
-      "ast": "fa136e7cf292b9c3",
+      "ast": "8a4f9aa77577e965",
       "cst": "126729b2ff671547"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0175de3551bcbeb5.scss": {
@@ -732,7 +732,7 @@
       "cst": "7778d50013898d68"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0623435c1c96c515.scss": {
-      "ast": "40d6d9732780139a",
+      "ast": "2b1874cf2d842e94",
       "cst": "f6e2148fa070c4e9"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/06262c5b86fb5e86.scss": {
@@ -744,7 +744,7 @@
       "cst": "7abe7dd1933331e0"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0645be54c3705a6c.scss": {
-      "ast": "5550f89a88a2dd6b",
+      "ast": "5b91181f9d225f83",
       "cst": "1e0827867f8d736b"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0670c75f9245c6bb.scss": {
@@ -780,11 +780,11 @@
       "cst": "8b806090ce665a68"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/077299a53d8a165e.scss": {
-      "ast": "ee846fe9edf5a27f",
+      "ast": "eda86ca1c81bbe12",
       "cst": "ed3d2a4cbc65ea68"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/078b1377aafdd4c6.scss": {
-      "ast": "40f348ce508401ed",
+      "ast": "89537290358f0c6e",
       "cst": "f935f4addc9a567c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/079d90cf9be24b4a.scss": {
@@ -812,7 +812,7 @@
       "cst": "906368ef48259c29"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/08cb8962311fe64f.scss": {
-      "ast": "b96fb8a022bace6c",
+      "ast": "7252ba7b4939eb8c",
       "cst": "613c6a48b34d15ed"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/08e6459d04cb3dc6.scss": {
@@ -884,7 +884,7 @@
       "cst": "9ae060ca299bb3b9"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0af0b46d10bb8f99.scss": {
-      "ast": "a8b0f8e17496d57c",
+      "ast": "47fdea35a55d927d",
       "cst": "c4d4305dfb9d1835"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0b255fc4c1ef8997.scss": {
@@ -900,7 +900,7 @@
       "cst": "7a25789b5f7c7820"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0c1e81b5235f8ee1.scss": {
-      "ast": "98e7bfa1b83e3c0a",
+      "ast": "415f15af4f2bd166",
       "cst": "eb8b34d76c3742da"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0c38bb014a6510c6.scss": {
@@ -960,7 +960,7 @@
       "cst": "7cd11a41cb3129f2"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0da350f97c315f13.scss": {
-      "ast": "f7fcf71bed7a1be5",
+      "ast": "508e831aca5a3ade",
       "cst": "91d95d82499a7682"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0db5f3d2f300c296.scss": {
@@ -1020,7 +1020,7 @@
       "cst": "6066df160ac5ac3e"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0f2048f7091c5a1e.scss": {
-      "ast": "ba81b11a0519e05d",
+      "ast": "06fed98360c3b477",
       "cst": "58e07ee250d2cc04"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/0f568b0c032c24fe.scss": {
@@ -1072,11 +1072,11 @@
       "cst": "2bee4d60a8855907"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/107ac115c9ba6adf.scss": {
-      "ast": "a967b39e9e8cb43e",
+      "ast": "b639e772b85d6d42",
       "cst": "74901b319bab5340"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/10a67adaef093fd6.scss": {
-      "ast": "18afc0a3d3541513",
+      "ast": "240adf91c9a4477e",
       "cst": "ad61251acc24e0a7"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/10d69e6a5a72db14.scss": {
@@ -1256,7 +1256,7 @@
       "cst": "fbd4fd8f179faf93"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/1511717ce6025bb5.scss": {
-      "ast": "cfe16344fb760f65",
+      "ast": "a41937cf2e36cef7",
       "cst": "9be9e09b5606d1f8"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/152906500953eb52.scss": {
@@ -1264,7 +1264,7 @@
       "cst": "1d674a92d678d7f2"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/1532390fd77e48da.scss": {
-      "ast": "42428ea9dd2f3588",
+      "ast": "bcc88f30cdc7eadc",
       "cst": "33bbc13ff73fc07f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/15362fd1bf88a0d3.scss": {
@@ -1348,7 +1348,7 @@
       "cst": "fec7c014e177dfd5"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/177c036810826162.scss": {
-      "ast": "f2d0d0136fd01776",
+      "ast": "8c833b885a81ef4f",
       "cst": "d5574cfd8f8f009d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/1795806b092ff921.scss": {
@@ -1372,7 +1372,7 @@
       "cst": "82d1b206c83d8f33"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/1889753902935a2c.scss": {
-      "ast": "ccb7e94c9b788828",
+      "ast": "5321829dfd1488ac",
       "cst": "54de961833b81446"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/188b53b57ef83378.scss": {
@@ -1400,7 +1400,7 @@
       "cst": "3a01f95607b77bcd"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/191e3c47dcca973d.scss": {
-      "ast": "c532ba2dd39c03c6",
+      "ast": "f5b4f2dfae5907c5",
       "cst": "fbe6341d9159c03c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/193b5689852e96a8.scss": {
@@ -1584,7 +1584,7 @@
       "cst": "39f5d31244bddce6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/1d906049a2d83272.scss": {
-      "ast": "3bf6219ad59edfb0",
+      "ast": "91ede67b534cb557",
       "cst": "8b0912058a2bbdd3"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/1dad08d52f397028.scss": {
@@ -1612,11 +1612,11 @@
       "cst": "8627fe657cb4dee3"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/1e23202f6c60c17b.scss": {
-      "ast": "14242a7b94c9bc46",
+      "ast": "c8910d3c6fe3bef8",
       "cst": "15180d1b348b91df"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/1e3bff807ce826e5.scss": {
-      "ast": "f6cf87bf1d028313",
+      "ast": "0811d965832dfb00",
       "cst": "9ce67503a474c582"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/1e4c530107d904b7.scss": {
@@ -1688,7 +1688,7 @@
       "cst": "447fc126f3441306"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/2016082eab5819a5.scss": {
-      "ast": "7c2aaa0e0c5a5dcd",
+      "ast": "3483f5df3daee5f2",
       "cst": "788b15069ee2a8c2"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/2020c67de2eddc11.scss": {
@@ -1856,7 +1856,7 @@
       "cst": "9ca3f64b8d6a5d14"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/23a3673dc7a468fb.scss": {
-      "ast": "f299f8fdcdd04aec",
+      "ast": "b3ec07af32f194b6",
       "cst": "c4f45ae2b639da63"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/23e0acf2c479fb25.scss": {
@@ -1880,7 +1880,7 @@
       "cst": "1cdff66f71e5c502"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/242ade8bcdaed295.scss": {
-      "ast": "54389683ac3d6190",
+      "ast": "8752226f3ffeea37",
       "cst": "e9159c7a494837e8"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/2457160fb210ee59.scss": {
@@ -1988,7 +1988,7 @@
       "cst": "bded22eecaba3396"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/272139ba7ea16270.scss": {
-      "ast": "dc1078e0f97ac6f8",
+      "ast": "20ac6826721b0238",
       "cst": "dc1fddcfe96bb2ed"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/27536c68a269072d.scss": {
@@ -2080,7 +2080,7 @@
       "cst": "34dcc991e0fdd24d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/29e57f76531beb46.scss": {
-      "ast": "554f0246536e32b9",
+      "ast": "9044dfa2c85e3c00",
       "cst": "4fbf2dacab7a8993"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/29f95bdd9c51a724.scss": {
@@ -2092,7 +2092,7 @@
       "cst": "07fa89db87e17000"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/2a0cf81cccc1f33a.scss": {
-      "ast": "e86393f42ca1a71e",
+      "ast": "361eeb035bc5eb69",
       "cst": "54fee210e3e1f86f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/2a1353669405b960.scss": {
@@ -2216,7 +2216,7 @@
       "cst": "0fc8c422e2fa83a8"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/2de4dcca117cd5ea.scss": {
-      "ast": "d50166d01615d357",
+      "ast": "5fa4e3ca4b724182",
       "cst": "fd2675998d218c4a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/2dea22b28f3698b2.scss": {
@@ -2280,7 +2280,7 @@
       "cst": "de3e7775bb9ec126"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/2f3a516c2913d2f6.scss": {
-      "ast": "7326c944bc87880e",
+      "ast": "101dd87093d2fe8f",
       "cst": "3a33d5407e5cb5cf"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/2f3db5fb9cee437e.scss": {
@@ -2324,7 +2324,7 @@
       "cst": "c3d4a6f725ed751a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/30e1404b795c9ae7.scss": {
-      "ast": "a371a03981d664d5",
+      "ast": "e9eca21839330e30",
       "cst": "477958a85c3439eb"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3125ad3f3f466196.scss": {
@@ -2376,7 +2376,7 @@
       "cst": "0fd7fbfb42090955"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/330fbb77dfb90762.scss": {
-      "ast": "5852d96320c31730",
+      "ast": "5f32d1d5e6d7bdae",
       "cst": "835cb4c02d4ac73e"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/331bf7bf080fcd68.scss": {
@@ -2400,7 +2400,7 @@
       "cst": "996becf1a636351c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3444271c14a629d8.scss": {
-      "ast": "4037eaf7129cd825",
+      "ast": "311dfc8618753188",
       "cst": "5576d5c36e412e67"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3499ee0ca304d966.scss": {
@@ -2440,7 +2440,7 @@
       "cst": "990314cd70b33a81"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/351a953a2247e4eb.scss": {
-      "ast": "028a3bbd04b99c28",
+      "ast": "2b5073ed08f2e3e6",
       "cst": "782709344932b1b6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/35855012099f71b5.scss": {
@@ -2512,7 +2512,7 @@
       "cst": "872fbe68a1aeb4c1"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3833c158cc9e1626.scss": {
-      "ast": "554f0246536e32b9",
+      "ast": "9044dfa2c85e3c00",
       "cst": "4fbf2dacab7a8993"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/385351402adec72c.scss": {
@@ -2592,11 +2592,11 @@
       "cst": "692605b8c963476a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3a015f5ed208b5ed.scss": {
-      "ast": "e5b1b0f1a7e82af2",
+      "ast": "3cba3752ad5c3c65",
       "cst": "6b8cbf561aaaba69"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3a1a345de04046f5.scss": {
-      "ast": "7d2bd6dceb51cca1",
+      "ast": "e4be90b572552c78",
       "cst": "0004ac6dcee31aec"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3a91c8bcd0cb4212.scss": {
@@ -2660,7 +2660,7 @@
       "cst": "137d6b3d06b4fcc7"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3c15be07acbdb038.scss": {
-      "ast": "c80c40ba0ea83c1e",
+      "ast": "61bfe055b8d03a0b",
       "cst": "03d0d04bf0ce7135"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3c25fedc99e40a9a.scss": {
@@ -2724,7 +2724,7 @@
       "cst": "bbea27b953a4e5b9"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3d079c8baef37802.scss": {
-      "ast": "25995e08b3edb0fd",
+      "ast": "4058d1d94b3aeea7",
       "cst": "bc975cd87139afde"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3d2c7a3b4ec46c81.scss": {
@@ -2756,7 +2756,7 @@
       "cst": "39f5d31244bddce6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3de3f40babfa1643.scss": {
-      "ast": "33ee5f2f596bb974",
+      "ast": "3b63c34c7d4de41b",
       "cst": "e4d2fa54ebae61d0"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/3de853a0a9b60b38.scss": {
@@ -2908,7 +2908,7 @@
       "cst": "39f5d31244bddce6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/42229b8f9de9288c.scss": {
-      "ast": "d3e04c7735d5128f",
+      "ast": "401972c0490625f2",
       "cst": "838c36287af2a94f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/42501299892fea0d.scss": {
@@ -3044,7 +3044,7 @@
       "cst": "2953cbf1b21255ba"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/45a8ab244b0b986d.scss": {
-      "ast": "54f3cebdd5a50e84",
+      "ast": "1d6d3e371310955b",
       "cst": "50a527c7aa3f1d8f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/45acc893c30e9f8a.scss": {
@@ -3152,7 +3152,7 @@
       "cst": "49a26194705d29b3"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/4859357a7f85ec63.scss": {
-      "ast": "6200959d258bbf01",
+      "ast": "70187c9e9d01438e",
       "cst": "bc5d11a89b8be6ad"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/487ea79af20f8338.scss": {
@@ -3328,7 +3328,7 @@
       "cst": "71bc36fba7367f8f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/4c8d23ff3a9f1da4.scss": {
-      "ast": "df0ea42aca06fdcb",
+      "ast": "d1f08de26730b41b",
       "cst": "feeb47b814ef3719"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/4c8e74ae76bbae2f.scss": {
@@ -3412,7 +3412,7 @@
       "cst": "c0046bafd88567cf"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/4e78951c2de94752.scss": {
-      "ast": "86960342ec647405",
+      "ast": "eeaaf8973cb0b18e",
       "cst": "b94e673881af0365"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/4e8f44113f58b1be.scss": {
@@ -3476,7 +3476,7 @@
       "cst": "da91f49a6d8ae577"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/502a7732c2cd888a.scss": {
-      "ast": "60faadf0bf9a1503",
+      "ast": "cf7b253aaf7580ef",
       "cst": "45df8eab5b9bd160"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5053394da9bf9291.scss": {
@@ -3508,7 +3508,7 @@
       "cst": "7d4ee5713c22334f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5182e31902d91086.scss": {
-      "ast": "3b77774f50e40847",
+      "ast": "b77869979550d336",
       "cst": "c192dee67ca8b58e"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/51b00b4947b4a7bf.scss": {
@@ -3520,7 +3520,7 @@
       "cst": "76991e89f2fdd4fa"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/51e293ea903260b7.scss": {
-      "ast": "0f76bcd666ca54b2",
+      "ast": "6663979d3a93a042",
       "cst": "55dda29f93e9d81d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/51f91b75cfbb2279.scss": {
@@ -3536,7 +3536,7 @@
       "cst": "c4185072c07e6645"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5263aed717333e8d.scss": {
-      "ast": "d1c817e4e6c7dcde",
+      "ast": "7fe97a83634948d0",
       "cst": "bd71a0156761ccef"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5268100f0f498e9e.scss": {
@@ -3604,7 +3604,7 @@
       "cst": "e273eedc115f51d8"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5464375a544ab3c2.scss": {
-      "ast": "5bd447fc05d28d63",
+      "ast": "ed3fd0c93ce7827a",
       "cst": "9028069582e57d2d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/546d65c0afda6b82.scss": {
@@ -3652,7 +3652,7 @@
       "cst": "04c4f49caa4da18f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/551a29778dfdcef9.scss": {
-      "ast": "c91fab3ddede831a",
+      "ast": "5dee8a9cc2dea42f",
       "cst": "3110f585f1b451c7"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/552dd51986e4e857.scss": {
@@ -3664,7 +3664,7 @@
       "cst": "7164e08843c098e2"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/55469b0c69b8b184.scss": {
-      "ast": "ba81b11a0519e05d",
+      "ast": "06fed98360c3b477",
       "cst": "ae04070e4e028130"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/55b2b6df513d4975.scss": {
@@ -3768,7 +3768,7 @@
       "cst": "51f5fb59c4ff5fe2"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/57eca5a770fda6ca.scss": {
-      "ast": "04758d4cd869dc32",
+      "ast": "3f84c057aea296bb",
       "cst": "f1fa7845a3308918"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/584e5b182f6b8231.scss": {
@@ -3792,7 +3792,7 @@
       "cst": "2cf1234766d51185"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5894f005c7da4156.scss": {
-      "ast": "1345ea703a62f9d2",
+      "ast": "5055024e2bedc441",
       "cst": "586462ff3a16d985"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/58d922e4f93c4411.scss": {
@@ -3804,7 +3804,7 @@
       "cst": "0d44d2238ec58788"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/58e6488205f94743.scss": {
-      "ast": "791849d84b7a64e2",
+      "ast": "7009feffdb2eab9d",
       "cst": "4dd172684e03f611"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5900c855eefb80e7.scss": {
@@ -3940,7 +3940,7 @@
       "cst": "bbb2685d7f85c3b8"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5c2d58b8ae65d339.scss": {
-      "ast": "e4411edd713fd1f0",
+      "ast": "cc8c61f418644b7e",
       "cst": "8a02a15e9d9a9b9a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5c3cc74b20dad0dc.scss": {
@@ -4028,7 +4028,7 @@
       "cst": "d04291b4abc7b56d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5e7213a000feb58e.scss": {
-      "ast": "1b8934e4f9e37c9d",
+      "ast": "37230a073fa5dfce",
       "cst": "6fec2c44b8455163"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/5e751f25830f94ba.scss": {
@@ -4120,7 +4120,7 @@
       "cst": "2426848c0d4219b4"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/6121cbcccb8e7c3a.scss": {
-      "ast": "35b9b9213ab62dfd",
+      "ast": "688deacc1caaa9b0",
       "cst": "65ddd3261e77963e"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/612d4b8ff95cce7b.scss": {
@@ -4196,7 +4196,7 @@
       "cst": "7a453b93f120b5b3"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/62f19262041c1905.scss": {
-      "ast": "fb041e72691f0ef6",
+      "ast": "a64eae055f33dbbb",
       "cst": "baa3791ff822180c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/62f7d04472428881.scss": {
@@ -4256,7 +4256,7 @@
       "cst": "cb4447e229e4c95c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/64cc2b3dfe3b9768.scss": {
-      "ast": "0b07fbd3e70c4abe",
+      "ast": "18815d13b25147b9",
       "cst": "71fec2cfdff3bc27"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/64f05b9c2f5a522a.scss": {
@@ -4368,7 +4368,7 @@
       "cst": "fdb0cdabd17b4dd4"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/68549954a713b51c.scss": {
-      "ast": "e1421c8f3ab47cc7",
+      "ast": "d634fafd822958c4",
       "cst": "15ea421123c9e55d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/68a4560019aaa409.scss": {
@@ -4456,7 +4456,7 @@
       "cst": "d0c715c004c218a9"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/6adf754e4ba58db7.scss": {
-      "ast": "957e12561727314c",
+      "ast": "26144134e6f006f7",
       "cst": "d2a6f69ebb747e2b"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/6afa54c21048fb85.scss": {
@@ -4468,7 +4468,7 @@
       "cst": "a37edefc408fee1c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/6b3c94e0a08e1451.scss": {
-      "ast": "2cd7e7902495ffdf",
+      "ast": "f3b41ab561532de9",
       "cst": "45a66cf18a1079da"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/6b59fcbb6e78c0d3.scss": {
@@ -4608,7 +4608,7 @@
       "cst": "d443f1ce10790c43"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/6e33428804f7e6ce.scss": {
-      "ast": "7a1122f82c71bdfa",
+      "ast": "a596a14c654083e1",
       "cst": "60fdb5ad22cb7d2d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/6e3b6b45c2d222d6.scss": {
@@ -4624,7 +4624,7 @@
       "cst": "7a25789b5f7c7820"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/6f1055e0267ad486.scss": {
-      "ast": "2a8f53b972c43b10",
+      "ast": "1f46a507a959204f",
       "cst": "bfa6f00cc46d3f1d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/6f2ca542a38c846f.scss": {
@@ -4732,7 +4732,7 @@
       "cst": "e58d84d0349eb51d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/71a37004bd820bd3.scss": {
-      "ast": "ceaa71c1a796626a",
+      "ast": "caa699c4e7d60b29",
       "cst": "ac1c600baacf8802"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/71c4912625b11c94.scss": {
@@ -4760,7 +4760,7 @@
       "cst": "1b31e0b34cef485e"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/7243bd9501b8c467.scss": {
-      "ast": "06551bab4ba1f1b5",
+      "ast": "9881da09f785b017",
       "cst": "fa9c34a6d1253c9d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/7251473985cb2110.scss": {
@@ -4864,7 +4864,7 @@
       "cst": "eb53fd75f34fee1c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/7513c630f71d3902.scss": {
-      "ast": "1e8ee099fd46d83e",
+      "ast": "cfedcf7fb02e2b8a",
       "cst": "12397645e34ddf8a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/751bd22691e41296.scss": {
@@ -4944,7 +4944,7 @@
       "cst": "c3dc94127e5541c2"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/76f768df3c9f6a93.scss": {
-      "ast": "80bd74115d0bf554",
+      "ast": "156e1bee6a83ba65",
       "cst": "751cb9500a784d83"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/77257f2469e339e4.scss": {
@@ -4960,11 +4960,11 @@
       "cst": "825373b574b9e32a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/77553f78a3029bde.scss": {
-      "ast": "7c1e14f628c81275",
+      "ast": "29e3a1110298fc7d",
       "cst": "c34704a8fcea5fd9"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/775924ec77735761.scss": {
-      "ast": "0e80adf98faae37a",
+      "ast": "d16fcff34bed035e",
       "cst": "013e3acd474b2d76"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/778190252647738f.scss": {
@@ -5112,7 +5112,7 @@
       "cst": "c33362e073338261"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/7cccca2a2eb7bc19.scss": {
-      "ast": "5405c1791d19e49e",
+      "ast": "6f2ec1a21badc564",
       "cst": "7fb9eff2de69bf0c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/7cea71cd330ce717.scss": {
@@ -5240,7 +5240,7 @@
       "cst": "7a25789b5f7c7820"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/8087d14a3d2053a8.scss": {
-      "ast": "85d08e6c3ecfa99a",
+      "ast": "790d80ec33a5a1f1",
       "cst": "3f00bbb8eff8fd20"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/80a5827b0240c2d7.scss": {
@@ -5248,7 +5248,7 @@
       "cst": "d6558608b19761b0"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/80b7f16420744b1d.scss": {
-      "ast": "5580fc2944fbea68",
+      "ast": "82f6ff75dc59c7c7",
       "cst": "c38761e3b3b55f4c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/80eaea9dd9714806.scss": {
@@ -5264,7 +5264,7 @@
       "cst": "c88af6666a0f7484"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/811928f1bc673a42.scss": {
-      "ast": "61e9c6b14fc29f74",
+      "ast": "a6518c49e7986b92",
       "cst": "28b0501641a6fdf9"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/811d77bceb3fcfc1.scss": {
@@ -5336,7 +5336,7 @@
       "cst": "dec561226144c9ca"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/83437b3decf2b8dc.scss": {
-      "ast": "dcc453b0e3bfb09d",
+      "ast": "f7e2cf2846e57f01",
       "cst": "51945aa161093483"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/8345025222bb8dfe.scss": {
@@ -5568,7 +5568,7 @@
       "cst": "7a25789b5f7c7820"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/8a172f543e4f6608.scss": {
-      "ast": "ea7e722c19972f4d",
+      "ast": "adfc3b8b3fb82093",
       "cst": "9e99d85e5136aee6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/8a1e297545143d30.scss": {
@@ -5628,7 +5628,7 @@
       "cst": "cf4a4c9d8fafa5b7"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/8b895137169f87d3.scss": {
-      "ast": "f59497cf00255cf3",
+      "ast": "4fe9a2fe19da0fce",
       "cst": "a0ce4a7805e96a72"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/8b9c6874c8dc82fd.scss": {
@@ -5680,7 +5680,7 @@
       "cst": "02f42def2d498f61"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/8d7965c787d6e2df.scss": {
-      "ast": "92edbae2edc203df",
+      "ast": "de8277f6ccd2d90a",
       "cst": "bb328e4dc20aceeb"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/8dc513c38501b3dd.scss": {
@@ -5764,7 +5764,7 @@
       "cst": "b272a9224b3d94ef"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/9015880fe79a8b45.scss": {
-      "ast": "c0681a3356d1cd8d",
+      "ast": "5a07fd3f159dc9de",
       "cst": "d69c3f76eb876c32"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/90448a3b1f7dd037.scss": {
@@ -5840,7 +5840,7 @@
       "cst": "d77627d279c300c0"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/93802270cd9c5983.scss": {
-      "ast": "93fb17043505152a",
+      "ast": "ded776f3694f057a",
       "cst": "73130e2f401ed49d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/938e760c6e663233.scss": {
@@ -5892,7 +5892,7 @@
       "cst": "dcd8cfe93dead0f6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/94792d90effbcf39.scss": {
-      "ast": "fbc3735bd805e8d1",
+      "ast": "189440bd9afcadf0",
       "cst": "43e2436f0e6e14f6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/947a9b7f94716309.scss": {
@@ -5948,7 +5948,7 @@
       "cst": "ef323f033db93610"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/95a934f033dbfeb7.scss": {
-      "ast": "80d2d2eb8c16ca83",
+      "ast": "32781dde7934cc14",
       "cst": "b48ac1d29133eeb8"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/95c10a6e87074f69.scss": {
@@ -6032,7 +6032,7 @@
       "cst": "39f5d31244bddce6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/98136872c7791c24.scss": {
-      "ast": "554f0246536e32b9",
+      "ast": "9044dfa2c85e3c00",
       "cst": "4fbf2dacab7a8993"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/9822d943ce3910e8.scss": {
@@ -6060,7 +6060,7 @@
       "cst": "07b0a646a4a5b02a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/98abd9cf0685a0cd.scss": {
-      "ast": "e4812a7e5504371b",
+      "ast": "a0f8c8e0c1c6d4c7",
       "cst": "c77fba42173a7b0b"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/98ecad7805586179.scss": {
@@ -6088,7 +6088,7 @@
       "cst": "20201d9884ffe495"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/997959b1f5589510.scss": {
-      "ast": "4f7bd68f36c5a0a6",
+      "ast": "f10b3686ffccee63",
       "cst": "e5058abf694cf91b"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/99a51ddf3861d8a4.scss": {
@@ -6228,7 +6228,7 @@
       "cst": "eecaae6f004e59f8"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/9c510db651cf0667.scss": {
-      "ast": "62933b8765ccc0b0",
+      "ast": "4dfbd60cb1c91bb8",
       "cst": "349347729e3d6218"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/9c7118c2e4c1df48.scss": {
@@ -6452,7 +6452,7 @@
       "cst": "7a25789b5f7c7820"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/a1c53840eb916838.scss": {
-      "ast": "68739fbbcdb75785",
+      "ast": "bb49629963f3277e",
       "cst": "4236bd9ff55d8ce4"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/a1e6d446b3113575.scss": {
@@ -6476,7 +6476,7 @@
       "cst": "731229b825201cee"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/a2f09c59cb3a3d79.scss": {
-      "ast": "f7193b4648b40f9f",
+      "ast": "4f691bf463bf53d7",
       "cst": "c7edf752f01dbeea"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/a2f3a80e9ed783f9.scss": {
@@ -6560,7 +6560,7 @@
       "cst": "9f256cbd9990c104"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/a585d7b3cf07308f.scss": {
-      "ast": "e61480b8388d195d",
+      "ast": "d614afe77236fe00",
       "cst": "d2cb876f4c318252"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/a58d2edd766c810f.scss": {
@@ -6640,7 +6640,7 @@
       "cst": "c514a58a3d77ef9c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/a7bb5debaffac46c.scss": {
-      "ast": "7c90fa55dca1d74f",
+      "ast": "106e943578dd5006",
       "cst": "83eeec9ad38d1fe8"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/a7c97460b7854082.scss": {
@@ -6824,7 +6824,7 @@
       "cst": "221924adb861be40"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/aaeefb30c6420a29.scss": {
-      "ast": "ba81b11a0519e05d",
+      "ast": "06fed98360c3b477",
       "cst": "059e1c762a3e0bf8"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/aaef8da1e6df066c.scss": {
@@ -6848,11 +6848,11 @@
       "cst": "26afdd5135a62ed9"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/abfe0f253210f58e.scss": {
-      "ast": "bd4c091d29488c13",
+      "ast": "28b482cfefa8a0a7",
       "cst": "e2b1b907b63b1f1f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/ac23625fd2184813.scss": {
-      "ast": "3597b7900b19175e",
+      "ast": "16df6e763e4e3ac9",
       "cst": "2922d1de47ca3ee2"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/ac26df4a6ded292f.scss": {
@@ -6900,7 +6900,7 @@
       "cst": "7e0744de278ba13f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/adcca9eaba1bc6b5.scss": {
-      "ast": "ea7e722c19972f4d",
+      "ast": "adfc3b8b3fb82093",
       "cst": "9e99d85e5136aee6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/add7b850313a2a73.scss": {
@@ -7036,7 +7036,7 @@
       "cst": "aa18ff67424d1840"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/b172e12a9167df71.scss": {
-      "ast": "f77eba62aec0a704",
+      "ast": "c6b3f76ad2ab483a",
       "cst": "7e24aa19fa13f4e4"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/b17f2ffdb6178798.scss": {
@@ -7332,7 +7332,7 @@
       "cst": "d1ed34393f2fbb74"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/b88609d12cb31ff9.scss": {
-      "ast": "b0b519ff06b98a34",
+      "ast": "fec7144210bcf711",
       "cst": "e9e463c94ea9b3dd"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/b890ba99be7b0ddc.scss": {
@@ -7396,7 +7396,7 @@
       "cst": "d443f1ce10790c43"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/ba8c9bedbe17b9e9.scss": {
-      "ast": "bb7690886a9ba2c9",
+      "ast": "0d6b576f7b955a16",
       "cst": "b251e568a1eb4b94"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/ba915d13ee0e54ce.scss": {
@@ -7420,7 +7420,7 @@
       "cst": "aadaa2b1a4c4ff18"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/babc2629dc7189c2.scss": {
-      "ast": "2c3d83a6447037f6",
+      "ast": "72c31815f1996a4f",
       "cst": "349fd2945c87dee0"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/baef10fe0e31210c.scss": {
@@ -7444,7 +7444,7 @@
       "cst": "48f26918d9d8f38d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/bb726b116eedd4ae.scss": {
-      "ast": "a6b97d64f9348e58",
+      "ast": "791dbaf5df1cd4a7",
       "cst": "71d0cf3db1c11e5c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/bb8386d03e998ebb.scss": {
@@ -7480,7 +7480,7 @@
       "cst": "d443f1ce10790c43"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/bc4f68d47300a5c5.scss": {
-      "ast": "834ecf9474486652",
+      "ast": "506b09fcac4789c9",
       "cst": "98d8c52ab99ffd02"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/bc604e122acc3ad8.scss": {
@@ -7504,7 +7504,7 @@
       "cst": "8311bb8c7b81e2da"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/bcf9dc6847409733.scss": {
-      "ast": "b4224ffacf358108",
+      "ast": "71591aec723d980b",
       "cst": "249f9a490d22743f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/bcff374078240a1b.scss": {
@@ -7576,7 +7576,7 @@
       "cst": "696dfaa01ad382dd"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/be7fda7dcf0209c3.scss": {
-      "ast": "b0b519ff06b98a34",
+      "ast": "fec7144210bcf711",
       "cst": "0d1ebf2a281e2a97"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/be891ba54fc33c55.scss": {
@@ -7620,7 +7620,7 @@
       "cst": "170c337211366d47"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/bf327543e77eef63.scss": {
-      "ast": "77983d85a8f0d9fe",
+      "ast": "917cd0b29dc86cde",
       "cst": "639c4619230aaf96"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/bf8f53faf9eee016.scss": {
@@ -7764,7 +7764,7 @@
       "cst": "cb4447e229e4c95c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/c2360a684dbff022.scss": {
-      "ast": "634984a3cf607aca",
+      "ast": "1b4dc904db83e328",
       "cst": "db0176825ed0ad45"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/c256333cad9c3e6e.scss": {
@@ -7868,7 +7868,7 @@
       "cst": "39f5d31244bddce6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/c536e57e2de102e3.scss": {
-      "ast": "b0b519ff06b98a34",
+      "ast": "fec7144210bcf711",
       "cst": "cd8335f978342364"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/c53fab6838c20ef6.scss": {
@@ -7920,7 +7920,7 @@
       "cst": "824d7d9d400700c4"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/c62579265e32372a.scss": {
-      "ast": "f59497cf00255cf3",
+      "ast": "4fe9a2fe19da0fce",
       "cst": "e9ed083e2c235455"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/c63b9b53b86d7a97.scss": {
@@ -7992,11 +7992,11 @@
       "cst": "dfc284724197c192"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/c80fa783b7b4653b.scss": {
-      "ast": "3e27b65821880e9a",
+      "ast": "7fd0d105f035dc1b",
       "cst": "f915f7eb191a32b5"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/c830aeb7255f3631.scss": {
-      "ast": "4795c9080fb99b8f",
+      "ast": "b8e3b0186ed6956d",
       "cst": "186a23f72c638b26"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/c83c81fc58304e3c.scss": {
@@ -8084,7 +8084,7 @@
       "cst": "3770f01a9d7443a9"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/cacfa7a178adb14e.scss": {
-      "ast": "7ff90a12414bb49a",
+      "ast": "34199391676a5646",
       "cst": "2e7b53b449016258"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/caece619ddfcb2dc.scss": {
@@ -8152,11 +8152,11 @@
       "cst": "0c3935465bdaab98"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/ccf5fe6d8ecb38e8.scss": {
-      "ast": "0e27cb626298b698",
+      "ast": "c5fc8600cc0469f1",
       "cst": "982129b7fbb1dfaa"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/cd01418455308337.scss": {
-      "ast": "7c25c73dbd38df1e",
+      "ast": "114cdc3cac8073ca",
       "cst": "9431da19709cea53"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/cd244fe1770bc54d.scss": {
@@ -8180,11 +8180,11 @@
       "cst": "89636303198f02b8"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/cda1be4111d7bfa4.scss": {
-      "ast": "2494fbb06d19c07d",
+      "ast": "332516b92bc92c59",
       "cst": "9a7977b7b34cc09f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/cdd4a7ef90b10dec.scss": {
-      "ast": "2e679d19a925f474",
+      "ast": "267a7e5b3ad0fa6e",
       "cst": "0724debd560fc03a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/cdd5bc94e83a170a.scss": {
@@ -8276,7 +8276,7 @@
       "cst": "10badfcae4901427"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/d054f60a269b8e2d.scss": {
-      "ast": "77592c0f17ff24c8",
+      "ast": "39fedf5922dd1c85",
       "cst": "e367dc6d338d5142"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/d0618c4325bf2968.scss": {
@@ -8368,7 +8368,7 @@
       "cst": "f4c17e337a04c1af"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/d255543c0e55cd0e.scss": {
-      "ast": "0a97f4b13b7aa740",
+      "ast": "1899e2e8467827dd",
       "cst": "c79a1228225b2359"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/d25ce584a4050f26.scss": {
@@ -8684,7 +8684,7 @@
       "cst": "d2bd35a9b7b20346"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/dba4091fa60eb1df.scss": {
-      "ast": "3554c7cdf8b07bde",
+      "ast": "3e6c18c6cb1d1d68",
       "cst": "85fefd56d08d40dd"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/dba6098f8a188bb7.scss": {
@@ -8784,7 +8784,7 @@
       "cst": "b00259e71c27dc6e"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/df8c15ed689a93c0.scss": {
-      "ast": "58e19a3471d05edf",
+      "ast": "9dee499b48eaf0e3",
       "cst": "f3b5cd64dd4bd413"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/df9eb2e100ab1f1e.scss": {
@@ -8856,7 +8856,7 @@
       "cst": "4dd5fdc2ea61af8b"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e101dbf46a4f7b45.scss": {
-      "ast": "df4cfe4a41bb4d53",
+      "ast": "01914ed425b3e7ae",
       "cst": "8b4bcd2262dae46c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e1104e8c580905cd.scss": {
@@ -8888,7 +8888,7 @@
       "cst": "c4b21f2df25b2ae1"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e1954fc6636b2574.scss": {
-      "ast": "9fe247c248226891",
+      "ast": "71c19d69d222af15",
       "cst": "c78ca1696623217a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e19816445d1074f8.scss": {
@@ -8900,7 +8900,7 @@
       "cst": "39f5d31244bddce6"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e1def93275565e8f.scss": {
-      "ast": "0cc67830dae3cce7",
+      "ast": "6779dbc469cde51d",
       "cst": "a5b13efd9e107477"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e2023f3ccbcd4eff.scss": {
@@ -8912,7 +8912,7 @@
       "cst": "c6c3d0395909f6bb"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e2111601bbc0bf69.scss": {
-      "ast": "25aa264e38ef898d",
+      "ast": "b1b5c311bdfb7bed",
       "cst": "0883c9d4924ad218"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e234f9001458a88a.scss": {
@@ -8964,7 +8964,7 @@
       "cst": "423e1978baf795af"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e3bcbd0c752fdacf.scss": {
-      "ast": "9ffb0158f910e00a",
+      "ast": "f6e661d5cfa9f668",
       "cst": "d1dbec4c5eb28d17"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e3e4a3d2e51b58e1.scss": {
@@ -8996,11 +8996,11 @@
       "cst": "fa57afcc6ec1519c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e45dcfc668731fb7.scss": {
-      "ast": "292846cc75e1770f",
+      "ast": "eeadb16ae4c5992a",
       "cst": "7e978687e470a799"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e46b2c93167fb99b.scss": {
-      "ast": "1bf10e2cb3ebe277",
+      "ast": "f0cb56addf9318e4",
       "cst": "ccdd733b30c2ccc2"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e46d4fe5d731ba5a.scss": {
@@ -9052,7 +9052,7 @@
       "cst": "15d9f59144594f8a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e58dde023fadd78b.scss": {
-      "ast": "16b9b0e4c3085234",
+      "ast": "7350e78c0b33c37b",
       "cst": "2d893f090fde531f"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e58f682f2e63f922.scss": {
@@ -9208,7 +9208,7 @@
       "cst": "fd9df36e69b301f3"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e9cf62ad4338de60.scss": {
-      "ast": "8cc66b143bd54764",
+      "ast": "a5b5f4d7e5eac5ca",
       "cst": "00d483b3ca77078d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/e9d3b0d2aa880371.scss": {
@@ -9308,7 +9308,7 @@
       "cst": "9d3f59466d0f5352"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/ebcbdf701c658fc6.scss": {
-      "ast": "026c07e0d6244e6c",
+      "ast": "eb3c01b7df0fae62",
       "cst": "240dc22d7d3cb1ca"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/ec0a26bd36595619.scss": {
@@ -9356,7 +9356,7 @@
       "cst": "78783e579d3daa6e"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/ed8dd46f30c2652b.scss": {
-      "ast": "1282b8a21e5678b3",
+      "ast": "f6cc4bf12430af38",
       "cst": "a23c5269624ff986"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/ed9b0be5164ba5c4.scss": {
@@ -9480,7 +9480,7 @@
       "cst": "c875b86d915c516d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f0aaebd09e042b56.scss": {
-      "ast": "23470624ce5275d6",
+      "ast": "47a3562672bf64e1",
       "cst": "d690c969f40858cf"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f0cda2d2e793fb34.scss": {
@@ -9516,7 +9516,7 @@
       "cst": "d0855dd4e826c849"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f137e39deedc1f71.scss": {
-      "ast": "4dd7d5f229860e46",
+      "ast": "fda4389c05b9ce82",
       "cst": "1fddef73fcd6c6d5"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f15950dab49d79b4.scss": {
@@ -9564,7 +9564,7 @@
       "cst": "a743ebcab80bbe45"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f2e4b354ba47f636.scss": {
-      "ast": "bcf34f8affaae709",
+      "ast": "8e667c0a33d58d68",
       "cst": "d2e245226a290129"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f2fb6e94a122adba.scss": {
@@ -9812,7 +9812,7 @@
       "cst": "43b812234294f379"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f8f83caf780dbf2e.scss": {
-      "ast": "d30014a1660f17ab",
+      "ast": "8ec1d7c70dd4c529",
       "cst": "eec68e04961453d3"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f904adb8aef96d15.scss": {
@@ -9820,7 +9820,7 @@
       "cst": "65febac371c79dcd"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f91489ead042d0a7.scss": {
-      "ast": "8a918a27ed3e21e6",
+      "ast": "67c9e27568d3e5cc",
       "cst": "8646f2b1060e7308"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f92987ff5894328d.scss": {
@@ -9828,7 +9828,7 @@
       "cst": "55db77ff48e62d9a"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f9a5903bc98e2acd.scss": {
-      "ast": "61c4cf23021422bd",
+      "ast": "cdfab49c7f22c4fc",
       "cst": "8dabb7f0746ae342"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f9c89a3d09fbf06e.scss": {
@@ -9860,7 +9860,7 @@
       "cst": "8c9381476cb54a83"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fa3ca6534428cee3.scss": {
-      "ast": "de65c1ebfbf9fd5b",
+      "ast": "614cdf0291323aa2",
       "cst": "7d626b6e09b78a09"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fa47e678109e8061.scss": {
@@ -9924,7 +9924,7 @@
       "cst": "ecf1a4471cfe527b"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fb68cd201cef18a6.scss": {
-      "ast": "4c9881b20d7666af",
+      "ast": "dcb9ad311ddc5f41",
       "cst": "1ffbea2478b1cc83"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fb8ce2fac7989dca.scss": {
@@ -9952,7 +9952,7 @@
       "cst": "7eb940f60b3ee77c"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fc7a57dbd7c5e5a3.scss": {
-      "ast": "f1b3100c2fafe3c0",
+      "ast": "010b3b96ccf113a2",
       "cst": "bec467ddeede30f2"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fca729b5461e52fd.scss": {
@@ -9992,7 +9992,7 @@
       "cst": "f95f17bc98b5f0b0"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fd2cd716c7a63cf3.scss": {
-      "ast": "9ed9435be46748fc",
+      "ast": "5d3ae7faa4e26e31",
       "cst": "c9ff5496c22328f9"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fd3c11b859b3a8a9.scss": {
@@ -10004,7 +10004,7 @@
       "cst": "08186d0ef992f6e0"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fda361c088af539c.scss": {
-      "ast": "52ebd23dcd3deb67",
+      "ast": "252f9d58fdd6074b",
       "cst": "0ecb64e0d6c092fe"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fddc71790bd6ee5e.scss": {
@@ -10036,7 +10036,7 @@
       "cst": "eb40d8a6e54f9e11"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fe98a46dfcfc4a20.scss": {
-      "ast": "35018828f9a8d220",
+      "ast": "36486b81f77b1100",
       "cst": "5db8f6299c80a20d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/fe99be61171534fa.scss": {
@@ -10124,8 +10124,9 @@
       "cst": "dbe89f1a1a637fbe"
     },
     "packages/syntax/scss/scss-parser/test/interpolated-pseudo-argument.scss": {
-      "ast": "e116c541cc32ebb2",
+      "ast": "1110c2ac38069061",
       "cst": "4726777c9c42d920"
     }
-  }
+  },
+  "authority": "owner 2026-11-27: \"it's a reference to \\\"x\\\" -- \\\"x\\\" is the variable reference, the $ is just how it serializes / parses\" and \"i mean we can and do store RAW values\" — SCSS variable lookups' raw now records the source as written ($x, was @x); names unchanged (141 AST entries, CST unchanged)"
 }

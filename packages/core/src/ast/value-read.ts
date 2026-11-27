@@ -110,11 +110,11 @@ function spelling(read: object): string {
 }
 
 /**
- * A read of the variable `name` as its document's dialect writes it (`@x`,
- * `$x`, `$^x`), from the plugin that parsed `node`.
+ * A variable read as it was written (`@x`, `$x`, `$^x`). An indirect `@@x`
+ * names the variable its name resolved to, which only Less spells.
  */
-export const writtenVariable = (node: Lookup, name: string, s: { readonly context: Context | undefined }): string =>
-  (s.context?.documentOfNode(node) ?? s.context?.sourceContext)?.plugin?.writeVariable?.(name, node.scope) ?? `@${name}`;
+export const writtenVariable = (node: Lookup, name: string): string =>
+  typeof node.name === 'string' ? node.raw : `@${name}`;
 
 /**
  * The mixin a reference call (`@foo();`) reached through a variable, placed at

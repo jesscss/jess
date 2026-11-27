@@ -29,12 +29,12 @@ function locationIn(authored: TreeContextLike['file'], node: object): SiteLocati
  * Where an error points. A span means something only in the file that wrote it,
  * and the document a lane is in need not be that file: a function's `@return` is
  * read on its caller's lane, and a scratch session has no `context` at all. So the
- * file comes from the node ({@link Context.documentOfNode}). A node no document holds,
+ * file comes from the node ({@link Context.fileOfNode}). A node no document holds,
  * because evaluation built it, is read in the lane's document, and on a scratch
  * session in none.
  */
 export function callSiteLocation(node: object, s: { readonly context: Context | undefined; readonly locating?: Context | undefined }): SiteLocation {
-  return locationIn((s.context ?? s.locating)?.documentOfNode(node)?.file ?? s.context?.sourceContext?.file, node);
+  return locationIn((s.context ?? s.locating)?.fileOfNode(node) ?? s.context?.sourceContext?.file, node);
 }
 
 /**

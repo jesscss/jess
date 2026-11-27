@@ -1,4 +1,4 @@
-import type { Statement, Stylesheet, VariableLookup } from './ast/nodes.js';
+import type { Statement, Stylesheet } from './ast/nodes.js';
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 export type { ImportOptions } from './import-options.js';
 import type { Context, ContextOptions, ResolvedOptions, SourceOptions, SourceSettings } from './context.js';
@@ -194,13 +194,6 @@ export interface PluginInterface {
    * no dots e.g. `['less', 'scss']`
    */
   supportedExtensions?: string[];
-
-  /**
-   * How this dialect writes a read of the variable `name`, for a message that
-   * names it (`$nope`). The AST holds only the name; a dialect without one
-   * is written as Less writes it (`@nope`).
-   */
-  writeVariable?(name: string, scope: VariableLookup): string;
 
   /**
    * Expand an import path into a set of paths to try.

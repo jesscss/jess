@@ -895,7 +895,7 @@ export class Context {
    */
   private readonly documentContexts = new Map<Stylesheet, DocumentContext>();
 
-  /** The document that parsed each node, filled by {@link documentOfNode} on the first diagnostic that asks. */
+  /** The document that parsed each node, filled by {@link fileOfNode} on the first diagnostic that asks. */
   private readonly nodeDocuments = new WeakMap<object, DocumentContext>();
 
   /** How many of {@link documentContexts}, in the order they entered, {@link nodeDocuments} covers. */
@@ -1122,11 +1122,11 @@ export class Context {
   }
 
   /**
-   * The document that parsed a node, or undefined for a node no document holds.
+   * The file that wrote a parsed node, or undefined for a node no document holds.
    * A diagnostic asks this, so the cost is one walk of each document the first time
    * a diagnostic is raised after it entered, and nothing on a compile that raises none.
    */
-  documentOfNode(node: object): DocumentContext | undefined {
+  fileOfNode(node: object): DocumentContext['file'] | undefined {
     if (this.indexedDocuments < this.documentContexts.size) {
       let position = 0;
       for (const [document, owner] of this.documentContexts) {
@@ -1136,7 +1136,7 @@ export class Context {
       }
       this.indexedDocuments = this.documentContexts.size;
     }
-    return this.nodeDocuments.get(node);
+    return this.nodeDocuments.get(node)?.file;
   }
 
   /** The document that recorded `body` (a root definition's body or a root variable's value), if one did. */

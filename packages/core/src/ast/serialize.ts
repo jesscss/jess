@@ -4069,9 +4069,9 @@ const literalName = (node: Lookup): string => typeof node.name === 'string' ? no
 
 function unresolvedRef(node: Lookup, name: string, e: Lane): EvalValue {
   if (!e.optional) {
-    unresolvedSymbol(node, writtenVariable(node, name, e.s), e);
+    unresolvedSymbol(node, writtenVariable(node, name), e);
   }
-  return literal(writtenVariable(node, name, e.s));
+  return literal(writtenVariable(node, name));
 }
 
 /**
@@ -5123,7 +5123,7 @@ function evalTyped(
           : resolveVarRef(frame, nm, node.scope, e, node);
         if (!hit) {
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
-            recursiveReference(node, writtenVariable(node, nm, e.s), 'Variable', e);
+            recursiveReference(node, writtenVariable(node, nm), 'Variable', e);
           }
           return force(unresolvedRef(node, nm, e));
         }
@@ -5988,7 +5988,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
           const hit = resolveVarRef(frame, nm, node.scope, e, node);
           if (!hit) {
             if (hasExcludedVarRef(frame, nm, node.scope, e)) {
-              recursiveReference(node, writtenVariable(node, nm, e.s), 'Variable', e);
+              recursiveReference(node, writtenVariable(node, nm), 'Variable', e);
             }
             return unresolvedRef(node, nm, e);
           }
@@ -17945,7 +17945,7 @@ function expandReferenceCall(
      * not a cross-frame read. Every OTHER unresolved reference is still a hard miss.
      */
     if (call.base.type === 'Lookup' && call.base.kind === 'var' && call.base.name !== 'content') {
-      unresolvedSymbol(call, writtenVariable(call.base, literalName(call.base), e.s), e);
+      unresolvedSymbol(call, writtenVariable(call.base, literalName(call.base)), e);
     }
     return;
   }
@@ -21883,7 +21883,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
         const hit = resolveVarRef(frame, nm, node.scope, e, node);
         if (!hit) {
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
-            recursiveReference(node, writtenVariable(node, nm, e.s), 'Variable', e);
+            recursiveReference(node, writtenVariable(node, nm), 'Variable', e);
           }
           return mapMaybe(evalBytes(node, frame, e), leaf);
         }
