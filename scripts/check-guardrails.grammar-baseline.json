@@ -1281,7 +1281,7 @@
       "resolved": "218ca6d936b8fe9b",
       "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576",
-      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan. It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more."
+      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan. It reaches the Less bracket accessor, whose interpolation, variable-chain and namespace-chain copies are now one set of glued arms. The site reads the same text."
     },
     {
       "rule": "lookahead",
@@ -1292,7 +1292,7 @@
       "resolved": "218ca6d936b8fe9b",
       "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576",
-      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan. It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more."
+      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan. It reaches the Less bracket accessor, whose interpolation, variable-chain and namespace-chain copies are now one set of glued arms. The site reads the same text."
     },
     {
       "rule": "lookahead",
@@ -1303,7 +1303,7 @@
       "resolved": "218ca6d936b8fe9b",
       "why": "its selector looks past one token: `unicodeRange` — regex /[Uu]\\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/: its pattern spans more than one token",
       "issue": "jesscss/jess#576",
-      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan. It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more."
+      "changed": "SCSS overrides identOrFunction with a CustomPropertyToken arm, so this selector also reads a custom-property name: one token, no wider scan. It reaches the Less bracket accessor, whose interpolation, variable-chain and namespace-chain copies are now one set of glued arms. The site reads the same text."
     },
     {
       "rule": "lookahead",
@@ -1311,8 +1311,8 @@
       "line": 1694,
       "const": "inlineJavaScriptFollowingDeclaration",
       "construct": "peek(choice(literal('}'), sequence(choice(variableName, g.PunctuationMapKeyToken, sequence(choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPr…",
-      "resolved": "73333a7a17820a01",
-      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` named like a grammar definition (it skips the reducers passed to `node(…)`), so this site stopped reading such locals. The site reads the same grammar. It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more.",
+      "resolved": "5188f9bd319575af",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` named like a grammar definition (it skips the reducers passed to `node(…)`), so this site stopped reading such locals. The site reads the same grammar. It reaches the Less bracket accessor, whose interpolation, variable-chain and namespace-chain copies are now one set of glued arms. The site reads the same text.",
       "why": "`variableNameEscape` — a sequence of more than one token",
       "issue": "jesscss/jess#576"
     },
@@ -1322,8 +1322,8 @@
       "line": 2280,
       "const": "BacktickJavaScript",
       "construct": "{ gate: state => contextOf(state) === 'at-rule-javascript', combinator: atRuleInlineJavaScriptBody }",
-      "resolved": "6c2171b853efd76c",
-      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` named like a grammar definition (it skips the reducers passed to `node(…)`), so this site stopped reading such locals. The site reads the same grammar. It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more.",
+      "resolved": "2cc308b8afab4fe6",
+      "changed": "jesscss/jess#645: the fingerprint no longer reads a reducer-local `const` named like a grammar definition (it skips the reducers passed to `node(…)`), so this site stopped reading such locals. The site reads the same grammar. It reaches the Less bracket accessor, whose interpolation, variable-chain and namespace-chain copies are now one set of glued arms. The site reads the same text.",
       "why": "this arm starts by reading past one token: `scanTo(literal('`'), { recoverAt: inlineJavaScriptRecoveryBoundary, stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration), skip:…`",
       "issue": "jesscss/jess#576"
     },
@@ -1333,10 +1333,19 @@
       "line": 4253,
       "const": "MediaTypeTerm",
       "construct": "attempt(g.MixinReferenceChain)",
-      "resolved": "910a9c276e973859",
+      "resolved": "33cd9d2e2b6c1582",
       "why": "attempt() tries a parse and rolls it back on failure: backtracking",
-      "issue": "jesscss/jess#576",
-      "changed": "It reaches the Less lookup chain, whose bracket step is now one bracket accessor that also reads trivia around a lookup's key (`@map[ @k ]`), and which a mixin-call statement now continues (`.m()[@k]();`). The site's own lookahead is unchanged; only the lookups it reaches read more."
+      "issue": "jesscss/jess#576"
+    },
+    {
+      "rule": "lookahead",
+      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "line": 3336,
+      "const": "ReferenceTailFromDelimiter",
+      "construct": "choice(literal('[]'), literal('['), literal('.'), literal('('))",
+      "resolved": "0ec4cb5461eee774",
+      "why": "its selector looks past one token: its text \"[]\" spans more than one token",
+      "issue": "jesscss/jess#576"
     }
   ],
   "undocumentedRules": {

@@ -1121,19 +1121,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(literal('[]')),
     (): InterpolationAccessorFact => ({ key: -1, keyKind: 'index', src: '-1' })
   );
-  /**
-   * `[ ]` after its `[`: the `[]` that trivia pads. A glued `[]` stays the one
-   * `[]` token above, so its CST reads as the source's one token.
-   */
-  const InterpolationPaddedLastAccessor = node(
-    'InterpolationLastAccessor',
-    sequence(routed(), literal(']')),
-    (): InterpolationAccessorFact => ({ key: -1, keyKind: 'index', src: '-1' })
-  );
-  /** `[0]` after its `[`: a positional index (ledger P15), padded or not. */
+  /** `[0]` after its `[`: a positional index (ledger P15). */
   const InterpolationIndexAccessor = node(
     'InterpolationIndexAccessor',
-    sequence(routed(), noTrivia(g.InterpolationIndex), literal(']')),
+    noTrivia(sequence(routed(), g.InterpolationIndex, literal(']'))),
     (children): InterpolationAccessorFact => {
       const text = requireToken(children[1]).value;
       return { key: Number(text), keyKind: 'index', src: text };
@@ -1143,11 +1134,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * `[$@name]` after its `[`: a property-map key selected by the VALUE of
    * `@name` (`#namespace[$@prop-name]`). The indirection and the property
    * namespace both stay explicit: the resolver evaluates the key, then
-   * `keyKind: 'prop'` selects the declaration-member map. `$@name` is glued.
+   * `keyKind: 'prop'` selects the declaration-member map.
    */
   const InterpolationPropertyVariableAccessor = node(
     'InterpolationPropertyVariableAccessor',
-    sequence(routed(), noTrivia(sequence(literal('$'), g.VariableReference)), literal(']')),
+    noTrivia(sequence(routed(), literal('$'), g.VariableReference, literal(']'))),
     (children): InterpolationAccessorFact => {
       const key = requireValueNode(children[2]);
       if (!isVarRef(key)) {
@@ -1159,11 +1150,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /** `[@@name]`, `[@name]`, `[$name]` or `[name]` after its `[`: a member key. */
   const InterpolationReferenceAccessor = node(
     'InterpolationReferenceAccessor',
-    sequence(
+    noTrivia(sequence(
       routed(),
-      noTrivia(choice(g.IndirectVariableReference, g.VariableReference, g.PropertyReference, g.InterpolationKey)),
+      choice(g.IndirectVariableReference, g.VariableReference, g.PropertyReference, g.InterpolationKey),
       literal(']')
-    ),
+    )),
     (children): InterpolationAccessorFact => {
       const key = children[1];
       if (isVarIndirect(key)) {
@@ -1183,28 +1174,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return { key: keyword(text), keyKind: 'prop', src: text };
     }
   );
+  // The keyed arms after a routed `[`: the one definition both the accessor
+  // below and the namespace chain's committed route (`ReferenceTailFromDelimiter`) read.
+  const keyedAccessor = choice(
+    InterpolationIndexAccessor,
+    InterpolationPropertyVariableAccessor,
+    InterpolationReferenceAccessor
+  );
   /**
    * The one bracket accessor: an interpolation's (`@{name[key]}`), a variable
    * chain's (`@map[key]`) and a namespace/mixin chain's (`#ns[key]`). A `[`
    * that does not open `[]` is read once and the key decides the arm; a `[`
    * no arm reads stays unread (`"@{m[ k ]}"` is a string's text, `[a=b]` an
    * attribute selector), so the accessor fails without committing. The
-   * arms skip whatever trivia the caller has on: a lookup step turns it on
-   * (`@map[ @k ]`, as css-syntax-3 §5.4.8 keeps whitespace inside a `[]`
-   * block), an interpolation keeps it off. The key itself is always glued
-   * (`[$@name]`, never `[$ @name]`).
+   * brackets and the key are glued: `@map[ k ]` is no accessor.
    */
   const InterpolationAccessor = choice(
     InterpolationLastAccessor,
-    dispatch(
-      literal('['),
-      otherwise(choice(
-        InterpolationIndexAccessor,
-        InterpolationPropertyVariableAccessor,
-        InterpolationReferenceAccessor,
-        InterpolationPaddedLastAccessor
-      ), { commit: false })
-    )
+    dispatch(literal('['), otherwise(keyedAccessor, { commit: false }))
   );
   // Left-factored `@`+name so the ubiquitous plain `@var` is parsed ONCE: the
   // accessor tails are optional, so a bare variable reference no longer parses
@@ -3296,16 +3283,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * The steps of the one lookup/call chain (REFERENCE-CALL-PLAN): a `[key]`
    * lookup, a `.name` member lookup, or an `(args)` call, any following any.
-   * A bracket step is the bracket accessor an interpolation reads, with
-   * trivia on inside its brackets (`@map[ @k ]`); the step itself stays glued
-   * to what it follows. The
-   * value-position chains (`@map[key]`, `#ns.m()[key]`) read every step
-   * through `ReferenceTail`; the statement calls (`@name…(…);`, `.m()[key]();`)
-   * read the lookups and the calls separately, since a statement ends in a call.
+   * A bracket step is the bracket accessor an interpolation reads. The
+   * value-position chain reads them through
+   * `ReferenceTail`; the statement call `@name…(…);` (`ReferenceCall`) reads
+   * the same three.
    */
   const ReferenceBracketTail = node(
     'ReferenceBracketTail',
-    parser({ trivia: whitespace }, InterpolationAccessor),
+    InterpolationAccessor,
     referenceBracketTailFact
   );
   const ReferenceDotTail = node(
@@ -3318,13 +3303,52 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(literal('('), optional(g.MixinArguments), literal(')')),
     referenceCallTailFact
   );
-  const referenceLookupTail = choice(ReferenceBracketTail, ReferenceDotTail);
-  // The steps after a statement call's first call: more lookups, each run ending in a call.
-  const referenceCallSteps = many(sequence(many(referenceLookupTail), ReferenceCallTail));
   const ReferenceTail = choice(
     ReferenceBracketTail,
     ReferenceDotTail,
     ReferenceCallTail
+  );
+  /** `[]` routed by the namespace chain's delimiter dispatch: the final declaration, index -1. */
+  const InterpolationLastAccessorFromRouted = node(
+    'InterpolationLastAccessor',
+    noTrivia(routed()),
+    (): InterpolationAccessorFact => ({ key: -1, keyKind: 'index', src: '-1' })
+  );
+  /** The namespace chain's `[]` step, after its delimiter was read once. */
+  const ReferenceLastTailFromRouted = node(
+    'ReferenceBracketTail',
+    InterpolationLastAccessorFromRouted,
+    referenceBracketTailFact
+  );
+  /** The namespace chain's `[key]` step, after its `[` was read once: the keyed arms the bracket accessor reads. */
+  const ReferenceBracketTailFromRouted = node(
+    'ReferenceBracketTail',
+    keyedAccessor,
+    referenceBracketTailFact
+  );
+  /** The namespace chain's `.name` step, after its `.` was read once. */
+  const ReferenceDotTailFromRouted = node(
+    'ReferenceDotTail',
+    sequence(routed(), g.VariableNameToken),
+    referenceDotTailFact
+  );
+  /** The namespace chain's `(args)` step, after its `(` was read once. */
+  const ReferenceCallTailFromRouted = node(
+    'ReferenceCallTail',
+    sequence(routed(), optional(g.MixinArguments), literal(')')),
+    referenceCallTailFact
+  );
+  /**
+   * A namespace chain's step, routed by its delimiter (`[]`, `[`, `.`, `(`) read
+   * once. The route commits, so a malformed step (`#ns.m()[a=b]`) is reported
+   * at its delimiter.
+   */
+  const ReferenceTailFromDelimiter = dispatch(
+    choice(literal('[]'), literal('['), literal('.'), literal('(')),
+    when('[]', ReferenceLastTailFromRouted),
+    when('[', ReferenceBracketTailFromRouted),
+    when('.', ReferenceDotTailFromRouted),
+    when('(', ReferenceCallTailFromRouted)
   );
   // The callable value `each(.mixin(), …)` iterates. Keep it narrower than an
   // ordinary MixinCall: namespace paths, dynamic names, and call-level
@@ -3426,9 +3450,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * A namespace/mixin read: the shared base followed by at least one
    * lookup/call accessor, as one `Reference` value (a static invocation with no
    * accessor stays the typed `MixinCall`, selector-path combinators included).
-   * Each step is a `ReferenceTail`, decided by its opener (`[`, `.`, `(`). A
-   * malformed first step (`#ns.m()[a=b]`) fails the chain without committing,
-   * so the value reports it where its other arms fail too.
+   * The first accessor delimiter is consumed once and routed to the matching
+   * tail builder, so malformed accessor bodies stay on the selected reference
+   * route instead of probing forward with a broad value-position lookahead.
    * This is the ONE chain builder: the value atom below (`MixinReference`) and
    * the media-query term (`MediaTypeTerm`) both project through it.
    */
@@ -3436,7 +3460,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'MixinReference',
     sequence(
       MixinReferenceBase,
-      oneOrMore(g.ReferenceTail)
+      oneOrMore(ReferenceTailFromDelimiter)
     ),
     (children, _fields, span) => {
       const base = requireMixinReferenceBaseFact(children.find(isMixinReferenceBaseFact));
@@ -3463,6 +3487,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * spaced `@theme .elevate();` stays an at-rule statement. As before, the
    * first call may follow the name after whitespace (`@detached ();`).
    */
+  const referenceLookupTail = choice(ReferenceBracketTail, ReferenceDotTail);
   const referenceCallHead = sequence(
     noTrivia(sequence(
       literal('@'), not(word(
@@ -3472,7 +3497,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       )), lessVariableName, many(referenceLookupTail)
     )),
     ReferenceCallTail,
-    noTrivia(referenceCallSteps)
+    noTrivia(many(sequence(many(referenceLookupTail), ReferenceCallTail)))
   );
   const ReferenceCall = node(
     'VarCall',
@@ -5853,38 +5878,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     (children): MixinCallFact => ({
       fact: 'mixinCall',
       args: [],
-      important: children.some(child => isLessTerminalText(child, '!important')),
-      chain: null
-    })
-  );
-  /**
-   * A mixin call continued by the lookup/call chain of a statement call
-   * (`ReferenceCall`): `.m()[@k]();` calls what `.m()` returns under `@k`. The
-   * lookups are glued to the `)` and start at a `[`; the calls read as
-   * `ReferenceCall`'s do, so the first takes padded arguments
-   * (`.m()[@dr]( 1 );`). A glued `.`
-   * stays the next mixin call (`.m().n();`), and a `[` no call ends is a
-   * ruleset's attribute selector after a call written without its `;`
-   * (`.m()[a] { … }`), so the plain call reads the `)` instead.
-   */
-  const MixinCallChainContinuation = node(
-    'MixinCall',
-    parser({ trivia: mixinSignatureTrivia }, sequence(
-      noTrivia(sequence(literal(')'), ReferenceBracketTail, many(referenceLookupTail))),
-      ReferenceCallTail,
-      noTrivia(referenceCallSteps),
-      optional(literal(';'))
-    )),
-    (children, _fields, span, _rawChildren, _triviaLog, state): MixinCallFact => ({
-      fact: 'mixinCall',
-      args: [],
-      important: false,
-      chain: { baseEnd: span.start + 1, tails: children.filter(isReferenceTailFact), state }
+      important: children.some(child => isLessTerminalText(child, '!important'))
     })
   );
   const MixinStatementTail = node(
     'MixinStatement',
-    sequence(g.MixinInterior, choice(attempt(MixinDefinitionContinuation), MixinCallChainContinuation, MixinCallContinuation)),
+    sequence(g.MixinInterior, choice(attempt(MixinDefinitionContinuation), MixinCallContinuation)),
     (children): MixinStatementFact => {
       // The interior, then the continuation the `)` chose.
       const interior = requireMixinInteriorFact(children[0]);
@@ -5898,7 +5897,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
             extensions: tail.extensions,
             bodySpan: tail.bodySpan
           }
-        : { fact: 'mixinCall', args: mixinCallArgsFromInterior(interior), important: tail.important, chain: tail.chain };
+        : { fact: 'mixinCall', args: mixinCallArgsFromInterior(interior), important: tail.important };
     }
   );
   const BareMixinCall = node(
@@ -5977,12 +5976,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         );
       }
       if (tail.fact === 'mixinCall') {
-        if (tail.chain === null) {
-          return mixinCallFromSelectorBranch(prefix.selector, tail.args, tail.important, span);
-        }
-        const baseSpan = { start: span.start, end: tail.chain.baseEnd };
-        const base = mixinCallFromSelectorBranch(prefix.selector, tail.args, tail.important, baseSpan);
-        return withSourceSpan(referenceWithTails(base, authoredSource(baseSpan, tail.chain.state, 'A mixin call'), tail.chain.tails), span);
+        return mixinCallFromSelectorBranch(prefix.selector, tail.args, tail.important, span);
       }
       if (tail.fact === 'bareMixinCall') {
         return mixinCallFromSelectorBranch(prefix.selector, [], tail.important, span);
