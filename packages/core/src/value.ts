@@ -96,7 +96,7 @@ export { convertValue, foldUnit, groupOf, isCssUnit, unify, unitFactor } from '.
 export { parseHex, sniffLiteral, sniffUnnamed, spelledColor, coerceNamedColorKeyword } from './ast/literal-tag.js';
 
 // --- selector values (`&`, `selector.parse()`) ---
-export { selectorValue } from './ast/selector-text.js';
+export { interleave, selectorValue } from './ast/selector-text.js';
 
 // --- color name table ---
 export { namedColor } from './ast/color-names.js';

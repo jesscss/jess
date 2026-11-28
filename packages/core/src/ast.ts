@@ -51,7 +51,7 @@ export {
   charsetPreludeFrom,
   scannedLeaf,
   selectorCaptureOf,
-  selectorStringComponents,
+  selectorStringBranches,
   semanticGapText,
   withoutLineComments, preludeLineComment, preludeUrlToken, holdsInterpolationOpener,
   withBlockBody

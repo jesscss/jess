@@ -16,7 +16,7 @@
  * Dialect-specific helpers stay in their own `grammar.ts`.
  */
 import { isNameCode, isQuote, stringEnd } from './css-syntax.js';
-import { any, keyword, NULL_NODE, pseudoHasInterp, selectorBranchCanonical, selectorBranchComponents, selectorBranchHasAmpersand, selectorBranchHasInterp, selectorCapture } from './nodes.js';
+import { any, keyword, NULL_NODE, pseudoHasInterp, selectorBranchCanonical, selectorBranchComponents, selectorBranchHasInterp, selectorCapture } from './nodes.js';
 import { NO_SPAN, sourceEndOf, sourceStartOf, withBodySpan } from './provenance.js';
 import type {
   Any,
@@ -289,19 +289,13 @@ function isSelectorListChild(child: unknown): child is SelectorList {
 
 /**
  * What a dialect's selector-list production read a selector string into, as Sass's
- * `selector.parse()` takes it (`read` is `undefined` when the string was not a whole
- * selector list): each selector's compound selectors and combinators. Throws Dart
- * Sass's message for a string that is not a selector list, or that holds `&`.
+ * selector functions take it (`read` is `undefined` when the string was not a whole
+ * selector list): its selectors, or `null` for a string that is not a selector list.
+ * A selector may hold `&`; each function decides whether it takes one.
  */
-export function selectorStringComponents(read: unknown): string[][] {
+export function selectorStringBranches(read: unknown): SelectorBranch[] | null {
   const branches = isSelectorListChild(read) ? read.selectors : undefined;
-  if (branches === undefined || branches.some(selectorBranchHasInterp)) {
-    throw new TypeError('$selector: expected selector.');
-  }
-  if (branches.some(selectorBranchHasAmpersand)) {
-    throw new TypeError('$selector: Parent selectors aren\'t allowed here.');
-  }
-  return branches.map(selectorBranchComponents);
+  return branches === undefined || branches.some(selectorBranchHasInterp) ? null : branches;
 }
 
 /** The one leaf a scan matched, with its span: the opaque rest of a recovered construct. */

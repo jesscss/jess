@@ -9,7 +9,7 @@ export type {
   JessCstChild, JessCstError, JessCstLeaf, JessCstNode, JessCstParseResult, JessCstType
 } from './cst.js';
 
-import type { Stylesheet } from '@jesscss/core/ast';
+import type { SelectorBranch, Stylesheet } from '@jesscss/core/ast';
 import { jessGrammar } from './grammar/ast.js';
 import { parseRecoveringWith, parseSelectorWith, parseWith, type JessParsed, type JessParseOptions } from './parse-with.js';
 
@@ -36,10 +36,10 @@ export function parseRecovering(input: string, options: JessParseOptions = {}): 
 }
 
 /**
- * A selector string read as `selector(…)` reads its argument, for Sass's
- * `selector.parse()` (`#sass/selector`): each selector's compound selectors and
- * combinators.
+ * A selector string read as `selector(…)` reads its argument, for Sass's selector
+ * functions (`#sass/selector`): its selectors, or `null` when the text is not a
+ * selector list.
  */
-export function parseSelector(text: string): string[][] {
+export function parseSelector(text: string): SelectorBranch[] | null {
   return parseSelectorWith(jessGrammar, text);
 }

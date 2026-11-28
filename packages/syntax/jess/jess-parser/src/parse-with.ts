@@ -12,7 +12,7 @@ import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
   recoveredInTree,
-  selectorStringComponents,
+  selectorStringBranches,
   simpleSelectorIsPlaceholder,
   withSourceSpan,
   withForgivenSelectorItems,
@@ -231,11 +231,10 @@ export interface JessParsed {
 
 /**
  * `text` read by the production `selector(…)` reads its argument with, as Sass's
- * `selector.parse()` reads a selector string: each selector's compound selectors
- * and combinators. A string that is not a whole selector list, or that holds `&`,
- * throws with Dart Sass's message.
+ * selector functions read a selector string: its selectors, or `null` for a string
+ * that is not a whole selector list.
  */
-export function parseSelectorWith(grammar: JessAstGrammar, text: string): string[][] {
+export function parseSelectorWith(grammar: JessAstGrammar, text: string): SelectorBranch[] | null {
   const entry = grammar.PseudoSelectorList;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {
@@ -244,7 +243,7 @@ export function parseSelectorWith(grammar: JessAstGrammar, text: string): string
   const source = text.trim();
   const diagnostics: JessRecoveredError[] = [];
   const result = run(entry, source, { trivia, state: { source, diagnostics, stars: [] } });
-  return selectorStringComponents(result.ok && result.unconsumedFrom === null && result.errors.length === 0 && diagnostics.length === 0 ? result.value : undefined);
+  return selectorStringBranches(result.ok && result.unconsumedFrom === null && result.errors.length === 0 && diagnostics.length === 0 ? result.value : undefined);
 }
 
 /** The document, or the first problem the grammar recovered from, raised. */

@@ -27,8 +27,8 @@ export function hasTopLevelComma(text: string): boolean {
 }
 
 /** `lists` read across: the first item of each, then the second of each, and on. */
-export function interleave(lists: readonly (readonly string[])[]): string[] {
-  const out: string[] = [];
+export function interleave<T>(lists: readonly (readonly T[])[]): T[] {
+  const out: T[] = [];
   for (let i = 0, more = true; more; i++) {
     more = false;
     for (const items of lists) {
