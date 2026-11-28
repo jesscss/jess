@@ -68,6 +68,12 @@ describe('sass globals — renamed list member', () => {
     }
   });
 
+  it('registers no global for the module-only `list.slash`, `string.split` and `map.deep-remove`', () => {
+    for (const name of ['slash', 'split', 'deep-remove']) {
+      expect(globalNames).not.toContain(name);
+    }
+  });
+
   it('delegates to the module body', () => {
     expect(bytes(call(sassGlobals.listSeparator, commaList))).toBe(bytes(call(listModule.separator, commaList)));
     expect(bytes(call(sassGlobals.listSeparator, commaList))).toBe('comma');

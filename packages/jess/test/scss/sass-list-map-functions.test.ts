@@ -101,7 +101,7 @@ const DART_SASS: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string,
  * Where Jess does not do what Dart Sass does, and why; none of these is about
  * how a list is spelled. Each is pinned with `it.fails`, so a fix shows here.
  */
-const NOT_IMPLEMENTED = new Set(['list.slash', 'map.deep-remove', 'inspect']);
+const NOT_IMPLEMENTED = new Set(['inspect']);
 const divergence = (fn: string, input: string, wrap: 'value' | 'type', [value, type]: readonly [string, string]): string | undefined => {
   /*
    * `inspect()`, which Jess lacks, is written out as-is, which is typed a string
@@ -115,8 +115,11 @@ const divergence = (fn: string, input: string, wrap: 'value' | 'type', [value, t
   if ((fn === 'map.get' || fn === 'map-get') && (input === '()' || input === '[]')) {
     return 'a missing key is an error in Jess (the `$m[k]` accessor), `null` in Dart Sass';
   }
-  if (wrap === 'value' && value === 'ERROR' && type === 'map' && !NOT_IMPLEMENTED.has(fn)) {
+  if (wrap === 'value' && value === 'ERROR' && (type === 'map' || (fn === 'list.slash' && input === '(a: 1)')) && !NOT_IMPLEMENTED.has(fn)) {
     return 'Jess writes a map as a declaration value, which Dart Sass rejects';
+  }
+  if (wrap === 'value' && fn === 'list.slash' && input === '()') {
+    return 'Jess writes an empty list inside a list as an empty item (` / 9`), which Dart Sass leaves out';
   }
   return undefined;
 };

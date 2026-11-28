@@ -19,8 +19,4 @@ export { default as remove } from './remove.js';
 export { default as keys } from './keys.js';
 export { default as values } from './values.js';
 export { default as hasKey } from './has-key.js';
-
-/*
- * TODO: Implement remaining map module functions
- * - map.deep-remove()
- */
+export { default as deepRemove } from './deep-remove.js';
