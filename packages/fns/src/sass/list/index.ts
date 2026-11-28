@@ -20,8 +20,4 @@ export { default as setNth } from './set-nth.js';
 export { default as join } from './join.js';
 export { default as append } from './append.js';
 export { default as zip } from './zip.js';
-
-/*
- * TODO: Implement remaining list module functions
- * - list.slash()
- */
+export { default as slash } from './slash.js';
