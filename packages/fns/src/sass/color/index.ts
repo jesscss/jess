@@ -63,10 +63,12 @@ export { rgba } from './rgba.js';
 export { hsl } from './hsl.js';
 export { hsla } from './hsla.js';
 
+// CSS Color 4 colour spaces (`space-color.ts` reads a colour into one, `space.ts` converts).
+export { space, toSpace, isLegacy, isMissing, isPowerless, isInGamut, channel, same } from './color-spaces.js';
+
 /*
- * Not implemented — each needs a colour-space model jess does not have yet:
- * color.hwb / lab / lch / oklab / oklch, color.space / to-space / channel /
- * same / is-legacy / is-missing / is-in-gamut / to-gamut / is-powerless,
- * color.whiteness / blackness. `adjust` / `scale` / `change` cover the rgb, hsl
- * and hwb spaces only; another `$space`, and a `none` channel, are errors.
+ * Not implemented: color.hwb / whiteness / blackness / to-gamut and the
+ * lab / lch / oklab / oklch / color constructors. `adjust` / `scale` / `change`
+ * cover the rgb, hsl and hwb spaces only; another `$space`, and a `none`
+ * channel, are errors.
  */

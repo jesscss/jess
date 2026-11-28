@@ -15,7 +15,7 @@ import { colorRgb, colorSourceRgb, HSL, hslToRgb, rgbLightness, rgbToHsl, serial
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 import {
   AnyValueNode, BlockValueNode, BoolValueNode, CollectionValueNode, ColorValueNode, CompoundDimensionValueNode, DimensionValueNode,
-  ArithmeticValueNode, FunctionCallValueNode, HslColorValueNode, KeywordValueNode, ListValueNode, NullValueNode, QuotedValueNode, UrlValueNode, copyNode as copyNodeOf, withFields as withFieldsOf
+  ArithmeticValueNode, FunctionCallValueNode, HslColorValueNode, SpaceColorValueNode, KeywordValueNode, ListValueNode, NullValueNode, QuotedValueNode, UrlValueNode, copyNode as copyNodeOf, withFields as withFieldsOf
 } from './node-ctors.js';
 
 /*
@@ -162,6 +162,16 @@ export function makeColorHsl(
   if (opts?.alphaPct !== undefined) {
     c.alphaPct = opts.alphaPct;
   }
+  c.bytes = serializeColor(c);
+  return c;
+}
+
+/**
+ * A colour in a CSS Color 4 space ({@link Color.space}): its channels there, and
+ * `rgb`, the same colour in sRGB on 0–255, which the caller converts.
+ */
+export function makeColorInSpace(space: string, channels: NonNullable<Color['channels']>, rgb: readonly [number, number, number], format: number): Color {
+  const c: Mutable<Color> = new SpaceColorValueNode(rgb, channels[3] ?? 0, space, channels, format, '');
   c.bytes = serializeColor(c);
   return c;
 }
