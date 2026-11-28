@@ -15,6 +15,7 @@ export default defineConfig({
     'sass/map/index': './src/sass/map/index.ts',
     'sass/selector/index': './src/sass/selector/index.ts',
     'sass/math/index': './src/sass/math/index.ts',
+    'sass/meta/index': './src/sass/meta/index.ts',
     'sass/string/index': './src/sass/string/index.ts',
     'shared/index': './src/shared/index.ts',
     runtime: './src/runtime.ts'

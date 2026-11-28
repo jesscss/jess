@@ -84,6 +84,8 @@ export { changeColor } from './color/change.js';
  */
 
 // Global Meta Functions (Deprecated - use meta.* module instead)
+export { featureExists } from './meta/feature-exists.js';
+export { inspect } from './meta/inspect.js';
 export { typeOf } from './meta/type-of.js';
 
 // Global String Functions (Deprecated - use string.* module instead)

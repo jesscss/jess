@@ -96,7 +96,7 @@ Jess spends its complexity budget — not a verdict on Sass's design.
 | String concatenation — `"Elapsed: " + $t` | ✅ | A `+` chain with a string literal (`"…"` or `unquote("…")`) builds that string, quoted as Sass quotes it: `"Elapsed: " + $t` reads as `"Elapsed: #{$t}"`. A `+` with no string literal is math: `+`, `*` or `%` on a keyword (`foo + bar`), a string a variable holds, a boolean or a list is a compile error. Math inside `calc()` and the other CSS math functions is kept as written. |
 | `@media` bubbling, nested `@supports` | ✅ | Including a `@media` block written inside a mixin. |
 | `@debug` / `@warn` / `@error` | ✅ | Recognized SCSS diagnostics; none emit CSS. `@warn` / `@debug` report a message and let the compile continue; `@error` aborts it. |
-| `sass:` built-in modules — `sass:math`, `sass:map`, `sass:string`, `sass:list` | ⏳ | `@use "sass:math"` parses; the module is not loaded and its members are unreachable. |
+| `sass:` built-in modules — `sass:color`, `sass:list`, `sass:map`, `sass:math`, `sass:meta`, `sass:selector`, `sass:string` | ⏳ | Each loads with `@use`. Not every member exists yet: `sass:meta` has `inspect`, `type-of`, `feature-exists`, `calc-name` and `calc-args`, and not yet the members that read the stylesheet's scope (`variable-exists`, `get-function`, `call`, …) or `keywords`. |
 | Color functions — `rgba`, `darken`, `lighten` | ✅ | |
 | `if()`, `length()`, `percentage()` | ✅ | |
 | `mix()` | ⏳ | Warns, then passes through unevaluated. |
