@@ -286,7 +286,7 @@ function dedupBranchTexts(list: Branch[]): string[] {
  * `:is()`-collapsed by alpha — they stay a comma list. Verified against less.js
  * `alpha`; single-segment factoring is unaffected by the flag.
  */
-function siblingCompact(branches: Branch[], allowMultiSeg: boolean): Branch[] {
+export function siblingCompact(branches: Branch[], allowMultiSeg: boolean): Branch[] {
   const out = branches.map(cloneBranch);
   for (let i = 0; i < out.length; i++) {
     for (let j = i + 1; j < out.length; j++) {
@@ -559,7 +559,7 @@ function sameCompound(a: readonly Simple[], b: readonly Simple[]): boolean {
  * `.t .b.k .box` does. A nested header has an implicit `&` before it.
  * Returns `list` itself when no group splits.
  */
-function groupedBranches(list: Branch[], root: boolean): Branch[] {
+export function groupedBranches(list: Branch[], root: boolean): Branch[] {
   groupPlans = null;
   let out: Branch[] | null = null;
   for (let i = 0; i < list.length; i++) {

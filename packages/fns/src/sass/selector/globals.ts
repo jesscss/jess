@@ -6,6 +6,7 @@
 import { define } from '@jesscss/core/value';
 import append from './append.js';
 import { appendSelectors, nestSelectors } from './compose.js';
+import extend, { extendValue } from './extend.js';
 import nest from './nest.js';
 import parse, { parseSelectorValue } from './parse.js';
 
@@ -14,6 +15,13 @@ export const selectorAppend = define('selector-append', {
   params: append.params,
   variadic: true,
   body: appendSelectors
+});
+
+/** `selector-extend($selector, $extendee, $extender)` — the global spelling of `selector.extend()`. */
+export const selectorExtend = define('selector-extend', {
+  params: extend.params,
+  variadic: true,
+  body: extendValue
 });
 
 /** `selector-nest($selectors...)` — the global spelling of `selector.nest()`. */

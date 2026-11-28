@@ -190,6 +190,18 @@ export function branchOut(b: Branch): string {
   return hasAuthoredSpelling(b) ? joinSegments(b, compoundOut) : branchText(b);
 }
 
+/** A branch as it is emitted, part by part: each compound, and each combinator other than the descendant one. */
+export function branchOutParts(b: Branch): string[] {
+  const out: string[] = [];
+  for (const seg of b.segments) {
+    if (seg.combinator !== ' ') {
+      out.push(seg.combinator);
+    }
+    out.push(compoundOut(seg.compound));
+  }
+  return out;
+}
+
 /* ---------------------------------------------------------------- construct */
 
 /** A single-segment descendant branch wrapping the given value. */
