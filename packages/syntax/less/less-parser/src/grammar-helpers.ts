@@ -2128,7 +2128,8 @@ function functionConditionSource(value: ValueSlot): string {
   const node = requireValueNode(value);
   switch (node.type) {
     case 'Keyword': case 'Color': case 'Quoted': case 'Any': case 'Dimension': case 'Condition': return node.src;
-    case 'Lookup': return node.kind === 'var'
+    /* A lookup/call chain (`@map[k]`, `#ns.m()[k]`) carries its spelling in `raw`. */
+    case 'Lookup': case 'Reference': return node.type === 'Lookup' && node.kind === 'var'
       ? `@${typeof node.name === 'string' ? node.name : functionConditionSource(node.name)}`
       : node.raw;
     case 'FunctionCall': return `${node.name}(${node.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${functionConditionSource(argument.value)}`).join(', ')})`;

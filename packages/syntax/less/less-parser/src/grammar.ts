@@ -207,7 +207,6 @@ type LessRules = {
   PropertyInterpolation: Combinator<InterpolationFact>;
   Interpolation: Combinator<InterpolationFact>;
   AtRuleInterpolation: Combinator<Interpolation>;
-  InterpolationAccessor: Combinator<InterpolationAccessorFact>;
   ReferenceTail: Combinator<ReferenceTailFact>;
   InterpolatedValue: Combinator<Interpolation>;
   InterpolatedProperty: Combinator<Interpolation>;
@@ -1112,61 +1111,86 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(literal('$'), g.LessIdentifier)),
     (children, _fields, span) => withSourceSpan(propertyReference(requireToken(children[1]).value), span)
   );
+  /**
+   * `[]`: the final declaration of a namespace/mixin result, lowered to the
+   * established negative-one index contract (the Reference evaluator applies a
+   * negative index from the end of its declaration map).
+   */
+  const InterpolationLastAccessor = node(
+    'InterpolationLastAccessor',
+    noTrivia(literal('[]')),
+    (): InterpolationAccessorFact => ({ key: -1, keyKind: 'index', src: '-1' })
+  );
+  /** `[0]` after its `[`: a positional index (ledger P15). */
+  const InterpolationIndexAccessor = node(
+    'InterpolationIndexAccessor',
+    noTrivia(sequence(routed(), g.InterpolationIndex, literal(']'))),
+    (children): InterpolationAccessorFact => {
+      const text = requireToken(children[1]).value;
+      return { key: Number(text), keyKind: 'index', src: text };
+    }
+  );
+  /**
+   * `[$@name]` after its `[`: a property-map key selected by the VALUE of
+   * `@name` (`#namespace[$@prop-name]`). The indirection and the property
+   * namespace both stay explicit: the resolver evaluates the key, then
+   * `keyKind: 'prop'` selects the declaration-member map.
+   */
+  const InterpolationPropertyVariableAccessor = node(
+    'InterpolationPropertyVariableAccessor',
+    noTrivia(sequence(routed(), literal('$'), g.VariableReference, literal(']'))),
+    (children): InterpolationAccessorFact => {
+      const key = requireValueNode(children[2]);
+      if (!isVarRef(key)) {
+        throw new TypeError('Less property-variable map key must retain its variable reference.');
+      }
+      return { key, keyKind: 'prop', src: `$@${key.name}` };
+    }
+  );
+  /** `[@@name]`, `[@name]`, `[$name]` or `[name]` after its `[`: a member key. */
+  const InterpolationReferenceAccessor = node(
+    'InterpolationReferenceAccessor',
+    noTrivia(sequence(
+      routed(),
+      choice(g.IndirectVariableReference, g.VariableReference, g.PropertyReference, g.InterpolationKey),
+      literal(']')
+    )),
+    (children): InterpolationAccessorFact => {
+      const key = children[1];
+      if (isVarIndirect(key)) {
+        const nameRef = key.name;
+        if (!isVarRef(nameRef)) {
+          throw new TypeError('Less indirect map key must retain its variable reference.');
+        }
+        return { key, keyKind: 'var', src: `@@${nameRef.name}` };
+      }
+      if (isVarRef(key)) {
+        return { key: key.name, keyKind: 'var', src: `@${key.name}` };
+      }
+      if (isPropRef(key)) {
+        return { key, keyKind: 'prop', src: key.raw };
+      }
+      const text = requireToken(key).value;
+      return { key: keyword(text), keyKind: 'prop', src: text };
+    }
+  );
+  // The keyed arms after a routed `[`: the one definition both the accessor
+  // below and the namespace chain's committed route (`ReferenceTailFromDelimiter`) read.
+  const keyedAccessor = choice(
+    InterpolationIndexAccessor,
+    InterpolationPropertyVariableAccessor,
+    InterpolationReferenceAccessor
+  );
+  /**
+   * An interpolation's (`@{name[key]}`) or variable chain's (`@map[key]`)
+   * accessor. A `[` is read once and the key picks the arm; if none does
+   * (`"@{m[ k ]}"`), it fails without committing. `#ns[key]` shares only
+   * `keyedAccessor`, via `ReferenceTailFromDelimiter`. Glued: `@map[ k ]` is
+   * no accessor.
+   */
   const InterpolationAccessor = choice(
-    // Less `[]` selects the final declaration of a namespace/mixin result.
-    // Lower it directly to the established negative-one index contract; the
-    // existing Reference evaluator already applies negative indexes from the
-    // end of its typed declaration map.
-    node(
-      'InterpolationLastAccessor',
-      noTrivia(literal('[]')),
-      (): InterpolationAccessorFact => ({ key: -1, keyKind: 'index', src: '-1' })
-    ),
-    node(
-      'InterpolationIndexAccessor',
-      noTrivia(sequence(literal('['), g.InterpolationIndex, literal(']'))),
-      (children): InterpolationAccessorFact => {
-        const text = requireToken(children[1]).value;
-        return { key: Number(text), keyKind: 'index', src: text };
-      }
-    ),
-    // `$@name` is a property-map key selected by the VALUE of `@name`, e.g.
-    // `#namespace[$@prop-name]`. Keep both the indirection and the property
-    // namespace explicit: the existing resolver evaluates this key, then uses
-    // `keyKind: 'prop'` to select the declaration-member map.
-    node(
-      'InterpolationPropertyVariableAccessor',
-      noTrivia(sequence(literal('['), literal('$'), g.VariableReference, literal(']'))),
-      (children): InterpolationAccessorFact => {
-        const key = requireValueNode(children[2]);
-        if (!isVarRef(key)) {
-          throw new TypeError('Less property-variable map key must retain its variable reference.');
-        }
-        return { key, keyKind: 'prop', src: `$@${key.name}` };
-      }
-    ),
-    node(
-      'InterpolationReferenceAccessor',
-      noTrivia(sequence(literal('['), choice(g.IndirectVariableReference, g.VariableReference, g.PropertyReference, g.InterpolationKey), literal(']'))),
-      (children): InterpolationAccessorFact => {
-        const key = children[1];
-        if (isVarIndirect(key)) {
-          const nameRef = key.name;
-          if (!isVarRef(nameRef)) {
-            throw new TypeError('Less indirect map key must retain its variable reference.');
-          }
-          return { key, keyKind: 'var', src: `@@${nameRef.name}` };
-        }
-        if (isVarRef(key)) {
-          return { key: key.name, keyKind: 'var', src: `@${key.name}` };
-        }
-        if (isPropRef(key)) {
-          return { key, keyKind: 'prop', src: key.raw };
-        }
-        const text = requireToken(key).value;
-        return { key: keyword(text), keyKind: 'prop', src: text };
-      }
-    )
+    InterpolationLastAccessor,
+    dispatch(literal('['), otherwise(keyedAccessor, { commit: false }))
   );
   // Left-factored `@`+name so the ubiquitous plain `@var` is parsed ONCE: the
   // accessor tails are optional, so a bare variable reference no longer parses
@@ -1203,13 +1227,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'VariableInterpolation',
     choice(
       UnsupportedDashVariableInterpolation,
-      noTrivia(sequence(literal('@{'), lessVariableName, many(g.InterpolationAccessor), literal('}')))
+      noTrivia(sequence(literal('@{'), lessVariableName, many(InterpolationAccessor), literal('}')))
     ),
     (children, _fields, span) => interpolationFactFromChildren(children, span)
   );
   const PropertyInterpolation = node(
     'PropertyInterpolation',
-    noTrivia(sequence(literal('${'), g.InterpolationHead, many(g.InterpolationAccessor), literal('}'))),
+    noTrivia(sequence(literal('${'), g.InterpolationHead, many(InterpolationAccessor), literal('}'))),
     (children, _fields, span) => interpolationFactFromChildren(children, span)
   );
   const Interpolation = node(
@@ -3258,12 +3282,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * The steps of the one lookup/call chain (REFERENCE-CALL-PLAN): a `[key]`
    * lookup, a `.name` member lookup, or an `(args)` call, any following any.
-   * The value-position chain reads them through `ReferenceTail`; the statement
+   * A bracket step is the bracket accessor an interpolation reads. The
+   * value-position chain reads them through `ReferenceTail`; the statement
    * call `@name…(…);` (`ReferenceCall`) reads the same three.
    */
   const ReferenceBracketTail = node(
     'ReferenceBracketTail',
-    g.InterpolationAccessor,
+    InterpolationAccessor,
     referenceBracketTailFact
   );
   const ReferenceDotTail = node(
@@ -3281,97 +3306,41 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ReferenceDotTail,
     ReferenceCallTail
   );
+  /** `[]` routed by the namespace chain's delimiter dispatch: the final declaration, index -1. */
   const InterpolationLastAccessorFromRouted = node(
     'InterpolationLastAccessor',
     noTrivia(routed()),
     (): InterpolationAccessorFact => ({ key: -1, keyKind: 'index', src: '-1' })
   );
-  const InterpolationIndexAccessorFromRouted = node(
-    'InterpolationIndexAccessor',
-    noTrivia(sequence(routed(), g.InterpolationIndex, literal(']'))),
-    (children): InterpolationAccessorFact => {
-      const text = requireToken(children[1]).value;
-      return { key: Number(text), keyKind: 'index', src: text };
-    }
-  );
-  const InterpolationPropertyVariableAccessorFromRouted = node(
-    'InterpolationPropertyVariableAccessor',
-    noTrivia(sequence(routed(), literal('$'), g.VariableReference, literal(']'))),
-    (children) => {
-      const key = requireValueNode(children[2]);
-      if (!isVarRef(key)) {
-        throw new TypeError('Less property-variable map key must retain its variable reference.');
-      }
-      return { key, keyKind: 'prop', src: `$@${key.name}` };
-    }
-  );
-  const InterpolationReferenceAccessorFromRouted = choice(
-    node(
-      'InterpolationReferenceAccessor',
-      noTrivia(sequence(routed(), g.IndirectVariableReference, literal(']'))),
-      (children) => {
-        const key = requireValueNode(children[1]);
-        if (!isVarIndirect(key) || !isVarRef(key.name)) {
-          throw new TypeError('Less indirect map key must retain its variable reference.');
-        }
-        return { key, keyKind: 'var', src: `@@${key.name.name}` };
-      }
-    ),
-    node(
-      'InterpolationReferenceAccessor',
-      noTrivia(sequence(routed(), g.VariableReference, literal(']'))),
-      (children) => {
-        const key = requireValueNode(children[1]);
-        if (!isVarRef(key)) {
-          throw new TypeError('Less variable map key must retain its variable reference.');
-        }
-        return { key: key.name, keyKind: 'var', src: `@${key.name}` };
-      }
-    ),
-    node(
-      'InterpolationReferenceAccessor',
-      noTrivia(sequence(routed(), g.PropertyReference, literal(']'))),
-      (children) => {
-        const key = requireValueNode(children[1]);
-        if (!isPropRef(key)) {
-          throw new TypeError('Less property map key must retain its property reference.');
-        }
-        return { key, keyKind: 'prop', src: key.raw };
-      }
-    ),
-    node(
-      'InterpolationReferenceAccessor',
-      noTrivia(sequence(routed(), g.InterpolationKey, literal(']'))),
-      (children): InterpolationAccessorFact => {
-        const text = requireToken(children[1]).value;
-        return { key: keyword(text), keyKind: 'prop', src: text };
-      }
-    )
-  );
+  /** The namespace chain's `[]` step, after its delimiter was read once. */
   const ReferenceLastTailFromRouted = node(
     'ReferenceBracketTail',
     InterpolationLastAccessorFromRouted,
     referenceBracketTailFact
   );
+  /** The namespace chain's `[key]` step, after its `[` was read once: the keyed arms the bracket accessor reads. */
   const ReferenceBracketTailFromRouted = node(
     'ReferenceBracketTail',
-    choice(
-      InterpolationIndexAccessorFromRouted,
-      InterpolationPropertyVariableAccessorFromRouted,
-      InterpolationReferenceAccessorFromRouted
-    ),
+    keyedAccessor,
     referenceBracketTailFact
   );
+  /** The namespace chain's `.name` step, after its `.` was read once. */
   const ReferenceDotTailFromRouted = node(
     'ReferenceDotTail',
     sequence(routed(), g.VariableNameToken),
     referenceDotTailFact
   );
+  /** The namespace chain's `(args)` step, after its `(` was read once. */
   const ReferenceCallTailFromRouted = node(
     'ReferenceCallTail',
     sequence(routed(), optional(g.MixinArguments), literal(')')),
     referenceCallTailFact
   );
+  /**
+   * A namespace chain's step, routed by its delimiter (`[]`, `[`, `.`, `(`) read
+   * once. The route commits, so a malformed step (`#ns.m()[a=b]`) is reported
+   * at its delimiter.
+   */
   const ReferenceTailFromDelimiter = dispatch(
     choice(literal('[]'), literal('['), literal('.'), literal('(')),
     when('[]', ReferenceLastTailFromRouted),
@@ -6067,7 +6036,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     PropertyInterpolation,
     Interpolation,
     AtRuleInterpolation,
-    InterpolationAccessor,
     ReferenceTail,
     InterpolatedValue,
     InterpolatedProperty,
