@@ -894,7 +894,9 @@ class JessPrinter {
             ? `\`${node.kind}\` lookup outside a reference chain`
             : 'indirect `@@name`: `.jess` `$[$n]` reads the live store only');
     }
-    return `$${node.scope === 'scoped' ? '^' : ''}${node.name}`;
+
+    /* `^x` is the `$( … )` spelling of `$^x`; keep the one the author wrote. */
+    return node.raw === `^${node.name}` ? node.raw : `$${node.scope === 'scoped' ? '^' : ''}${node.name}`;
   }
 
   /** `DollarValue` / `ExpressionAtom` reference chains. */

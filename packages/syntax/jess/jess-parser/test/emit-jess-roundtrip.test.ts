@@ -57,6 +57,15 @@ describe('emitJess round-trips every .jess fixture', () => {
   }
 });
 
+describe('emitJess keeps the spelling a read was written with', () => {
+  it.each(['.a { b: $(^x + 1); }', '.a { b: $($^x + 1); }'])('%s', (source) => {
+    const first = parse(source);
+    const printed = emitJess(first);
+    expect(printed).toContain(source.slice(8, -3));
+    expect(shape(parse(printed))).toBe(shape(first));
+  });
+});
+
 describe('emitJess never approximates', () => {
   it('names the node it cannot spell', () => {
     const root = parse('.a { b: $(1 + 2); }');
