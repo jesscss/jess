@@ -17,5 +17,5 @@ export const SASS_MODULE = '#sass';
  */
 export const providedModules = new ProvidedModules([
   [SASS_MODULE, '@jesscss/fns/sass'],
-  ...['color', 'list', 'map', 'math', 'selector', 'string'].map(name => [`${SASS_MODULE}/${name}`, `@jesscss/fns/sass/${name}`] as const)
+  ...['color', 'list', 'map', 'math', 'meta', 'selector', 'string'].map(name => [`${SASS_MODULE}/${name}`, `@jesscss/fns/sass/${name}`] as const)
 ], createRequire(import.meta.url));

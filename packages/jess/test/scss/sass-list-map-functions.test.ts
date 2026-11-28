@@ -101,14 +101,10 @@ const DART_SASS: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string,
  * Where Jess does not do what Dart Sass does, and why; none of these is about
  * how a list is spelled. Each is pinned with `it.fails`, so a fix shows here.
  */
-const NOT_IMPLEMENTED = new Set(['list.slash', 'map.deep-remove', 'inspect']);
+const NOT_IMPLEMENTED = new Set(['list.slash', 'map.deep-remove']);
 const divergence = (fn: string, input: string, wrap: 'value' | 'type', [value, type]: readonly [string, string]): string | undefined => {
-  /*
-   * `inspect()`, which Jess lacks, is written out as-is, which is typed a string
-   * as `inspect()` returns. A module member Jess lacks is
-   * `resolve/name-not-found`, so it fails where Dart Sass fails.
-   */
-  const agrees = fn === 'inspect' ? wrap === 'type' && input !== '()' : (wrap === 'value' ? value : type) === 'ERROR';
+  /* A module member Jess lacks is `resolve/name-not-found`, so it fails where Dart Sass fails. */
+  const agrees = (wrap === 'value' ? value : type) === 'ERROR';
   if (NOT_IMPLEMENTED.has(fn) && !agrees) {
     return 'not implemented in Jess';
   }

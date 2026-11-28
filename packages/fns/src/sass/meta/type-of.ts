@@ -1,4 +1,6 @@
 import { isValueGroupArray, makeKeyword, namedColor, define, checkAny } from '@jesscss/core/value';
+import { exactArgs } from './args.js';
+import { isCalculation } from './calc.js';
 
 /**
  * Sass `meta.type-of($value)` / the global `type-of()`.
@@ -11,6 +13,7 @@ import { isValueGroupArray, makeKeyword, namedColor, define, checkAny } from '@j
  *   type-of(null)                       → null
  *   type-of(()) / type-of(1 2 3)        → list
  *   type-of((a: 1))                     → map
+ *   type-of(calc(var(--c)))             → calculation
  *
  * `()` stays `list`: Sass reads the empty list as an empty map, but its type is
  * still `list`, and only a `Collection` carries the map type.
@@ -20,13 +23,13 @@ import { isValueGroupArray, makeKeyword, namedColor, define, checkAny } from '@j
  *   arglist      — no rest-argument value kind
  *   function     — `meta.get-function` does not exist
  *   mixin        — `meta.get-mixin` does not exist
- *   calculation  — no unsimplified-calculation value kind; note that
- *                  `type-of(calc(1px))` is `number` (simplified), only
- *                  `calc(var(--c))` / `clamp(1%, 1px, 2px)` are `calculation`
  */
 const typeOf = define('type-of', {
   params: [{ name: 'value', type: 'any', check: checkAny }] as const,
-  body: (value) => {
+  variadic: true,
+  body: (items) => {
+    exactArgs(items, ['value']);
+    const value = items[0]!;
     if (isValueGroupArray(value)) {
       return makeKeyword('list');
     }
@@ -40,8 +43,8 @@ const typeOf = define('type-of', {
        * here, at the point of use.
        */
       case 'Keyword': return makeKeyword(namedColor(value.text) !== undefined ? 'color' : 'string');
+      case 'FunctionCall': return makeKeyword(isCalculation(value) ? 'calculation' : 'string');
       case 'Arithmetic':
-      case 'FunctionCall':
       case 'Quoted':
       case 'Any':
       case 'Url': return makeKeyword('string');

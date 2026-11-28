@@ -864,7 +864,9 @@
     ],
     "scss": [
       "append",
+      "feature-exists",
       "index",
+      "inspect",
       "is-bracketed",
       "join",
       "length",

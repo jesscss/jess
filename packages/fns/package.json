@@ -72,6 +72,11 @@
       "import": "./lib/sass/math/index.js",
       "require": "./lib/sass/math/index.cjs"
     },
+    "./sass/meta": {
+      "types": "./lib/sass/meta/index.d.ts",
+      "import": "./lib/sass/meta/index.js",
+      "require": "./lib/sass/meta/index.cjs"
+    },
     "./sass/string": {
       "types": "./lib/sass/string/index.d.ts",
       "import": "./lib/sass/string/index.js",

@@ -38,7 +38,7 @@ export type {
   PluginDetachedDeclaration
 } from './ast/value-eval.js';
 
-export { DEFAULT_MODES, emitValue, isValueGroup, isValueGroupArray } from './ast/value-eval.js';
+export { DEFAULT_MODES, emitValue, isValueGroup, isValueGroupArray, sepGlue } from './ast/value-eval.js';
 
 // --- value constructors + accessors ---
 export {
@@ -100,6 +100,9 @@ export { selectorValue } from './ast/selector-text.js';
 
 // --- color name table ---
 export { namedColor } from './ast/color-names.js';
+
+// --- the css-values-4 math function names (a Sass calculation's names) ---
+export { isMathFunctionName } from './ast/math-functions.js';
 
 // --- fn-authoring types ---
 export type {

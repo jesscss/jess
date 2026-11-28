@@ -1,8 +1,12 @@
 /**
  * Sass meta module (`sass:meta`).
  *
- * Only `type-of` exists so far. `inspect`, `keywords`, `call`, `get-function`,
- * `get-mixin`, `module-functions` and `module-variables` are unimplemented and
- * are deliberately not stubbed.
+ * Members carry their module name (`type-of`, `calc-name`). The functions here
+ * read only their arguments; the members that read the evaluator's scope
+ * (`variable-exists`, `get-function`, `call`, …) and `keywords`, which reads an
+ * argument list, are not implemented yet.
  */
+export { featureExists } from './feature-exists.js';
+export { inspect } from './inspect.js';
 export { typeOf } from './type-of.js';
+export { calcName, calcArgs } from './calc.js';
