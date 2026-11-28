@@ -5,13 +5,13 @@ import { makeDimension, define, checkKinds, type Dimension, type Null, optional 
  * `math.random(1.0000000000001)` is accepted as the integer `1`
  * (`spec/core_functions/math/random.hrx` § `within_precision`).
  *
- * This is `random`'s own ARGUMENT semantics, not a numeric emit policy — it does
+ * This is ARGUMENT semantics (`random`'s and `string.split`'s `$limit`), not a numeric emit policy — it does
  * not round any emitted value and must not be confused with `formatNumber`'s
  * 1e-10 tolerance trim.
  */
 const SASS_EPSILON = 1e-11;
 
-const fuzzyInt = (value: number): number | undefined => {
+export const fuzzyInt = (value: number): number | undefined => {
   const rounded = Math.round(value);
   return Math.abs(value - rounded) < SASS_EPSILON ? rounded : undefined;
 };

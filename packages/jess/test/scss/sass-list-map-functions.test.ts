@@ -119,7 +119,7 @@ const divergence = (fn: string, input: string, wrap: 'value' | 'type', [value, t
     return 'Jess writes a map as a declaration value, which Dart Sass rejects';
   }
   if (wrap === 'value' && fn === 'list.slash' && input === '()') {
-    return 'Jess writes an empty list inside a list as an empty item (` / 9`), which Dart Sass leaves out';
+    return 'an empty list inside a computed list is written as an empty item (` / 9`), where an authored `((), 9)` fails (P51/P37); failing or leaving it out, as Dart Sass does, is open for the owner';
   }
   return undefined;
 };

@@ -1,5 +1,6 @@
 import { define, checkKinds, optional } from '@jesscss/core/value';
 import { createSassListResult } from '../list/util.js';
+import { fuzzyInt } from '../math/random.js';
 import { STRING_KINDS, codePoints, reString, stringText, type SassString } from './util.js';
 
 /**
@@ -9,7 +10,8 @@ import { STRING_KINDS, codePoints, reString, stringText, type SassString } from 
  *
  * An empty `$string` is `[]`; an empty `$separator` splits into code points and
  * ignores `$limit`; `$limit` caps the number of splits, the rest of the string
- * staying in the last piece. `$limit`'s unit is ignored, as Dart Sass's is.
+ * staying in the last piece. `$limit` is an integer by Sass's fuzzy test and
+ * its unit is ignored, as in Dart Sass.
  */
 const split = define('split', {
   params: [
@@ -20,9 +22,9 @@ const split = define('split', {
   body: (string: SassString, separator: SassString, limitArg) => {
     let limit: number | undefined;
     if (limitArg?.type === 'Dimension') {
-      limit = limitArg.number;
-      if (!Number.isInteger(limit)) {
-        throw new TypeError(`$limit: ${limit} is not an int.`);
+      limit = fuzzyInt(limitArg.number);
+      if (limit === undefined) {
+        throw new TypeError(`$limit: ${limitArg.number}${limitArg.unit} is not an int.`);
       }
       if (limit < 1) {
         throw new RangeError(`$limit: Must be 1 or greater, was ${limit}.`);

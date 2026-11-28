@@ -544,3 +544,20 @@ threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
   derived property's result is not written as text. Pinned in
   `packages/fns/src/__tests__/lightness-body.test.ts` and
   `packages/rollup-plugin-jess/test/index.test.ts`.
+
+## An empty list inside a computed list (proposed OPEN row)
+
+- 2026-11-27 — agent note, on feat/sass-small-builtins (`list.slash`,
+  `map.deep-remove`, `string.split`). Under P51/P37 an empty list the author
+  writes as a value fails the compile: `r: ((), 9)` is `eval/empty-list-value`.
+  The same value computed by a Sass list function is written with an empty item:
+  `list.slash((), 9)` is ` / 9`, `list.slash(c, (), d)` is `c /  / d`,
+  `list.append(((), 1), 2)` is `, 1, 2` (the last one predates the branch).
+  Dart Sass 1.101.7 leaves the empty list out (`9`, `c / d`, `1, 2`). The guard
+  in `packages/core/src/ast/empty-list.ts` is stated over code paths (an escaped
+  `Block`, a call result that is itself empty), not over the value. Proposed as
+  OPEN for the owner: does an empty list nested in a computed list fail as the
+  authored one does, or is it left out? Not decided here. Pinned with `it.fails`,
+  expecting the authored value's failure, in
+  `packages/jess/test/scss/sass-split-slash-deep-remove.test.ts` and
+  `packages/jess/test/scss/sass-list-map-functions.test.ts`.
