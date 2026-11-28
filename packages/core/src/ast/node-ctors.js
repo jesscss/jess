@@ -722,6 +722,17 @@ export function HslColorValueNode(rgb, alpha, hsl, format, bytes) {
 }
 HslColorValueNode.prototype = Object.prototype;
 
+export function SpaceColorValueNode(rgb, alpha, space, channels, format, bytes) {
+  this.type = 'Color';
+  this.rgb = rgb;
+  this.alpha = alpha;
+  this.space = space;
+  this.channels = channels;
+  this.format = format;
+  this.bytes = bytes;
+}
+SpaceColorValueNode.prototype = Object.prototype;
+
 export function QuotedValueNode(value, quote, escaped, bytes) {
   this.type = 'Quoted';
   this.value = value;
@@ -832,8 +843,8 @@ const allShapes = () => shapes ??= shapesOf([
   ExpressionNode, ConditionNode, IfValueNode, VariableDeclarationNode, VariableExposeNode, MixinDefinitionNode,
   MixinCallNode, ApplyNode, StyleImportNode, ModuleImportNode, StylesheetNode, AtRuleBlockNode, UnknownAtRuleBlockNode,
   PluginNode, RulesetNode, RulesetExtendNode, RulesetGuardNode, RulesetExtendGuardNode, ReferenceCallNode, NullNode, AtRuleStatementNode,
-  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, QuotedValueNode, KeywordValueNode, FunctionCallValueNode, ArithmeticValueNode,
-  AnyValueNode, UrlValueNode, BoolValueNode, NullValueNode, ListValueNode, CollectionValueNode, BlockValueNode
+  DimensionValueNode, CompoundDimensionValueNode, ColorValueNode, HslColorValueNode, SpaceColorValueNode, QuotedValueNode, KeywordValueNode, FunctionCallValueNode,
+  ArithmeticValueNode, AnyValueNode, UrlValueNode, BoolValueNode, NullValueNode, ListValueNode, CollectionValueNode, BlockValueNode
 ]);
 
 function shapesOf(ctors) {

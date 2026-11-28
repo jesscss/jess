@@ -148,6 +148,62 @@ function alphaText(c: Color, a: number, num: (v: number) => string): string {
   return c.alphaPct !== undefined ? `${num(c.alphaPct)}%` : num(a);
 }
 
+/** sRGB's transfer function, encoded to linear light (css-color-4 §10.2), odd about 0 for a channel out of gamut. */
+export function srgbToLinear(c: number): number {
+  const abs = Math.abs(c);
+  return abs <= 0.04045 ? c / 12.92 : Math.sign(c) * Math.pow((abs + 0.055) / 1.055, 2.4);
+}
+
+/** Linear sRGB to CIE XYZ D65, row-major (Dart Sass 1.101.7 `conversions.dart`). */
+export const LINEAR_SRGB_TO_XYZ_D65: readonly number[] = [0.4123907992659595, 0.35758433938387796, 0.1804807884018343, 0.21263900587151036, 0.7151686787677559, 0.07219231536073371, 0.01933081871559185, 0.11919477979462598, 0.9505321522496606];
+
+/*
+ * Dart Sass compares at 10 significant decimal digits: equal within 1e-11, and
+ * equal when rounded to 1e-11 (`lib/src/util/number.dart` `fuzzyEquals`).
+ */
+export function fuzzyEquals(a: number, b: number): boolean {
+  return a === b || (Math.abs(a - b) <= 1e-11 && Math.round(a * 1e11) === Math.round(b * 1e11));
+}
+
+/** Whether the colour is written in its own CSS Color 4 space's function rather than as a legacy rgb/hsl colour. */
+export const writesOwnSpace = (c: Color): c is Color & Required<Pick<Color, 'channels' | 'space'>> =>
+  c.src === undefined && c.channels !== undefined && c.space !== undefined && c.space !== 'rgb' && c.space !== 'hsl' && c.space !== 'hwb';
+
+/*
+ * A colour in a CSS Color 4 space, in that space's function (css-color-4 §9,
+ * §10.1): `lab()`/`oklab()` and `lch()`/`oklch()` with the lightness a
+ * percentage and the hue in degrees, else `color(<space> …)`; `none` for a
+ * missing channel, the alpha only when it is not 1 (ledger V41, OPEN).
+ *
+ * `lab()`/`oklab()` clamp a lightness out of range where they are parsed, so a
+ * lab-family colour whose lightness is outside it is written as its XYZ
+ * coordinates mixed in its own space (`color-mix(in lab, color(xyz …) 100%, black)`):
+ * a `color-mix()` result is in its interpolation space (css-color-5), so it
+ * stays that colour in that space.
+ */
+function spaceColorText(c: Color, space: string, [c0, c1, c2, alpha]: NonNullable<Color['channels']>, num: (v: number) => string, comma: string): string {
+  const text = (v: number | null, unit = ''): string => v === null ? 'none' : `${num(v)}${unit}`;
+  const tail = alpha === null ? ' / none' : alpha < 1 ? ` / ${num(alpha)}` : '';
+  switch (space) {
+    case 'lab':
+    case 'lch':
+    case 'oklab':
+    case 'oklch': {
+      const max = space[0] === 'o' ? 1 : 100;
+      if (c0 !== null && c1 !== null && c2 !== null && !((c0 > 0 || fuzzyEquals(c0, 0)) && (c0 < max || fuzzyEquals(c0, max)))) {
+        const [r, g, b] = c.rgb.map(v => srgbToLinear(v / 255));
+        const m = LINEAR_SRGB_TO_XYZ_D65;
+        const xyz = [0, 3, 6].map(i => num(m[i]! * r! + m[i + 1]! * g! + m[i + 2]! * b!)).join(' ');
+        return `color-mix(in ${space}${comma}color(xyz ${xyz}${tail}) 100%${comma}black)`;
+      }
+      const lightness = c0 === null ? null : space[0] === 'o' ? c0 * 100 : c0;
+      return `${space}(${text(lightness, '%')} ${text(c1)} ${text(c2, space.endsWith('ch') ? 'deg' : '')}${tail})`;
+    }
+    default:
+      return `color(${space} ${text(c0)} ${text(c1)} ${text(c2)}${tail})`;
+  }
+}
+
 /**
  * Serialize a color in scalar syntax. A verbatim source literal (`c.src`) wins;
  * else format-based emit (RGB/HSL/HEX). The optional SOURCE-FORMAT state
@@ -159,6 +215,9 @@ function alphaText(c: Color, a: number, num: (v: number) => string): string {
  * arguments; compressed output passes its own (`compress.ts` owns that spelling).
  */
 export function serializeColor(c: Color, num: (v: number) => string = formatNumber, comma = ', '): string {
+  if (writesOwnSpace(c)) {
+    return spaceColorText(c, c.space, c.channels, num, comma);
+  }
   if (c.src !== undefined) {
     return c.src;
   }

@@ -137,7 +137,7 @@ Functions that are straightforward conversions with minimal logic:
 - [x] `map-merge($map1, $map2)` - Merge maps
 - [x] `map-remove($map, $keys...)` / `map.remove()` - Remove keys
 - [x] `map.deep-merge($map1, $map2)` - Recursively merge nested maps
-- [ ] `map.deep-remove($map, $keys...)` - Remove a nested key path
+- [x] `map.deep-remove($map, $key, $keys...)` - Remove a nested key path
 
 ### Phase 3: Complex Functions
 

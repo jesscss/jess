@@ -184,7 +184,7 @@ describe('sass:string — unique-id', () => {
 describe('sass:string — module and global names', () => {
   it('names every module member the way `sass:string` spells it', () => {
     expect(Object.values(stringModule).map(fn => fn.name).sort()).toEqual([
-      'index', 'insert', 'length', 'quote', 'slice',
+      'index', 'insert', 'length', 'quote', 'slice', 'split',
       'to-lower-case', 'to-upper-case', 'unique-id', 'unquote'
     ]);
   });

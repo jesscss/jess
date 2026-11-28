@@ -10,7 +10,7 @@
  */
 import { parseHex } from './literal-tag.js';
 import { shortestColorName } from './color-names.js';
-import { colorRgb, HEX, serializeColor } from './color.js';
+import { colorRgb, HEX, serializeColor, writesOwnSpace } from './color.js';
 import { formatNumber } from './format-number.js';
 import { delimiterClose, delimiterOpen, isValueGroupArray, joinGroup, sepGlue, writtenText, type EvalValue } from './value-eval.js';
 
@@ -120,7 +120,7 @@ export function emitCompressed(v: EvalValue): string {
       if (v.src !== undefined && v.src.charCodeAt(0) !== 35 /* # */) {
         return v.src;
       }
-      if (v.format === HEX) {
+      if (v.format === HEX && !writesOwnSpace(v)) {
         const [r, g, b] = colorRgb(v);
         return shortestColor(r, g, b, v.alpha);
       }

@@ -480,6 +480,10 @@ threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
   `packages/jess/test/less-expose-variables.test.ts` and
   `packages/vite-plugin-jess/test/index.test.ts`.
 
+## C6
+
+- 2026-11-27 — implementation note (agent), on feat/sass-color-spaces. `sass:color` gains `space`, `to-space`, `is-legacy`, `is-missing`, `is-powerless`, `is-in-gamut`, `channel` and `same` (`packages/fns/src/sass/color/color-spaces.ts`), none with a global spelling, as in Dart Sass 1.101.7. Model: a `Color` made in a CSS Color 4 space carries `space` and `channels` (`[c0, c1, c2, alpha]`, `null` for a missing channel) at full precision (V5), with `rgb` the same colour in sRGB, so every legacy reader still works (`value-eval.ts` `Color`, `node-ctors.js` `SpaceColorValueNode`, `value-factory.ts` `makeColorInSpace`); an rgb or hsl result with no missing channel is the legacy colour as before. A `lab()`, `lch()`, `oklab()`, `oklch()`, `hwb()` or `color()` written in a stylesheet stays the call (V1/F5) and is read where a colour function needs its channels (`space-color.ts` `callColor`). The conversions are Dart Sass's matrices and transfer functions composed through XYZ D65 (`space.ts`). Output: proposed as OPEN row V41 (`color.ts` `spaceColorText`; compressed output takes the same form, `compress.ts` via `writesOwnSpace`). The hsl and hwb to sRGB conversions are core's `hslToRgb`/`hwbToRgb`, and `fuzzyEquals` is core's; sRGB to hsl is Dart Sass's formula, which stays defined outside sRGB, where core's `rgbToHsl` does not. Measured: sass-spec `core_functions/color/{space,to_space,is_legacy,is_missing,is_powerless,is_in_gamut,channel,same}` (3080 cases) through `.scss`, each against Dart Sass 1.101.7 run on the same stylesheet: 2856 match, 224 are listed gaps by cause (`packages/jess/test/scss/sass-color-spaces.gaps.json`). The pinned sass-spec is newer than 1.101.7 (its `rec2020` uses a pure 2.4 gamma), so its recorded outputs are not the oracle. Gaps: an rgb/hsl/hwb result outside sRGB is written as clamped bytes, as V5 keeps it, where Dart Sass writes an unclamped `hsl()` (71; owner question V41 (a)); `hsl()` clamps an out-of-range saturation or lightness where written, V14's HSL domain (17; V41 (b)); `none` in `rgb()`/`hsl()` is not a missing channel (36); `color.change`/`adjust`/`scale` in lab-family spaces (63) and past the rgb range (33) are not built; parse messages (2); two far-out-of-range cases differ by float cancellation. Found, not listed (outside the eight functions): `==` compares colours by their sRGB exactly (V41 (c)); `color.red()` and the other legacy channel readers read a space colour's derived sRGB; `holdsNone` still reads `none` from bytes rather than `channels`. Not built yet: `hwb`, `whiteness`, `blackness`, `to-gamut`, and `lab()`/`lch()`/`oklab()`/`oklch()`/`color()` as Sass constructors. Pins: `packages/jess/test/scss/sass-color-spaces.test.ts`, `packages/fns/src/sass/__tests__/global-aliases.test.ts`.
+
 ## Function parameter binding (proposed OPEN row)
 
 - 2026-11-13 — agent note, on perf/runtime-binder-loop, implementing the
@@ -546,3 +550,20 @@ threw. Pinned by `packages/core/src/ast/__tests__/decimal.test.ts` and
   derived property's result is not written as text. Pinned in
   `packages/fns/src/__tests__/lightness-body.test.ts` and
   `packages/rollup-plugin-jess/test/index.test.ts`.
+
+## An empty list inside a computed list (proposed OPEN row)
+
+- 2026-11-27 — agent note, on feat/sass-small-builtins (`list.slash`,
+  `map.deep-remove`, `string.split`). Under P51/P37 an empty list the author
+  writes as a value fails the compile: `r: ((), 9)` is `eval/empty-list-value`.
+  The same value computed by a Sass list function is written with an empty item:
+  `list.slash((), 9)` is ` / 9`, `list.slash(c, (), d)` is `c /  / d`,
+  `list.append(((), 1), 2)` is `, 1, 2` (the last one predates the branch).
+  Dart Sass 1.101.7 leaves the empty list out (`9`, `c / d`, `1, 2`). The guard
+  in `packages/core/src/ast/empty-list.ts` is stated over code paths (an escaped
+  `Block`, a call result that is itself empty), not over the value. Proposed as
+  OPEN for the owner: does an empty list nested in a computed list fail as the
+  authored one does, or is it left out? Not decided here. Pinned with `it.fails`,
+  expecting the authored value's failure, in
+  `packages/jess/test/scss/sass-split-slash-deep-remove.test.ts` and
+  `packages/jess/test/scss/sass-list-map-functions.test.ts`.

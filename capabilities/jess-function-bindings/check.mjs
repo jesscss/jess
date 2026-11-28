@@ -52,6 +52,7 @@ const CONSUMERS = {
   'less-stored-slash-math': { file: 'packages/jess/test/less/stored-slash-math.test.ts', dialect: 'less' },
   'jess-expose-round-trip': { file: 'packages/jess/test/jess-expose-variables.test.ts', dialect: 'less' },
   'sass-list-map-functions': { file: 'packages/jess/test/scss/sass-list-map-functions.test.ts', dialect: 'sass' },
+  'sass-split-slash-deep-remove': { file: 'packages/jess/test/scss/sass-split-slash-deep-remove.test.ts', dialect: 'sass' },
   'sass-selector-parse': { file: 'packages/jess/test/scss/sass-selector-parse.test.ts', dialect: 'sass' }
 };
 const OWNERS = {

@@ -246,6 +246,45 @@
       }
     },
     {
+      "id": "sass-split-slash-deep-remove",
+      "entrypoint": "packages/jess/test/scss/sass-split-slash-deep-remove.test.ts",
+      "export": "SASS_FUNCTIONS",
+      "alternatives": {
+        "wrapper": {
+          "replace": [
+            {
+              "from": "const SASS_FUNCTIONS = jessFunctions();",
+              "to": "const SASS_FUNCTIONS = { ...jessFunctions() };"
+            }
+          ]
+        },
+        "copy": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-scss';",
+              "to": "import { sassExportNames } from '@jesscss/fns/sass/registry';"
+            },
+            {
+              "from": "const SASS_FUNCTIONS = jessFunctions();",
+              "to": "const SASS_FUNCTIONS = { from: '#sass', names: sassExportNames() };"
+            }
+          ]
+        },
+        "unusedImport": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-scss';",
+              "to": "import { jessFunctions } from '@jesscss/plugin-scss';\nimport { sassExportNames } from '@jesscss/fns/sass/registry';"
+            },
+            {
+              "from": "const SASS_FUNCTIONS = jessFunctions();",
+              "to": "void jessFunctions();\nconst SASS_FUNCTIONS = { from: '#sass', names: sassExportNames() };"
+            }
+          ]
+        }
+      }
+    },
+    {
       "id": "sass-selector-parse",
       "entrypoint": "packages/jess/test/scss/sass-selector-parse.test.ts",
       "export": "functions",

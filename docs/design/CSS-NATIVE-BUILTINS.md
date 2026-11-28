@@ -69,7 +69,7 @@ registered function is in none of the three. Classes:
   `abs`, `sqrt` on numbers, `rgb`/`hsl` with three channels). 32 rows.
 - **none** — no CSS form: channel readers (`hue()`, `red()`, `luma()`…),
   blend modes (`multiply`, `screen`…), string results (`argb`, `get-unit`,
-  `unit()` in Sass), `random`. 36 rows. These stay as they are:
+  `unit()` in Sass), `random`, the `sass:color` colour-space readers (`color.space()`, `color.channel()`…). 44 rows. These stay as they are:
   resolved when known, printed as written when not.
 
 Spec basis, per family (each row cites its section):

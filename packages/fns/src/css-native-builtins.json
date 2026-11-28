@@ -634,6 +634,47 @@
     },
     {
       "dialect": "scss",
+      "name": "color.space",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "color.is-legacy",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "color.is-missing",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "color.is-powerless",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "color.is-in-gamut",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "color.channel",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "color.same",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "color.to-space",
+      "class": "none",
+      "notes": "A CSS form exists, the relative colour in the space (`lab(from C l a b)`, css-color-5 §4), and is not built: a colour only the browser knows fails"
+    },
+    {
+      "dialect": "scss",
       "name": "abs",
       "class": "already-css",
       "spec": "css-values-4 §10.6",

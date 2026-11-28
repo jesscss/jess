@@ -139,6 +139,18 @@ export interface Color {
 
   /** Authored hue unit (`deg`/`turn`/`rad`/`grad`/…) for an HSL constructor; absent → unitless/derived (non-modern drops it, modern defaults to `deg`). */
   readonly hueUnit?: string;
+
+  /**
+   * The CSS Color 4 colour space (css-color-4 §10) the colour is in, and its
+   * channels there, for a colour a colour-space function made: `lab`, `oklch`,
+   * `display-p3`, `xyz` (D65), `hwb`… Channels are `[c0, c1, c2, alpha]` at full
+   * precision (V5), `null` a missing (`none`) channel (§4.4); a lab/oklab
+   * lightness and an hsl/hwb percentage are on their CSS scale (`50%` is 50, an
+   * oklab `50%` is 0.5). Absent for every other colour, which is in the sRGB
+   * space its {@link format} implies; `rgb` is the colour in sRGB either way.
+   */
+  readonly space?: string;
+  readonly channels?: readonly [number | null, number | null, number | null, number | null];
   readonly bytes: string;
 }
 

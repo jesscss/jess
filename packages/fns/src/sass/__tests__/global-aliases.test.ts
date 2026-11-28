@@ -68,6 +68,18 @@ describe('sass globals — renamed list member', () => {
     }
   });
 
+  it('registers no global for the module-only `list.slash`, `string.split` and `map.deep-remove`', () => {
+    for (const name of ['slash', 'split', 'deep-remove']) {
+      expect(globalNames).not.toContain(name);
+    }
+  });
+
+  it('registers no global for the module-only `sass:color` colour-space members', () => {
+    for (const name of ['space', 'to-space', 'is-legacy', 'is-missing', 'is-powerless', 'is-in-gamut', 'channel', 'same']) {
+      expect(globalNames).not.toContain(name);
+    }
+  });
+
   it('delegates to the module body', () => {
     expect(bytes(call(sassGlobals.listSeparator, commaList))).toBe(bytes(call(listModule.separator, commaList)));
     expect(bytes(call(sassGlobals.listSeparator, commaList))).toBe('comma');

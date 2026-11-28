@@ -45,6 +45,7 @@ export {
   makeDimension,
   makeColorRgb,
   makeColorHsl,
+  makeColorInSpace,
   makeQuoted,
   makeKeyword,
   makeAny,
@@ -77,7 +78,7 @@ export {
 export { CollectionOverlay, isCollection, collectionEntries, collectionEntryIndex, collectionKeyIndex } from './ast/value-collection.js';
 
 // --- value serializer ---
-export { HEX, RGB, HSL, holdsNone, serializeColor, hslToRgb } from './ast/color.js';
+export { HEX, RGB, HSL, holdsNone, serializeColor, hslToRgb, hwbToRgb, fuzzyEquals, srgbToLinear, LINEAR_SRGB_TO_XYZ_D65 } from './ast/color.js';
 export { serializeValue } from './ast/serialize-value.js';
 export { decimalStep, round } from './ast/round.js';
 export { addExact, modExact, mulExact, percentToFraction, subExact } from './ast/decimal.js';

@@ -94,6 +94,7 @@ export declare const DimensionValueNode: new (number: number, unit: string, byte
 export declare const CompoundDimensionValueNode: new (number: number, unit: string, numerator: readonly string[], denominator: readonly string[], bytes: string) => Pick<V.Dimension, 'type' | 'number' | 'unit' | 'numerator' | 'denominator' | 'bytes'>;
 export declare const ColorValueNode: new (rgb: V.Color['rgb'], alpha: number, format: number, bytes: string) => Pick<V.Color, 'type' | 'rgb' | 'alpha' | 'format' | 'bytes'>;
 export declare const HslColorValueNode: new (rgb: V.Color['rgb'], alpha: number, hsl: NonNullable<V.Color['hsl']>, format: number, bytes: string) => Pick<V.Color, 'type' | 'rgb' | 'alpha' | 'hsl' | 'format' | 'bytes'>;
+export declare const SpaceColorValueNode: new (rgb: V.Color['rgb'], alpha: number, space: string, channels: NonNullable<V.Color['channels']>, format: number, bytes: string) => Pick<V.Color, 'type' | 'rgb' | 'alpha' | 'space' | 'channels' | 'format' | 'bytes'>;
 export declare const QuotedValueNode: new (value: string, quote: string, escaped: boolean, bytes: string) => Pick<V.Quoted, 'type' | 'value' | 'quote' | 'escaped' | 'bytes'>;
 export declare const KeywordValueNode: new (text: string, bytes: string, groups: number) => Pick<V.Keyword, 'type' | 'text' | 'bytes' | 'groups'>;
 export declare const FunctionCallValueNode: new (name: string, args: V.ValueGroup, result: V.CallResult, computed: boolean, bytes: string) => V.FunctionCall;
