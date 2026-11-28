@@ -158,15 +158,28 @@ export function srgbToLinear(c: number): number {
 export const LINEAR_SRGB_TO_XYZ_D65: readonly number[] = [0.4123907992659595, 0.35758433938387796, 0.1804807884018343, 0.21263900587151036, 0.7151686787677559, 0.07219231536073371, 0.01933081871559185, 0.11919477979462598, 0.9505321522496606];
 
 /*
+ * Dart Sass compares at 10 significant decimal digits: equal within 1e-11, and
+ * equal when rounded to 1e-11 (`lib/src/util/number.dart` `fuzzyEquals`).
+ */
+export function fuzzyEquals(a: number, b: number): boolean {
+  return a === b || (Math.abs(a - b) <= 1e-11 && Math.round(a * 1e11) === Math.round(b * 1e11));
+}
+
+/** Whether the colour is written in its own CSS Color 4 space's function rather than as a legacy rgb/hsl colour. */
+export const writesOwnSpace = (c: Color): c is Color & Required<Pick<Color, 'channels'>> =>
+  c.src === undefined && c.channels !== undefined && c.space !== 'rgb' && c.space !== 'hsl' && c.space !== 'hwb';
+
+/*
  * A colour in a CSS Color 4 space, in that space's function (css-color-4 §9,
  * §10.1): `lab()`/`oklab()` and `lch()`/`oklch()` with the lightness a
  * percentage and the hue in degrees, else `color(<space> …)`; `none` for a
- * missing channel (§4.4), the alpha only when it is not 1.
+ * missing channel, the alpha only when it is not 1 (ledger V41, OPEN).
  *
- * A lab-family colour whose lightness is out of range, or an lch-family one
- * whose chroma is negative, would be clamped by its own function (§9.2), so it
- * is written as Dart Sass 1.101.7 writes it: its XYZ coordinates mixed in its
- * space, which keeps it the colour it is (`color-mix(in lab, color(xyz …) 100%, black)`).
+ * `lab()`/`oklab()` clamp a lightness out of range where they are parsed, so a
+ * lab-family colour whose lightness is outside it is written as its XYZ
+ * coordinates mixed in its own space (`color-mix(in lab, color(xyz …) 100%, black)`):
+ * a `color-mix()` result is in its interpolation space (css-color-5), so it
+ * stays that colour in that space.
  */
 function spaceColorText(c: Color, space: string, [c0, c1, c2, alpha]: NonNullable<Color['channels']>, num: (v: number) => string, comma: string): string {
   const text = (v: number | null, unit = ''): string => v === null ? 'none' : `${num(v)}${unit}`;
@@ -177,9 +190,7 @@ function spaceColorText(c: Color, space: string, [c0, c1, c2, alpha]: NonNullabl
     case 'oklab':
     case 'oklch': {
       const max = space[0] === 'o' ? 1 : 100;
-      const clamped = (c0 !== null && c1 !== null && c2 !== null && (c0 < -1e-11 || c0 > max + 1e-11))
-        || (space.endsWith('ch') && c0 !== null && c1 !== null && c1 < -1e-11);
-      if (clamped) {
+      if (c0 !== null && c1 !== null && c2 !== null && !((c0 > 0 || fuzzyEquals(c0, 0)) && (c0 < max || fuzzyEquals(c0, max)))) {
         const [r, g, b] = c.rgb.map(v => srgbToLinear(v / 255));
         const m = LINEAR_SRGB_TO_XYZ_D65;
         const xyz = [0, 3, 6].map(i => num(m[i]! * r! + m[i + 1]! * g! + m[i + 2]! * b!)).join(' ');
@@ -204,11 +215,11 @@ function spaceColorText(c: Color, space: string, [c0, c1, c2, alpha]: NonNullabl
  * arguments; compressed output passes its own (`compress.ts` owns that spelling).
  */
 export function serializeColor(c: Color, num: (v: number) => string = formatNumber, comma = ', '): string {
+  if (writesOwnSpace(c)) {
+    return spaceColorText(c, c.space ?? 'srgb', c.channels, num, comma);
+  }
   if (c.src !== undefined) {
     return c.src;
-  }
-  if (c.channels !== undefined && c.space !== 'rgb' && c.space !== 'hsl' && c.space !== 'hwb') {
-    return spaceColorText(c, c.space ?? 'srgb', c.channels, num, comma);
   }
   const format = c.format ?? HEX;
   if (format === RGB) {

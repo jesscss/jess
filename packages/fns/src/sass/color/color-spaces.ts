@@ -12,7 +12,8 @@
  */
 import { checkAny, define, isValueGroupArray, makeBool, makeDimension, makeKeyword, optional, type ValueGroup } from '@jesscss/core/value';
 import { channelArg, describe, readColor, spaceArg, writeColor, type SpaceColor } from './space-color.js';
-import { convertSpace, fuzzyEquals, inGamut, isChannelPowerless, spaceInfo, type SpaceChannels } from './space.js';
+import { fuzzyEquals } from '@jesscss/core/value';
+import { convertSpace, inGamut, isChannelPowerless, spaceInfo, type SpaceChannels } from './space.js';
 
 const COLOR = { name: 'color', type: 'any', check: checkAny } as const;
 const SPACE = /* @__PURE__ */ optional({ name: 'space', type: 'any', check: checkAny });

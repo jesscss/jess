@@ -16,7 +16,7 @@
  * HARD MODULE BOUNDARY: numbers only; no value node. Sass's colour-space
  * functions are its one reader, so it lives with them.
  */
-import { LINEAR_SRGB_TO_XYZ_D65, srgbToLinear } from '@jesscss/core/value';
+import { fuzzyEquals, hslToRgb, hwbToRgb, LINEAR_SRGB_TO_XYZ_D65, srgbToLinear } from '@jesscss/core/value';
 
 export type ColorSpaceName =
   | 'rgb' | 'hsl' | 'hwb'
@@ -90,14 +90,6 @@ export const spaceInfo = (name: ColorSpaceName): SpaceInfo => spaceTable().get(n
 export function colorSpaceNamed(name: string): ColorSpaceName | undefined {
   const lower = name.toLowerCase();
   return spaceTable().get(lower === 'xyz-d65' ? 'xyz' : lower)?.name;
-}
-
-/*
- * Dart Sass compares at 10 significant decimal digits: equal within 1e-11, and
- * equal when rounded to 1e-11 (`lib/src/util/number.dart` `fuzzyEquals`).
- */
-export function fuzzyEquals(a: number, b: number): boolean {
-  return a === b || (Math.abs(a - b) <= 1e-11 && Math.round(a * 1e11) === Math.round(b * 1e11));
 }
 
 const mod = (a: number, n: number): number => ((a % n) + n) % n;
@@ -234,25 +226,6 @@ function normalize(space: ColorSpaceName, c0: Channel, c1: Channel, c2: Channel,
 
 const or0 = (c: Channel): number => c ?? 0;
 
-function hueToRgb(m1: number, m2: number, hue: number): number {
-  if (hue < 0) {
-    hue += 1;
-  }
-  if (hue > 1) {
-    hue -= 1;
-  }
-  if (hue < 1 / 6) {
-    return m1 + (m2 - m1) * hue * 6;
-  }
-  if (hue < 1 / 2) {
-    return m2;
-  }
-  if (hue < 2 / 3) {
-    return m1 + (m2 - m1) * (2 / 3 - hue) * 6;
-  }
-  return m1;
-}
-
 function labToLch(dest: ColorSpaceName, [lightness, a, b, alpha]: SpaceChannels, missing: Missing): Result {
   const chroma = Math.sqrt(or0(a) ** 2 + or0(b) ** 2);
   const hue = missing.hue === true || fuzzyEquals(chroma, 0) ? null : Math.atan2(or0(b), or0(a)) * 180 / Math.PI;
@@ -301,7 +274,11 @@ function convertLinear(from: LinearSpace, dest: ColorSpaceName, [c0, c1, c2, alp
   }
 }
 
-/* sRGB on 0–1 to `dest` (Dart Sass `SrgbColorSpace.convert`). */
+/*
+ * sRGB on 0–1 to `dest` (Dart Sass `SrgbColorSpace.convert`). Its hsl is not core
+ * `rgbToHsl`: a colour outside sRGB has a lightness outside 0–1, where only this
+ * saturation formula stays defined (a negative saturation turns the hue).
+ */
 function fromSrgb(dest: ColorSpaceName, [red, green, blue, alpha]: SpaceChannels, missing: Missing): Result {
   if (dest === 'hsl' || dest === 'hwb') {
     const r = or0(red);
@@ -424,25 +401,12 @@ function convert(from: ColorSpaceName, [c0, c1, c2, alpha]: SpaceChannels, dest:
     case 'rgb':
       return fromSrgb(dest, [c0 === null ? null : c0 / 255, c1 === null ? null : c1 / 255, c2 === null ? null : c2 / 255, alpha], {});
     case 'hsl': {
-      const h = mod(or0(c0) / 360, 1);
-      const s = or0(c1) / 100;
-      const l = or0(c2) / 100;
-      const m2 = l <= 0.5 ? l * (s + 1) : l + s - l * s;
-      const m1 = l * 2 - m2;
-      return fromSrgb(dest, [hueToRgb(m1, m2, h + 1 / 3), hueToRgb(m1, m2, h), hueToRgb(m1, m2, h - 1 / 3), alpha], { chroma: c1 === null, hue: c0 === null, lightness: c2 === null });
+      const [r, g, b] = hslToRgb(mod(or0(c0), 360), or0(c1) / 100, or0(c2) / 100);
+      return fromSrgb(dest, [r / 255, g / 255, b / 255, alpha], { chroma: c1 === null, hue: c0 === null, lightness: c2 === null });
     }
     case 'hwb': {
-      const h = mod(or0(c0), 360) / 360;
-      let w = or0(c1) / 100;
-      let b = or0(c2) / 100;
-      const sum = w + b;
-      if (sum > 1) {
-        w /= sum;
-        b /= sum;
-      }
-      const factor = 1 - w - b;
-      const channel = (hue: number): number => hueToRgb(0, 1, hue) * factor + w;
-      return fromSrgb(dest, [channel(h + 1 / 3), channel(h), channel(h - 1 / 3), alpha], { hue: c0 === null });
+      const [r, g, b] = hwbToRgb(mod(or0(c0), 360), or0(c1) / 100, or0(c2) / 100);
+      return fromSrgb(dest, [r / 255, g / 255, b / 255, alpha], { hue: c0 === null });
     }
     case 'srgb':
       return fromSrgb(dest, [c0, c1, c2, alpha], {});

@@ -1,5 +1,5 @@
 {
-  "An rgb, hsl or hwb result outside the sRGB gamut is written clamped to it (the legacy colour serializer); Dart Sass writes it as an unclamped hsl().": [
+  "An rgb, hsl or hwb result outside the sRGB gamut is written as clamped bytes, as ledger V5 keeps it; Dart Sass writes it as an unclamped hsl(). Owner question V41 (a).": [
     "to_space/a98_rgb/hsl.hrx::alpha/partial/",
     "to_space/a98_rgb/hsl.hrx::alpha/transparent/",
     "to_space/a98_rgb/hsl.hrx::middle/",
@@ -72,7 +72,7 @@
     "to_space/xyz_d50/hsl.hrx::out_of_range/near/",
     "to_space/xyz_d50/hsl.hrx::white/"
   ],
-  "hsl() clamps a saturation over 100% or a negative lightness where it is written; Dart Sass keeps the colour out of gamut.": [
+  "hsl() clamps a saturation over 100% or a negative lightness where it is written, the HSL domain ledger V14 states; Dart Sass keeps the colour out of gamut. Owner question V41 (b).": [
     "is_in_gamut.hrx::hsl/",
     "to_space/hsl/a98_rgb.hrx::out_of_range/near/",
     "to_space/hsl/display_p3.hrx::out_of_range/near/",

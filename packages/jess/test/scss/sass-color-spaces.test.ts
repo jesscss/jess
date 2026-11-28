@@ -11,8 +11,10 @@ import { Compiler } from '../../src/index.js';
  * The `sass:color` colour-space functions (`space`, `to-space`, `is-legacy`,
  * `is-missing`, `is-powerless`, `is-in-gamut`, `channel`, `same`) through the
  * `.scss` compile path, driven by sass-spec's own cases
- * (`spec/core_functions/color/<function>`, ledger C6: every Sass function
- * behaviour-complete; P51: measured against Dart Sass 1.101.7).
+ * (`spec/core_functions/color/<function>`; ledger C6: every Sass function
+ * behaviour-complete). Dart Sass 1.101.7 is the reference the cases are measured
+ * against, not an authority (E6): where a row rules otherwise, the case is a
+ * listed gap naming the row (V41).
  *
  * The spec's `utils.inspect` mixin is inlined, with the global `type-of` for
  * `meta.type-of` (`sass:meta` has no module in jess yet), and its
@@ -167,7 +169,7 @@ function sameValue(actual: string, expected: string): boolean {
 }
 
 const declarations = (css: string): Array<[string, string]> =>
-  [...css.matchAll(/([\w-]+):\s*([^;{}]*);/gu)].map(m => [m[1]!, m[2]!.trim()]);
+  [...css.matchAll(/([\w-]+):\s*([^;{}]*)[;}]/gu)].map(m => [m[1]!, m[2]!.trim()]);
 
 /** What Dart Sass 1.101.7 writes for the stylesheet, or the message it stops on. */
 function dartSass(source: string): { readonly css?: string; readonly error?: string } {
@@ -226,6 +228,14 @@ describe.runIf(specRoot !== null)('sass:color colour spaces: sass-spec through .
     const source = FUNCTIONS.map((fn, i) => `.a${i} {b: ${fn}(red)}`).join('\n');
     const css = await new Compiler().renderString(source, { extension: '.scss' });
     expect(declarations(css).map(([, value]) => value)).toEqual(FUNCTIONS.map(fn => `${fn}(red)`));
+  });
+
+  it('writes a colour in its space in compressed output too', async () => {
+    const source = '@use "sass:color";\na {b: color.to-space(color(display-p3 1 0 0), lab); c: color.to-space(red, oklch)}';
+    const pretty = declarations(await new Compiler().renderString(source, { extension: '.scss' })).map(([, value]) => value);
+    const compressed = declarations(await new Compiler({ output: { compress: true } }).renderString(source, { extension: '.scss' })).map(([, value]) => value);
+    expect(pretty.map(value => /^\w+/u.exec(value)?.[0])).toEqual(['lab', 'oklch']);
+    expect(compressed).toEqual(pretty.map(value => value.replace(/(?<![\d.])0\./gu, '.')));
   });
 
   it('finds the corpus, and every listed gap in it', () => {
