@@ -76,14 +76,15 @@ describe('sass globals — renamed list member', () => {
 
 describe('sass globals — selector members', () => {
   it('registers the selector globals', () => {
-    for (const name of ['selector-append', 'selector-nest', 'selector-parse', 'simple-selectors']) {
+    for (const name of ['selector-append', 'selector-extend', 'selector-nest', 'selector-parse', 'simple-selectors']) {
       expect(globalNames).toContain(name);
     }
   });
 
-  it('leaves the bare global `append` to `list.append()` and registers no bare `nest` or `parse`', () => {
+  it('leaves the bare global `append` to `list.append()` and registers no bare `nest`, `parse` or `extend`', () => {
     expect(sassFns.filter(fn => fn.name === 'append')).toEqual([sassGlobals.append]);
     expect(globalNames).not.toContain('nest');
     expect(globalNames).not.toContain('parse');
+    expect(globalNames).not.toContain('extend');
   });
 });

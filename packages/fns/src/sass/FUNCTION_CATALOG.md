@@ -205,12 +205,14 @@ This document catalogs all built-in Sass functions from dart-sass, categorized b
 - `selector.parse($selector)` - The selector a string holds, as the value `&` is (a comma list of space lists). Reads the string with the stylesheet dialect's own selector-list production, which the plugin hands to the function as `FnCtx.parseSelector`.
 - `selector.append($selectors...)`, `selector.nest($selectors...)` - Compose the parsed selectors (`selector/compose.ts`) as Dart Sass does: `nest` resolves each `&` against every parent (inside a selector pseudo's argument too), `append` glues each selector's first compound onto each parent's last. The result is the value `selector.parse()` gives.
 - `selector.simple-selectors($selector)` - The simple selectors of one compound, read from its parsed tokens, as a comma list of unquoted strings.
+- `selector.extend($selector, $extendee, $extender)` - `$selector` as `$extender { @extend $extendee; }` extends it: core's extend engine (`extendSelectorList`), so the result is the header the stylesheet's `@extend` writes, `:is()` grafts included (ledger X3), not Dart Sass's woven selectors. A branch whose pseudo-element is followed by more, which the header writes as a rule of its own, is left out.
 
 ### Not implemented
-- `selector.extend($selector, $extendee, $extender)`, `selector.replace($selector, $original, $replacement)`, `selector.unify($selector1, $selector2)`, `selector.is-superselector($super, $sub)` - Need the extend engine's selector matching over parsed selectors
+- `selector.replace($selector, $original, $replacement)`, `selector.unify($selector1, $selector2)`, `selector.is-superselector($super, $sub)` - Need the extend engine's selector matching over parsed selectors
 
 ### Global Selector Functions (Deprecated)
 - `selector-append($selectors...)` - Deprecated
+- `selector-extend($selector, $extendee, $extender)` - Deprecated
 - `selector-nest($selectors...)` - Deprecated
 - `selector-parse($selector)` - Deprecated
 - `simple-selectors($selector)` - Deprecated

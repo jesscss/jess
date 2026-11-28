@@ -171,6 +171,7 @@ export { adoptForgivenSelectorItems, forgivenSelectorItemsOf, forgivingSelectorI
 export type { ForgivenSelectorItem, ForgivingSelectorRest } from './ast/forgiving-selector.js';
 export { RulePreludeRest, unreadableRulePrelude } from './ast/rule-prelude.js';
 export { componentRun } from './ast/component-run.js';
+export { extendSelectorList } from './ast/extend/selector-list.js';
 export { parenGroupContent } from './ast/paren-group.js';
 export { queryFeatureNameFrom, queryFeatureNameValue } from './ast/query-feature-name.js';
 export type { GuardNode } from './ast/guard-node.js';

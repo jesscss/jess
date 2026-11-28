@@ -878,6 +878,7 @@
       "nth",
       "quote",
       "selector-append",
+      "selector-extend",
       "selector-nest",
       "selector-parse",
       "set-nth",
