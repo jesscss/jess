@@ -16,6 +16,7 @@
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Any, EvalModes, Value, ValueGroup } from '../value-eval.js';
+import type { SelectorBranch } from '../nodes.js';
 
 export type Kind = Value['type'];
 export type ParamType = Kind | readonly Kind[] | 'any';
@@ -122,11 +123,11 @@ export interface FnCtx {
 }
 
 /**
- * Reads `text` as a selector list: per branch, in order, its compound selectors and
- * combinators. Throws an error whose message says why when `text` is not a
- * selector list.
+ * Reads `text` as a selector list, as the stylesheet dialect's own selector-list
+ * production reads it (a selector may open with a combinator and may hold `&`), or
+ * `null` when `text` is not a selector list.
  */
-export type SelectorParse = (text: string) => readonly (readonly string[])[];
+export type SelectorParse = (text: string) => readonly SelectorBranch[] | null;
 
 /**
  * The per-render file-read capability handed to the IO built-ins. The host owns

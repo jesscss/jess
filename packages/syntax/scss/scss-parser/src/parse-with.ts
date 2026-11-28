@@ -11,11 +11,12 @@ import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
   recoveredInTree,
-  selectorStringComponents,
+  selectorStringBranches,
   withSourceSpan,
   withForgivenSelectorItems,
   withTriviaMap,
   type ForgivenSelectorItem,
+  type SelectorBranch,
   type Stylesheet
 } from '@jesscss/core/ast';
 import { InvalidRulePreludeError } from '@jesscss/core/diagnostics';
@@ -199,21 +200,20 @@ function inSourceOrder(diagnostics: readonly ScssRecoveredError[]): readonly Scs
 }
 
 /**
- * `text` read by the grammar's own `SelectorList` production, as Sass's
- * `selector.parse()` reads a selector string: each branch's compound selectors and
- * combinators. A
- * string that is not a whole selector list, or that holds `&`, throws with Dart
- * Sass's message. The selectors a stylesheet writes and the ones a string holds
- * are read by the one production.
+ * `text` read by the grammar's own nested selector-list production, as Sass's
+ * selector functions read a selector string: its selectors, which may open with a
+ * combinator and may hold `&`, or `null` for a string that is not a whole selector
+ * list. The selectors a nested rule writes and the ones a string holds are read by
+ * the one production.
  */
-export function parseSelectorWith(grammar: ScssAstGrammar, text: string): string[][] {
-  const entry = grammar.SelectorList;
+export function parseSelectorWith(grammar: ScssAstGrammar, text: string): SelectorBranch[] | null {
+  const entry = grammar.NestedSelector;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {
-    throw new TypeError('SCSS AST grammar is missing its selector-list entry.');
+    throw new TypeError('SCSS AST grammar is missing its nested selector-list entry.');
   }
   const source = text.trim();
   const diagnostics: ScssRecoveredError[] = [];
   const result = run(entry, source, { trivia, state: { source, diagnostics } });
-  return selectorStringComponents(result.ok && result.unconsumedFrom === null && result.errors.length === 0 && diagnostics.length === 0 ? result.value : undefined);
+  return selectorStringBranches(result.ok && result.unconsumedFrom === null && result.errors.length === 0 && diagnostics.length === 0 ? result.value : undefined);
 }

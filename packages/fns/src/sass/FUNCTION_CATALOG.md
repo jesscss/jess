@@ -203,13 +203,15 @@ This document catalogs all built-in Sass functions from dart-sass, categorized b
 
 ### Implemented
 - `selector.parse($selector)` - The selector a string holds, as the value `&` is (a comma list of space lists). Reads the string with the stylesheet dialect's own selector-list production, which the plugin hands to the function as `FnCtx.parseSelector`.
+- `selector.append($selectors...)`, `selector.nest($selectors...)` - Compose the parsed selectors (`selector/compose.ts`) as Dart Sass does: `nest` resolves each `&` against every parent (inside a selector pseudo's argument too), `append` glues each selector's first compound onto each parent's last. The result is the value `selector.parse()` gives.
 
 ### Not implemented
-- `selector.append($selectors...)`, `selector.nest($selectors...)` - Need `&`-joining over parsed selectors (core's `&` composition is not exposed to functions)
 - `selector.extend($selector, $extendee, $extender)`, `selector.replace($selector, $original, $replacement)`, `selector.unify($selector1, $selector2)`, `selector.is-superselector($super, $sub)` - Need the extend engine's selector matching over parsed selectors
 - `selector.simple-selectors($selector)` - Needs a compound's simple selectors, which the parse hook does not return
 
 ### Global Selector Functions (Deprecated)
+- `selector-append($selectors...)` - Deprecated
+- `selector-nest($selectors...)` - Deprecated
 - `selector-parse($selector)` - Deprecated
 
 ## Conversion Complexity Summary

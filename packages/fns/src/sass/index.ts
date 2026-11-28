@@ -112,7 +112,7 @@ export { default as zip } from './list/zip.js';
 export { mapGet, mapMerge, mapRemove, mapKeys, mapValues, mapHasKey } from './map/globals.js';
 
 // Global Selector Functions (Deprecated - use selector.* module instead)
-export { selectorParse } from './selector/globals.js';
+export { selectorAppend, selectorNest, selectorParse } from './selector/globals.js';
 
 /*
  * Note: Module-specific functions are exported from their respective module files:

@@ -4,7 +4,24 @@
  * gets its own callable that delegates to the single body in the module file.
  */
 import { define } from '@jesscss/core/value';
+import append from './append.js';
+import { appendSelectors, nestSelectors } from './compose.js';
+import nest from './nest.js';
 import parse, { parseSelectorValue } from './parse.js';
+
+/** `selector-append($selectors...)` — the global spelling of `selector.append()`. */
+export const selectorAppend = define('selector-append', {
+  params: append.params,
+  variadic: true,
+  body: appendSelectors
+});
+
+/** `selector-nest($selectors...)` — the global spelling of `selector.nest()`. */
+export const selectorNest = define('selector-nest', {
+  params: nest.params,
+  variadic: true,
+  body: nestSelectors
+});
 
 /** `selector-parse($selector)` — the global spelling of `selector.parse()`. */
 export const selectorParse = define('selector-parse', {

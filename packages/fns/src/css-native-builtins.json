@@ -877,6 +877,8 @@
       "map-values",
       "nth",
       "quote",
+      "selector-append",
+      "selector-nest",
       "selector-parse",
       "set-nth",
       "str-index",
