@@ -75,8 +75,8 @@ describe('sass globals — renamed list member', () => {
 });
 
 describe('sass globals — selector members', () => {
-  it('registers the `selector-` prefixed global names', () => {
-    for (const name of ['selector-append', 'selector-nest', 'selector-parse']) {
+  it('registers the selector globals', () => {
+    for (const name of ['selector-append', 'selector-nest', 'selector-parse', 'simple-selectors']) {
       expect(globalNames).toContain(name);
     }
   });

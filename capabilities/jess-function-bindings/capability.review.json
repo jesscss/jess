@@ -1,8 +1,8 @@
 {
   "reviewVersion": 2,
   "id": "jess-function-bindings",
-  "definitionDigest": "9748c8f89551eae39db01e8239d25aa1c6617c4fd09fe5dc68bd3d6ad7f92b3a",
-  "contractDigest": "ebc895a3af474a5b6971faff25c1ebaa01351a844ef01f6aa09edce80f5bc482",
+  "definitionDigest": "1d46e34b0a87417aa68af0c5082614e49a1bf5c3255815398ca75f6a553f2291",
+  "contractDigest": "e8733f93ef30854ba91b828d340095a2a93a3e6979fa766af6a1f73eb66855d4",
   "implementations": {
     "owner": "c4feef9b75ce5c0baad559f8838ec2d8e98eb2f95d6984c709647097ed5d9a2c",
     "compiler-convert": "025fbfaf6a326041c74696279aa2c2587884ba6edf24db9310f7b2ffdb31801c",
@@ -11,7 +11,8 @@
     "jess-expose-round-trip": "ea8fe0ea3c3b24c157a3bc9aa9b31662bdb7e8fe9f86679f44127b141bc0964f",
     "sass-list-map-functions": "d46a456dacad8fc205dd41cd378c76fcaa88772415fa4016f75bcbc907c20457",
     "sass-selector-parse": "0f15e760ecafc11546d65927c5d0a92168d849ebbf163e4dfe0dfae683096d81",
-    "sass-selector-append-nest": "72e0ca82d28800d54aa3eb5251a7a3115232788ece329963746640d3632c2205"
+    "sass-selector-append-nest": "72e0ca82d28800d54aa3eb5251a7a3115232788ece329963746640d3632c2205",
+    "sass-selector-simple-selectors": "25844c2566b0c98be990cf58922f4bf65ae7e56606a166d8c9c70c78c88a92e2"
   },
-  "rationale": "sass:selector append() and nest(): the new suite sass-selector-append-nest.test.ts converts with jessFunctions() and is declared a consumer like sass-selector-parse; the parse hook now returns parsed branches; no change to the capability's owner or checks"
+  "rationale": "sass:selector simple-selectors(): the new suite sass-selector-simple-selectors.test.ts converts with jessFunctions() and is declared a consumer like sass-selector-parse; no change to the capability's owner or checks"
 }

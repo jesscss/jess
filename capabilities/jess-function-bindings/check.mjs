@@ -53,7 +53,8 @@ const CONSUMERS = {
   'jess-expose-round-trip': { file: 'packages/jess/test/jess-expose-variables.test.ts', dialect: 'less' },
   'sass-list-map-functions': { file: 'packages/jess/test/scss/sass-list-map-functions.test.ts', dialect: 'sass' },
   'sass-selector-parse': { file: 'packages/jess/test/scss/sass-selector-parse.test.ts', dialect: 'sass' },
-  'sass-selector-append-nest': { file: 'packages/jess/test/scss/sass-selector-append-nest.test.ts', dialect: 'sass' }
+  'sass-selector-append-nest': { file: 'packages/jess/test/scss/sass-selector-append-nest.test.ts', dialect: 'sass' },
+  'sass-selector-simple-selectors': { file: 'packages/jess/test/scss/sass-selector-simple-selectors.test.ts', dialect: 'sass' }
 };
 const OWNERS = {
   less: { pkg: 'packages/syntax/less/jess-plugin-less', file: 'packages/syntax/less/jess-plugin-less/src/jess-functions.ts', rule: '{ from: LESS_MODULE, names: lessExportNames() }' },

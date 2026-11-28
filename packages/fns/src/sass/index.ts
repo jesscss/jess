@@ -113,6 +113,7 @@ export { mapGet, mapMerge, mapRemove, mapKeys, mapValues, mapHasKey } from './ma
 
 // Global Selector Functions (Deprecated - use selector.* module instead)
 export { selectorAppend, selectorNest, selectorParse } from './selector/globals.js';
+export { default as simpleSelectors } from './selector/simple-selectors.js';
 
 /*
  * Note: Module-specific functions are exported from their respective module files:

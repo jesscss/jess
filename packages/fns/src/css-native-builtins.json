@@ -881,6 +881,7 @@
       "selector-nest",
       "selector-parse",
       "set-nth",
+      "simple-selectors",
       "str-index",
       "str-insert",
       "str-length",
