@@ -283,6 +283,45 @@
           ]
         }
       }
+    },
+    {
+      "id": "sass-selector-append-nest",
+      "entrypoint": "packages/jess/test/scss/sass-selector-append-nest.test.ts",
+      "export": "functions",
+      "alternatives": {
+        "wrapper": {
+          "replace": [
+            {
+              "from": "const functions = jessFunctions();",
+              "to": "const functions = { ...jessFunctions() };"
+            }
+          ]
+        },
+        "copy": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-scss';",
+              "to": "import { sassExportNames } from '@jesscss/fns/sass/registry';"
+            },
+            {
+              "from": "const functions = jessFunctions();",
+              "to": "const functions = { from: '#sass', names: sassExportNames() };"
+            }
+          ]
+        },
+        "unusedImport": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-scss';",
+              "to": "import { jessFunctions } from '@jesscss/plugin-scss';\nimport { sassExportNames } from '@jesscss/fns/sass/registry';"
+            },
+            {
+              "from": "const functions = jessFunctions();",
+              "to": "void jessFunctions();\nconst functions = { from: '#sass', names: sassExportNames() };"
+            }
+          ]
+        }
+      }
     }
   ],
   "rules": {
