@@ -166,8 +166,8 @@ export function fuzzyEquals(a: number, b: number): boolean {
 }
 
 /** Whether the colour is written in its own CSS Color 4 space's function rather than as a legacy rgb/hsl colour. */
-export const writesOwnSpace = (c: Color): c is Color & Required<Pick<Color, 'channels'>> =>
-  c.src === undefined && c.channels !== undefined && c.space !== 'rgb' && c.space !== 'hsl' && c.space !== 'hwb';
+export const writesOwnSpace = (c: Color): c is Color & Required<Pick<Color, 'channels' | 'space'>> =>
+  c.src === undefined && c.channels !== undefined && c.space !== undefined && c.space !== 'rgb' && c.space !== 'hsl' && c.space !== 'hwb';
 
 /*
  * A colour in a CSS Color 4 space, in that space's function (css-color-4 §9,
@@ -216,7 +216,7 @@ function spaceColorText(c: Color, space: string, [c0, c1, c2, alpha]: NonNullabl
  */
 export function serializeColor(c: Color, num: (v: number) => string = formatNumber, comma = ', '): string {
   if (writesOwnSpace(c)) {
-    return spaceColorText(c, c.space ?? 'srgb', c.channels, num, comma);
+    return spaceColorText(c, c.space, c.channels, num, comma);
   }
   if (c.src !== undefined) {
     return c.src;
