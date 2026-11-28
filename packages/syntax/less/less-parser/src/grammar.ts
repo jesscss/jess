@@ -1182,12 +1182,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     InterpolationReferenceAccessor
   );
   /**
-   * The one bracket accessor: an interpolation's (`@{name[key]}`), a variable
-   * chain's (`@map[key]`) and a namespace/mixin chain's (`#ns[key]`). A `[`
-   * that does not open `[]` is read once and the key decides the arm; a `[`
-   * no arm reads stays unread (`"@{m[ k ]}"` is a string's text, `[a=b]` an
-   * attribute selector), so the accessor fails without committing. The
-   * brackets and the key are glued: `@map[ k ]` is no accessor.
+   * An interpolation's (`@{name[key]}`) or variable chain's (`@map[key]`)
+   * accessor. A `[` is read once and the key picks the arm; if none does
+   * (`"@{m[ k ]}"`), it fails without committing. `#ns[key]` shares only
+   * `keyedAccessor`, via `ReferenceTailFromDelimiter`. Glued: `@map[ k ]` is
+   * no accessor.
    */
   const InterpolationAccessor = choice(
     InterpolationLastAccessor,
@@ -3284,9 +3283,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * The steps of the one lookup/call chain (REFERENCE-CALL-PLAN): a `[key]`
    * lookup, a `.name` member lookup, or an `(args)` call, any following any.
    * A bracket step is the bracket accessor an interpolation reads. The
-   * value-position chain reads them through
-   * `ReferenceTail`; the statement call `@name…(…);` (`ReferenceCall`) reads
-   * the same three.
+   * value-position chain reads them through `ReferenceTail`; the statement
+   * call `@name…(…);` (`ReferenceCall`) reads the same three.
    */
   const ReferenceBracketTail = node(
     'ReferenceBracketTail',
